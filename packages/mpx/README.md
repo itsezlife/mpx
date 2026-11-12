@@ -2,8 +2,8 @@
 
 The composition root of mpx: builds a media stack from the core and the bytes cache.
 
-> Skeleton: the API lands with the tickets of the mpx build order. Nothing is
-> usable yet.
+> Early: device signals work; the stack and the fetch adapter land with later
+> tickets of the mpx build order.
 
 ## Install
 
@@ -21,13 +21,22 @@ dependencies:
 
 ```dart
 import 'package:mpx/mpx.dart';
+
+final signals = DeviceSignals();
+signals.network.addListener(() => print(signals.network.value));
+// ...
+signals.dispose();
 ```
 
-## Features (planned)
+Tests take `FakeDeviceSignals` from `package:mpx/testing.dart`.
 
-- Media stack factory
-- Fetch adapter over the bytes cache
-- Device signals
+## Features
+
+- Device signals (Android, iOS, macOS): network class (none, unmetered,
+  metered, roaming), power-saving mode and thermal status as
+  `ValueListenable`s. Run [example/](example/) to watch them change.
+
+Planned: media stack factory, fetch adapter over the bytes cache.
 
 ## Docs
 

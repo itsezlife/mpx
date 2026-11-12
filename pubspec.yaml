@@ -13,6 +13,7 @@ workspace:
   - packages/mpx_ui
   - packages/mpx_capture
   - packages/mpx
+  - packages/mpx/example
 
 environment:
   sdk: ^3.11.0

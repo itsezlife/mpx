@@ -1,0 +1,17 @@
+name: mpx_example
+description: Shows what mpx reads from the device; also the native build check.
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+  flutter: '>=3.38.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  mpx:
+    path: ..
+
+flutter:
+  uses-material-design: true
