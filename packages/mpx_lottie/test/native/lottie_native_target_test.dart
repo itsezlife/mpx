@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 // The hook is not part of lib/: a hook may not import the Flutter package
 // that it builds for, so its testable logic is reached by path.
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/targets.dart';
+import '../../hook/src/targets.dart';
 
 void main() {
   group('LottieNativeTarget.key', () {
@@ -155,11 +155,11 @@ void main() {
     test('is the platform shape of the crate name', () {
       String name(OS os, [IOSSdk? sdk]) =>
           LottieNativeTarget(os, Architecture.arm64, sdk: sdk).libraryFileName;
-      expect(name(OS.macOS), 'libchat_lottie.dylib');
-      expect(name(OS.iOS, IOSSdk.iPhoneOS), 'libchat_lottie.dylib');
-      expect(name(OS.android), 'libchat_lottie.so');
-      expect(name(OS.linux), 'libchat_lottie.so');
-      expect(name(OS.windows), 'chat_lottie.dll');
+      expect(name(OS.macOS), 'libmpx_lottie.dylib');
+      expect(name(OS.iOS, IOSSdk.iPhoneOS), 'libmpx_lottie.dylib');
+      expect(name(OS.android), 'libmpx_lottie.so');
+      expect(name(OS.linux), 'libmpx_lottie.so');
+      expect(name(OS.windows), 'mpx_lottie.dll');
     });
   });
 

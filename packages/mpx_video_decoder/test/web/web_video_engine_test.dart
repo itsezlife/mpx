@@ -1,11 +1,11 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_decoder/src/engine/video_element_port.dart';
-import 'package:video_decoder/src/engine/video_engine.dart';
-import 'package:video_decoder/src/engine/web_video_engine.dart';
-import 'package:video_decoder/testing.dart';
-import 'package:video_native/video_native.dart';
+import 'package:mpx_video_decoder/src/binding/binding.dart';
+import 'package:mpx_video_decoder/src/engine/video_element_port.dart';
+import 'package:mpx_video_decoder/src/engine/video_engine.dart';
+import 'package:mpx_video_decoder/src/engine/web_video_engine.dart';
+import 'package:mpx_video_decoder/testing.dart';
 
 final _bytes = Uint8List.fromList([1, 2, 3]);
 const _metadata = VideoElementMetadata(

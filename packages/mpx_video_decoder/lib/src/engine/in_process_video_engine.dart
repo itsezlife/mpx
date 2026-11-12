@@ -1,11 +1,11 @@
 import 'dart:typed_data';
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:video_decoder/src/engine/texture_calls.dart';
-import 'package:video_decoder/src/engine/video_decode_core.dart';
-import 'package:video_decoder/src/engine/video_engine.dart';
-import 'package:video_decoder/src/engine/video_texture_engine.dart';
-import 'package:video_native/video_native.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_video_decoder/src/binding/binding.dart';
+import 'package:mpx_video_decoder/src/engine/texture_calls.dart';
+import 'package:mpx_video_decoder/src/engine/video_decode_core.dart';
+import 'package:mpx_video_decoder/src/engine/video_engine.dart';
+import 'package:mpx_video_decoder/src/engine/video_texture_engine.dart';
 
 /// A [VideoEngine] that runs a [VideoBinding] on the calling isolate; its
 /// futures complete at once.

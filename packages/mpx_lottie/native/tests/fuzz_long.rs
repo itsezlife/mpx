@@ -1,7 +1,7 @@
 //! Long, seeded fuzz of the C ABI. Slice 11 of the native media plan.
 //!
 //! The corpus replay (`replay.rs`) runs on every pull request and is fixed;
-//! this one runs for as long as `CHAT_LOTTIE_FUZZ_SECONDS` says, nightly, and
+//! this one runs for as long as `MPX_LOTTIE_FUZZ_SECONDS` says, nightly, and
 //! is `#[ignore]` so a plain `cargo test` never waits for it:
 //!
 //!     cargo test --release --test fuzz_long -- --ignored --nocapture
@@ -734,14 +734,14 @@ impl Trace {
 /// each call said. Everything it asserts is a contract of the header; which
 /// status an input earns is not asserted, only that it is a documented one.
 fn drive_abi(input: &[u8]) -> Trace {
-    use chat_lottie::{chat_lottie_free, chat_lottie_load, ChatLottie, ChatLottieInfo};
+    use mpx_lottie::{mpx_lottie_free, mpx_lottie_load, MpxLottie, MpxLottieInfo};
     let mut trace = Trace::default();
     let mut rng = Rng::new(fnv1a(input));
-    let mut info = ChatLottieInfo::default();
+    let mut info = MpxLottieInfo::default();
     // Poisoned, so a failure path that forgets to null the handle shows.
-    let mut handle: *mut ChatLottie = std::ptr::NonNull::dangling().as_ptr();
+    let mut handle: *mut MpxLottie = std::ptr::NonNull::dangling().as_ptr();
     let status = trace.call("load", unsafe {
-        chat_lottie_load(input.as_ptr(), input.len(), &mut info, &mut handle)
+        mpx_lottie_load(input.as_ptr(), input.len(), &mut info, &mut handle)
     });
     if status == 0 {
         if handle.is_null() {
@@ -751,7 +751,7 @@ fn drive_abi(input: &[u8]) -> Trace {
             if let Some(region) = rendered {
                 codec_round_trip(&region, &mut rng, &mut trace);
             }
-            unsafe { chat_lottie_free(handle) };
+            unsafe { mpx_lottie_free(handle) };
         }
     } else if !handle.is_null() {
         trace.anomaly(format!(
@@ -765,12 +765,12 @@ fn drive_abi(input: &[u8]) -> Trace {
 /// Renders a batch of good, hostile-frame and bad-size jobs at several sizes.
 /// Returns the first region that rendered, as codec input.
 fn render_stage(
-    handle: *mut chat_lottie::ChatLottie,
-    info: &chat_lottie::ChatLottieInfo,
+    handle: *mut mpx_lottie::MpxLottie,
+    info: &mpx_lottie::MpxLottieInfo,
     rng: &mut Rng,
     trace: &mut Trace,
 ) -> Option<Region> {
-    use chat_lottie::{chat_lottie_render_batch, ChatLottieJob};
+    use mpx_lottie::{mpx_lottie_render_batch, MpxLottieJob};
     let last = info.frame_count.saturating_sub(1) as f32;
     let frames = [
         0.0,
@@ -791,9 +791,9 @@ fn render_stage(
         .iter()
         .map(|&(w, h, pad)| Region::new(w, h, pad))
         .collect();
-    let mut jobs: Vec<ChatLottieJob> = regions
+    let mut jobs: Vec<MpxLottieJob> = regions
         .iter_mut()
-        .map(|region| ChatLottieJob {
+        .map(|region| MpxLottieJob {
             handle,
             frame: *rng.pick(&frames),
             width: region.width,
@@ -804,7 +804,7 @@ fn render_stage(
         .collect();
     // Bad jobs ride in the same batch: they must fail alone.
     let mut scratch = [GUARD; 64];
-    let bad = |handle, width, height, target: *mut u8| ChatLottieJob {
+    let bad = |handle, width, height, target: *mut u8| MpxLottieJob {
         handle,
         frame: 0.0,
         width,
@@ -816,7 +816,7 @@ fn render_stage(
     jobs.push(bad(handle, 513, 8, scratch.as_mut_ptr()));
     jobs.push(bad(std::ptr::null_mut(), 8, 8, scratch.as_mut_ptr()));
     let mut statuses = vec![99i32; jobs.len()];
-    let ran = unsafe { chat_lottie_render_batch(jobs.as_ptr(), jobs.len(), statuses.as_mut_ptr()) };
+    let ran = unsafe { mpx_lottie_render_batch(jobs.as_ptr(), jobs.len(), statuses.as_mut_ptr()) };
     if trace.call("render", ran) != 0 {
         return None;
     }
@@ -861,11 +861,11 @@ fn render_stage(
 /// Compresses a rendered region and decompresses it again, then feeds the
 /// codec a corrupt stream, a short destination and a wrong-size region.
 fn codec_round_trip(region: &Region, rng: &mut Rng, trace: &mut Trace) {
-    use chat_lottie::{
-        chat_lottie_compress_region, chat_lottie_decompress_region, chat_lottie_lz4_bound,
+    use mpx_lottie::{
+        mpx_lottie_compress_region, mpx_lottie_decompress_region, mpx_lottie_lz4_bound,
     };
     let (w, h) = (region.width, region.height);
-    let bound = chat_lottie_lz4_bound(w, h);
+    let bound = mpx_lottie_lz4_bound(w, h);
     if bound == 0 {
         trace.anomaly(format!("lz4_bound is 0 for {w}x{h}"));
         return;
@@ -873,7 +873,7 @@ fn codec_round_trip(region: &Region, rng: &mut Rng, trace: &mut Trace) {
     let mut packed = vec![GUARD; bound];
     let mut len = 0usize;
     let status = trace.call("compress", unsafe {
-        chat_lottie_compress_region(
+        mpx_lottie_compress_region(
             region.buf.as_ptr(),
             region.stride,
             w,
@@ -892,7 +892,7 @@ fn codec_round_trip(region: &Region, rng: &mut Rng, trace: &mut Trace) {
     if len > 1 {
         let mut short_len = 7usize;
         let short = trace.call("compress", unsafe {
-            chat_lottie_compress_region(
+            mpx_lottie_compress_region(
                 region.buf.as_ptr(),
                 region.stride,
                 w,
@@ -912,7 +912,7 @@ fn codec_round_trip(region: &Region, rng: &mut Rng, trace: &mut Trace) {
 
     let mut back = Region::new(w, h, 8);
     let status = trace.call("decompress", unsafe {
-        chat_lottie_decompress_region(
+        mpx_lottie_decompress_region(
             stream.as_ptr(),
             stream.len(),
             back.buf.as_mut_ptr(),
@@ -938,7 +938,7 @@ fn codec_round_trip(region: &Region, rng: &mut Rng, trace: &mut Trace) {
     }
     let mut target = Region::new(w, h, 0);
     let status = trace.call("decompress", unsafe {
-        chat_lottie_decompress_region(
+        mpx_lottie_decompress_region(
             hurt.as_ptr(),
             hurt.len(),
             target.buf.as_mut_ptr(),
@@ -957,7 +957,7 @@ fn codec_round_trip(region: &Region, rng: &mut Rng, trace: &mut Trace) {
     // The right stream for the wrong region size can never unpack exactly.
     let mut wrong = Region::new(w + 1, h, 0);
     let status = trace.call("decompress", unsafe {
-        chat_lottie_decompress_region(
+        mpx_lottie_decompress_region(
             stream.as_ptr(),
             stream.len(),
             wrong.buf.as_mut_ptr(),
@@ -974,10 +974,10 @@ fn codec_round_trip(region: &Region, rng: &mut Rng, trace: &mut Trace) {
 /// The input itself as an lz4 stream, whatever it was meant to be: the codec
 /// is reachable without a successful load.
 fn codec_on_raw_stream(input: &[u8], trace: &mut Trace) {
-    use chat_lottie::chat_lottie_decompress_region;
+    use mpx_lottie::mpx_lottie_decompress_region;
     let mut region = Region::new(16, 16, 0);
     let status = trace.call("decompress", unsafe {
-        chat_lottie_decompress_region(
+        mpx_lottie_decompress_region(
             input.as_ptr(),
             input.len(),
             region.buf.as_mut_ptr(),
@@ -1088,9 +1088,9 @@ fn fuzz_run(driver: Driver, config: &Config) -> Report {
 }
 
 impl Config {
-    /// `CHAT_LOTTIE_FUZZ_SECONDS` (20), `CHAT_LOTTIE_FUZZ_SEED` (the clock),
-    /// `CHAT_LOTTIE_FUZZ_DIR` (`target/fuzz-failures`) and
-    /// `CHAT_LOTTIE_FUZZ_CASE_MS` (5000, the per-input time limit).
+    /// `MPX_LOTTIE_FUZZ_SECONDS` (20), `MPX_LOTTIE_FUZZ_SEED` (the clock),
+    /// `MPX_LOTTIE_FUZZ_DIR` (`target/fuzz-failures`) and
+    /// `MPX_LOTTIE_FUZZ_CASE_MS` (5000, the per-input time limit).
     fn from_env() -> Self {
         fn var<T: std::str::FromStr>(name: &str) -> Option<T> {
             std::env::var(name).ok().and_then(|v| v.trim().parse().ok())
@@ -1099,11 +1099,11 @@ impl Config {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(1, |d| d.as_nanos() as u64);
         Config {
-            duration: Duration::from_secs_f64(var("CHAT_LOTTIE_FUZZ_SECONDS").unwrap_or(20.0)),
-            seed: var("CHAT_LOTTIE_FUZZ_SEED").unwrap_or(clock_seed),
-            dir: std::env::var_os("CHAT_LOTTIE_FUZZ_DIR")
+            duration: Duration::from_secs_f64(var("MPX_LOTTIE_FUZZ_SECONDS").unwrap_or(20.0)),
+            seed: var("MPX_LOTTIE_FUZZ_SEED").unwrap_or(clock_seed),
+            dir: std::env::var_os("MPX_LOTTIE_FUZZ_DIR")
                 .map_or_else(|| PathBuf::from("target/fuzz-failures"), PathBuf::from),
-            case_limit: Duration::from_millis(var("CHAT_LOTTIE_FUZZ_CASE_MS").unwrap_or(5000)),
+            case_limit: Duration::from_millis(var("MPX_LOTTIE_FUZZ_CASE_MS").unwrap_or(5000)),
             max_findings: 10,
         }
     }
@@ -1111,11 +1111,11 @@ impl Config {
 
 /// The long run. Ignored: `cargo test --release --test fuzz_long -- --ignored --nocapture`.
 #[test]
-#[ignore = "runs for CHAT_LOTTIE_FUZZ_SECONDS; the nightly job and `-- --ignored` run it"]
+#[ignore = "runs for MPX_LOTTIE_FUZZ_SECONDS; the nightly job and `-- --ignored` run it"]
 fn long_fuzz_of_the_c_abi() {
     let config = Config::from_env();
     // First, so a failure anywhere below can be reproduced.
-    println!("CHAT_LOTTIE_FUZZ_SEED={}", config.seed);
+    println!("MPX_LOTTIE_FUZZ_SEED={}", config.seed);
     let report = fuzz_run(drive_abi, &config);
     println!(
         "cases={} findings={} slowest_ms={} load_statuses={:?}",

@@ -38,7 +38,7 @@ void main() {
         markTestSkipped('no Flutter web SDK found (FLUTTER_ROOT, PATH)');
         return;
       }
-      final out = Directory.systemTemp.createTempSync('lottie_decoder_web_');
+      final out = Directory.systemTemp.createTempSync('mpx_lottie_web_');
       addTearDown(() => out.deleteSync(recursive: true));
 
       // The plain Dart compiler does not know dart:ui; the Flutter web SDK's

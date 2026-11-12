@@ -9,9 +9,9 @@ library;
 // resolves a conditional export to its default URI, so the default must be
 // the file that holds the bindings. `dart.library.js_interop` is true on every
 // web compiler (dart2js and dart2wasm) and false on the VM.
-export 'src/native_exports_vm.dart'
-    if (dart.library.js_interop) 'src/native_exports_js.dart';
-export 'src/video_availability.dart';
-export 'src/video_frame_result.dart';
-export 'src/video_handle.dart';
-export 'src/video_open_result.dart';
+export 'native_exports_vm.dart'
+    if (dart.library.js_interop) 'native_exports_js.dart';
+export 'video_availability.dart';
+export 'video_frame_result.dart';
+export 'video_handle.dart';
+export 'video_open_result.dart';

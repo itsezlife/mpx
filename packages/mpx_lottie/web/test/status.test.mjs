@@ -2,19 +2,19 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { MAX_EDGE, STATUS } from '../chat_lottie_core.mjs';
+import { MAX_EDGE, STATUS } from '../mpx_lottie_core.mjs';
 
 const header = readFileSync(
-  new URL('../../native/include/chat_lottie.h', import.meta.url),
+  new URL('../../native/include/mpx_lottie.h', import.meta.url),
   'utf8',
 );
 
-/** The `CHAT_LOTTIE_<NAME> = <n>` entries of the first enum of the header. */
+/** The `MPX_LOTTIE_<NAME> = <n>` entries of the first enum of the header. */
 function headerStatuses() {
   const block = /enum \{([^}]*)\};/.exec(header);
-  assert.ok(block, 'the status enum is in chat_lottie.h');
+  assert.ok(block, 'the status enum is in mpx_lottie.h');
   const statuses = {};
-  for (const [, name, value] of block[1].matchAll(/CHAT_LOTTIE_([A-Z_]+)\s*=\s*(-?\d+)/g)) {
+  for (const [, name, value] of block[1].matchAll(/MPX_LOTTIE_([A-Z_]+)\s*=\s*(-?\d+)/g)) {
     statuses[name] = Number(value);
   }
   return statuses;

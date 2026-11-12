@@ -2,13 +2,13 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:lottie_decoder/src/engine/lottie_engine.dart';
-import 'package:lottie_decoder/src/engine/lottie_worker_port.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
+import 'package:mpx_lottie/src/engine/lottie_engine.dart';
+import 'package:mpx_lottie/src/engine/lottie_worker_port.dart';
 
-/// The status numbers the worker answers with: `include/chat_lottie.h` of
-/// `lottie_native`, which the worker passes through untouched. Repeated here
-/// because the header's own Dart copy (`ChatLottieStatus`) sits behind
+/// The status numbers the worker answers with: `include/mpx_lottie.h` of
+/// `mpx_lottie`, which the worker passes through untouched. Repeated here
+/// because the header's own Dart copy (`MpxLottieStatus`) sits behind
 /// `dart:ffi`; `lottie_worker_status_test` parses the header and fails if one
 /// of these drifts.
 abstract final class LottieWorkerStatus {
@@ -47,8 +47,8 @@ abstract final class LottieWorkerStatus {
 /// A [LottieEngine] over a Lottie worker: WebAssembly in a browser worker
 /// that draws the frames and transfers their pixels back.
 ///
-/// The protocol is the one documented at the top of `chat_lottie_worker.js`
-/// in `lottie_native`. Requests are posted in call order, at once, each under
+/// The protocol is the one documented at the top of `mpx_lottie_worker.js`
+/// in `mpx_lottie`. Requests are posted in call order, at once, each under
 /// its own `id`; the worker serves them one at a time in arrival order, but
 /// replies are matched by `id`, never by position, so the engine does not
 /// depend on that order.

@@ -11,10 +11,10 @@ import 'package:code_assets/code_assets.dart';
 
 /// The environment variable that names a prefix (a directory holding
 /// `include/` and `lib/`) in place of the recipe's output.
-const ffmpegDirVariable = 'CHAT_VIDEO_FFMPEG_DIR';
+const ffmpegDirVariable = 'MPX_VIDEO_FFMPEG_DIR';
 
 /// The command that produces the prefix this hook looks for by default.
-const recipeCommand = 'packages/video_native/native/recipe/build.sh';
+const recipeCommand = 'packages/mpx_video_decoder/native/recipe/build.sh';
 
 /// The command that builds the prefix for the recipe's [target].
 String recipeCommandFor(String target) =>

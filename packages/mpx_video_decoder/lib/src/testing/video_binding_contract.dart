@@ -3,11 +3,11 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_native/src/video_availability.dart';
-import 'package:video_native/src/video_binding.dart';
-import 'package:video_native/src/video_frame_result.dart';
-import 'package:video_native/src/video_handle.dart';
-import 'package:video_native/src/video_open_result.dart';
+import 'package:mpx_video_decoder/src/binding/video_availability.dart';
+import 'package:mpx_video_decoder/src/binding/video_binding.dart';
+import 'package:mpx_video_decoder/src/binding/video_frame_result.dart';
+import 'package:mpx_video_decoder/src/binding/video_handle.dart';
+import 'package:mpx_video_decoder/src/binding/video_open_result.dart';
 
 /// What a [VideoBindingContract] run needs besides the binding.
 final class VideoBindingHarness {

@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart';
-import 'package:lottie_decoder/src/cache/cached_frame.dart';
-import 'package:lottie_decoder/src/cache/frame_cache_codec.dart';
-import 'package:lottie_decoder/src/cache/frame_cache_files.dart';
-import 'package:lottie_decoder/src/cache/frame_cache_key.dart';
-import 'package:lottie_decoder/src/environment_specific/frame_cache_files.dart'
+import 'package:mpx_lottie/src/cache/cached_frame.dart';
+import 'package:mpx_lottie/src/cache/frame_cache_codec.dart';
+import 'package:mpx_lottie/src/cache/frame_cache_files.dart';
+import 'package:mpx_lottie/src/cache/frame_cache_key.dart';
+import 'package:mpx_lottie/src/environment_specific/frame_cache_files.dart'
     as environment_specific;
 
 /// Tells the time; injected so tests order recency without waiting.
@@ -19,7 +19,7 @@ void _reportToFlutter(Object error, StackTrace stack) {
     FlutterErrorDetails(
       exception: error,
       stack: stack,
-      library: 'lottie_decoder',
+      library: 'mpx_lottie',
       context: ErrorDescription('while using the frame cache'),
     ),
   );

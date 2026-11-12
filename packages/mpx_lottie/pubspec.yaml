@@ -1,7 +1,7 @@
 name: mpx_lottie
 description: >
-  A vector animation decoder for mpx_core, backed by a native library built
-  by a build hook.
+  A Lottie decoder for mpx_core that renders vector animations with a native
+  Rust library delivered by a build hook.
 version: 0.0.1
 homepage: https://github.com/itsezlife/mpx
 repository: https://github.com/itsezlife/mpx/tree/main/packages/mpx_lottie
@@ -14,12 +14,30 @@ environment:
   flutter: '>=3.38.0'
 
 dependencies:
-  # Edges fixed by ADR 0001; nothing else in the workspace.
+  # hook/build.dart needs code_assets and hooks; hook dependencies go under
+  # dependencies. code_assets spans 1.1 (the first on hooks 2) to 2.x:
+  # code_assets 2.x needs hooks 2.2, which needs a meta above the one Flutter
+  # 3.41 pins, so the span resolves on 3.41 and beside packages on hooks 2.2.
+  code_assets: ">=1.1.0 <3.0.0"
+  # SHA-256 of the native sources, of a downloaded prebuilt and of a file's
+  # bytes (the frame cache's names).
+  crypto: ^3.0.6
+  ffi: ^2.1.0
   flutter:
     sdk: flutter
-  mpx_core:
-    path: ../mpx_core
-
-dev_dependencies:
+  # Only lib/testing.dart needs it: its contract suites are written with the
+  # test framework, and a library cannot import a dev dependency. Production
+  # entry points never import it.
   flutter_test:
     sdk: flutter
+  hooks: ^2.0.0
+  meta: ^1.17.0
+  # Edges fixed by ADR 0001: the core only.
+  mpx_core:
+    path: ../mpx_core
+  # The browser worker port (lib/src/web), compiled only for the web.
+  web: ^1.1.1
+
+dev_dependencies:
+  # The web engine's handshake timeout is tested on a fake clock.
+  fake_async: ^1.3.3

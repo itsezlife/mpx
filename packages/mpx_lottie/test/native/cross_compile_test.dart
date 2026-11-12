@@ -3,7 +3,7 @@
 /// emulator, simulator or device is touched; the artifact is inspected as
 /// bytes.
 ///
-/// Skipped unless `LOTTIE_NATIVE_CROSS=1`, because each target is a release
+/// Skipped unless `MPX_LOTTIE_CROSS=1`, because each target is a release
 /// build with LTO (minutes) and needs network on the first run for the
 /// crates and the pinned tlottie commit. A target is also skipped when this
 /// host cannot build it, its Rust target is not installed (`rustup target
@@ -19,13 +19,13 @@ import 'package:flutter_test/flutter_test.dart';
 // The hook is not part of lib/: a hook may not import the Flutter package
 // that it builds for, so its testable logic is reached by path.
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/android_ndk.dart';
+import '../../hook/src/android_ndk.dart';
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/artifact_check.dart';
+import '../../hook/src/artifact_check.dart';
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/cargo_build.dart';
+import '../../hook/src/cargo_build.dart';
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/targets.dart';
+import '../../hook/src/targets.dart';
 
 const _targets = <LottieNativeTarget>[
   LottieNativeTarget(OS.macOS, Architecture.arm64),
@@ -66,20 +66,20 @@ String? _whyNot(LottieNativeTarget target, String cargo) {
 }
 
 void main() {
-  final enabled = Platform.environment['LOTTIE_NATIVE_CROSS'] == '1';
+  final enabled = Platform.environment['MPX_LOTTIE_CROSS'] == '1';
   late final String cargo;
   late final Directory targetDir;
 
   setUpAll(() {
     if (!enabled) return;
     cargo = findCargo(environment: Platform.environment);
-    targetDir = Directory.systemTemp.createTempSync('lottie_native_cross');
+    targetDir = Directory.systemTemp.createTempSync('mpx_lottie_cross');
   });
   tearDownAll(() {
     if (enabled) targetDir.deleteSync(recursive: true);
   });
 
-  group('cross-compile (LOTTIE_NATIVE_CROSS=1)', () {
+  group('cross-compile (MPX_LOTTIE_CROSS=1)', () {
     for (final target in _targets) {
       test(
         '${target.key} builds and passes the post-build check',
@@ -104,7 +104,7 @@ void main() {
           // ignore: avoid_print
           print('${target.key}: ${library.path} (${library.lengthSync()} B)');
         },
-        skip: enabled ? false : 'set LOTTIE_NATIVE_CROSS=1 to cross-compile',
+        skip: enabled ? false : 'set MPX_LOTTIE_CROSS=1 to cross-compile',
         timeout: const Timeout(Duration(minutes: 30)),
       );
     }

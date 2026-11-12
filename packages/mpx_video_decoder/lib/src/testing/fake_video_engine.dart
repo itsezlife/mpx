@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:video_decoder/src/engine/video_engine.dart';
-import 'package:video_native/video_native.dart';
+import 'package:mpx_video_decoder/src/binding/binding.dart';
+import 'package:mpx_video_decoder/src/engine/video_engine.dart';
 
 /// A [VideoEngine] in plain Dart, with no binding and no isolate: scripted
 /// files, and frames that fill their buffer with one premultiplied colour

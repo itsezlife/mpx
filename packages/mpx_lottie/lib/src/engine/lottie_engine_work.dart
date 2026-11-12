@@ -1,14 +1,14 @@
 import 'dart:ffi';
 import 'dart:typed_data';
 
-import 'package:catalog_assets/catalog_assets.dart';
 import 'package:ffi/ffi.dart';
-import 'package:lottie_decoder/src/cache/cached_frame.dart';
-import 'package:lottie_decoder/src/cache/frame_file_reader.dart';
-import 'package:lottie_decoder/src/engine/lottie_engine.dart';
-import 'package:lottie_decoder/src/engine/lottie_slot_engine.dart';
-import 'package:lottie_decoder/src/engine/texture_calls.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
+import 'package:mpx_lottie/src/cache/cached_frame.dart';
+import 'package:mpx_lottie/src/cache/frame_file_reader.dart';
+import 'package:mpx_lottie/src/engine/lottie_engine.dart';
+import 'package:mpx_lottie/src/engine/lottie_slot_engine.dart';
+import 'package:mpx_lottie/src/engine/texture_calls.dart';
 
 /// What both engines do with a binding and a frame codec on the isolate that
 /// owns them, so the in-process engine and the render isolate cannot drift.

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
 
 /// On the VM the barrel still carries the FFI half of the API next to the
 /// value types: a type it lost would fail to compile here.

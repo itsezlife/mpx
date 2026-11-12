@@ -1,12 +1,12 @@
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/frame_pool.dart';
-import 'package:lottie_decoder/src/cache/cached_frame.dart';
-import 'package:lottie_decoder/src/cache/frame_cache.dart';
-import 'package:lottie_decoder/src/cache/frame_cache_key.dart';
-import 'package:lottie_decoder/src/engine/lottie_slot_engine.dart';
-import 'package:lottie_decoder/src/memory/native_frame_page_memory.dart';
-import 'package:lottie_decoder/src/renderer/lottie_source.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_core/frame_pool.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
+import 'package:mpx_lottie/src/cache/cached_frame.dart';
+import 'package:mpx_lottie/src/cache/frame_cache.dart';
+import 'package:mpx_lottie/src/cache/frame_cache_key.dart';
+import 'package:mpx_lottie/src/engine/lottie_slot_engine.dart';
+import 'package:mpx_lottie/src/memory/native_frame_page_memory.dart';
+import 'package:mpx_lottie/src/renderer/lottie_source.dart';
 
 /// A [FrameRenderer] that draws through a [LottieSlotEngine] into one
 /// [NativeFramePageMemory], replaying frames from a [FrameCache] when it has

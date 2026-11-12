@@ -1,0 +1,8 @@
+tags:
+  # Real cross-compiles of the crate, compile only (nothing is ever run).
+  # Opt in with MPX_LOTTIE_CROSS=1; see test/native/cross_compile_test.dart.
+  native-cross: {}
+  # test/benchmark/lottie_playback_bench_test.dart: real native library, 900
+  # clock ticks. Also gated by MPX_LOTTIE_PLAYBACK_BENCH=1, because the unit
+  # entrypoint imports the file and a tag does not exclude an imported main.
+  benchmark:

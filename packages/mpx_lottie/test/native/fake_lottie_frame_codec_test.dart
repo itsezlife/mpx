@@ -3,8 +3,8 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_native/lottie_native.dart';
-import 'package:lottie_native/testing.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
+import 'package:mpx_lottie/testing.dart';
 
 void main() {
   late Pointer<Uint8> memory;

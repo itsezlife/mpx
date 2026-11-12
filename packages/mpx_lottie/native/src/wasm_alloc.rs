@@ -30,10 +30,10 @@ mod exports {
     use crate::guarded;
 
     /// Reserves `len` bytes of module memory; null for 0 and for sizes over
-    /// the cap. The caller returns it with `chat_lottie_dealloc` and the same
+    /// the cap. The caller returns it with `mpx_lottie_dealloc` and the same
     /// `len`.
     #[no_mangle]
-    pub extern "C" fn chat_lottie_alloc(len: usize) -> *mut u8 {
+    pub extern "C" fn mpx_lottie_alloc(len: usize) -> *mut u8 {
         guarded(std::ptr::null_mut(), || match layout_for(len) {
             // SAFETY: the layout has a non-zero size.
             Some(layout) => unsafe { std::alloc::alloc(layout) },
@@ -42,10 +42,10 @@ mod exports {
     }
 
     /// # Safety
-    /// `ptr` is null or came from `chat_lottie_alloc(len)` with this `len` and
+    /// `ptr` is null or came from `mpx_lottie_alloc(len)` with this `len` and
     /// is not freed yet.
     #[no_mangle]
-    pub unsafe extern "C" fn chat_lottie_dealloc(ptr: *mut u8, len: usize) {
+    pub unsafe extern "C" fn mpx_lottie_dealloc(ptr: *mut u8, len: usize) {
         if ptr.is_null() {
             return;
         }

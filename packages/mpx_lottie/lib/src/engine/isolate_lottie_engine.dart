@@ -4,14 +4,14 @@ import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:lottie_decoder/src/cache/cached_frame.dart';
-import 'package:lottie_decoder/src/cache/frame_file_reader.dart';
-import 'package:lottie_decoder/src/engine/lottie_engine.dart';
-import 'package:lottie_decoder/src/engine/lottie_engine_work.dart';
-import 'package:lottie_decoder/src/engine/lottie_slot_engine.dart';
-import 'package:lottie_native/lottie_native.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
+import 'package:mpx_lottie/src/cache/cached_frame.dart';
+import 'package:mpx_lottie/src/cache/frame_file_reader.dart';
+import 'package:mpx_lottie/src/engine/lottie_engine.dart';
+import 'package:mpx_lottie/src/engine/lottie_engine_work.dart';
+import 'package:mpx_lottie/src/engine/lottie_slot_engine.dart';
 
 /// A [LottieSlotEngine] whose [LottieBinding]s live on long-lived isolates of
 /// their own, a pool of one to [maxWorkers], so parsing and rasterizing never
@@ -22,7 +22,7 @@ import 'package:meta/meta.dart';
 /// arrival order: a `render` sent after a `dispose` of the same handle sees it
 /// disposed. A handle is pinned to the isolate that loaded it, which keeps
 /// that order for every request naming it. Isolates render different handles
-/// at the same time, which the wrapper's contract allows (`chat_lottie.h`:
+/// at the same time, which the wrapper's contract allows (`mpx_lottie.h`:
 /// handles are independent; ADR 042, *Amendment: a pool of render isolates*,
 /// records the evidence).
 ///

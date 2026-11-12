@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:lottie_decoder/src/engine/lottie_engine.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
+import 'package:mpx_lottie/src/engine/lottie_engine.dart';
 
 /// A [LottieEngine] without a library, and without any slot method: the
 /// engine a web host has, over scripted files.

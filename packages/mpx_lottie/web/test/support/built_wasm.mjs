@@ -32,7 +32,7 @@ export function runBuildTool(out, env = process.env) {
 export function builtWasm() {
   if (built) return built;
   if (!findDart()) return (built = { skip: 'dart is not on PATH' });
-  const out = mkdtempSync(join(tmpdir(), 'chat_lottie_web_'));
+  const out = mkdtempSync(join(tmpdir(), 'mpx_lottie_web_'));
   const run = runBuildTool(out);
   if (run.status === 0) {
     built = { dir: out };

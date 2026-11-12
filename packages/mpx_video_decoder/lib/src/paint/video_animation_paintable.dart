@@ -1,10 +1,10 @@
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
 import 'package:flutter/painting.dart';
-import 'package:video_decoder/src/engine/video_engine.dart';
-import 'package:video_decoder/src/paint/video_still_paintable.dart';
-import 'package:video_decoder/src/playback/video_frame_scheduler.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_video_decoder/src/engine/video_engine.dart';
+import 'package:mpx_video_decoder/src/paint/video_still_paintable.dart';
+import 'package:mpx_video_decoder/src/playback/video_frame_scheduler.dart';
 
 /// A video clip played by the shared clock through a [VideoFrameScheduler].
 ///

@@ -3,7 +3,7 @@
 ///
 /// Imported by a web build only (it needs `dart:js_interop`); everything else
 /// of the web path, `WebWorkerLottieEngine` and `LottieWorkerPort` included,
-/// is in `package:lottie_decoder/lottie_decoder.dart` and runs on the VM.
+/// is in `package:mpx_lottie/mpx_lottie.dart` and runs on the VM.
 library;
 
 export 'src/web/js_lottie_worker.dart';

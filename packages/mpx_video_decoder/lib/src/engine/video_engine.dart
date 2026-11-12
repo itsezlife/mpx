@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
-import 'package:video_native/video_native.dart';
+import 'package:mpx_video_decoder/src/binding/binding.dart';
 
 /// The async face of a video decoder: open a file as a clip, pull its frames
 /// one by one into a caller's buffer, rewind to loop, close.

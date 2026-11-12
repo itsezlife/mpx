@@ -1,6 +1,6 @@
-import 'package:catalog_assets/frame_pool.dart';
-import 'package:lottie_decoder/src/engine/lottie_engine.dart';
-import 'package:lottie_decoder/src/renderer/lottie_source.dart';
+import 'package:mpx_core/frame_pool.dart';
+import 'package:mpx_lottie/src/engine/lottie_engine.dart';
+import 'package:mpx_lottie/src/renderer/lottie_source.dart';
 
 /// A [FrameRenderer] that asks a [LottieEngine] for pixels and copies them
 /// into the page memory: the renderer of an engine that cannot write to an

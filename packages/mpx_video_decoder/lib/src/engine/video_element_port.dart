@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
-import 'package:video_native/video_native.dart';
+import 'package:mpx_video_decoder/src/binding/binding.dart';
 
 /// One playing video as the engine sees it, whatever carries it: a hidden
 /// `<video>` element in a browser, a script in a test.

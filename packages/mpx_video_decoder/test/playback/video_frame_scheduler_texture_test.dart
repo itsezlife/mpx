@@ -1,12 +1,11 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_decoder/testing.dart';
-import 'package:video_decoder/video_decoder.dart';
-import 'package:video_native/video_native.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
+import 'package:mpx_video_decoder/mpx_video_decoder.dart';
+import 'package:mpx_video_decoder/testing.dart';
 
 Future<ui.Image> _upload(Uint8List pixels, int side) {
   final recorder = ui.PictureRecorder();
@@ -51,7 +50,7 @@ void main() {
   late _ReadingWriter writer;
   late ManualPlaybackTickSource ticks;
   late PlaybackClock clock;
-  late ManualRetentionTimers timers;
+  late ManualTimers timers;
   late VideoFrameScheduler scheduler;
   var time = Duration.zero;
 
@@ -92,7 +91,7 @@ void main() {
     writer = _ReadingWriter();
     ticks = ManualPlaybackTickSource();
     clock = PlaybackClock(ticks: ticks);
-    timers = ManualRetentionTimers();
+    timers = ManualTimers();
     scheduler = VideoFrameScheduler(
       engine: engine,
       atlas: VideoFrameAtlas.create(upload: _upload, sizeClasses: const [64]),

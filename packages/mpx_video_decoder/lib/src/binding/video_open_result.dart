@@ -1,5 +1,5 @@
 import 'package:meta/meta.dart';
-import 'package:video_native/src/video_handle.dart';
+import 'package:mpx_video_decoder/src/binding/video_handle.dart';
 
 /// The outcome of `VideoBinding.open`: a closed set, so a caller handles both
 /// and a bad file is a value, never an exception.

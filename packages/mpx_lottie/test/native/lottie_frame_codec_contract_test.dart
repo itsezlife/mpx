@@ -2,8 +2,8 @@ import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_native/lottie_native.dart';
-import 'package:lottie_native/testing.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
+import 'package:mpx_lottie/testing.dart';
 
 /// A codec that writes a byte into the target and only then validates: the
 /// defect "a failed decompress leaves the target unchanged" exists to catch.

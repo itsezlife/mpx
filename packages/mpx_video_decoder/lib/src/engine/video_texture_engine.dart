@@ -1,10 +1,10 @@
 import 'dart:typed_data';
 
-import 'package:catalog_assets/catalog_assets.dart';
 import 'package:meta/meta.dart';
-import 'package:video_decoder/src/engine/texture_calls.dart';
-import 'package:video_decoder/src/engine/video_engine.dart';
-import 'package:video_decoder/src/renderer/video_frame_source.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_video_decoder/src/engine/texture_calls.dart';
+import 'package:mpx_video_decoder/src/engine/video_engine.dart';
+import 'package:mpx_video_decoder/src/renderer/video_frame_source.dart';
 
 /// A [VideoEngine] that can also write decoded frames into platform textures
 /// on the isolate that decodes them (ADR 043, "Writing").

@@ -11,10 +11,10 @@ const skip = built.skip;
 
 test('the tool writes both wasm builds and the JS files', { skip }, () => {
   for (const name of [
-    'chat_lottie.wasm',
-    'chat_lottie.nosimd.wasm',
-    'chat_lottie_core.mjs',
-    'chat_lottie_worker.js',
+    'mpx_lottie.wasm',
+    'mpx_lottie.nosimd.wasm',
+    'mpx_lottie_core.mjs',
+    'mpx_lottie_worker.js',
   ]) {
     assert.ok(existsSync(join(built.dir, name)), `${name} was written`);
     assert.ok(statSync(join(built.dir, name)).size > 0, `${name} is not empty`);
@@ -22,10 +22,10 @@ test('the tool writes both wasm builds and the JS files', { skip }, () => {
 });
 
 test('both builds validate, export the allocator and import nothing', { skip }, () => {
-  for (const name of ['chat_lottie.wasm', 'chat_lottie.nosimd.wasm']) {
+  for (const name of ['mpx_lottie.wasm', 'mpx_lottie.nosimd.wasm']) {
     const module = new WebAssembly.Module(readFileSync(join(built.dir, name)));
     const exports = WebAssembly.Module.exports(module).map((e) => e.name);
-    for (const symbol of ['memory', 'chat_lottie_alloc', 'chat_lottie_dealloc', 'chat_lottie_load']) {
+    for (const symbol of ['memory', 'mpx_lottie_alloc', 'mpx_lottie_dealloc', 'mpx_lottie_load']) {
       assert.ok(exports.includes(symbol), `${name} exports ${symbol}`);
     }
     assert.deepEqual(WebAssembly.Module.imports(module), []);

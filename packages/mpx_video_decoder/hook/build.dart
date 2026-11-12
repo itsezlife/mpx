@@ -1,11 +1,11 @@
 /// Delivers the native library as the code asset that
-/// `lib/src/native/chat_video_symbols.dart` binds to, plus the FFmpeg shared
+/// `lib/src/native/mpx_video_symbols.dart` binds to, plus the FFmpeg shared
 /// libraries it links.
 ///
 /// macOS arm64, iOS arm64 (device and simulator) and Android arm64-v8a: the
 /// wrapper is compiled (the system C compiler, Xcode's clang for iOS, or the
 /// NDK clang) against the FFmpeg + libvpx prefix built by
-/// `native/recipe/build.sh` for that target (or the one `CHAT_VIDEO_FFMPEG_DIR`
+/// `native/recipe/build.sh` for that target (or the one `MPX_VIDEO_FFMPEG_DIR`
 /// names). With no prefix, or on another target, no asset is emitted with a
 /// warning and the probe reports `missingLibrary`; prebuilt delivery is a
 /// later ticket.
@@ -21,9 +21,9 @@ import 'src/ffmpeg_prefix.dart';
 import 'src/video_target.dart';
 import 'src/wrapper_compile.dart';
 
-/// Names the asset `package:video_native/src/native/chat_video_symbols.dart`,
+/// Names the asset `package:mpx_video_decoder/src/binding/ffi/mpx_video_symbols.dart`,
 /// the library URI of the file whose `@Native` functions resolve against it.
-const _assetName = 'src/native/chat_video_symbols.dart';
+const _assetName = 'src/binding/ffi/mpx_video_symbols.dart';
 
 /// The NDK clang that targets arm64 Android at the app's API level.
 String ndkClang(CodeConfig code) => findAndroidNdk(
@@ -44,7 +44,7 @@ void main(List<String> args) async {
     );
     if (target == null) {
       stderr.writeln(
-        'warning: video_native has no native library for '
+        'warning: mpx_video_decoder has no native library for '
         '${code.targetOS} ${code.targetArchitecture}: only macOS arm64, iOS '
         'arm64 (device and simulator) and Android arm64-v8a are built so far '
         '(there is no x86_64 simulator build). No asset is bundled.',
@@ -70,7 +70,7 @@ void main(List<String> args) async {
         ),
       );
       stderr.writeln(
-        'warning: video_native found no FFmpeg build for $target, so no '
+        'warning: mpx_video_decoder found no FFmpeg build for $target, so no '
         'native video library is bundled. Build it with '
         '${recipeCommandFor(target)}, or set $ffmpegDirVariable to a prefix '
         'holding include/ and lib/. (Prebuilt delivery is a later ticket.)',
@@ -81,8 +81,8 @@ void main(List<String> args) async {
     final libraries = bundledLibraries(prefix, os: code.targetOS);
     // Every input as a file: a directory would miss an edit to a file in it.
     output.dependencies
-      ..add(native.uri.resolve('src/chat_video.c'))
-      ..add(native.uri.resolve('include/chat_video.h'))
+      ..add(native.uri.resolve('src/mpx_video.c'))
+      ..add(native.uri.resolve('include/mpx_video.h'))
       ..addAll([for (final file in libraries.values) file.uri]);
 
     final out = input.outputDirectory;
@@ -101,14 +101,14 @@ void main(List<String> args) async {
         native: native,
         prefix: prefix,
         libraries: libraries.values.toList(),
-        output: File.fromUri(out.resolve('libchat_video.so')),
+        output: File.fromUri(out.resolve('libmpx_video.so')),
         compiler: clang,
       );
     } else if (ios) {
       wrapper = await compileIosWrapper(
         native: native,
         prefix: prefix,
-        output: File.fromUri(out.resolve('libchat_video.dylib')),
+        output: File.fromUri(out.resolve('libmpx_video.dylib')),
         sdk: code.iOS.targetSdk,
         minVersion: code.iOS.targetVersion,
       );
@@ -116,7 +116,7 @@ void main(List<String> args) async {
       wrapper = await compileWrapper(
         native: native,
         prefix: prefix,
-        output: File.fromUri(out.resolve('libchat_video.dylib')),
+        output: File.fromUri(out.resolve('libmpx_video.dylib')),
       );
     }
     output.assets.code.add(

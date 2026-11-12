@@ -9,7 +9,7 @@ import 'dart:io';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_native/video_native.dart';
+import 'package:mpx_video_decoder/src/binding/binding.dart';
 
 void main() {
   final binding = NativeVideoBinding.probe();

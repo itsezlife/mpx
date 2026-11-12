@@ -1,7 +1,7 @@
 import 'dart:ffi';
 import 'dart:typed_data';
 
-import 'package:lottie_native/src/lottie_frame_codec.dart';
+import 'package:mpx_lottie/src/binding/lottie_frame_codec.dart';
 
 /// A [LottieFrameCodec] without a native library: a header and the tight
 /// pixels, uncompressed, so it is reversible and deterministic.

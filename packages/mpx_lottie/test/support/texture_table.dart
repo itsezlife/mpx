@@ -2,8 +2,8 @@ import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:catalog_assets/catalog_assets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
 
 /// The C entry points of a texture host over plain memory
 /// (`fake_texture_table.c` next to this file), compiled for this machine:
@@ -85,7 +85,7 @@ final class TextureTable {
     const relative = 'test/support/fake_texture_table.c';
     for (final base in [
       Directory.current.path,
-      '${Directory.current.path}/packages/lottie_decoder',
+      '${Directory.current.path}/packages/mpx_lottie',
     ]) {
       if (File('$base/$relative').existsSync()) return '$base/$relative';
     }

@@ -8,10 +8,10 @@ import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_native/video_native.dart';
+import 'package:mpx_video_decoder/src/binding/binding.dart';
 
 // ignore: always_use_package_imports
-import '../test/support/fixtures.dart';
+import '../test/native/support/fixtures.dart';
 
 /// Decodes [fixture] looping for [millis], returns frames decoded.
 int _run(Fixture fixture, int edge, int millis) {

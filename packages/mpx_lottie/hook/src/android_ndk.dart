@@ -138,7 +138,7 @@ AndroidNdk findAndroidNdk({
   }
 
   throw AndroidNdkUnavailable(
-    'The Android NDK was not found, and lottie_native needs it to compile '
+    'The Android NDK was not found, and mpx_lottie needs it to compile '
     'its native library for Android. Install it with Android Studio '
     '(SDK Manager, SDK Tools, "NDK (Side by side)") or '
     '`sdkmanager "ndk;28.2.13676358"`, or set ANDROID_NDK_HOME. Searched: '

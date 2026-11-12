@@ -1,4 +1,4 @@
-import 'package:lottie_native/testing.dart';
+import 'package:mpx_lottie/testing.dart';
 
 void main() {
   LottieFrameCodecContract.run(

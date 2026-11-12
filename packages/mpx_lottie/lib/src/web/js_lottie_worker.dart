@@ -1,5 +1,5 @@
-import 'package:lottie_decoder/src/engine/web_worker_lottie_engine.dart';
-import 'package:lottie_decoder/src/web/js_lottie_worker_port.dart';
+import 'package:mpx_lottie/src/engine/web_worker_lottie_engine.dart';
+import 'package:mpx_lottie/src/web/js_lottie_worker_port.dart';
 
 /// Starting the web engine in a browser.
 ///
@@ -16,7 +16,7 @@ abstract final class JsLottieWorker {
   ///
   /// Throws a `LottieUnavailable` when the worker cannot be made ready; see
   /// [WebWorkerLottieEngine.spawn]. The three files come from
-  /// `dart native/tool/build_web.dart` of `lottie_native`.
+  /// `dart native/tool/build_web.dart` of `mpx_lottie`.
   static Future<WebWorkerLottieEngine> spawnFromUrls({
     required Uri workerUrl,
     required Uri wasmUrl,

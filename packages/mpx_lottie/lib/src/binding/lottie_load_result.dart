@@ -1,6 +1,6 @@
-import 'package:lottie_native/src/lottie_features.dart';
-import 'package:lottie_native/src/lottie_handle.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_lottie/src/binding/lottie_features.dart';
+import 'package:mpx_lottie/src/binding/lottie_handle.dart';
 
 /// The outcome of `LottieBinding.load`: a closed set, so a caller handles
 /// both and a bad file is a value, never an exception.

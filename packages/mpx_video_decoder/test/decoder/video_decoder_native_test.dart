@@ -1,13 +1,11 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/frame_pool.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_decoder/video_decoder.dart';
-import 'package:video_native/video_native.dart';
+import 'package:mpx_core/frame_pool.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
+import 'package:mpx_video_decoder/mpx_video_decoder.dart';
 
 import '../support/fixtures.dart';
 
@@ -55,10 +53,9 @@ final class _RecordingCanvas implements ui.Canvas {
 }
 
 DecodeRequest _request(Fixture fixture, int edge) => DecodeRequest(
-  descriptor: const ContentDescriptor(
-    key: ContentKey.document('fixture'),
-    semanticKind: SemanticKind.customEmoji,
-    mediaForm: MediaForm.video,
+  descriptor: const MediaDescriptor(
+    key: MediaKey.remote('fixture'),
+    kind: MediaKind.video,
     animated: true,
   ),
   spec: AssetSpec(pixelWidth: edge, pixelHeight: edge),
@@ -86,7 +83,7 @@ void main() {
         engine: engine,
         atlas: VideoFrameAtlas.create(memory: memory),
         clock: clock,
-        startTimer: ManualRetentionTimers().start,
+        startTimer: ManualTimers().start,
       );
       decoder = VideoDecoder(engine: engine, scheduler: scheduler);
     });
@@ -169,10 +166,9 @@ void main() {
       final report = _Report();
       decoder.decode(
         DecodeRequest(
-          descriptor: const ContentDescriptor(
-            key: ContentKey.document('bad'),
-            semanticKind: SemanticKind.customEmoji,
-            mediaForm: MediaForm.video,
+          descriptor: const MediaDescriptor(
+            key: MediaKey.remote('bad'),
+            kind: MediaKind.video,
             animated: true,
           ),
           spec: const AssetSpec(pixelWidth: 64, pixelHeight: 64),

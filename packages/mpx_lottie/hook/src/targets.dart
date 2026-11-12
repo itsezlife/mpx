@@ -114,9 +114,9 @@ final class LottieNativeTarget {
 
   /// The file cargo writes for the crate's `cdylib`.
   String get libraryFileName => switch (os) {
-    OS.macOS || OS.iOS => 'libchat_lottie.dylib',
-    OS.windows => 'chat_lottie.dll',
-    _ => 'libchat_lottie.so',
+    OS.macOS || OS.iOS => 'libmpx_lottie.dylib',
+    OS.windows => 'mpx_lottie.dll',
+    _ => 'libmpx_lottie.so',
   };
 
   /// Whether a build host running [hostOs] on [hostArch] can compile this

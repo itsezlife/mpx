@@ -1,8 +1,8 @@
 import 'dart:async';
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/frame_pool.dart';
 import 'package:flutter/foundation.dart';
+import 'package:mpx_core/frame_pool.dart';
+import 'package:mpx_core/mpx_core.dart';
 
 /// Starts the sweep timer; `Timer.new` by default, a manual one in tests.
 typedef LottieSweepTimerFactory =
@@ -827,7 +827,7 @@ final class LottieFrameScheduler {
       FlutterErrorDetails(
         exception: error,
         stack: stack,
-        library: 'lottie_decoder',
+        library: 'mpx_lottie',
         context: ErrorDescription(context),
       ),
     );

@@ -1,9 +1,7 @@
 # mpx_video_decoder
 
-A software video decoder for mpx_core that plays short silent loops through a native library.
-
-> Skeleton: the API lands with the tickets of the mpx build order. Nothing is
-> usable yet.
+A software video decoder for `mpx_core` that plays silent clips through an
+FFmpeg and libvpx library delivered by a build hook.
 
 ## Install
 
@@ -17,19 +15,46 @@ dependencies:
       path: packages/mpx_video_decoder
 ```
 
+The hook compiles a small C wrapper against an FFmpeg + libvpx prefix and
+bundles the FFmpeg libraries. Build the prefix once per target with
+`native/recipe/build.sh` (`TARGET=ios-arm64` or `android-arm64`; macOS arm64
+by default), or point `MPX_VIDEO_FFMPEG_DIR` at one. Without a prefix the
+build still succeeds and `NativeVideoBinding.probe()` reports the library as
+missing.
+
 ## Usage
 
 ```dart
+import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_video_decoder/mpx_video_decoder.dart';
+
+try {
+  final engine = await IsolateVideoEngine.spawn(); // throws when unavailable
+  final scheduler = VideoFrameScheduler(
+    engine: engine,
+    atlas: VideoFrameAtlas.create(),
+    clock: scope.clock,
+  );
+  decoders.register(
+    MediaKind.video,
+    VideoDecoder(engine: engine, scheduler: scheduler),
+  );
+} on Object catch (reason) {
+  // No decoder: video keeps its placeholder.
+}
 ```
 
-## Features (planned)
+At shutdown dispose the scheduler, then the engine.
 
-- Silent loop decoding
-- Decode-only native library
+## Features
+
+- Decode-only, for short silent loops: a pool of worker isolates, frames into
+  frame pool pages or platform textures; a `<video>` element on the web.
+- macOS arm64, iOS arm64 and Android arm64-v8a.
+- Native names: `libmpx_video`, C symbols `mpx_video_*`.
+- Fakes and contract suites in `testing.dart`.
 
 ## Docs
 
 - [Spec](../../docs/spec.md)
-- [Package topology (ADR 0001)](../../docs/adr/0001-package-topology.md)
-- [ADR 0003](../../docs/adr/0003-media-core-and-decoders.md)
+- [Media core and decoders (ADR 0003)](../../docs/adr/0003-media-core-and-decoders.md)

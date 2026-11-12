@@ -2,16 +2,14 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/frame_pool.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_decoder/lottie_decoder.dart';
-import 'package:lottie_decoder/src/environment_specific/read_file_bytes_js.dart'
+import 'package:mpx_core/frame_pool.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
+import 'package:mpx_lottie/mpx_lottie.dart';
+import 'package:mpx_lottie/src/environment_specific/read_file_bytes_js.dart'
     as web;
-import 'package:lottie_decoder/testing.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_lottie/testing.dart';
 
 /// The decoder over an engine that can only return pixels, which is all the
 /// web has: no slot method exists to fall back on.
@@ -49,7 +47,7 @@ void main() {
         upload: (pixels, side) async => _image(),
       ),
       clock: clock,
-      startTimer: ManualRetentionTimers().start,
+      startTimer: ManualTimers().start,
     );
     decoder = LottieDecoder(
       engine: engine,
@@ -128,7 +126,7 @@ void main() {
   });
 
   test('a file on disk is read and decoded like bytes', () async {
-    final dir = Directory.systemTemp.createTempSync('lottie_decoder_file_');
+    final dir = Directory.systemTemp.createTempSync('mpx_lottie_file_');
     addTearDown(() => dir.deleteSync(recursive: true));
     final file = File('${dir.path}${Platform.pathSeparator}sticker.json')
       ..writeAsBytesSync(bytes);
@@ -202,10 +200,9 @@ DecodeRequest _request(
   AssetSpec spec = const AssetSpec(pixelWidth: 64, pixelHeight: 64),
   FetchedContent? content,
 }) => DecodeRequest(
-  descriptor: const ContentDescriptor(
-    key: ContentKey.document('fixture'),
-    semanticKind: SemanticKind.customEmoji,
-    mediaForm: MediaForm.vectorAnimation,
+  descriptor: const MediaDescriptor(
+    key: MediaKey.remote('fixture'),
+    kind: MediaKind.vectorAnimation,
     animated: true,
   ),
   spec: spec,

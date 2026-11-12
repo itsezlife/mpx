@@ -8,6 +8,7 @@
 /// `dart:isolate` and are exported only where they exist.
 library;
 
+export 'src/binding/binding.dart';
 export 'src/decoder/video_decoder.dart';
 export 'src/engine/video_element_port.dart';
 export 'src/engine/video_engine.dart';

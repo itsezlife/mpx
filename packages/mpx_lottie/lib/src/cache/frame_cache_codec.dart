@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:lottie_decoder/src/cache/frame_cache_key.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_lottie/src/cache/frame_cache_key.dart';
 
 /// The file layout of the frames of one parity of a cached animation
 /// ([FrameParity]), all integers little-endian unsigned 32-bit:

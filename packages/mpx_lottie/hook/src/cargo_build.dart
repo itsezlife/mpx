@@ -42,7 +42,7 @@ Future<File> compileCrate({
         environment: environment,
       )) {
     throw UnsupportedError(
-      'lottie_native cannot compile its native library for $target from '
+      'mpx_lottie cannot compile its native library for $target from '
       'source on this host; unset build_from_source / '
       '$buildFromSourceEnvironment to use a prebuilt, if one is published.',
     );
@@ -76,7 +76,7 @@ Future<File> compileCrate({
     throw ProcessException(
       cargo,
       arguments,
-      'cargo failed building the lottie_native crate '
+      'cargo failed building the mpx_lottie crate '
       '(exit ${result.exitCode}). A first build needs network for the '
       'crates and the pinned tlottie commit.\n'
       '$output${hint == null ? '' : '\n$hint'}',
@@ -111,7 +111,7 @@ final class CargoNotFound implements Exception {
 
   @override
   String toString() =>
-      'cargo was not found, and lottie_native compiles its native renderer '
+      'cargo was not found, and mpx_lottie compiles its native renderer '
       'with it. Install Rust with rustup (https://rustup.rs) and make sure '
       'cargo is on PATH (rustup adds ~/.cargo/bin to your shell profile), '
       'then build again. Searched: ${searched.join(', ')}.';

@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_decoder/lottie_decoder.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_lottie/mpx_lottie.dart';
 
 LottieInfo _info(int width, int height) => LottieInfo(
   width: width,

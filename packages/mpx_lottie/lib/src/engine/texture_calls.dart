@@ -1,8 +1,8 @@
 import 'dart:ffi';
 import 'dart:typed_data';
 
-import 'package:catalog_assets/catalog_assets.dart';
 import 'package:ffi/ffi.dart';
+import 'package:mpx_core/mpx_core.dart';
 
 /// A texture locked on this isolate: where its frame goes, and the view of
 /// its whole buffer.

@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:video_decoder/src/engine/video_engine.dart';
+import 'package:mpx_video_decoder/src/engine/video_engine.dart';
 
 /// What a [VideoFrameRenderer] renders, and a texture writer writes: a
 /// clip's decoded frames, by number.

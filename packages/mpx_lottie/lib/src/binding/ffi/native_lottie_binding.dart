@@ -2,23 +2,23 @@ import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
-import 'package:lottie_native/src/lottie_availability.dart';
-import 'package:lottie_native/src/lottie_binding.dart';
-import 'package:lottie_native/src/lottie_features.dart';
-import 'package:lottie_native/src/lottie_handle.dart';
-import 'package:lottie_native/src/lottie_load_result.dart';
-import 'package:lottie_native/src/lottie_render_status.dart';
-import 'package:lottie_native/src/native/chat_lottie_symbols.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_lottie/src/binding/ffi/mpx_lottie_symbols.dart';
+import 'package:mpx_lottie/src/binding/lottie_availability.dart';
+import 'package:mpx_lottie/src/binding/lottie_binding.dart';
+import 'package:mpx_lottie/src/binding/lottie_features.dart';
+import 'package:mpx_lottie/src/binding/lottie_handle.dart';
+import 'package:mpx_lottie/src/binding/lottie_load_result.dart';
+import 'package:mpx_lottie/src/binding/lottie_render_status.dart';
 
-/// [LottieBinding] over the compiled `chat_lottie` library.
+/// [LottieBinding] over the compiled `mpx_lottie` library.
 ///
 /// Register it only when [isAvailable]. The binding hands out integer
 /// handles and keeps the native pointers behind them, so a disposed or
 /// invented handle is a `badArgument` and never reaches native code as a
 /// dangling pointer.
 final class NativeLottieBinding implements LottieBinding {
-  /// Probes the library once: a guarded `chat_lottie_abi_version()` call.
+  /// Probes the library once: a guarded `mpx_lottie_abi_version()` call.
   ///
   /// A missing library or symbol (an `ArgumentError` at the first call) is
   /// [LottieAvailability.missingLibrary]; a version other than 1 is
@@ -26,7 +26,7 @@ final class NativeLottieBinding implements LottieBinding {
   /// the library and propagates. Nothing is logged here; the host logs once
   /// through its diagnostics.
   factory NativeLottieBinding.probe() =>
-      NativeLottieBinding.probing(chatLottieAbiVersion);
+      NativeLottieBinding.probing(mpxLottieAbiVersion);
 
   /// Probes with [abiVersion] instead of the real symbol, so a test can stand
   /// in a library that lacks it or speaks another version.
@@ -36,7 +36,7 @@ final class NativeLottieBinding implements LottieBinding {
 
   static LottieAvailability _probe(int Function() abiVersion) {
     try {
-      return abiVersion() == ChatLottieAbi.expectedVersion
+      return abiVersion() == MpxLottieAbi.expectedVersion
           ? LottieAvailability.available
           : LottieAvailability.abiMismatch;
       // A symbol the library lacks surfaces as exactly this Error: it is the
@@ -63,12 +63,12 @@ final class NativeLottieBinding implements LottieBinding {
     // Never a zero-length allocation: the library gets a valid pointer and
     // refuses the empty file itself.
     final data = calloc<Uint8>(bytes.isEmpty ? 1 : bytes.length);
-    final info = calloc<ChatLottieInfo>();
+    final info = calloc<MpxLottieInfo>();
     final out = calloc<Pointer<Void>>();
     try {
       data.asTypedList(bytes.length).setAll(0, bytes);
-      final status = chatLottieLoad(data, bytes.length, info, out);
-      if (status != ChatLottieStatus.ok) {
+      final status = mpxLottieLoad(data, bytes.length, info, out);
+      if (status != MpxLottieStatus.ok) {
         return LottieRejected(rejectionFor(status));
       }
 
@@ -96,7 +96,7 @@ final class NativeLottieBinding implements LottieBinding {
   List<LottieRenderStatus> renderBatch(List<LottieRenderJob> jobs) {
     _requireAvailable();
     if (jobs.isEmpty) return const [];
-    final native = calloc<ChatLottieJob>(jobs.length);
+    final native = calloc<MpxLottieJob>(jobs.length);
     final statuses = calloc<Int32>(jobs.length);
     try {
       for (var i = 0; i < jobs.length; i++) {
@@ -111,11 +111,11 @@ final class NativeLottieBinding implements LottieBinding {
           ..target = job.target
           ..strideBytes = job.strideBytes;
       }
-      final status = chatLottieRenderBatch(native, jobs.length, statuses);
+      final status = mpxLottieRenderBatch(native, jobs.length, statuses);
       // A nonzero batch status means jobs or statuses was null, which this
       // code cannot produce: a bug here, not a verdict on any job.
-      if (status != ChatLottieStatus.ok) {
-        throw StateError('chat_lottie_render_batch returned $status.');
+      if (status != MpxLottieStatus.ok) {
+        throw StateError('mpx_lottie_render_batch returned $status.');
       }
       return [
         for (var i = 0; i < jobs.length; i++) renderStatusFor(statuses[i]),
@@ -130,13 +130,13 @@ final class NativeLottieBinding implements LottieBinding {
   @override
   void dispose(LottieHandle handle) {
     final pointer = _handles.remove(handle.id);
-    if (pointer != null) chatLottieFree(pointer);
+    if (pointer != null) mpxLottieFree(pointer);
   }
 
   @override
   void close() {
     _closed = true;
-    _handles.values.forEach(chatLottieFree);
+    _handles.values.forEach(mpxLottieFree);
     _handles.clear();
   }
 
@@ -154,10 +154,10 @@ final class NativeLottieBinding implements LottieBinding {
   /// bad file.
   @visibleForTesting
   static LottieRejection rejectionFor(int status) => switch (status) {
-    ChatLottieStatus.tooLarge => LottieRejection.tooLarge,
-    ChatLottieStatus.limitExceeded => LottieRejection.limitExceeded,
-    ChatLottieStatus.unsupported => LottieRejection.unsupported,
-    ChatLottieStatus.internal => LottieRejection.internal,
+    MpxLottieStatus.tooLarge => LottieRejection.tooLarge,
+    MpxLottieStatus.limitExceeded => LottieRejection.limitExceeded,
+    MpxLottieStatus.unsupported => LottieRejection.unsupported,
+    MpxLottieStatus.internal => LottieRejection.internal,
     _ => LottieRejection.malformed,
   };
 
@@ -165,9 +165,9 @@ final class NativeLottieBinding implements LottieBinding {
   /// failed render.
   @visibleForTesting
   static LottieRenderStatus renderStatusFor(int status) => switch (status) {
-    ChatLottieStatus.ok => LottieRenderStatus.ok,
-    ChatLottieStatus.invalidArgument => LottieRenderStatus.badArgument,
-    ChatLottieStatus.badSize => LottieRenderStatus.badSize,
+    MpxLottieStatus.ok => LottieRenderStatus.ok,
+    MpxLottieStatus.invalidArgument => LottieRenderStatus.badArgument,
+    MpxLottieStatus.badSize => LottieRenderStatus.badSize,
     _ => LottieRenderStatus.failed,
   };
 }

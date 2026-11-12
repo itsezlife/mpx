@@ -6,11 +6,11 @@ import 'package:flutter_test/flutter_test.dart';
 // The hook is not part of lib/: a hook may not import the Flutter package
 // that it builds for, so its testable logic is reached by path.
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/delivery_plan.dart';
+import '../../hook/src/delivery_plan.dart';
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/prebuilt_manifest.dart';
+import '../../hook/src/prebuilt_manifest.dart';
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/targets.dart';
+import '../../hook/src/targets.dart';
 
 final _hash = 'ab' * 32;
 const _mac = LottieNativeTarget(OS.macOS, Architecture.arm64);
@@ -46,22 +46,22 @@ void main() {
           'user-define of another type': (define: 3, env: {}, on: false),
           'env 1': (
             define: null,
-            env: {'LOTTIE_NATIVE_BUILD_FROM_SOURCE': '1'},
+            env: {'MPX_LOTTIE_BUILD_FROM_SOURCE': '1'},
             on: true,
           ),
           'env 0': (
             define: null,
-            env: {'LOTTIE_NATIVE_BUILD_FROM_SOURCE': '0'},
+            env: {'MPX_LOTTIE_BUILD_FROM_SOURCE': '0'},
             on: false,
           ),
           'env empty': (
             define: null,
-            env: {'LOTTIE_NATIVE_BUILD_FROM_SOURCE': ''},
+            env: {'MPX_LOTTIE_BUILD_FROM_SOURCE': ''},
             on: false,
           ),
           'env 0 does not undo the user-define': (
             define: true,
-            env: {'LOTTIE_NATIVE_BUILD_FROM_SOURCE': '0'},
+            env: {'MPX_LOTTIE_BUILD_FROM_SOURCE': '0'},
             on: true,
           ),
         };

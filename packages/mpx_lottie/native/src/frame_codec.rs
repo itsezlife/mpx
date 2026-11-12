@@ -30,7 +30,7 @@ fn region_size(width: u32, height: u32, stride_bytes: usize) -> Result<(usize, u
 /// The most bytes a compressed `width` x `height` RGBA region can take, or 0
 /// when the size is not one the codec accepts (zero edge, edge over 512).
 #[no_mangle]
-pub extern "C" fn chat_lottie_lz4_bound(width: u32, height: u32) -> usize {
+pub extern "C" fn mpx_lottie_lz4_bound(width: u32, height: u32) -> usize {
     guarded(0, || match region_size(width, height, width as usize * 4) {
         Ok((_, raw)) => get_maximum_output_size(raw),
         Err(_) => 0,
@@ -41,7 +41,7 @@ pub extern "C" fn chat_lottie_lz4_bound(width: u32, height: u32) -> usize {
 /// `target` must be readable for the region described by the other
 /// arguments, `dst..dst+dst_cap` writable, and `out_len` writable.
 #[no_mangle]
-pub unsafe extern "C" fn chat_lottie_compress_region(
+pub unsafe extern "C" fn mpx_lottie_compress_region(
     target: *const u8,
     stride_bytes: usize,
     width: u32,
@@ -93,7 +93,7 @@ pub unsafe extern "C" fn chat_lottie_compress_region(
 /// `src..src+src_len` must be readable and `target` writable for the region
 /// described by the other arguments.
 #[no_mangle]
-pub unsafe extern "C" fn chat_lottie_decompress_region(
+pub unsafe extern "C" fn mpx_lottie_decompress_region(
     src: *const u8,
     src_len: usize,
     target: *mut u8,

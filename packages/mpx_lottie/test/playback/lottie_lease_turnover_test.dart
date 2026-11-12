@@ -1,13 +1,11 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/frame_pool.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_decoder/lottie_decoder.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_core/frame_pool.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
+import 'package:mpx_lottie/mpx_lottie.dart';
 
 /// One 128 px page: four 64 px cells, so a pool of four leases.
 const _budget = 128 * 128 * 4;
@@ -76,7 +74,7 @@ final class _NoTask implements AssetTask {
 void main() {
   late ManualPlaybackTickSource ticks;
   late PlaybackClock clock;
-  late ManualRetentionTimers timers;
+  late ManualTimers timers;
   late LottieFrameScheduler scheduler;
   late AssetCacheScope scope;
   var now = Duration.zero;
@@ -85,7 +83,7 @@ void main() {
     now = Duration.zero;
     ticks = ManualPlaybackTickSource();
     clock = PlaybackClock(ticks: ticks);
-    timers = ManualRetentionTimers();
+    timers = ManualTimers();
     scheduler = LottieFrameScheduler(
       atlas: FrameAtlas<Object>(
         renderer: FakeFrameRenderer(),
@@ -105,7 +103,7 @@ void main() {
     clock.dispose();
   });
 
-  ContentKey cell(int index) => ContentKey.document('cell-$index');
+  MediaKey cell(int index) => MediaKey.remote('cell-$index');
 
   /// One display frame of a surface: the clock ticks (the scheduler sends
   /// what was wanted), the surface paints what it shows, the frame ends and

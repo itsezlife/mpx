@@ -1,9 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_decoder/lottie_decoder.dart';
-import 'package:lottie_decoder/testing.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_lottie/mpx_lottie.dart';
+import 'package:mpx_lottie/testing.dart';
 
 void main() {
   final bytes = Uint8List.fromList([1, 2, 3]);

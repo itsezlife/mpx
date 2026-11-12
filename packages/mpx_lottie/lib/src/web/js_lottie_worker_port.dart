@@ -3,18 +3,18 @@ import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
-import 'package:lottie_decoder/src/engine/lottie_worker_port.dart';
+import 'package:mpx_lottie/src/engine/lottie_worker_port.dart';
 import 'package:web/web.dart' as web;
 
 /// A [LottieWorkerPort] over a browser module worker: the
-/// `chat_lottie_worker.js` of `lottie_native`, started as
+/// `mpx_lottie_worker.js` of `mpx_lottie`, started as
 /// `new Worker(url, {type: 'module'})`.
 ///
 /// Compile-checked only (`web_compile_test`): nothing in this repository runs
 /// it in a browser. The worker and the wasm core it wraps are run in Node by
-/// `lottie_native`'s own tests; this file is the part between them and Dart.
+/// the package's Node tests; this file is the part between them and Dart.
 final class JsLottieWorkerPort implements LottieWorkerPort {
-  /// Starts the worker at [workerUrl]; its `chat_lottie_core.mjs` must sit
+  /// Starts the worker at [workerUrl]; its `mpx_lottie_core.mjs` must sit
   /// beside it. Throws what the browser throws for a url it refuses.
   JsLottieWorkerPort(Uri workerUrl)
     : _worker = web.Worker(

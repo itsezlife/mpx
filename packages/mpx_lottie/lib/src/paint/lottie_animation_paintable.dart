@@ -1,14 +1,14 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
 import 'package:flutter/painting.dart';
-import 'package:lottie_decoder/src/cache/frame_cache_key.dart';
-import 'package:lottie_decoder/src/paint/lottie_still_paintable.dart';
-import 'package:lottie_decoder/src/playback/lottie_frame_scheduler.dart';
-import 'package:lottie_decoder/src/renderer/lottie_frame_size.dart';
-import 'package:lottie_decoder/src/renderer/lottie_source.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
+import 'package:mpx_lottie/src/cache/frame_cache_key.dart';
+import 'package:mpx_lottie/src/paint/lottie_still_paintable.dart';
+import 'package:mpx_lottie/src/playback/lottie_frame_scheduler.dart';
+import 'package:mpx_lottie/src/renderer/lottie_frame_size.dart';
+import 'package:mpx_lottie/src/renderer/lottie_source.dart';
 
 /// A Lottie animation played by the shared clock through a
 /// [LottieFrameScheduler].

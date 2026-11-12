@@ -6,9 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 // The hook is not part of lib/: a hook may not import the Flutter package
 // that it builds for, so its testable logic is reached by path.
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/artifact_check.dart';
+import '../../hook/src/artifact_check.dart';
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/targets.dart';
+import '../../hook/src/targets.dart';
 import 'support/library_headers.dart';
 
 const _androidArm64 = LottieNativeTarget(OS.android, Architecture.arm64);

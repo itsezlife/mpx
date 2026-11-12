@@ -1,5 +1,5 @@
 /// Delivers the native library as the code asset that
-/// `lib/src/native/chat_lottie_symbols.dart` binds to.
+/// `lib/src/native/mpx_lottie_symbols.dart` binds to.
 ///
 /// In order (see `src/delivery_plan.dart`): compile `native/` with cargo when
 /// the app asks for it, else download the hash-pinned prebuilt listed in
@@ -22,9 +22,9 @@ import 'src/rebuild_inputs.dart';
 import 'src/source_hash.dart';
 import 'src/targets.dart';
 
-/// Names the asset `package:lottie_native/src/native/chat_lottie_symbols.dart`,
+/// Names the asset `package:mpx_lottie/src/binding/ffi/mpx_lottie_symbols.dart`,
 /// the library URI of the file whose `@Native` functions resolve against it.
-const _assetName = 'src/native/chat_lottie_symbols.dart';
+const _assetName = 'src/binding/ffi/mpx_lottie_symbols.dart';
 
 void main(List<String> args) async {
   await build(args, (input, output) async {
@@ -103,7 +103,7 @@ PrebuiltManifest? _readManifest(Directory native) {
   try {
     return PrebuiltManifest.parse(file.readAsStringSync());
   } on FormatException catch (e) {
-    stderr.writeln('warning: lottie_native ignores native/prebuilts.json: $e');
+    stderr.writeln('warning: mpx_lottie ignores native/prebuilts.json: $e');
     return null;
   }
 }
@@ -121,14 +121,14 @@ Future<Uri?> _download(
     url: url,
     target: target,
     cacheDir: Directory.fromUri(
-      input.outputDirectoryShared.resolve('lottie_native_prebuilts/'),
+      input.outputDirectoryShared.resolve('mpx_lottie_prebuilts/'),
     ),
   );
   switch (result) {
     case PrebuiltReady(:final file):
       return file.uri;
     case PrebuiltUnavailable(:final reason):
-      stdout.writeln('lottie_native: prebuilt library not used: $reason');
+      stdout.writeln('mpx_lottie: prebuilt library not used: $reason');
       return null;
   }
 }

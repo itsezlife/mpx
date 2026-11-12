@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:video_native/testing.dart';
-import 'package:video_native/video_native.dart';
+import 'package:mpx_video_decoder/src/binding/binding.dart';
+import 'package:mpx_video_decoder/testing.dart';
 
 void main() {
   final valid = Uint8List.fromList(utf8.encode('a video'));

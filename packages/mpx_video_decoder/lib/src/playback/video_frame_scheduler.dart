@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/frame_pool.dart';
 import 'package:flutter/foundation.dart';
-import 'package:video_decoder/src/engine/video_engine.dart';
-import 'package:video_decoder/src/renderer/video_frame_source.dart';
-import 'package:video_native/video_native.dart';
+import 'package:mpx_core/frame_pool.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_video_decoder/src/binding/binding.dart';
+import 'package:mpx_video_decoder/src/engine/video_engine.dart';
+import 'package:mpx_video_decoder/src/renderer/video_frame_source.dart';
 
 /// Starts the sweep timer; `Timer.new` by default, a manual one in tests.
 typedef VideoSweepTimerFactory =

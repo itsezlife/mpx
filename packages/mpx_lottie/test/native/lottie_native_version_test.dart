@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
 
 void main() {
   final cargo = File('native/Cargo.toml').readAsStringSync();

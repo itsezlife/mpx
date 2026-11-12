@@ -1,7 +1,7 @@
 /// Prints the `prebuilts.json` entry of a built library:
 ///
 /// ```sh
-/// dart native/tool/manifest_entry.dart path/to/libchat_lottie-linux-x64.so
+/// dart native/tool/manifest_entry.dart path/to/libmpx_lottie-linux-x64.so
 /// ```
 ///
 /// The entry's file name is the file's own name, so name each library the way

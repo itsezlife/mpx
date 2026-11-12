@@ -1,4 +1,4 @@
-//! C ABI over tlottie. The contract is `include/chat_lottie.h`.
+//! C ABI over tlottie. The contract is `include/mpx_lottie.h`.
 
 mod features;
 mod frame_codec;
@@ -8,7 +8,7 @@ mod status;
 mod wasm_alloc;
 
 pub use frame_codec::{
-    chat_lottie_compress_region, chat_lottie_decompress_region, chat_lottie_lz4_bound,
+    mpx_lottie_compress_region, mpx_lottie_decompress_region, mpx_lottie_lz4_bound,
 };
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -20,7 +20,7 @@ pub const ABI_VERSION: u32 = 1;
 /// What the host learns about a loaded animation.
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
-pub struct ChatLottieInfo {
+pub struct MpxLottieInfo {
     pub width: u32,
     pub height: u32,
     pub frame_count: u32,
@@ -30,7 +30,7 @@ pub struct ChatLottieInfo {
 }
 
 /// An opaque animation handle: used by one thread at a time.
-pub struct ChatLottie {
+pub struct MpxLottie {
     renderer: CPURenderer,
 }
 
@@ -51,7 +51,7 @@ fn status_of(error: &Error) -> i32 {
     }
 }
 
-fn load(data: &[u8]) -> Result<(ChatLottieInfo, ChatLottie), i32> {
+fn load(data: &[u8]) -> Result<(MpxLottieInfo, MpxLottie), i32> {
     let json = input::lottie_json(data)?;
     let composition = Composition::parse(&json, &Limits::default()).map_err(|e| status_of(&e))?;
     let frame_count = composition.frame_count();
@@ -67,7 +67,7 @@ fn load(data: &[u8]) -> Result<(ChatLottieInfo, ChatLottie), i32> {
     // The scan runs after tlottie accepted the file and can only add info:
     // informational, so a panic in it falls back to no features.
     let features = guarded(0, || features::scan(&json));
-    let info = ChatLottieInfo {
+    let info = MpxLottieInfo {
         width: composition.width,
         height: composition.height,
         frame_count,
@@ -76,25 +76,25 @@ fn load(data: &[u8]) -> Result<(ChatLottieInfo, ChatLottie), i32> {
     };
     Ok((
         info,
-        ChatLottie {
+        MpxLottie {
             renderer: CPURenderer::new(composition),
         },
     ))
 }
 
 #[no_mangle]
-pub extern "C" fn chat_lottie_abi_version() -> u32 {
+pub extern "C" fn mpx_lottie_abi_version() -> u32 {
     ABI_VERSION
 }
 
 /// # Safety
 /// `data..data+len` must be readable; `out_info` and `out_handle` writable.
 #[no_mangle]
-pub unsafe extern "C" fn chat_lottie_load(
+pub unsafe extern "C" fn mpx_lottie_load(
     data: *const u8,
     len: usize,
-    out_info: *mut ChatLottieInfo,
-    out_handle: *mut *mut ChatLottie,
+    out_info: *mut MpxLottieInfo,
+    out_handle: *mut *mut MpxLottie,
 ) -> i32 {
     guarded(status::INTERNAL, || {
         if data.is_null() || out_info.is_null() || out_handle.is_null() {
@@ -121,9 +121,9 @@ pub unsafe extern "C" fn chat_lottie_load(
 }
 
 /// # Safety
-/// `handle` is null or came from `chat_lottie_load` and is not freed yet.
+/// `handle` is null or came from `mpx_lottie_load` and is not freed yet.
 #[no_mangle]
-pub unsafe extern "C" fn chat_lottie_free(handle: *mut ChatLottie) {
+pub unsafe extern "C" fn mpx_lottie_free(handle: *mut MpxLottie) {
     if !handle.is_null() {
         // A panicking drop must not unwind into C either.
         guarded((), || drop(unsafe { Box::from_raw(handle) }));
@@ -137,8 +137,8 @@ pub const MAX_FRAME_EDGE: u32 = 512;
 /// One frame to draw into a slot of page memory.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct ChatLottieJob {
-    pub handle: *mut ChatLottie,
+pub struct MpxLottieJob {
+    pub handle: *mut MpxLottie,
     pub frame: f32,
     pub width: u32,
     pub height: u32,
@@ -151,8 +151,8 @@ pub struct ChatLottieJob {
 /// first `width * 4` bytes of each of `height` rows.
 ///
 /// # Safety
-/// The job's pointers must satisfy the contract in `chat_lottie.h`.
-unsafe fn render_job(job: &ChatLottieJob, scratch: &mut Vec<u32>) -> i32 {
+/// The job's pointers must satisfy the contract in `mpx_lottie.h`.
+unsafe fn render_job(job: &MpxLottieJob, scratch: &mut Vec<u32>) -> i32 {
     let Some(animation) = (unsafe { job.handle.as_mut() }) else {
         return status::INVALID_ARGUMENT;
     };
@@ -202,8 +202,8 @@ unsafe fn render_job(job: &ChatLottieJob, scratch: &mut Vec<u32>) -> i32 {
 /// # Safety
 /// `jobs` and `statuses` must each point to `count` valid elements.
 #[no_mangle]
-pub unsafe extern "C" fn chat_lottie_render_batch(
-    jobs: *const ChatLottieJob,
+pub unsafe extern "C" fn mpx_lottie_render_batch(
+    jobs: *const MpxLottieJob,
     count: usize,
     statuses: *mut i32,
 ) -> i32 {

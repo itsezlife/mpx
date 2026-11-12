@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:meta/meta.dart';
-import 'package:video_native/video_native.dart';
+import 'package:mpx_video_decoder/src/binding/binding.dart';
 
 /// The pixel size frames of a clip are decoded at.
 ///

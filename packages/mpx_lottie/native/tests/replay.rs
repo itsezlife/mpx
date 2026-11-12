@@ -1,4 +1,4 @@
-//! Deterministic replay of hostile inputs through `chat_lottie_load`: the
+//! Deterministic replay of hostile inputs through `mpx_lottie_load`: the
 //! guarantee is about the boundary (no panic, no hang, a documented status,
 //! a null handle on failure), not about which status each input earns.
 //!
@@ -24,7 +24,7 @@ const BUDGET: Duration = Duration::from_secs(60);
 /// The cap on inflated output (`MAX_INFLATED_BYTES` in `input.rs`).
 const INFLATED_CAP: usize = 8 * 1024 * 1024;
 
-/// Statuses `chat_lottie_load` documents; -7 and -8 belong to render.
+/// Statuses `mpx_lottie_load` documents; -7 and -8 belong to render.
 const LOAD_STATUSES: [i32; 6] = [-1, -2, -3, -4, -5, -6];
 
 /// A fixed LCG (Numerical Recipes constants) so a failure replays exactly.

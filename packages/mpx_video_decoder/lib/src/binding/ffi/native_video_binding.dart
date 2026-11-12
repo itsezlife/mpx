@@ -3,23 +3,23 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:meta/meta.dart';
-import 'package:video_native/src/native/chat_video_symbols.dart';
-import 'package:video_native/src/video_availability.dart';
-import 'package:video_native/src/video_binding.dart';
-import 'package:video_native/src/video_frame_result.dart';
-import 'package:video_native/src/video_handle.dart';
-import 'package:video_native/src/video_open_result.dart';
+import 'package:mpx_video_decoder/src/binding/ffi/mpx_video_symbols.dart';
+import 'package:mpx_video_decoder/src/binding/video_availability.dart';
+import 'package:mpx_video_decoder/src/binding/video_binding.dart';
+import 'package:mpx_video_decoder/src/binding/video_frame_result.dart';
+import 'package:mpx_video_decoder/src/binding/video_handle.dart';
+import 'package:mpx_video_decoder/src/binding/video_open_result.dart';
 
-/// [VideoBinding] over the compiled `chat_video` library.
+/// [VideoBinding] over the compiled `mpx_video` library.
 final class NativeVideoBinding implements VideoBinding {
-  /// Probes the library once: a guarded `chat_video_abi_version()` call.
+  /// Probes the library once: a guarded `mpx_video_abi_version()` call.
   ///
   /// A missing library or symbol (an `ArgumentError` at the first call) is
   /// [VideoAvailability.missingLibrary]; a version other than the expected
   /// one is [VideoAvailability.abiMismatch]. Any other error is not an answer
   /// about the library and propagates.
   factory NativeVideoBinding.probe() =>
-      NativeVideoBinding.probing(chatVideoAbiVersion);
+      NativeVideoBinding.probing(mpxVideoAbiVersion);
 
   /// Probes with [abiVersion] instead of the real symbol, so a test can stand
   /// in a library that lacks it or speaks another version.
@@ -29,7 +29,7 @@ final class NativeVideoBinding implements VideoBinding {
 
   static VideoAvailability _probe(int Function() abiVersion) {
     try {
-      return abiVersion() == ChatVideoAbi.expectedVersion
+      return abiVersion() == MpxVideoAbi.expectedVersion
           ? VideoAvailability.available
           : VideoAvailability.abiMismatch;
       // A symbol the library lacks surfaces as exactly this Error: it is the
@@ -60,19 +60,19 @@ final class NativeVideoBinding implements VideoBinding {
     // Never a zero-length allocation: the library gets a valid pointer and
     // refuses the empty file itself.
     final data = calloc<Uint8>(bytes.isEmpty ? 1 : bytes.length);
-    final info = calloc<ChatVideoInfo>();
+    final info = calloc<MpxVideoInfo>();
     final out = calloc<Pointer<Void>>();
     try {
       data.asTypedList(bytes.length).setAll(0, bytes);
-      final status = chatVideoOpen(data, bytes.length, width, height, out);
-      if (status != ChatVideoStatus.ok) {
+      final status = mpxVideoOpen(data, bytes.length, width, height, out);
+      if (status != MpxVideoStatus.ok) {
         return VideoRejected(rejectionFor(status));
       }
       final handle = out.value;
-      if (chatVideoInfo(handle, info) != ChatVideoStatus.ok) {
-        chatVideoFree(handle);
+      if (mpxVideoInfo(handle, info) != MpxVideoStatus.ok) {
+        mpxVideoFree(handle);
         throw StateError(
-          'chat_video_info refused a handle chat_video_open made.',
+          'mpx_video_info refused a handle mpx_video_open made.',
         );
       }
       final id = _nextId++;
@@ -108,24 +108,24 @@ final class NativeVideoBinding implements VideoBinding {
     try {
       // An unknown handle is a null pointer: the library answers it with its
       // own invalid-argument status, like any bad call.
-      final status = chatVideoNext(
+      final status = mpxVideoNext(
         _handles[handle.id] ?? nullptr,
         target,
         strideBytes,
         pts,
       );
       return switch (status) {
-        ChatVideoStatus.ok => VideoFrameResult(
+        MpxVideoStatus.ok => VideoFrameResult(
           VideoFrameStatus.frame,
           pts.value,
         ),
-        ChatVideoStatus.endOfStream => const VideoFrameResult(
+        MpxVideoStatus.endOfStream => const VideoFrameResult(
           VideoFrameStatus.endOfStream,
         ),
-        ChatVideoStatus.invalidArgument => const VideoFrameResult(
+        MpxVideoStatus.invalidArgument => const VideoFrameResult(
           VideoFrameStatus.badArgument,
         ),
-        ChatVideoStatus.badSize => const VideoFrameResult(
+        MpxVideoStatus.badSize => const VideoFrameResult(
           VideoFrameStatus.badSize,
         ),
         _ => const VideoFrameResult(VideoFrameStatus.failed),
@@ -139,19 +139,19 @@ final class NativeVideoBinding implements VideoBinding {
   bool rewind(VideoHandle handle) {
     _requireAvailable();
     final pointer = _handles[handle.id];
-    return pointer != null && chatVideoRewind(pointer) == ChatVideoStatus.ok;
+    return pointer != null && mpxVideoRewind(pointer) == MpxVideoStatus.ok;
   }
 
   @override
   void dispose(VideoHandle handle) {
     final pointer = _handles.remove(handle.id);
-    if (pointer != null) chatVideoFree(pointer);
+    if (pointer != null) mpxVideoFree(pointer);
   }
 
   @override
   void close() {
     _closed = true;
-    _handles.values.forEach(chatVideoFree);
+    _handles.values.forEach(mpxVideoFree);
     _handles.clear();
   }
 
@@ -169,11 +169,11 @@ final class NativeVideoBinding implements VideoBinding {
   /// malformed file.
   @visibleForTesting
   static VideoRejection rejectionFor(int status) => switch (status) {
-    ChatVideoStatus.tooLarge => VideoRejection.tooLarge,
-    ChatVideoStatus.limitExceeded => VideoRejection.limitExceeded,
-    ChatVideoStatus.unsupported => VideoRejection.unsupported,
-    ChatVideoStatus.badSize => VideoRejection.badSize,
-    ChatVideoStatus.internal => VideoRejection.internal,
+    MpxVideoStatus.tooLarge => VideoRejection.tooLarge,
+    MpxVideoStatus.limitExceeded => VideoRejection.limitExceeded,
+    MpxVideoStatus.unsupported => VideoRejection.unsupported,
+    MpxVideoStatus.badSize => VideoRejection.badSize,
+    MpxVideoStatus.internal => VideoRejection.internal,
     _ => VideoRejection.malformed,
   };
 }

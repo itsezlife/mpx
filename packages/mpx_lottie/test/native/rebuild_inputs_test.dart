@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 // The hook is not part of lib/: a hook may not import the Flutter package
 // that it builds for, so its testable logic is reached by path.
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/rebuild_inputs.dart';
+import '../../hook/src/rebuild_inputs.dart';
 
 void main() {
   late Directory root;
@@ -25,7 +25,7 @@ void main() {
       'native/Cargo.toml',
       'native/Cargo.lock',
       'native/prebuilts.json',
-      'native/include/chat_lottie.h',
+      'native/include/mpx_lottie.h',
       'native/src/lib.rs',
       'native/src/deep/more.rs',
       'hook/build.dart',
@@ -41,7 +41,7 @@ void main() {
         'native/Cargo.toml',
         'native/Cargo.lock',
         'native/prebuilts.json',
-        'native/include/chat_lottie.h',
+        'native/include/mpx_lottie.h',
         'native/src/lib.rs',
         'native/src/deep/more.rs',
         'hook/build.dart',
@@ -75,7 +75,7 @@ void main() {
   test('leaves out what is not an input', () {
     write('native/target/debug/x');
     write('native/tests/t.rs');
-    write('lib/lottie_native.dart');
+    write('lib/mpx_lottie.dart');
 
     expect(
       inputs().where(

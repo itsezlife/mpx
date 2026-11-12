@@ -1,5 +1,5 @@
 [package]
-name = "chat_lottie"
+name = "mpx_lottie"
 version = "0.1.0"
 edition = "2021"
 publish = false
@@ -7,7 +7,7 @@ rust-version = "1.88" # slice::as_chunks
 description = "C ABI over tlottie: gunzip, input checks, probe and batch render for Lottie stickers."
 
 [lib]
-name = "chat_lottie"
+name = "mpx_lottie"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]

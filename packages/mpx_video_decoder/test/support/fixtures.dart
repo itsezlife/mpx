@@ -1,13 +1,13 @@
-/// The three fixtures `video_native` commits, read by path, and the skip rule
+/// The three fixtures `mpx_video_decoder` commits, read by path, and the skip rule
 /// for tests that need the native library.
 library;
 
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:video_native/video_native.dart';
+import 'package:mpx_video_decoder/src/binding/binding.dart';
 
-/// A committed fixture and what its generator command (video_native README)
+/// A committed fixture and what its generator command (mpx_video_decoder README)
 /// says it is.
 final class Fixture {
   const Fixture(
@@ -26,8 +26,7 @@ final class Fixture {
   final double frameRate;
   final bool hasAlpha;
 
-  Uint8List get bytes =>
-      File('../video_native/native/probe/fixtures/$file').readAsBytesSync();
+  Uint8List get bytes => File('native/probe/fixtures/$file').readAsBytesSync();
 
   /// A target size of the same aspect, small enough to keep tests quick.
   (int, int) get target => (width ~/ 4, height ~/ 4);
@@ -68,5 +67,5 @@ String? nativeSkipReason() {
   return binding.isAvailable
       ? null
       : 'the native library is not bundled (${binding.availability}); build '
-            'it with packages/video_native/native/recipe/build.sh';
+            'it with packages/mpx_video_decoder/native/recipe/build.sh';
 }

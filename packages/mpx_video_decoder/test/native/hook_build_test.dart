@@ -6,13 +6,13 @@ import 'package:flutter_test/flutter_test.dart';
 // The hook is not part of lib/: a hook may not import the Flutter package
 // that it builds for, so its testable logic is reached by path.
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/android_ndk.dart';
+import '../../hook/src/android_ndk.dart';
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/ffmpeg_prefix.dart';
+import '../../hook/src/ffmpeg_prefix.dart';
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/video_target.dart';
+import '../../hook/src/video_target.dart';
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/wrapper_compile.dart';
+import '../../hook/src/wrapper_compile.dart';
 
 void main() {
   late Directory temp;
@@ -46,7 +46,7 @@ void main() {
       expect(found?.path, built.path);
     });
 
-    test('prefers the directory CHAT_VIDEO_FFMPEG_DIR names', () {
+    test('prefers the directory MPX_VIDEO_FFMPEG_DIR names', () {
       final named = prefixWith('elsewhere');
 
       final found = findFfmpegPrefix(
@@ -149,7 +149,7 @@ void main() {
           '-lswscale',
           '-fvisibility=hidden',
           '-Wl,-headerpad_max_install_names',
-          '-Wl,-install_name,@rpath/libchat_video.dylib',
+          '-Wl,-install_name,@rpath/libmpx_video.dylib',
           '-I/p/include',
           '-L/p/lib',
         ]),
@@ -286,7 +286,7 @@ void main() {
           '-lswscale',
           '-fvisibility=hidden',
           '-Wl,-headerpad_max_install_names',
-          '-Wl,-install_name,@rpath/libchat_video.dylib',
+          '-Wl,-install_name,@rpath/libmpx_video.dylib',
           '-I/p/include',
           '-L/p/lib',
         ]),
@@ -376,7 +376,7 @@ void main() {
           '-shared',
           '-fPIC',
           '-fvisibility=hidden',
-          '-Wl,-soname,libchat_video.so',
+          '-Wl,-soname,libmpx_video.so',
           '-Wl,-z,max-page-size=16384',
           '-I/p/include',
         ]),

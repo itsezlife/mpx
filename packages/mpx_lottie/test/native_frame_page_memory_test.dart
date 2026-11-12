@@ -1,7 +1,7 @@
 import 'dart:ffi';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_decoder/lottie_decoder.dart';
+import 'package:mpx_lottie/mpx_lottie.dart';
 
 void main() {
   late NativeFramePageMemory memory;

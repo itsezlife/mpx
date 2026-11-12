@@ -2,20 +2,20 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
 import 'package:flutter/foundation.dart';
-import 'package:lottie_decoder/src/cache/frame_cache.dart';
-import 'package:lottie_decoder/src/cache/frame_cache_key.dart';
-import 'package:lottie_decoder/src/engine/lottie_engine.dart';
-import 'package:lottie_decoder/src/environment_specific/hash_content.dart'
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
+import 'package:mpx_lottie/src/cache/frame_cache.dart';
+import 'package:mpx_lottie/src/cache/frame_cache_key.dart';
+import 'package:mpx_lottie/src/engine/lottie_engine.dart';
+import 'package:mpx_lottie/src/environment_specific/hash_content.dart'
     as hash_content;
-import 'package:lottie_decoder/src/environment_specific/read_file_bytes.dart'
+import 'package:mpx_lottie/src/environment_specific/read_file_bytes.dart'
     as environment_specific;
-import 'package:lottie_decoder/src/paint/lottie_animation_paintable.dart';
-import 'package:lottie_decoder/src/paint/lottie_still_paintable.dart';
-import 'package:lottie_decoder/src/playback/lottie_frame_scheduler.dart';
-import 'package:lottie_decoder/src/renderer/lottie_frame_size.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_lottie/src/paint/lottie_animation_paintable.dart';
+import 'package:mpx_lottie/src/paint/lottie_still_paintable.dart';
+import 'package:mpx_lottie/src/playback/lottie_frame_scheduler.dart';
+import 'package:mpx_lottie/src/renderer/lottie_frame_size.dart';
 
 /// Decodes an encoded still image (the thumbnail of an animation) into an
 /// image; `ui.decodeImageFromList` by default.
@@ -348,7 +348,7 @@ final class _LottieDecode implements AssetTask {
                 FlutterErrorDetails(
                   exception: error,
                   stack: stackTrace,
-                  library: 'lottie_decoder',
+                  library: 'mpx_lottie',
                   context: ErrorDescription('while disposing a Lottie handle'),
                 ),
               );

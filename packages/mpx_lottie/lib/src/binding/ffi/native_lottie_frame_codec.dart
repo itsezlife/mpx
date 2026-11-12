@@ -2,18 +2,18 @@ import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
-import 'package:lottie_native/src/lottie_frame_codec.dart';
-import 'package:lottie_native/src/native/chat_lottie_symbols.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_lottie/src/binding/ffi/mpx_lottie_symbols.dart';
+import 'package:mpx_lottie/src/binding/lottie_frame_codec.dart';
 
-/// [LottieFrameCodec] over the compiled `chat_lottie` library.
+/// [LottieFrameCodec] over the compiled `mpx_lottie` library.
 final class NativeLottieFrameCodec implements LottieFrameCodec {
   /// Probes the library once, by the rule of `NativeLottieBinding.probe`: a
   /// missing library or symbol, or an ABI version other than the expected
   /// one, is not available. Any other error propagates.
   factory NativeLottieFrameCodec.probe() => NativeLottieFrameCodec.probing(
-    abiVersion: chatLottieAbiVersion,
-    bound: chatLottieLz4Bound,
+    abiVersion: mpxLottieAbiVersion,
+    bound: mpxLottieLz4Bound,
   );
 
   /// Probes with [abiVersion] and [bound] instead of the real symbols, so a
@@ -26,7 +26,7 @@ final class NativeLottieFrameCodec implements LottieFrameCodec {
 
   static bool _probe(int Function() abiVersion, int Function(int, int) bound) {
     try {
-      return abiVersion() == ChatLottieAbi.expectedVersion && bound(1, 1) >= 0;
+      return abiVersion() == MpxLottieAbi.expectedVersion && bound(1, 1) >= 0;
       // A symbol the library lacks surfaces as exactly this Error: it is the
       // dynamic-linking answer being probed for, not a bug to propagate.
       // ignore: avoid_catching_errors
@@ -41,14 +41,14 @@ final class NativeLottieFrameCodec implements LottieFrameCodec {
   @override
   Uint8List? compress(LottieFrameRegion region) {
     _requireAvailable();
-    final cap = chatLottieLz4Bound(region.width, region.height);
+    final cap = mpxLottieLz4Bound(region.width, region.height);
     // Zero is the library refusing the size; the call below would too, but
     // allocating a zero-length buffer is not worth the detour.
     if (cap == 0) return null;
     final dst = calloc<Uint8>(cap);
     final outLen = calloc<Size>();
     try {
-      final status = chatLottieCompressRegion(
+      final status = mpxLottieCompressRegion(
         region.target,
         region.strideBytes,
         region.width,
@@ -57,7 +57,7 @@ final class NativeLottieFrameCodec implements LottieFrameCodec {
         cap,
         outLen,
       );
-      if (status != ChatLottieStatus.ok) return null;
+      if (status != MpxLottieStatus.ok) return null;
       return Uint8List.fromList(dst.asTypedList(outLen.value));
     } finally {
       calloc
@@ -73,7 +73,7 @@ final class NativeLottieFrameCodec implements LottieFrameCodec {
     final src = calloc<Uint8>(data.isEmpty ? 1 : data.length);
     try {
       src.asTypedList(data.length).setAll(0, data);
-      return chatLottieDecompressRegion(
+      return mpxLottieDecompressRegion(
             src,
             data.length,
             region.target,
@@ -81,7 +81,7 @@ final class NativeLottieFrameCodec implements LottieFrameCodec {
             region.width,
             region.height,
           ) ==
-          ChatLottieStatus.ok;
+          MpxLottieStatus.ok;
     } finally {
       calloc.free(src);
     }

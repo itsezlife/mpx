@@ -30,14 +30,14 @@ void main() {
       markTestSkipped('no dart executable found (FLUTTER_ROOT, PATH)');
       return;
     }
-    final out = Directory.systemTemp.createTempSync('lottie_native_web_');
+    final out = Directory.systemTemp.createTempSync('mpx_lottie_web_');
     addTearDown(() => out.deleteSync(recursive: true));
 
     final result = await Process.run(dart, [
       'compile',
       'js',
       '--output=${_join([out.path, 'web_entry.js'])}',
-      'test/web/web_entry.dart',
+      'test/native/web/web_entry.dart',
     ]);
 
     expect(result.exitCode, 0, reason: '${result.stdout}\n${result.stderr}');

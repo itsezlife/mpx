@@ -1,20 +1,20 @@
 mod common;
-use chat_lottie::{
-    chat_lottie_compress_region, chat_lottie_decompress_region, chat_lottie_lz4_bound,
-    chat_lottie_render_batch, ChatLottie, ChatLottieJob,
+use mpx_lottie::{
+    mpx_lottie_compress_region, mpx_lottie_decompress_region, mpx_lottie_lz4_bound,
+    mpx_lottie_render_batch, MpxLottie, MpxLottieJob,
 };
 use common::*;
 
 const GUARD: u8 = 0xAB;
 
 fn job(
-    handle: *mut ChatLottie,
+    handle: *mut MpxLottie,
     frame: f32,
     size: u32,
     target: *mut u8,
     stride: usize,
-) -> ChatLottieJob {
-    ChatLottieJob {
+) -> MpxLottieJob {
+    MpxLottieJob {
         handle,
         frame,
         width: size,
@@ -35,7 +35,7 @@ fn render_tight(loaded: &Loaded, frame: f32, size: u32) -> Vec<u8> {
         (size * 4) as usize,
     )];
     let mut statuses = [99i32];
-    let ran = unsafe { chat_lottie_render_batch(jobs.as_ptr(), 1, statuses.as_mut_ptr()) };
+    let ran = unsafe { mpx_lottie_render_batch(jobs.as_ptr(), 1, statuses.as_mut_ptr()) };
     assert_eq!((ran, statuses[0]), (0, 0));
     pixels
 }
@@ -80,7 +80,7 @@ fn render_writes_only_inside_the_slot() {
         stride,
     )];
     let mut statuses = [99i32];
-    let ran = unsafe { chat_lottie_render_batch(jobs.as_ptr(), 1, statuses.as_mut_ptr()) };
+    let ran = unsafe { mpx_lottie_render_batch(jobs.as_ptr(), 1, statuses.as_mut_ptr()) };
     assert_eq!((ran, statuses[0]), (0, 0));
 
     let expected = render_tight(&loaded, 10.0, size as u32);
@@ -122,7 +122,7 @@ fn bad_job_gets_its_status_and_the_others_render() {
         job(loaded.handle, 5.0, 32, b.as_mut_ptr(), 128),
     ];
     let mut statuses = [99i32; 7];
-    let ran = unsafe { chat_lottie_render_batch(jobs.as_ptr(), jobs.len(), statuses.as_mut_ptr()) };
+    let ran = unsafe { mpx_lottie_render_batch(jobs.as_ptr(), jobs.len(), statuses.as_mut_ptr()) };
     assert_eq!(ran, 0);
     assert_eq!(statuses, [0, -1, -7, -7, -7, -1, 0]);
     assert_eq!(a, expected);
@@ -139,7 +139,7 @@ fn stride_smaller_than_a_row_is_rejected() {
     let mut buf = vec![GUARD; 64 * 64 * 4];
     let jobs = [job(loaded.handle, 0.0, 64, buf.as_mut_ptr(), 64 * 4 - 1)];
     let mut statuses = [99i32];
-    unsafe { chat_lottie_render_batch(jobs.as_ptr(), 1, statuses.as_mut_ptr()) };
+    unsafe { mpx_lottie_render_batch(jobs.as_ptr(), 1, statuses.as_mut_ptr()) };
     assert_eq!(statuses[0], -7);
 }
 
@@ -152,7 +152,7 @@ fn edge_over_the_cap_and_zero_edge_are_bad_size() {
         j.width = w;
         j.height = h;
         let mut statuses = [99i32];
-        unsafe { chat_lottie_render_batch(&j, 1, statuses.as_mut_ptr()) };
+        unsafe { mpx_lottie_render_batch(&j, 1, statuses.as_mut_ptr()) };
         assert_eq!(statuses[0], -7, "{w}x{h}");
     }
 }
@@ -163,7 +163,7 @@ fn byte_size_overflow_is_bad_size() {
     let mut buf = vec![GUARD; 8];
     let j = job(loaded.handle, 0.0, 8, buf.as_mut_ptr(), usize::MAX);
     let mut statuses = [99i32];
-    unsafe { chat_lottie_render_batch(&j, 1, statuses.as_mut_ptr()) };
+    unsafe { mpx_lottie_render_batch(&j, 1, statuses.as_mut_ptr()) };
     assert_eq!(statuses[0], -7);
 }
 
@@ -172,18 +172,18 @@ fn null_batch_arguments() {
     let mut status = [99i32];
     unsafe {
         assert_eq!(
-            chat_lottie_render_batch(std::ptr::null(), 1, status.as_mut_ptr()),
+            mpx_lottie_render_batch(std::ptr::null(), 1, status.as_mut_ptr()),
             -1
         );
         let loaded = load(fixture().as_bytes());
         let mut buf = vec![0u8; 16 * 16 * 4];
         let jobs = [job(loaded.handle, 0.0, 16, buf.as_mut_ptr(), 64)];
         assert_eq!(
-            chat_lottie_render_batch(jobs.as_ptr(), 1, std::ptr::null_mut()),
+            mpx_lottie_render_batch(jobs.as_ptr(), 1, std::ptr::null_mut()),
             -1
         );
         assert_eq!(
-            chat_lottie_render_batch(std::ptr::null(), 0, std::ptr::null_mut()),
+            mpx_lottie_render_batch(std::ptr::null(), 0, std::ptr::null_mut()),
             0
         );
     }
@@ -244,10 +244,10 @@ fn four_threads_load_render_and_restore_their_own_handles_at_once() {
                     .iter()
                     .map(|f| {
                         let pixels = render_tight(&handle, *f, 64);
-                        let mut packed = vec![0u8; chat_lottie_lz4_bound(64, 64)];
+                        let mut packed = vec![0u8; mpx_lottie_lz4_bound(64, 64)];
                         let mut len = 0usize;
                         let packed_status = unsafe {
-                            chat_lottie_compress_region(
+                            mpx_lottie_compress_region(
                                 pixels.as_ptr(),
                                 256,
                                 64,
@@ -260,7 +260,7 @@ fn four_threads_load_render_and_restore_their_own_handles_at_once() {
                         assert_eq!(packed_status, 0);
                         let mut restored = vec![0u8; pixels.len()];
                         let restored_status = unsafe {
-                            chat_lottie_decompress_region(
+                            mpx_lottie_decompress_region(
                                 packed.as_ptr(),
                                 len,
                                 restored.as_mut_ptr(),

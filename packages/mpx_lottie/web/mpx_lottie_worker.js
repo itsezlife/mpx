@@ -1,4 +1,4 @@
-// Module worker around chat_lottie_core.mjs. Start it with
+// Module worker around mpx_lottie_core.mjs. Start it with
 // `new Worker(url, {type: 'module'})`; the core file must sit beside it.
 //
 // Protocol (structured-clone messages)
@@ -34,9 +34,9 @@ import {
   MAX_EDGE,
   MAX_FILE_BYTES,
   MAX_JOBS,
-  createChatLottie,
+  createMpxLottie,
   selectWasm,
-} from './chat_lottie_core.mjs';
+} from './mpx_lottie_core.mjs';
 
 /** The message of a thrown value, whatever was thrown. */
 function describe(error) {
@@ -151,13 +151,13 @@ export function installWorker(
   {
     validate = (bytes) => WebAssembly.validate(bytes),
     fetchBytes = fetchWasm,
-    createCore = createChatLottie,
+    createCore = createMpxLottie,
   } = {},
 ) {
   // The core in use and the handler over it; both null before `init`, after a
   // failed `init`, and while a new one is being fetched.
   let current = null;
-  let unavailable = 'chat_lottie is not ready: no init message yet';
+  let unavailable = 'mpx_lottie is not ready: no init message yet';
   let queue = Promise.resolve();
 
   /**

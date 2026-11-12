@@ -46,16 +46,22 @@ unattached entries. A feed needs more (ADR 0005).
 | Playback clock, `PlaybackPauseLayer`, policy | Core; product-named defaults become host-supplied presets |
 | Texture seam (`FrameTextureHost`), frame pool | Core, with the platform texture hosts of `frame_texture` |
 | `ContentView`, `AssetCacheProvider`, placeholders | Core |
-| Glyph atlas (`src/atlas`, `src/glyph`) | Stays in chat, own package |
+| Glyph atlas (`src/atlas`, `src/glyph`) | Stays in chat, own package; `AssetCacheScope` has no glyph route (`glyphSource`, `systemFonts`, the glyph placeholder): a host draws glyphs beside the scope |
 | Inline and content embeds | Stay in chat |
 | Emoji, sticker and panel presets and budgets | Stay in chat; the host passes them in |
+
+Barrels: `mpx_core.dart` (everything above, the texture hosts and the image
+decoder), `frame_pool.dart`, `testing.dart`. Bare keys resolve through the
+core's own `MediaResolver` seam. Type names already carried no product words;
+only the product presets (grid cell, inline, emoji-only, single-emoji
+sticker) and their constants left `AssetPresets`.
 
 ### Decoders, natives, texture
 
 | Today | Lands in | Fate |
 | --- | --- | --- |
 | `image_decoder` | `mpx_core` | Moves as is, as a folder of the core |
-| `frame_texture` | `mpx_core` | Moves; the core becomes a plugin; channel id `dev.mpx.frame_texture`, Android package id renamed |
+| `frame_texture` | `mpx_core` | Moves; the core becomes a plugin (`MpxCorePlugin`, Android package `dev.mpx.core`); channel id `dev.mpx.frame_texture`; library `libmpx_frame_texture`, C symbols `mpx_frame_texture_*` |
 | `lottie_decoder` + `lottie_native` | `mpx_lottie` | Move into one package with a build hook; worker names lose `chat_`; C ABI, Dart symbols, asset URI renamed to `mpx_lottie_*` / `libmpx_lottie`; the frame cache keeps its files and answers the bytes cache's eviction requests for its registered quota (ADR 0002) |
 | `video_decoder` + `video_native` | `mpx_video_decoder` | Move into one package with a build hook; stays the software path for silent inline loops; library, symbols and env var renamed to `libmpx_video`, `mpx_video_*`, `MPX_VIDEO_FFMPEG_DIR`; decode-only |
 
@@ -118,13 +124,11 @@ pool and its budget (ADR 0004).
 
 ## Open in implementation
 
-- The new names for the core's types that still carry product words.
-- Where the default preset table for a non-chat host lives, if any (`mpx`'s
-  factory is a candidate).
+- Where a default preset table for a host without its own lives, if any
+  (`mpx`'s factory is a candidate); the core keeps only the generic
+  `AssetPresets.square` and `AssetPresets.media` recipes.
 - Whether the frame-advance floor and staged preload targets are core constants
   or feed knobs passed down.
-- The new names of `catalog_assets`' public barrels (`frame_pool.dart`,
-  `testing.dart` stay).
 
 ## Provenance
 

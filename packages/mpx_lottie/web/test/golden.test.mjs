@@ -13,8 +13,8 @@ const golden = readFileSync(
 );
 
 for (const [name, file] of [
-  ['SIMD', 'chat_lottie.wasm'],
-  ['plain', 'chat_lottie.nosimd.wasm'],
+  ['SIMD', 'mpx_lottie.wasm'],
+  ['plain', 'mpx_lottie.nosimd.wasm'],
 ]) {
   test(`the ${name} wasm build draws the golden frame within one level`, { skip }, async () => {
     const core = await coreOf(file);

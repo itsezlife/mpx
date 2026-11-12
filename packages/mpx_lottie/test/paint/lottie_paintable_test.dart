@@ -1,14 +1,13 @@
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/frame_pool.dart';
-import 'package:catalog_assets/testing.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_decoder/lottie_decoder.dart';
-import 'package:lottie_native/lottie_native.dart';
-import 'package:lottie_native/testing.dart';
+import 'package:mpx_core/frame_pool.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
+import 'package:mpx_lottie/mpx_lottie.dart';
+import 'package:mpx_lottie/testing.dart';
 
 const _budget = 2 * 128 * 128 * 4;
 
@@ -82,7 +81,7 @@ void main() {
   late FakeFrameRenderer renderer;
   late ManualPlaybackTickSource ticks;
   late PlaybackClock clock;
-  late ManualRetentionTimers timers;
+  late ManualTimers timers;
   late LottieFrameScheduler scheduler;
   var now = Duration.zero;
 
@@ -156,7 +155,7 @@ void main() {
     renderer = FakeFrameRenderer();
     ticks = ManualPlaybackTickSource();
     clock = PlaybackClock(ticks: ticks);
-    timers = ManualRetentionTimers();
+    timers = ManualTimers();
     scheduler = build(renderer);
   });
   tearDown(() {

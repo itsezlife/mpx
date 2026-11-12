@@ -1,14 +1,12 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/frame_pool.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_decoder/lottie_decoder.dart';
-import 'package:lottie_decoder/testing.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_core/frame_pool.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
+import 'package:mpx_lottie/mpx_lottie.dart';
+import 'package:mpx_lottie/testing.dart';
 
 /// The decoder over the web engine: pixels that crossed the worker protocol,
 /// copied into page memory by the pixel-copy renderer.
@@ -53,7 +51,7 @@ void main() {
         upload: (pixels, side) async => _image(),
       ),
       clock: clock,
-      startTimer: ManualRetentionTimers().start,
+      startTimer: ManualTimers().start,
     );
     decoder = LottieDecoder(
       engine: engine,
@@ -177,10 +175,9 @@ DecodeRequest _request(
   AssetSpec spec = const AssetSpec(pixelWidth: 64, pixelHeight: 64),
   FetchedContent? content,
 }) => DecodeRequest(
-  descriptor: const ContentDescriptor(
-    key: ContentKey.document('fixture'),
-    semanticKind: SemanticKind.customEmoji,
-    mediaForm: MediaForm.vectorAnimation,
+  descriptor: const MediaDescriptor(
+    key: MediaKey.remote('fixture'),
+    kind: MediaKind.vectorAnimation,
     animated: true,
   ),
   spec: spec,

@@ -2,16 +2,16 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
 import 'package:flutter/foundation.dart';
-import 'package:video_decoder/src/engine/video_engine.dart';
-import 'package:video_decoder/src/environment_specific/read_file_bytes.dart'
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_video_decoder/src/binding/binding.dart';
+import 'package:mpx_video_decoder/src/engine/video_engine.dart';
+import 'package:mpx_video_decoder/src/environment_specific/read_file_bytes.dart'
     as environment_specific;
-import 'package:video_decoder/src/paint/video_animation_paintable.dart';
-import 'package:video_decoder/src/paint/video_still_paintable.dart';
-import 'package:video_decoder/src/playback/video_frame_scheduler.dart';
-import 'package:video_decoder/src/renderer/video_frame_size.dart';
-import 'package:video_native/video_native.dart';
+import 'package:mpx_video_decoder/src/paint/video_animation_paintable.dart';
+import 'package:mpx_video_decoder/src/paint/video_still_paintable.dart';
+import 'package:mpx_video_decoder/src/playback/video_frame_scheduler.dart';
+import 'package:mpx_video_decoder/src/renderer/video_frame_size.dart';
 
 /// Decodes an encoded still image (the thumbnail of a clip) into an image;
 /// `MiniThumbnail.decode` by default: a few dozen pixels, blurred once.

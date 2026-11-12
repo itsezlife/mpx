@@ -1,6 +1,6 @@
-// Compiled to JavaScript by web_compile_test.dart, never run: it only has to
+// Compiled to JavaScript by native_web_compile_test.dart, never run: it only has to
 // name the value types the web path uses through the public barrel.
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
 
 void main() {
   const handle = LottieHandle(1);

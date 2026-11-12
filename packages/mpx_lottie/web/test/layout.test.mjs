@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { LAYOUT, MAX_EDGE } from '../chat_lottie_core.mjs';
+import { LAYOUT, MAX_EDGE } from '../mpx_lottie_core.mjs';
 
 const header = readFileSync(
-  new URL('../../native/include/chat_lottie.h', import.meta.url),
+  new URL('../../native/include/mpx_lottie.h', import.meta.url),
   'utf8',
 );
 
@@ -16,7 +16,7 @@ const wasm32Size = { uint32_t: 4, float: 4, size_t: 4, pointer: 4 };
 
 function structOf(name) {
   const match = new RegExp(`typedef struct \\{([^}]*)\\} ${name};`).exec(header);
-  assert.ok(match, `${name} is declared in chat_lottie.h`);
+  assert.ok(match, `${name} is declared in mpx_lottie.h`);
   const fields = [];
   let offset = 0;
   for (const raw of match[1].replace(/\/\*.*?\*\//g, '').split(';')) {
@@ -37,8 +37,8 @@ function structOf(name) {
 const camel = (snake) => snake.replace(/_(\w)/g, (_, c) => c.toUpperCase());
 
 for (const [key, cName] of [
-  ['info', 'ChatLottieInfo'],
-  ['job', 'ChatLottieJob'],
+  ['info', 'MpxLottieInfo'],
+  ['job', 'MpxLottieJob'],
 ]) {
   test(`${cName} offsets and size match the header on wasm32`, () => {
     const expected = structOf(cName);

@@ -6,7 +6,7 @@ import 'dart:typed_data';
 /// A browser `Worker` is one implementation (`JsLottieWorkerPort`, web only);
 /// a scripted worker in memory is another (`FakeLottieWorker.port`), which is
 /// how the protocol runs on the VM. Messages are the maps of the worker's
-/// protocol (`chat_lottie_worker.js` in `lottie_native`), after structured
+/// protocol (`mpx_lottie_worker.js` in `mpx_lottie`), after structured
 /// clone: strings, numbers, lists, maps and `Uint8List`s.
 abstract interface class LottieWorkerPort {
   /// Sends [message] to the worker. Each buffer of [transfer] is handed over

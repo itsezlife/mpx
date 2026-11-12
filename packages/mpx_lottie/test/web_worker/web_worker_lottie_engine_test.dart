@@ -3,16 +3,15 @@ import 'dart:typed_data';
 
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_decoder/lottie_decoder.dart';
-import 'package:lottie_decoder/testing.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_lottie/mpx_lottie.dart';
+import 'package:mpx_lottie/testing.dart';
 
 /// The protocol layer of the web engine, against a scripted worker: what the
 /// engine posts, what it makes of each reply, and how it ends. The worker file
-/// itself is exercised in Node by `lottie_native`.
+/// itself is exercised in Node by `mpx_lottie`.
 void main() {
-  final wasm = Uri.parse('https://host.test/chat_lottie.wasm');
-  final wasmNoSimd = Uri.parse('https://host.test/chat_lottie_nosimd.wasm');
+  final wasm = Uri.parse('https://host.test/mpx_lottie.wasm');
+  final wasmNoSimd = Uri.parse('https://host.test/mpx_lottie_nosimd.wasm');
 
   Future<WebWorkerLottieEngine> spawn(
     FakeLottieWorker worker, {
@@ -33,8 +32,8 @@ void main() {
 
       expect(worker.received.first, {
         'type': 'init',
-        'wasmUrl': 'https://host.test/chat_lottie.wasm',
-        'wasmNoSimdUrl': 'https://host.test/chat_lottie_nosimd.wasm',
+        'wasmUrl': 'https://host.test/mpx_lottie.wasm',
+        'wasmNoSimdUrl': 'https://host.test/mpx_lottie_nosimd.wasm',
       });
       expect(engine.simd, isTrue);
     });

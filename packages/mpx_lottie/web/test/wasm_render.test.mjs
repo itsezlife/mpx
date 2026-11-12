@@ -93,8 +93,8 @@ test('jobs of one size in one batch get separate regions', { skip }, async () =>
 });
 
 test('both wasm builds draw the same frame within one colour level', { skip }, async () => {
-  const simd = await coreOf('chat_lottie.wasm');
-  const plain = await coreOf('chat_lottie.nosimd.wasm');
+  const simd = await coreOf('mpx_lottie.wasm');
+  const plain = await coreOf('mpx_lottie.nosimd.wasm');
   const a = loaded(simd);
   const b = loaded(plain);
   for (const frame of [0, 17, 45]) {
@@ -165,21 +165,21 @@ test('compress then decompress a region is exact', { skip }, async () => {
   const [width, height] = [37, 29];
   const size = width * height * 4;
   const source = new Uint8Array(size).map((_, i) => (i * 31 + (i >> 5)) & 0xff);
-  const bound = wasm.chat_lottie_lz4_bound(width, height);
+  const bound = wasm.mpx_lottie_lz4_bound(width, height);
   assert.ok(bound >= size);
-  const src = wasm.chat_lottie_alloc(size);
-  const dst = wasm.chat_lottie_alloc(bound);
-  const lenPtr = wasm.chat_lottie_alloc(4);
-  const back = wasm.chat_lottie_alloc(size);
+  const src = wasm.mpx_lottie_alloc(size);
+  const dst = wasm.mpx_lottie_alloc(bound);
+  const lenPtr = wasm.mpx_lottie_alloc(4);
+  const back = wasm.mpx_lottie_alloc(size);
   new Uint8Array(wasm.memory.buffer).set(source, src);
-  assert.equal(wasm.chat_lottie_compress_region(src, width * 4, width, height, dst, bound, lenPtr), 0);
+  assert.equal(wasm.mpx_lottie_compress_region(src, width * 4, width, height, dst, bound, lenPtr), 0);
   const packed = new DataView(wasm.memory.buffer).getUint32(lenPtr, true);
-  assert.equal(wasm.chat_lottie_decompress_region(dst, packed, back, width * 4, width, height), 0);
+  assert.equal(wasm.mpx_lottie_decompress_region(dst, packed, back, width * 4, width, height), 0);
   assert.deepEqual(new Uint8Array(wasm.memory.buffer, back, size).slice(), source);
   // A corrupt stream is -3 and leaves the region as it was.
   new Uint8Array(wasm.memory.buffer, dst, packed).fill(0xff);
   new Uint8Array(wasm.memory.buffer, back, size).fill(7);
-  assert.equal(wasm.chat_lottie_decompress_region(dst, packed, back, width * 4, width, height), -3);
+  assert.equal(wasm.mpx_lottie_decompress_region(dst, packed, back, width * 4, width, height), -3);
   assert.ok(new Uint8Array(wasm.memory.buffer, back, size).every((v) => v === 7));
   core.close();
 });
@@ -187,11 +187,11 @@ test('compress then decompress a region is exact', { skip }, async () => {
 test('the allocator refuses 0 and over 16 MiB, and gives 16 MiB itself', { skip }, async () => {
   const core = await coreOf();
   const cap = 16 * 1024 * 1024;
-  assert.equal(core.exports.chat_lottie_alloc(0), 0);
-  assert.equal(core.exports.chat_lottie_alloc(cap + 1), 0);
-  const whole = core.exports.chat_lottie_alloc(cap);
+  assert.equal(core.exports.mpx_lottie_alloc(0), 0);
+  assert.equal(core.exports.mpx_lottie_alloc(cap + 1), 0);
+  const whole = core.exports.mpx_lottie_alloc(cap);
   assert.notEqual(whole, 0);
-  core.exports.chat_lottie_dealloc(whole, cap);
+  core.exports.mpx_lottie_dealloc(whole, cap);
   core.close();
 });
 

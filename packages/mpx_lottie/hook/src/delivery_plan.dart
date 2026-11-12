@@ -16,7 +16,7 @@ import 'prebuilt_manifest.dart';
 import 'targets.dart';
 
 /// The environment variable that turns [wantsBuildFromSource] on.
-const buildFromSourceEnvironment = 'LOTTIE_NATIVE_BUILD_FROM_SOURCE';
+const buildFromSourceEnvironment = 'MPX_LOTTIE_BUILD_FROM_SOURCE';
 
 /// Whether the app asked to compile the crate: the `build_from_source`
 /// user-define (`true` or `'true'`), or the environment variable set to `1`.
@@ -165,7 +165,7 @@ String _noLibrary(
     PrebuiltFound() => 'the prebuilt library was not used',
     PrebuiltMissing(:final reason) => 'no prebuilt library: $reason',
   };
-  return 'lottie_native has no native library for $target ($prebuilt; $why), '
+  return 'mpx_lottie has no native library for $target ($prebuilt; $why), '
       'so none is bundled and it is unavailable at run time '
       '(NativeLottieBinding.probe() reports missingLibrary).';
 }

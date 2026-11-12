@@ -1,10 +1,10 @@
 import 'dart:ffi';
 import 'dart:typed_data';
 
-import 'package:lottie_native/src/lottie_availability.dart';
-import 'package:lottie_native/src/lottie_handle.dart';
-import 'package:lottie_native/src/lottie_load_result.dart';
-import 'package:lottie_native/src/lottie_render_status.dart';
+import 'package:mpx_lottie/src/binding/lottie_availability.dart';
+import 'package:mpx_lottie/src/binding/lottie_handle.dart';
+import 'package:mpx_lottie/src/binding/lottie_load_result.dart';
+import 'package:mpx_lottie/src/binding/lottie_render_status.dart';
 
 /// The native Lottie renderer as the host sees it: load a file, render frames
 /// into page memory, dispose.

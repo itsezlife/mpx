@@ -3,7 +3,7 @@
 ///
 /// Imported by a web build only (it needs `dart:js_interop`). The engine
 /// itself, `WebVideoEngine`, and the port it is written against are neutral
-/// and also in `package:video_decoder/video_decoder.dart`, where they run on
+/// and also in `package:mpx_video_decoder/mpx_video_decoder.dart`, where they run on
 /// the VM; they are exported here too so a web host imports one library.
 ///
 /// ```dart

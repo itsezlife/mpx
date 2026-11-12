@@ -1,7 +1,7 @@
 name: mpx_video_decoder
 description: >
-  A software video decoder for mpx_core that plays short silent loops through
-  a native library.
+  A software video decoder for mpx_core that plays silent clips through an
+  FFmpeg and libvpx library delivered by a build hook.
 version: 0.0.1
 homepage: https://github.com/itsezlife/mpx
 repository: https://github.com/itsezlife/mpx/tree/main/packages/mpx_video_decoder
@@ -14,12 +14,20 @@ environment:
   flutter: '>=3.38.0'
 
 dependencies:
-  # Edges fixed by ADR 0001; nothing else in the workspace.
+  # hook/build.dart needs code_assets and hooks; the same span as mpx_lottie.
+  code_assets: ">=1.1.0 <3.0.0"
+  ffi: ^2.1.0
   flutter:
     sdk: flutter
-  mpx_core:
-    path: ../mpx_core
-
-dev_dependencies:
+  # Only lib/testing.dart needs it: its contract suites are written with the
+  # test framework, and a library cannot import a dev dependency. Production
+  # entry points never import it.
   flutter_test:
     sdk: flutter
+  hooks: ^2.0.0
+  meta: ^1.17.0
+  # Edges fixed by ADR 0001: the core only.
+  mpx_core:
+    path: ../mpx_core
+  # The browser element port (lib/src/web), compiled only for the web.
+  web: ^1.1.1

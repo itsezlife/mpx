@@ -1,9 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:video_decoder/testing.dart';
-import 'package:video_decoder/video_decoder.dart';
-import 'package:video_native/video_native.dart';
+import 'package:mpx_video_decoder/mpx_video_decoder.dart';
+import 'package:mpx_video_decoder/testing.dart';
 
 /// A [FakeVideoEngine] whose `nextFrame` a test can hold and release, and
 /// that counts what it was asked: the slow engine of the scheduler tests.

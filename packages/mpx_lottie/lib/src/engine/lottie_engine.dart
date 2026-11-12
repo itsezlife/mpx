@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:lottie_native/lottie_native.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
 
 /// The pixels of one rendered frame: tightly packed premultiplied RGBA, byte
 /// order `[R, G, B, A]`, rows `width * 4` bytes apart, exactly

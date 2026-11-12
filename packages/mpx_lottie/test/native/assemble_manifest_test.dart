@@ -6,16 +6,16 @@ import 'package:flutter_test/flutter_test.dart';
 // The hook is not part of lib/: a hook may not import the Flutter package
 // that it builds for, so its testable logic is reached by path.
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/prebuilt_manifest.dart';
+import '../../hook/src/prebuilt_manifest.dart';
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/source_hash.dart';
+import '../../hook/src/source_hash.dart';
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/targets.dart';
+import '../../hook/src/targets.dart';
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../native/tool/assemble_manifest.dart' show runAssembleManifest;
+import '../../native/tool/assemble_manifest.dart' show runAssembleManifest;
 import 'support/library_headers.dart';
 
-const _baseUrl = 'https://example.com/lottie_native/0.1.0/';
+const _baseUrl = 'https://example.com/mpx_lottie/0.1.0/';
 
 void main() {
   late Directory temp;
@@ -39,9 +39,7 @@ void main() {
 
   /// Writes [name] with [bytes], or a sound header for the key in its name.
   File lib(String name, [List<int>? bytes]) {
-    final key = RegExp(
-      r'libchat_lottie-(.+)\.\w+$',
-    ).firstMatch(name)!.group(1)!;
+    final key = RegExp(r'libmpx_lottie-(.+)\.\w+$').firstMatch(name)!.group(1)!;
     return File('${libs.path}/$name')
       ..writeAsBytesSync(bytes ?? soundLibraryFor(key));
   }
@@ -57,9 +55,9 @@ void main() {
           as Map<String, Object?>;
 
   test('writes a manifest the hook parses, with sizes and hashes', () async {
-    lib('libchat_lottie-linux-x64.so');
-    lib('libchat_lottie-macos-arm64.dylib');
-    lib('libchat_lottie-windows-x64.dll');
+    lib('libmpx_lottie-linux-x64.so');
+    lib('libmpx_lottie-macos-arm64.dylib');
+    lib('libmpx_lottie-windows-x64.dll');
 
     final code = await run();
 
@@ -76,7 +74,7 @@ void main() {
     });
     expect(
       manifest.artifactFor('macos-arm64')!.file,
-      ['libchat_lottie-macos-arm64.dylib'].single,
+      ['libmpx_lottie-macos-arm64.dylib'].single,
     );
     expect(
       manifest.artifactFor('macos-arm64')!.size,
@@ -90,7 +88,7 @@ void main() {
   });
 
   test('sha256 is that of the file bytes', () async {
-    lib('libchat_lottie-linux-x64.so');
+    lib('libmpx_lottie-linux-x64.so');
 
     await run();
 
@@ -104,8 +102,8 @@ void main() {
   });
 
   test('a re-run over the same files is byte for byte the same', () async {
-    lib('libchat_lottie-linux-x64.so');
-    lib('libchat_lottie-android-arm64.so');
+    lib('libmpx_lottie-linux-x64.so');
+    lib('libmpx_lottie-android-arm64.so');
     await run();
     final first = File('${native.path}/prebuilts.json').readAsStringSync();
 
@@ -117,19 +115,19 @@ void main() {
 
   test('accepts every format its platform uses', () async {
     lib(
-      'libchat_lottie-ios-arm64.dylib',
+      'libmpx_lottie-ios-arm64.dylib',
       fatLibrary([machoArmCpu, machoX64Cpu]),
     );
-    lib('libchat_lottie-ios-arm64-simulator.dylib');
-    lib('libchat_lottie-android-x64.so');
+    lib('libmpx_lottie-ios-arm64-simulator.dylib');
+    lib('libmpx_lottie-android-x64.so');
 
     expect(await run(), 0, reason: out.toString());
   });
 
   group('--require', () {
     test('passes when every required key has a file', () async {
-      lib('libchat_lottie-linux-x64.so');
-      lib('libchat_lottie-macos-arm64.dylib');
+      lib('libmpx_lottie-linux-x64.so');
+      lib('libmpx_lottie-macos-arm64.dylib');
 
       final code = await run(['--require', 'linux-x64,macos-arm64']);
 
@@ -137,7 +135,7 @@ void main() {
     });
 
     test('fails naming the missing key, and writes nothing', () async {
-      lib('libchat_lottie-linux-x64.so');
+      lib('libmpx_lottie-linux-x64.so');
 
       final code = await run(['--require', 'linux-x64,windows-x64']);
 
@@ -147,13 +145,13 @@ void main() {
     });
 
     test('without it a subset is a valid manifest', () async {
-      lib('libchat_lottie-linux-x64.so');
+      lib('libmpx_lottie-linux-x64.so');
 
       expect(await run(), 0);
     });
 
     test('an unknown required key is a usage error', () async {
-      lib('libchat_lottie-linux-x64.so');
+      lib('libmpx_lottie-linux-x64.so');
 
       expect(await run(['--require', 'plan9-x64']), 64);
     });
@@ -168,7 +166,7 @@ void main() {
             : key.startsWith('linux') || key.startsWith('android')
             ? 'so'
             : 'dylib';
-        lib('libchat_lottie-$key.$ext');
+        lib('libmpx_lottie-$key.$ext');
       }
     }
 
@@ -194,7 +192,7 @@ void main() {
 
   group('refuses a library that does not fit its key', () {
     test('an ELF file of the other machine', () async {
-      lib('libchat_lottie-linux-x64.so', soundElf(machine: elfAarch64));
+      lib('libmpx_lottie-linux-x64.so', soundElf(machine: elfAarch64));
 
       final code = await run();
 
@@ -205,7 +203,7 @@ void main() {
 
     test('an Android library on 4 KB pages', () async {
       lib(
-        'libchat_lottie-android-arm64.so',
+        'libmpx_lottie-android-arm64.so',
         elfLibrary(machine: elfAarch64, segments: [(ptLoad, 0x1000)]),
       );
 
@@ -216,14 +214,14 @@ void main() {
     });
 
     test('a Mach-O file of the other CPU', () async {
-      lib('libchat_lottie-macos-arm64.dylib', machoLibrary(machoX64Cpu));
+      lib('libmpx_lottie-macos-arm64.dylib', machoLibrary(machoX64Cpu));
 
       expect(await run(), 1);
       expect(out.toString(), contains('x86_64'));
     });
 
     test('a PE file built for ARM64 under windows-x64', () async {
-      lib('libchat_lottie-windows-x64.dll', peLibrary(machine: peArm64));
+      lib('libmpx_lottie-windows-x64.dll', peLibrary(machine: peArm64));
 
       expect(await run(), 1);
       expect(out.toString(), contains('0x8664'));
@@ -232,8 +230,8 @@ void main() {
 
   group('refuses', () {
     test('two files that claim one key', () async {
-      lib('libchat_lottie-linux-x64.so');
-      lib('libchat_lottie-linux-x64.dll', peLibrary(machine: peAmd64));
+      lib('libmpx_lottie-linux-x64.so');
+      lib('libmpx_lottie-linux-x64.dll', peLibrary(machine: peAmd64));
 
       final code = await run();
 
@@ -243,7 +241,7 @@ void main() {
     });
 
     test('an empty file', () async {
-      File('${libs.path}/libchat_lottie-linux-x64.so').createSync();
+      File('${libs.path}/libmpx_lottie-linux-x64.so').createSync();
 
       final code = await run();
 
@@ -252,7 +250,7 @@ void main() {
     });
 
     test('an ELF file named for a macOS key', () async {
-      lib('libchat_lottie-macos-arm64.dylib', soundElf());
+      lib('libmpx_lottie-macos-arm64.dylib', soundElf());
 
       final code = await run();
 
@@ -261,7 +259,7 @@ void main() {
     });
 
     test('a Mach-O file named for a linux key', () async {
-      lib('libchat_lottie-linux-arm64.so', machoLibrary(machoArmCpu));
+      lib('libmpx_lottie-linux-arm64.so', machoLibrary(machoArmCpu));
 
       final code = await run();
 
@@ -271,23 +269,23 @@ void main() {
 
     test('a file shorter than its magic', () async {
       File(
-        '${libs.path}/libchat_lottie-windows-x64.dll',
+        '${libs.path}/libmpx_lottie-windows-x64.dll',
       ).writeAsBytesSync([0x4d]);
 
       expect(await run(), 1);
     });
 
     test('a file name that is no library of the vocabulary', () async {
-      lib('libchat_lottie-plan9-x64.so', soundElf());
+      lib('libmpx_lottie-plan9-x64.so', soundElf());
 
       final code = await run();
 
       expect(code, 1);
-      expect(out.toString(), contains('libchat_lottie-plan9-x64.so'));
+      expect(out.toString(), contains('libmpx_lottie-plan9-x64.so'));
     });
 
     test('a stray file in the directory', () async {
-      lib('libchat_lottie-linux-x64.so');
+      lib('libmpx_lottie-linux-x64.so');
       File('${libs.path}/notes.txt').writeAsStringSync('x');
 
       final code = await run();
@@ -301,7 +299,7 @@ void main() {
     });
 
     test('a base URL the hook would refuse', () async {
-      lib('libchat_lottie-linux-x64.so');
+      lib('libmpx_lottie-linux-x64.so');
 
       final code = await runAssembleManifest(
         [libs.path, '--base-url', 'http://example.com/no-slash'],
@@ -314,8 +312,8 @@ void main() {
     });
 
     test('and reports every problem, not only the first', () async {
-      lib('libchat_lottie-linux-x64.so', machoLibrary(machoArmCpu));
-      lib('libchat_lottie-macos-arm64.dylib', soundElf());
+      lib('libmpx_lottie-linux-x64.so', machoLibrary(machoArmCpu));
+      lib('libmpx_lottie-macos-arm64.dylib', soundElf());
 
       await run();
 
@@ -337,7 +335,7 @@ void main() {
     });
 
     test('no base URL', () async {
-      lib('libchat_lottie-linux-x64.so');
+      lib('libmpx_lottie-linux-x64.so');
 
       final code = await runAssembleManifest(
         [libs.path],
@@ -353,7 +351,7 @@ void main() {
     });
 
     test('--out writes elsewhere and leaves the committed manifest', () async {
-      lib('libchat_lottie-linux-x64.so');
+      lib('libmpx_lottie-linux-x64.so');
       final target = '${temp.path}/assembled.json';
 
       final code = await run(['--out', target]);

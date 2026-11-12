@@ -1,14 +1,14 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:lottie_decoder/src/engine/lottie_engine.dart';
-import 'package:lottie_decoder/src/engine/lottie_worker_port.dart';
-import 'package:lottie_decoder/src/engine/web_worker_lottie_engine.dart';
-import 'package:lottie_decoder/src/testing/fake_pixel_lottie_engine.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
+import 'package:mpx_lottie/src/engine/lottie_engine.dart';
+import 'package:mpx_lottie/src/engine/lottie_worker_port.dart';
+import 'package:mpx_lottie/src/engine/web_worker_lottie_engine.dart';
+import 'package:mpx_lottie/src/testing/fake_pixel_lottie_engine.dart';
 
 /// The worker side of the Lottie worker protocol, in memory: it answers the
-/// messages of `chat_lottie_worker.js` the way that worker does, over a
+/// messages of `mpx_lottie_worker.js` the way that worker does, over a
 /// scripted [core] instead of WebAssembly.
 ///
 /// Like the real worker it serves requests one at a time in arrival order,

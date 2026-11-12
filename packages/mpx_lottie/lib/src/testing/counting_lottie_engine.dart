@@ -1,9 +1,9 @@
 import 'dart:typed_data';
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:lottie_decoder/src/engine/lottie_engine.dart';
-import 'package:lottie_decoder/src/engine/lottie_slot_engine.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
+import 'package:mpx_lottie/src/engine/lottie_engine.dart';
+import 'package:mpx_lottie/src/engine/lottie_slot_engine.dart';
 
 /// A [LottieSlotEngine] that forwards to another and counts the work it was given,
 /// so a test can say "this pass rendered nothing" instead of inferring it.

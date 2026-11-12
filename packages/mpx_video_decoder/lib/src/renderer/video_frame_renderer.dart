@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:catalog_assets/frame_pool.dart';
-import 'package:video_decoder/src/renderer/video_frame_source.dart';
+import 'package:mpx_core/frame_pool.dart';
+import 'package:mpx_video_decoder/src/renderer/video_frame_source.dart';
 
 /// A [FrameRenderer] that copies frames the engine already decoded into the
 /// pool's pages: the job's `frame` is the number of a decoded frame and its

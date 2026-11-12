@@ -5,7 +5,7 @@ library;
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:video_native/video_native.dart';
+import 'package:mpx_video_decoder/src/binding/binding.dart';
 
 /// A committed fixture and what its generator command (README) says it is.
 final class Fixture {
@@ -61,4 +61,4 @@ const fixtures = [mp4, webm, gif];
 String? nativeSkipReason(VideoBinding binding) => binding.isAvailable
     ? null
     : 'the native library is not bundled (${binding.availability}); build '
-          'it with packages/video_native/native/recipe/build.sh';
+          'it with packages/mpx_video_decoder/native/recipe/build.sh';

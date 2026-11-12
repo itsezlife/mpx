@@ -1,7 +1,7 @@
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
 import 'package:flutter/painting.dart';
+import 'package:mpx_core/mpx_core.dart';
 
 /// A decoded still, placed in its rectangle as the surface's
 /// `AssetPaintContext.fit` says (contain unless it asks to cover): the thumbnail

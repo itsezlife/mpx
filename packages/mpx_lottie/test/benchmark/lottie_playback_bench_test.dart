@@ -2,12 +2,12 @@
 // what one clock tick costs while 1, 8 and 32 animated stickers play, split
 // into the pieces of the path.
 //
-//   LOTTIE_PLAYBACK_BENCH=1 flutter test --concurrency 40 \
+//   MPX_LOTTIE_PLAYBACK_BENCH=1 flutter test --concurrency 40 \
 //     test/benchmark/lottie_playback_bench_test.dart
-//   LOTTIE_PLAYBACK_BENCH=1 LOTTIE_BENCH_WRITE_BASELINE=1 flutter test ...
+//   MPX_LOTTIE_PLAYBACK_BENCH=1 MPX_LOTTIE_BENCH_WRITE_BASELINE=1 flutter test ...
 //
 // Gated twice: the `benchmark` tag (dart_test.yaml) names it, and without
-// LOTTIE_PLAYBACK_BENCH the measuring test is skipped, so the package's unit
+// MPX_LOTTIE_PLAYBACK_BENCH the measuring test is skipped, so the package's unit
 // entrypoint (which imports every test file) never pays for 900 real ticks.
 // The comparison tests below run always: they are cheap and deterministic.
 //
@@ -38,17 +38,16 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/frame_pool.dart';
-import 'package:catalog_assets/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_decoder/lottie_decoder.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_core/frame_pool.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
+import 'package:mpx_lottie/mpx_lottie.dart';
 
 import 'playback_bench_report.dart';
 
-const _gate = 'LOTTIE_PLAYBACK_BENCH';
-const _writeBaseline = 'LOTTIE_BENCH_WRITE_BASELINE';
+const _gate = 'MPX_LOTTIE_PLAYBACK_BENCH';
+const _writeBaseline = 'MPX_LOTTIE_BENCH_WRITE_BASELINE';
 const _baselinePath = 'test/benchmark/baseline.json';
 const _outputPath = 'build/bench/lottie_playback.json';
 
@@ -203,7 +202,7 @@ Future<_Samples> _play(int stickers) async {
   final scheduler = LottieFrameScheduler(
     atlas: atlas,
     clock: clock,
-    startTimer: ManualRetentionTimers().start,
+    startTimer: ManualTimers().start,
   );
   final samples = _Samples();
   try {

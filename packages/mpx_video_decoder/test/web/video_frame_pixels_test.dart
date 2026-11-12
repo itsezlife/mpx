@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_decoder/src/engine/video_frame_pixels.dart';
+import 'package:mpx_video_decoder/src/engine/video_frame_pixels.dart';
 
 void main() {
   group('premultiplyRgbaIntoBgra', () {

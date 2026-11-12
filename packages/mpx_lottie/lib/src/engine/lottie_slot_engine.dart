@@ -1,11 +1,11 @@
 import 'dart:ffi';
 import 'dart:typed_data';
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:lottie_decoder/src/cache/cached_frame.dart';
-import 'package:lottie_decoder/src/engine/lottie_engine.dart';
-import 'package:lottie_native/lottie_native.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
+import 'package:mpx_lottie/src/cache/cached_frame.dart';
+import 'package:mpx_lottie/src/engine/lottie_engine.dart';
 
 /// A [LottieEngine] that can also draw straight into native page memory by
 /// address: the zero-copy path of the in-process and isolate engines.

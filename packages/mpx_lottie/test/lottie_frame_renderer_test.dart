@@ -3,13 +3,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:catalog_assets/frame_pool.dart';
-import 'package:catalog_assets/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_decoder/lottie_decoder.dart';
-import 'package:lottie_decoder/testing.dart';
-import 'package:lottie_native/lottie_native.dart';
-import 'package:lottie_native/testing.dart';
+import 'package:mpx_core/frame_pool.dart';
+import 'package:mpx_core/testing.dart';
+import 'package:mpx_lottie/mpx_lottie.dart';
+import 'package:mpx_lottie/testing.dart';
 
 /// A hand-authored 100x100, 30 fps, 60 frame animation: one rotating 60x60
 /// square filled with 50% opaque orange. Not a corpus sticker.

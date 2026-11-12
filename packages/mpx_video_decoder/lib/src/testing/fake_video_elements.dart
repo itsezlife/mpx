@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:video_decoder/src/engine/video_element_port.dart';
-import 'package:video_native/video_native.dart';
+import 'package:mpx_video_decoder/src/binding/binding.dart';
+import 'package:mpx_video_decoder/src/engine/video_element_port.dart';
 
 /// A browser without a browser: scripted files that open as
 /// [VideoElementPort]s, for [WebVideoEngine] on the VM.

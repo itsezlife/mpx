@@ -1,7 +1,7 @@
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
 import 'package:flutter/painting.dart';
+import 'package:mpx_core/mpx_core.dart';
 
 /// A decoded still, painted contain-fitted in its rectangle: the thumbnail
 /// and first-frame stages of a Lottie asset, and what the animation shows

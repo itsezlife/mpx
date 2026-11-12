@@ -1,4 +1,4 @@
-import 'package:lottie_decoder/src/cache/frame_cache_files.dart';
+import 'package:mpx_lottie/src/cache/frame_cache_files.dart';
 
 /// The web hook behind `FrameCache(directoryPath:)`: the web has no directory
 /// to keep entries in, so a cache there is memory only and a path is a host

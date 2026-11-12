@@ -6,9 +6,10 @@
 /// `dart:isolate` (the slot engines that write to native memory by address,
 /// native page memory, the zero-copy renderer, the cache's directory files)
 /// is exported only where they exist. The browser worker lives in
-/// `package:lottie_decoder/web.dart`, which only a web build imports.
+/// `package:mpx_lottie/web.dart`, which only a web build imports.
 library;
 
+export 'src/binding/binding.dart';
 export 'src/cache/cached_frame.dart';
 export 'src/cache/frame_cache.dart';
 export 'src/cache/frame_cache_files.dart';

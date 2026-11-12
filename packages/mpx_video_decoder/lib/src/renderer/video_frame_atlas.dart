@@ -2,10 +2,10 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/frame_pool.dart';
 import 'package:flutter/foundation.dart' show Listenable;
-import 'package:video_decoder/src/renderer/video_frame_renderer.dart';
-import 'package:video_decoder/src/renderer/video_frame_size.dart';
+import 'package:mpx_core/frame_pool.dart';
+import 'package:mpx_video_decoder/src/renderer/video_frame_renderer.dart';
+import 'package:mpx_video_decoder/src/renderer/video_frame_size.dart';
 
 /// The frame pool of video: one `FrameAtlas` of its own, never the Lottie one.
 abstract final class VideoFrameAtlas {

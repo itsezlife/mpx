@@ -4,11 +4,10 @@
 // worker port.
 import 'dart:typed_data';
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/frame_pool.dart';
-import 'package:lottie_decoder/lottie_decoder.dart';
-import 'package:lottie_decoder/web.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_core/frame_pool.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_lottie/mpx_lottie.dart';
+import 'package:mpx_lottie/web.dart';
 
 /// The engine a web host has: no slot method, only pixels.
 final class _PixelEngine implements LottieEngine {

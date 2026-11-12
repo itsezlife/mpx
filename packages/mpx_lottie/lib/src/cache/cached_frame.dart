@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:lottie_decoder/src/cache/frame_cache_key.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_lottie/src/cache/frame_cache_key.dart';
 
 /// Where a frame the cache holds can be restored from: what
 /// `FrameCache.frame` answers and what a restore job carries to the isolate

@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_native/lottie_native.dart';
-import 'package:lottie_native/testing.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
+import 'package:mpx_lottie/testing.dart';
 
 // ignore: always_use_package_imports
 import 'support/missing_abi_symbol.dart';

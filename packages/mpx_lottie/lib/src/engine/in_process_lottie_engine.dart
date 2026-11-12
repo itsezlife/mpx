@@ -1,11 +1,11 @@
 import 'dart:typed_data';
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:lottie_decoder/src/cache/frame_file_reader.dart';
-import 'package:lottie_decoder/src/engine/lottie_engine.dart';
-import 'package:lottie_decoder/src/engine/lottie_engine_work.dart';
-import 'package:lottie_decoder/src/engine/lottie_slot_engine.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
+import 'package:mpx_lottie/src/cache/frame_file_reader.dart';
+import 'package:mpx_lottie/src/engine/lottie_engine.dart';
+import 'package:mpx_lottie/src/engine/lottie_engine_work.dart';
+import 'package:mpx_lottie/src/engine/lottie_slot_engine.dart';
 
 /// A [LottieSlotEngine] that runs a [LottieBinding] on the calling isolate; its
 /// futures complete at once.

@@ -2,9 +2,9 @@ import 'dart:collection';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:lottie_decoder/src/cache/cached_frame.dart';
-import 'package:lottie_decoder/src/cache/frame_cache_codec.dart';
-import 'package:lottie_decoder/src/cache/frame_cache_key.dart';
+import 'package:mpx_lottie/src/cache/cached_frame.dart';
+import 'package:mpx_lottie/src/cache/frame_cache_codec.dart';
+import 'package:mpx_lottie/src/cache/frame_cache_key.dart';
 
 /// Reads single frames of cached animation files, on the isolate that
 /// restores them (the render isolate, or the caller of an in-process engine).

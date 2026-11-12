@@ -1,10 +1,10 @@
 import 'dart:ffi';
 import 'dart:typed_data';
 
-import 'package:video_native/src/video_availability.dart';
-import 'package:video_native/src/video_frame_result.dart';
-import 'package:video_native/src/video_handle.dart';
-import 'package:video_native/src/video_open_result.dart';
+import 'package:mpx_video_decoder/src/binding/video_availability.dart';
+import 'package:mpx_video_decoder/src/binding/video_frame_result.dart';
+import 'package:mpx_video_decoder/src/binding/video_handle.dart';
+import 'package:mpx_video_decoder/src/binding/video_open_result.dart';
 
 /// The native video decoder as the host sees it: open a file, pull frames
 /// into page memory, rewind to loop, dispose.

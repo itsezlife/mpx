@@ -70,22 +70,22 @@ fn no_pixels_is_unsupported() {
 
 #[test]
 fn null_arguments_are_invalid() {
-    use chat_lottie::chat_lottie_load;
+    use mpx_lottie::mpx_lottie_load;
     let json = fixture();
-    let mut info = chat_lottie::ChatLottieInfo::default();
+    let mut info = mpx_lottie::MpxLottieInfo::default();
     let mut handle = std::ptr::null_mut();
     unsafe {
         let p = json.as_ptr();
         assert_eq!(
-            chat_lottie_load(std::ptr::null(), 4, &mut info, &mut handle),
+            mpx_lottie_load(std::ptr::null(), 4, &mut info, &mut handle),
             -1
         );
         assert_eq!(
-            chat_lottie_load(p, json.len(), std::ptr::null_mut(), &mut handle),
+            mpx_lottie_load(p, json.len(), std::ptr::null_mut(), &mut handle),
             -1
         );
         assert_eq!(
-            chat_lottie_load(p, json.len(), &mut info, std::ptr::null_mut()),
+            mpx_lottie_load(p, json.len(), &mut info, std::ptr::null_mut()),
             -1
         );
     }
@@ -93,17 +93,17 @@ fn null_arguments_are_invalid() {
 
 #[test]
 fn free_accepts_null() {
-    unsafe { chat_lottie::chat_lottie_free(std::ptr::null_mut()) };
+    unsafe { mpx_lottie::mpx_lottie_free(std::ptr::null_mut()) };
 }
 
 #[test]
 fn a_length_no_slice_can_have_is_too_large_and_the_pointer_is_never_read() {
     let dangling = std::ptr::NonNull::<u8>::dangling().as_ptr();
     for len in [usize::MAX, isize::MAX as usize + 1, 4 * 1024 * 1024 + 1] {
-        let mut info = chat_lottie::ChatLottieInfo::default();
+        let mut info = mpx_lottie::MpxLottieInfo::default();
         let mut handle = std::ptr::null_mut();
         let status =
-            unsafe { chat_lottie::chat_lottie_load(dangling, len, &mut info, &mut handle) };
+            unsafe { mpx_lottie::mpx_lottie_load(dangling, len, &mut info, &mut handle) };
         assert_eq!(status, -2, "len {len}");
         assert!(handle.is_null());
     }

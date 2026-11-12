@@ -1,11 +1,11 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/frame_pool.dart';
-import 'package:catalog_assets/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_decoder/lottie_decoder.dart';
+import 'package:mpx_core/frame_pool.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
+import 'package:mpx_lottie/mpx_lottie.dart';
 
 /// A sticker in a chat and a panel of stickers beside it, on one texture pool
 /// and one frame atlas at the default sizes and budgets, with the four
@@ -35,7 +35,7 @@ void main() {
   late FakeTextureFrameWriter writer;
   late ManualPlaybackTickSource ticks;
   late PlaybackClock clock;
-  late ManualRetentionTimers timers;
+  late ManualTimers timers;
   late LottieFrameScheduler scheduler;
   late List<({int side, int rows})> uploads;
   var time = Duration.zero;
@@ -73,7 +73,7 @@ void main() {
     writer = FakeTextureFrameWriter();
     ticks = ManualPlaybackTickSource();
     clock = PlaybackClock(ticks: ticks);
-    timers = ManualRetentionTimers();
+    timers = ManualTimers();
     scheduler = LottieFrameScheduler(
       atlas: FrameAtlas<Object>(
         renderer: renderer,

@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:lottie_native/lottie_native.dart';
-import 'package:lottie_native/testing.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
+import 'package:mpx_lottie/testing.dart';
 
 void main() {
   final valid = Uint8List.fromList([1, 2, 3]);

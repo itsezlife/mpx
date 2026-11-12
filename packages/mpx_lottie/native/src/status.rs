@@ -1,5 +1,5 @@
 //! Status codes of the C ABI. Negative values are failures; the numbers are
-//! part of the contract in `include/chat_lottie.h`, and each means one thing
+//! part of the contract in `include/mpx_lottie.h`, and each means one thing
 //! across load and render.
 
 /// Success.

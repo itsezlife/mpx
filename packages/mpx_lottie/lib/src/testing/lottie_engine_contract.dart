@@ -4,12 +4,12 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_decoder/src/cache/cached_frame.dart';
-import 'package:lottie_decoder/src/cache/frame_cache_codec.dart';
-import 'package:lottie_decoder/src/cache/frame_cache_key.dart';
-import 'package:lottie_decoder/src/engine/lottie_engine.dart';
-import 'package:lottie_decoder/src/engine/lottie_slot_engine.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
+import 'package:mpx_lottie/src/cache/cached_frame.dart';
+import 'package:mpx_lottie/src/cache/frame_cache_codec.dart';
+import 'package:mpx_lottie/src/cache/frame_cache_key.dart';
+import 'package:mpx_lottie/src/engine/lottie_engine.dart';
+import 'package:mpx_lottie/src/engine/lottie_slot_engine.dart';
 
 /// What a [LottieEngineContract] run needs besides the engine.
 final class LottieEngineHarness<E extends LottieEngine> {

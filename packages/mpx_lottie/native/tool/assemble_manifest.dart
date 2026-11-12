@@ -7,7 +7,7 @@
 ///   [--require key,key,... | --require-all] [--out <file>]
 /// ```
 ///
-/// `<dir>` holds only files named `libchat_lottie-<key>.<ext>`, the key being
+/// `<dir>` holds only files named `libmpx_lottie-<key>.<ext>`, the key being
 /// one of the manifest's target keys (`LottieNativeTarget.keys`).
 /// `--require-all` demands a file for every key, so the key list lives in the
 /// hook and not in a workflow. Nothing is written unless every file is sound,
@@ -32,12 +32,12 @@ Future<void> main(List<String> args) async {
   );
 }
 
-final _libraryName = RegExp(r'^libchat_lottie-(.+)\.(?:so|dylib|dll)$');
+final _libraryName = RegExp(r'^libmpx_lottie-(.+)\.(?:so|dylib|dll)$');
 
 const _usage =
     'usage: dart native/tool/assemble_manifest.dart <dir> --base-url <url> '
     '[--require key,key,...|--require-all] [--out <file>]\n'
-    '  <dir> holds libchat_lottie-<key>.<so|dylib|dll> files; keys: ';
+    '  <dir> holds libmpx_lottie-<key>.<so|dylib|dll> files; keys: ';
 
 /// The command line of `native/tool/assemble_manifest.dart`; returns the exit
 /// code: 0 written and verified, 1 refused (every reason is printed), 64
@@ -74,7 +74,7 @@ Future<int> runAssembleManifest(
     final name = file.uri.pathSegments.last;
     final key = _libraryName.firstMatch(name)?.group(1);
     if (key == null || LottieNativeTarget.fromKey(key) == null) {
-      problems.add('$name: not a libchat_lottie-<key>.<ext> of a known key');
+      problems.add('$name: not a libmpx_lottie-<key>.<ext> of a known key');
       continue;
     }
     final other = files[key];

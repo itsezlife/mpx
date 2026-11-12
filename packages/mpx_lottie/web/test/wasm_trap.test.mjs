@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { STATUS } from '../chat_lottie_core.mjs';
-import { createWorkerHandler } from '../chat_lottie_worker.js';
+import { STATUS } from '../mpx_lottie_core.mjs';
+import { createWorkerHandler } from '../mpx_lottie_worker.js';
 import { coreOf, fixtureGzip, fixtureJson, skip } from './support/wasm_fixture.mjs';
 
 // wasm32 cannot unwind, so a Rust panic is a trap: `WebAssembly.RuntimeError`,
@@ -16,7 +16,7 @@ const OUTSIDE_MEMORY = 0xfffffff0;
  */
 async function coreThatCanTrap(exportName) {
   let armed = false;
-  const core = await coreOf('chat_lottie.wasm', {
+  const core = await coreOf('mpx_lottie.wasm', {
     wrapExports: (exports) => ({
       ...exports,
       [exportName]: (...args) => {
@@ -40,13 +40,13 @@ const job = (handle, frame = 3) => ({ handle, frame, width: 32, height: 32 });
 test('the forced trap really is a WebAssembly.RuntimeError from the module', { skip }, async () => {
   const core = await coreOf();
   assert.throws(
-    () => core.exports.chat_lottie_render_batch(OUTSIDE_MEMORY, 1, OUTSIDE_MEMORY),
+    () => core.exports.mpx_lottie_render_batch(OUTSIDE_MEMORY, 1, OUTSIDE_MEMORY),
     WebAssembly.RuntimeError,
   );
 });
 
 test('a trap in render fails that batch with INTERNAL and the next request works', { skip }, async () => {
-  const { core, arm } = await coreThatCanTrap('chat_lottie_render_batch');
+  const { core, arm } = await coreThatCanTrap('mpx_lottie_render_batch');
   const before = loaded(core);
   const memoryBefore = core.exports.memory;
   assert.equal(core.renderPixels([job(before.handle)])[0].status, 0);
@@ -74,7 +74,7 @@ test('a trap in render fails that batch with INTERNAL and the next request works
 });
 
 test('a trap in load fails that load with INTERNAL and recovers', { skip }, async () => {
-  const { core, arm } = await coreThatCanTrap('chat_lottie_load');
+  const { core, arm } = await coreThatCanTrap('mpx_lottie_load');
   arm();
 
   assert.deepEqual(core.load(fixtureGzip), { status: STATUS.INTERNAL });
@@ -86,7 +86,7 @@ test('a trap in load fails that load with INTERNAL and recovers', { skip }, asyn
 });
 
 test('a trap does not repeat: later requests do not restart again', { skip }, async () => {
-  const { core, arm } = await coreThatCanTrap('chat_lottie_render_batch');
+  const { core, arm } = await coreThatCanTrap('mpx_lottie_render_batch');
   arm();
   core.renderPixels([job(loaded(core).handle)]);
   const { handle } = loaded(core);
@@ -96,7 +96,7 @@ test('a trap does not repeat: later requests do not restart again', { skip }, as
 });
 
 test('a trap while disposing is absorbed', { skip }, async () => {
-  const { core, arm } = await coreThatCanTrap('chat_lottie_free');
+  const { core, arm } = await coreThatCanTrap('mpx_lottie_free');
   const { handle } = loaded(core);
   arm();
   core.dispose(handle);
@@ -106,7 +106,7 @@ test('a trap while disposing is absorbed', { skip }, async () => {
 });
 
 test('the worker answers the trapped request and serves the next one', { skip }, async () => {
-  const { core, arm } = await coreThatCanTrap('chat_lottie_render_batch');
+  const { core, arm } = await coreThatCanTrap('mpx_lottie_render_batch');
   const handle = createWorkerHandler(core);
   const { reply: first } = handle({ id: 1, type: 'load', bytes: fixtureGzip });
   arm();
@@ -122,7 +122,7 @@ test('the worker answers the trapped request and serves the next one', { skip },
 });
 
 test('a core that was closed stays closed, trap or not', { skip }, async () => {
-  const { core } = await coreThatCanTrap('chat_lottie_render_batch');
+  const { core } = await coreThatCanTrap('mpx_lottie_render_batch');
   core.close();
   assert.throws(() => core.load(fixtureJson), /closed/);
   assert.equal(core.restarts, 0);

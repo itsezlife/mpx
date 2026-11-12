@@ -1,21 +1,21 @@
-// The C ABI of native/include/chat_video.h, bound by hand: six functions are
+// The C ABI of native/include/mpx_video.h, bound by hand: six functions are
 // too few to be worth putting LLVM (ffigen) on every contributor. The asset
 // id of these `@Native`s is this file's library URI, which is the name
 // hook/build.dart registers the library under; moving this file means
-// changing `chatVideoAssetName` there.
+// changing `mpxVideoAssetName` there.
 // The names mirror the header one to one and are documented there.
 // ignore_for_file: public_member_api_docs
 import 'dart:ffi';
 
-/// The ABI of `chat_video.h` the bindings were written against.
-abstract final class ChatVideoAbi {
+/// The ABI of `mpx_video.h` the bindings were written against.
+abstract final class MpxVideoAbi {
   /// The version a library must answer from its ABI probe.
   static const expectedVersion = 1;
 }
 
-/// The status numbers of `chat_video.h`, in one place so no other file
+/// The status numbers of `mpx_video.h`, in one place so no other file
 /// carries a bare literal. A test compares them with the header.
-abstract final class ChatVideoStatus {
+abstract final class MpxVideoStatus {
   static const endOfStream = 1;
   static const ok = 0;
   static const invalidArgument = -1;
@@ -28,8 +28,8 @@ abstract final class ChatVideoStatus {
   static const decodeFailed = -8;
 }
 
-/// `ChatVideoInfo`.
-final class ChatVideoInfo extends Struct {
+/// `MpxVideoInfo`.
+final class MpxVideoInfo extends Struct {
   @Uint32()
   external int width;
 
@@ -47,15 +47,15 @@ final class ChatVideoInfo extends Struct {
 }
 
 /// The load probe: returns 1. A leaf: it is instant.
-@Native<Uint32 Function()>(isLeaf: true, symbol: 'chat_video_abi_version')
-external int chatVideoAbiVersion();
+@Native<Uint32 Function()>(isLeaf: true, symbol: 'mpx_video_abi_version')
+external int mpxVideoAbiVersion();
 
 /// Not a leaf: probing a container and opening a decoder run long enough to
 /// stall the isolate group at a safepoint.
 @Native<
   Int32 Function(Pointer<Uint8>, Size, Uint32, Uint32, Pointer<Pointer<Void>>)
->(symbol: 'chat_video_open')
-external int chatVideoOpen(
+>(symbol: 'mpx_video_open')
+external int mpxVideoOpen(
   Pointer<Uint8> data,
   int len,
   int targetW,
@@ -64,17 +64,17 @@ external int chatVideoOpen(
 );
 
 /// A leaf: it only copies a few fields.
-@Native<Int32 Function(Pointer<Void>, Pointer<ChatVideoInfo>)>(
+@Native<Int32 Function(Pointer<Void>, Pointer<MpxVideoInfo>)>(
   isLeaf: true,
-  symbol: 'chat_video_info',
+  symbol: 'mpx_video_info',
 )
-external int chatVideoInfo(Pointer<Void> handle, Pointer<ChatVideoInfo> out);
+external int mpxVideoInfo(Pointer<Void> handle, Pointer<MpxVideoInfo> out);
 
 /// Not a leaf: a decode and a scale are long.
 @Native<Int32 Function(Pointer<Void>, Pointer<Uint8>, Size, Pointer<Int64>)>(
-  symbol: 'chat_video_next',
+  symbol: 'mpx_video_next',
 )
-external int chatVideoNext(
+external int mpxVideoNext(
   Pointer<Void> handle,
   Pointer<Uint8> dst,
   int stride,
@@ -82,9 +82,9 @@ external int chatVideoNext(
 );
 
 /// Not a leaf: a seek reads the container.
-@Native<Int32 Function(Pointer<Void>)>(symbol: 'chat_video_rewind')
-external int chatVideoRewind(Pointer<Void> handle);
+@Native<Int32 Function(Pointer<Void>)>(symbol: 'mpx_video_rewind')
+external int mpxVideoRewind(Pointer<Void> handle);
 
 /// Not a leaf: closing a decoder joins its threads.
-@Native<Void Function(Pointer<Void>)>(symbol: 'chat_video_free')
-external void chatVideoFree(Pointer<Void> handle);
+@Native<Void Function(Pointer<Void>)>(symbol: 'mpx_video_free')
+external void mpxVideoFree(Pointer<Void> handle);

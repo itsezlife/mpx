@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
-import 'package:lottie_native/lottie_native.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
 
 /// The pixel size a frame of an animation is rendered at.
 ///

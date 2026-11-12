@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { MAX_FILE_BYTES, MAX_JOBS } from '../chat_lottie_core.mjs';
-import { createWorkerHandler, installWorker } from '../chat_lottie_worker.js';
+import { MAX_FILE_BYTES, MAX_JOBS } from '../mpx_lottie_core.mjs';
+import { createWorkerHandler, installWorker } from '../mpx_lottie_worker.js';
 import { coreOf, fixtureGzip, skip } from './support/wasm_fixture.mjs';
 
 /** A core that records calls and fails on demand. */
@@ -106,7 +106,7 @@ function fakeScope() {
   };
 }
 
-const urls = { wasmUrl: 'a/chat_lottie.wasm', wasmNoSimdUrl: 'a/chat_lottie.nosimd.wasm' };
+const urls = { wasmUrl: 'a/mpx_lottie.wasm', wasmNoSimdUrl: 'a/mpx_lottie.nosimd.wasm' };
 const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
 
 function install(scope, overrides = {}) {
@@ -125,7 +125,7 @@ test('init fetches the SIMD build when the probe validates and reports ready', a
   const fetched = install(scope);
   await scope.send({ type: 'init', ...urls });
   await settle();
-  assert.deepEqual(fetched, ['a/chat_lottie.wasm']);
+  assert.deepEqual(fetched, ['a/mpx_lottie.wasm']);
   assert.deepEqual(scope.posted.map((p) => p.message), [{ type: 'ready', simd: true }]);
 });
 
@@ -134,7 +134,7 @@ test('init fetches the plain build when the probe fails', async () => {
   const fetched = install(scope, { validate: () => false });
   await scope.send({ type: 'init', ...urls });
   await settle();
-  assert.deepEqual(fetched, ['a/chat_lottie.nosimd.wasm']);
+  assert.deepEqual(fetched, ['a/mpx_lottie.nosimd.wasm']);
   assert.deepEqual(scope.posted[0].message, { type: 'ready', simd: false });
 });
 
@@ -149,7 +149,7 @@ test('a SIMD build that will not instantiate falls back to the plain one', async
   });
   await scope.send({ type: 'init', ...urls });
   await settle();
-  assert.deepEqual(fetched, ['a/chat_lottie.wasm', 'a/chat_lottie.nosimd.wasm']);
+  assert.deepEqual(fetched, ['a/mpx_lottie.wasm', 'a/mpx_lottie.nosimd.wasm']);
   assert.deepEqual(scope.posted[0].message, { type: 'ready', simd: false });
 });
 
@@ -158,7 +158,7 @@ test('a failed fetch reports unavailable with the reason', async () => {
   install(scope, {
     validate: () => false,
     fetchBytes: async () => {
-      throw new Error('404 for chat_lottie.nosimd.wasm');
+      throw new Error('404 for mpx_lottie.nosimd.wasm');
     },
   });
   await scope.send({ type: 'init', ...urls });

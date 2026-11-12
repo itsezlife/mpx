@@ -1,6 +1,6 @@
-import 'package:lottie_decoder/src/cache/frame_cache_key.dart';
-import 'package:lottie_native/lottie_native.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
+import 'package:mpx_lottie/src/cache/frame_cache_key.dart';
 
 /// What a frame job renders: a loaded animation, and where its frames are
 /// cached.

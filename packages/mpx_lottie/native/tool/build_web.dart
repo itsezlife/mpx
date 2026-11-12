@@ -1,12 +1,12 @@
-/// Builds the web files of `lottie_native` into a directory:
+/// Builds the web files of `mpx_lottie` into a directory:
 ///
 /// ```sh
 /// dart native/tool/build_web.dart --out web/dist
 /// ```
 ///
-/// It writes `chat_lottie.wasm` (compiled with `+simd128`),
-/// `chat_lottie.nosimd.wasm` (plain wasm32) and copies
-/// `chat_lottie_core.mjs` and `chat_lottie_worker.js` next to them; the worker
+/// It writes `mpx_lottie.wasm` (compiled with `+simd128`),
+/// `mpx_lottie.nosimd.wasm` (plain wasm32) and copies
+/// `mpx_lottie_core.mjs` and `mpx_lottie_worker.js` next to them; the worker
 /// picks the build with a `WebAssembly.validate` probe. The output is not
 /// committed. Needs `cargo` and the Rust target (`rustup target add
 /// wasm32-unknown-unknown`); it never installs anything.
@@ -19,7 +19,7 @@ import '../../hook/src/cargo_build.dart';
 const _triple = 'wasm32-unknown-unknown';
 
 /// The JS files copied from `web/` beside the wasm files.
-const _scripts = ['chat_lottie_core.mjs', 'chat_lottie_worker.js'];
+const _scripts = ['mpx_lottie_core.mjs', 'mpx_lottie_worker.js'];
 
 Future<void> main(List<String> args) async {
   exitCode = await runBuildWeb(
@@ -61,9 +61,9 @@ Future<int> runBuildWeb(
   // Two target directories: cargo keys its cache on the flags only loosely,
   // and sharing one would rebuild the crate on every switch.
   final builds = [
-    (name: 'chat_lottie.nosimd.wasm', dir: 'wasm', flags: null),
+    (name: 'mpx_lottie.nosimd.wasm', dir: 'wasm', flags: null),
     (
-      name: 'chat_lottie.wasm',
+      name: 'mpx_lottie.wasm',
       dir: 'wasm-simd',
       flags: '-C target-feature=+simd128',
     ),
@@ -81,7 +81,7 @@ Future<int> runBuildWeb(
       return 1;
     }
     File(
-      '${native.path}/target/${build.dir}/$_triple/release/chat_lottie.wasm',
+      '${native.path}/target/${build.dir}/$_triple/release/mpx_lottie.wasm',
     ).copySync('$outDir/${build.name}');
   }
   for (final script in _scripts) {

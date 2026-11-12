@@ -3,11 +3,11 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_decoder/lottie_decoder.dart';
-import 'package:lottie_decoder/src/cache/frame_file_reader.dart';
-import 'package:lottie_decoder/src/environment_specific/frame_cache_files_js.dart'
-    as web;
 import 'package:meta/meta.dart';
+import 'package:mpx_lottie/mpx_lottie.dart';
+import 'package:mpx_lottie/src/cache/frame_file_reader.dart';
+import 'package:mpx_lottie/src/environment_specific/frame_cache_files_js.dart'
+    as web;
 
 FrameCacheKey _key(String hash, {int size = 128}) => FrameCacheKey(
   contentHash: hash,

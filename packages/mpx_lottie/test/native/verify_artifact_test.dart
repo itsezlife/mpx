@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 // The tool is not part of lib/: it is reached by path.
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../native/tool/verify_artifact.dart' show runVerifyArtifact;
+import '../../native/tool/verify_artifact.dart' show runVerifyArtifact;
 import 'support/library_headers.dart';
 
 void main() {
@@ -18,7 +18,7 @@ void main() {
   tearDown(() => temp.deleteSync(recursive: true));
 
   File write(List<int> bytes) =>
-      File('${temp.path}/libchat_lottie-x')..writeAsBytesSync(bytes);
+      File('${temp.path}/libmpx_lottie-x')..writeAsBytesSync(bytes);
 
   test('prints OK and exits 0 for a sound library', () {
     final file = write(soundLibraryFor('android-arm64'));

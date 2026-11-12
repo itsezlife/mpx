@@ -2,8 +2,8 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:lottie_decoder/src/cache/frame_cache_files.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_lottie/src/cache/frame_cache_files.dart';
 
 /// The [FrameCacheFiles] of one directory on a file system.
 ///

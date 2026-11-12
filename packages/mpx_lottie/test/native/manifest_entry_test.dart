@@ -6,9 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 // The hook is not part of lib/: a hook may not import the Flutter package
 // that it builds for, so its testable logic is reached by path.
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/manifest_entry.dart';
+import '../../hook/src/manifest_entry.dart';
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/prebuilt_manifest.dart';
+import '../../hook/src/prebuilt_manifest.dart';
 
 void main() {
   late Directory temp;

@@ -1,8 +1,8 @@
 import 'dart:ffi';
 import 'dart:typed_data';
 
-import 'package:catalog_assets/frame_pool.dart';
 import 'package:ffi/ffi.dart';
+import 'package:mpx_core/frame_pool.dart';
 
 /// [FramePageMemory] in native memory, so a render isolate and the UI isolate
 /// see the same bytes.

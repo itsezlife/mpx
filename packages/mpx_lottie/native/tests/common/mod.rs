@@ -1,7 +1,7 @@
 //! Hand-authored fixtures and a safe-ish wrapper over the C ABI for the tests.
 #![allow(dead_code)]
 
-use chat_lottie::{chat_lottie_free, chat_lottie_load, ChatLottie, ChatLottieInfo};
+use mpx_lottie::{mpx_lottie_free, mpx_lottie_load, MpxLottie, MpxLottieInfo};
 use std::io::Write;
 
 /// A 100x100, 30 fps, 60 frame animation: one rotating 60x60 square filled
@@ -42,13 +42,13 @@ pub fn gzip(bytes: &[u8]) -> Vec<u8> {
 
 /// An owned handle that frees itself, so a failing assert does not leak.
 pub struct Loaded {
-    pub handle: *mut ChatLottie,
-    pub info: ChatLottieInfo,
+    pub handle: *mut MpxLottie,
+    pub info: MpxLottieInfo,
 }
 
 impl Drop for Loaded {
     fn drop(&mut self) {
-        unsafe { chat_lottie_free(self.handle) };
+        unsafe { mpx_lottie_free(self.handle) };
     }
 }
 
@@ -57,9 +57,9 @@ impl Drop for Loaded {
 unsafe impl Send for Loaded {}
 
 pub fn try_load(bytes: &[u8]) -> Result<Loaded, i32> {
-    let mut info = ChatLottieInfo::default();
+    let mut info = MpxLottieInfo::default();
     let mut handle = std::ptr::null_mut();
-    let status = unsafe { chat_lottie_load(bytes.as_ptr(), bytes.len(), &mut info, &mut handle) };
+    let status = unsafe { mpx_lottie_load(bytes.as_ptr(), bytes.len(), &mut info, &mut handle) };
     if status == 0 {
         assert!(!handle.is_null(), "status 0 must come with a handle");
         Ok(Loaded { handle, info })

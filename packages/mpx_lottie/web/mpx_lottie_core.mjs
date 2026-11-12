@@ -1,5 +1,5 @@
-// The JavaScript side of the chat_lottie wasm module: no DOM, so it runs in a
-// worker, in Node and in a window. Contract: native/include/chat_lottie.h.
+// The JavaScript side of the mpx_lottie wasm module: no DOM, so it runs in a
+// worker, in Node and in a window. Contract: native/include/mpx_lottie.h.
 
 // --- Choosing the build ---------------------------------------------------
 
@@ -53,8 +53,8 @@ export const MAX_JOBS = 256;
 export const MAX_FILE_BYTES = 4 * 1024 * 1024;
 
 /**
- * The statuses of `native/include/chat_lottie.h`, by the names the header
- * gives them without the `CHAT_LOTTIE_` prefix. `status.test.mjs` parses the
+ * The statuses of `native/include/mpx_lottie.h`, by the names the header
+ * gives them without the `MPX_LOTTIE_` prefix. `status.test.mjs` parses the
  * header and fails if a number or a name drifts.
  */
 export const STATUS = Object.freeze({
@@ -70,7 +70,7 @@ export const STATUS = Object.freeze({
 });
 
 /**
- * Byte offsets of the fields of `ChatLottieInfo` and `ChatLottieJob` in module
+ * Byte offsets of the fields of `MpxLottieInfo` and `MpxLottieJob` in module
  * memory. On wasm32 every field is 4 bytes wide, pointers and `size_t`
  * included. `layout.test.mjs` derives the same numbers from the header, so a
  * drift in either fails a test instead of corrupting memory.
@@ -117,7 +117,7 @@ const PLACEHOLDER_BYTES = 4;
  */
 const UNSET_SLOT = STATUS.INTERNAL;
 
-/** The ABI version this file was written against (`chat_lottie_abi_version`). */
+/** The ABI version this file was written against (`mpx_lottie_abi_version`). */
 const ABI_VERSION = 1;
 
 /**
@@ -149,15 +149,15 @@ const isTrap = (error) => error instanceof WebAssembly.RuntimeError;
  * [options.wrapExports] receives each instance's exports and returns what the
  * core calls instead; it exists for tests, to put a fault on the call path.
  */
-export async function createChatLottie(wasmBytes, { wrapExports = (exports) => exports } = {}) {
+export async function createMpxLottie(wasmBytes, { wrapExports = (exports) => exports } = {}) {
   const { module, instance } = await WebAssembly.instantiate(wasmBytes, {});
 
   /** Everything that belongs to one instance, so a restart replaces it whole. */
   function boot(fresh) {
     const wasm = wrapExports(fresh.exports);
-    const version = wasm.chat_lottie_abi_version();
+    const version = wasm.mpx_lottie_abi_version();
     if (version !== ABI_VERSION) {
-      throw new Error(`chat_lottie wasm has ABI version ${version}, expected ${ABI_VERSION}`);
+      throw new Error(`mpx_lottie wasm has ABI version ${version}, expected ${ABI_VERSION}`);
     }
     const state = {
       wasm,
@@ -180,8 +180,8 @@ export async function createChatLottie(wasmBytes, { wrapExports = (exports) => e
   const words = (state) => new DataView(state.wasm.memory.buffer);
 
   function allocate(state, length) {
-    const pointer = state.wasm.chat_lottie_alloc(length);
-    if (pointer === 0) throw new Error(`chat_lottie_alloc(${length}) failed`);
+    const pointer = state.wasm.mpx_lottie_alloc(length);
+    if (pointer === 0) throw new Error(`mpx_lottie_alloc(${length}) failed`);
     return pointer;
   }
 
@@ -196,7 +196,7 @@ export async function createChatLottie(wasmBytes, { wrapExports = (exports) => e
 
   function giveBack(state, pointer, size) {
     if (state.pooledBytes + size > POOL_LIMIT_BYTES) {
-      state.wasm.chat_lottie_dealloc(pointer, size);
+      state.wasm.mpx_lottie_dealloc(pointer, size);
       return;
     }
     state.pooledBytes += size;
@@ -221,8 +221,8 @@ export async function createChatLottie(wasmBytes, { wrapExports = (exports) => e
     if (closed) {
       throw new Error(
         brokenBy === null
-          ? 'the chat_lottie core is closed'
-          : `the chat_lottie core is closed: it could not restart after a trap (${brokenBy})`,
+          ? 'the mpx_lottie core is closed'
+          : `the mpx_lottie core is closed: it could not restart after a trap (${brokenBy})`,
       );
     }
   }
@@ -268,10 +268,10 @@ export async function createChatLottie(wasmBytes, { wrapExports = (exports) => e
     const length = Math.max(input.length, 1);
     let pointer = 0;
     try {
-      pointer = used.wasm.chat_lottie_alloc(length);
+      pointer = used.wasm.mpx_lottie_alloc(length);
       if (pointer === 0) return { status: STATUS.TOO_LARGE };
       bytes(used).set(input, pointer);
-      const status = used.wasm.chat_lottie_load(pointer, input.length, used.infoPtr, used.handlePtr);
+      const status = used.wasm.mpx_lottie_load(pointer, input.length, used.infoPtr, used.handlePtr);
       if (status !== STATUS.OK) return { status };
       const view = words(used);
       const id = nextId++;
@@ -291,7 +291,7 @@ export async function createChatLottie(wasmBytes, { wrapExports = (exports) => e
       recoverFrom(used, error);
       return { status: STATUS.INTERNAL };
     } finally {
-      if (pointer !== 0) release(used, () => used.wasm.chat_lottie_dealloc(pointer, length));
+      if (pointer !== 0) release(used, () => used.wasm.mpx_lottie_dealloc(pointer, length));
     }
   }
 
@@ -335,8 +335,8 @@ export async function createChatLottie(wasmBytes, { wrapExports = (exports) => e
         view.setUint32(at + LAYOUT.job.strideBytes, regions[i].stride, true);
         view.setInt32(statusesAt + i * 4, UNSET_SLOT, true);
       });
-      const code = used.wasm.chat_lottie_render_batch(table, jobs.length, statusesAt);
-      if (code !== STATUS.OK) throw new Error(`chat_lottie_render_batch failed with ${code}`);
+      const code = used.wasm.mpx_lottie_render_batch(table, jobs.length, statusesAt);
+      if (code !== STATUS.OK) throw new Error(`mpx_lottie_render_batch failed with ${code}`);
       // The call may have grown memory too: fresh views.
       const after = words(used);
       const memory = bytes(used);
@@ -361,7 +361,7 @@ export async function createChatLottie(wasmBytes, { wrapExports = (exports) => e
     const pointer = used.live.get(handle);
     if (pointer === undefined) return;
     used.live.delete(handle);
-    release(used, () => used.wasm.chat_lottie_free(pointer));
+    release(used, () => used.wasm.mpx_lottie_free(pointer));
   }
 
   function close() {
@@ -370,12 +370,12 @@ export async function createChatLottie(wasmBytes, { wrapExports = (exports) => e
     closed = true;
     const used = state;
     try {
-      for (const pointer of used.live.values()) used.wasm.chat_lottie_free(pointer);
+      for (const pointer of used.live.values()) used.wasm.mpx_lottie_free(pointer);
       for (const [size, idle] of used.pool) {
-        for (const pointer of idle) used.wasm.chat_lottie_dealloc(pointer, size);
+        for (const pointer of idle) used.wasm.mpx_lottie_dealloc(pointer, size);
       }
-      used.wasm.chat_lottie_dealloc(used.infoPtr, LAYOUT.info.size);
-      used.wasm.chat_lottie_dealloc(used.handlePtr, 4);
+      used.wasm.mpx_lottie_dealloc(used.infoPtr, LAYOUT.info.size);
+      used.wasm.mpx_lottie_dealloc(used.handlePtr, 4);
     } catch (error) {
       // The instance is being dropped; a trap while tidying it changes nothing.
       if (!isTrap(error)) throw error;

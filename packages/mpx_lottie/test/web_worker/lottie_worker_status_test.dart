@@ -1,8 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_decoder/src/engine/web_worker_lottie_engine.dart';
-import 'package:lottie_native/lottie_native.dart';
+import 'package:mpx_lottie/src/binding/binding.dart';
+import 'package:mpx_lottie/src/engine/web_worker_lottie_engine.dart';
 
 /// The worker answers with the wrapper's status numbers, so the engine's copy
 /// of them is held to the header they come from.
@@ -10,18 +10,16 @@ void main() {
   late Map<String, int> header;
 
   setUpAll(() {
-    final source = File(
-      '../lottie_native/native/include/chat_lottie.h',
-    ).readAsStringSync();
+    final source = File('native/include/mpx_lottie.h').readAsStringSync();
     header = {
       for (final match in RegExp(
-        r'CHAT_LOTTIE_([A-Z_]+)\s*=\s*(-?\d+)',
+        r'MPX_LOTTIE_([A-Z_]+)\s*=\s*(-?\d+)',
       ).allMatches(source))
         match.group(1)!: int.parse(match.group(2)!),
     };
   });
 
-  test('every status constant equals the number in chat_lottie.h', () {
+  test('every status constant equals the number in mpx_lottie.h', () {
     expect(header, isNotEmpty, reason: 'the header was not parsed');
     expect(LottieWorkerStatus.ok, header['OK']);
     expect(LottieWorkerStatus.tooLarge, header['TOO_LARGE']);

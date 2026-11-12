@@ -31,8 +31,8 @@ final class FrameCacheFileInfo {
 /// implementation is [DirectoryFrameCacheFiles]; the web has none, and a cache
 /// there keeps memory only.
 ///
-/// [FrameCache]: package:lottie_decoder/lottie_decoder.dart
-/// [DirectoryFrameCacheFiles]: package:lottie_decoder/lottie_decoder.dart
+/// [FrameCache]: package:mpx_lottie/mpx_lottie.dart
+/// [DirectoryFrameCacheFiles]: package:mpx_lottie/mpx_lottie.dart
 abstract interface class FrameCacheFiles {
   /// Lists the entries and removes anything that is not a complete one. An
   /// absent store holds nothing.

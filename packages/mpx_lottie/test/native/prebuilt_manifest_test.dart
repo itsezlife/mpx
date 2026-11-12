@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 // The hook is not part of lib/: a hook may not import the Flutter package
 // that it builds for, so its testable logic is reached by path.
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/prebuilt_manifest.dart';
+import '../../hook/src/prebuilt_manifest.dart';
 
 final _hash = 'ab' * 32;
 final _other = 'cd' * 32;
@@ -27,7 +27,7 @@ String _manifest({
       artifacts ??
       {
         'macos-arm64': {
-          'file': 'libchat_lottie.dylib',
+          'file': 'libmpx_lottie.dylib',
           'sha256': _other,
           'size': 12,
         },
@@ -44,7 +44,7 @@ void main() {
       expect(manifest.sourceHash, _hash);
       expect(manifest.baseUrl, Uri.parse('https://example.com/lottie/'));
       final artifact = manifest.artifactFor('macos-arm64')!;
-      expect(artifact.file, 'libchat_lottie.dylib');
+      expect(artifact.file, 'libmpx_lottie.dylib');
       expect(artifact.sha256, _other);
       expect(artifact.size, 12);
       expect(manifest.artifactFor('linux-x64'), isNull);
@@ -65,13 +65,13 @@ void main() {
 
       expect(
         manifest.urlOf(manifest.artifactFor('macos-arm64')!),
-        Uri.parse('https://example.com/lottie/libchat_lottie.dylib'),
+        Uri.parse('https://example.com/lottie/libmpx_lottie.dylib'),
       );
     });
 
     test('accepts the file names a build produces', () {
       for (final name in [
-        'libchat_lottie-ios-arm64-simulator.dylib',
+        'libmpx_lottie-ios-arm64-simulator.dylib',
         'a.b_c-D9',
       ]) {
         final manifest = PrebuiltManifest.parse(
@@ -92,7 +92,7 @@ void main() {
 
       expect(
         manifest.urlOf(manifest.artifactFor('macos-arm64')!).toString(),
-        'https://example.com/a%20b/releases/v1/libchat_lottie.dylib',
+        'https://example.com/a%20b/releases/v1/libmpx_lottie.dylib',
       );
     });
 

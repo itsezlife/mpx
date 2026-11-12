@@ -9,7 +9,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_decoder/lottie_decoder.dart';
+import 'package:mpx_lottie/mpx_lottie.dart';
 
 // SHA-256 of the bytes 01 02 03 and of no bytes, from `shasum -a 256`.
 const _hashOf123 =

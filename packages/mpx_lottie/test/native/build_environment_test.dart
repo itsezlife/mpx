@@ -4,11 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 // The hook is not part of lib/: a hook may not import the Flutter package
 // that it builds for, so its testable logic is reached by path.
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/android_ndk.dart';
+import '../../hook/src/android_ndk.dart';
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/build_environment.dart';
+import '../../hook/src/build_environment.dart';
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/targets.dart';
+import '../../hook/src/targets.dart';
 
 const _bin = '/n/toolchains/llvm/prebuilt/darwin-x86_64/bin';
 const _pageFlag = '-C\x1flink-arg=-Wl,-z,max-page-size=16384';

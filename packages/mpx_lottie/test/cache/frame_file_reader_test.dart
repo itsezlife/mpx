@@ -2,9 +2,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_decoder/lottie_decoder.dart';
-import 'package:lottie_decoder/src/cache/frame_cache_codec.dart';
-import 'package:lottie_decoder/src/cache/frame_file_reader.dart';
+import 'package:mpx_lottie/mpx_lottie.dart';
+import 'package:mpx_lottie/src/cache/frame_cache_codec.dart';
+import 'package:mpx_lottie/src/cache/frame_file_reader.dart';
 
 FrameCacheKey _key(String hash) =>
     FrameCacheKey(contentHash: hash, width: 8, height: 8, engineVersion: '1');

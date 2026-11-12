@@ -3,15 +3,13 @@ import 'dart:convert';
 import 'dart:isolate';
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/frame_pool.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_decoder/lottie_decoder.dart';
-import 'package:lottie_native/lottie_native.dart';
-import 'package:lottie_native/testing.dart';
+import 'package:mpx_core/frame_pool.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
+import 'package:mpx_lottie/mpx_lottie.dart';
+import 'package:mpx_lottie/testing.dart';
 
 /// A hand-authored 100x100, 30 fps, 60 frame animation: one rotating 60x60
 /// square filled with 50% opaque orange. Not a corpus sticker.
@@ -40,10 +38,9 @@ const _info = LottieInfo(
   features: LottieFeatures.none,
 );
 
-const _descriptor = ContentDescriptor(
-  key: ContentKey.document('fixture'),
-  semanticKind: SemanticKind.customEmoji,
-  mediaForm: MediaForm.vectorAnimation,
+const _descriptor = MediaDescriptor(
+  key: MediaKey.remote('fixture'),
+  kind: MediaKind.vectorAnimation,
   animated: true,
 );
 
@@ -89,7 +86,7 @@ final class _Rig {
         upload: (pixels, side) async => _image(),
       ),
       clock: clock,
-      startTimer: ManualRetentionTimers().start,
+      startTimer: ManualTimers().start,
     );
     decoder = LottieDecoder(
       engine: this.engine,

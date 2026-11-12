@@ -1,11 +1,11 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/frame_pool.dart';
-import 'package:catalog_assets/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_decoder/lottie_decoder.dart';
+import 'package:mpx_core/frame_pool.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
+import 'package:mpx_lottie/mpx_lottie.dart';
 
 /// Two 128 px pages: four 64 px cells each.
 const _budget = 2 * 128 * 128 * 4;
@@ -26,7 +26,7 @@ void main() {
   late FrameAtlas<Object> atlas;
   late ManualPlaybackTickSource ticks;
   late PlaybackClock clock;
-  late ManualRetentionTimers timers;
+  late ManualTimers timers;
   late LottieFrameScheduler scheduler;
   var time = Duration.zero;
 
@@ -56,7 +56,7 @@ void main() {
     renderer = FakeFrameRenderer();
     ticks = ManualPlaybackTickSource();
     clock = PlaybackClock(ticks: ticks);
-    timers = ManualRetentionTimers();
+    timers = ManualTimers();
     scheduler = build();
   });
   tearDown(() {

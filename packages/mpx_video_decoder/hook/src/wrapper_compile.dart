@@ -1,4 +1,4 @@
-/// Compiles `native/src/chat_video.c` into the wrapper library: a dylib with
+/// Compiles `native/src/mpx_video.c` into the wrapper library: a dylib with
 /// the system C compiler on macOS, a `.so` with the NDK clang on Android.
 library;
 
@@ -45,7 +45,7 @@ List<String> wrapperCompileArguments({
   '-lavcodec',
   '-lavutil',
   '-lswscale',
-  '-Wl,-install_name,@rpath/libchat_video.dylib',
+  '-Wl,-install_name,@rpath/libmpx_video.dylib',
   '-Wl,-rpath,@loader_path',
   // The Flutter tool rewrites install names to longer ones with
   // install_name_tool, which fails without room in the load commands.
@@ -92,7 +92,7 @@ List<String> iosWrapperCompileArguments({
     '-lavcodec',
     '-lavutil',
     '-lswscale',
-    '-Wl,-install_name,@rpath/libchat_video.dylib',
+    '-Wl,-install_name,@rpath/libmpx_video.dylib',
     '-Wl,-rpath,@loader_path',
     '-Wl,-headerpad_max_install_names',
     '-o',
@@ -127,7 +127,7 @@ List<String> androidWrapperCompileArguments({
   source,
   ...libraries,
   '-llog',
-  '-Wl,-soname,libchat_video.so',
+  '-Wl,-soname,libmpx_video.so',
   // Android 15 devices may run 16 KiB pages; Google Play requires 64-bit
   // libraries to be aligned for them.
   '-Wl,-z,max-page-size=16384',
@@ -149,7 +149,7 @@ final class WrapperCompileFailed implements Exception {
 
   @override
   String toString() =>
-      'video_native: compiling the wrapper failed.\n'
+      'mpx_video_decoder: compiling the wrapper failed.\n'
       '$command\n$output';
 }
 
@@ -183,7 +183,7 @@ Future<File> compileWrapper({
 }) async => runCompiler(
   compiler,
   wrapperCompileArguments(
-    source: '${native.path}/src/chat_video.c',
+    source: '${native.path}/src/mpx_video.c',
     includeDir: '${native.path}/include',
     prefix: prefix.path,
     output: output.path,
@@ -237,7 +237,7 @@ Future<File> compileIosWrapper({
     _xcrunSdkName(sdk),
     'clang',
     ...iosWrapperCompileArguments(
-      source: '${native.path}/src/chat_video.c',
+      source: '${native.path}/src/mpx_video.c',
       includeDir: '${native.path}/include',
       prefix: prefix.path,
       output: output.path,
@@ -258,7 +258,7 @@ Future<File> compileAndroidWrapper({
 }) => runCompiler(
   compiler,
   androidWrapperCompileArguments(
-    source: '${native.path}/src/chat_video.c',
+    source: '${native.path}/src/mpx_video.c',
     includeDir: '${native.path}/include',
     prefix: prefix.path,
     libraries: [for (final library in libraries) library.path],

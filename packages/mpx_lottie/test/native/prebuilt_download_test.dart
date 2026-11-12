@@ -9,11 +9,11 @@ import 'package:flutter_test/flutter_test.dart';
 // The hook is not part of lib/: a hook may not import the Flutter package
 // that it builds for, so its testable logic is reached by path.
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/prebuilt_download.dart';
+import '../../hook/src/prebuilt_download.dart';
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/prebuilt_manifest.dart';
+import '../../hook/src/prebuilt_manifest.dart';
 // ignore: avoid_relative_lib_imports, always_use_package_imports
-import '../hook/src/targets.dart';
+import '../../hook/src/targets.dart';
 import 'support/library_headers.dart';
 
 const _target = LottieNativeTarget(OS.macOS, Architecture.arm64);
@@ -25,7 +25,7 @@ final _digest = sha256.convert(_payload).toString();
 PrebuiltArtifact _artifact({
   String? sha256,
   int? size,
-  String file = 'libchat_lottie.dylib',
+  String file = 'libmpx_lottie.dylib',
 }) => PrebuiltArtifact(
   file: file,
   sha256: sha256 ?? _digest,
@@ -47,7 +47,7 @@ void main() {
       await request.response.close();
     };
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    url = Uri.parse('http://127.0.0.1:${server.port}/libchat_lottie.dylib');
+    url = Uri.parse('http://127.0.0.1:${server.port}/libmpx_lottie.dylib');
     server.listen((request) {
       requests++;
       unawaited(handler(request));
@@ -72,7 +72,7 @@ void main() {
   );
 
   /// Serves [bytes] and returns the artifact that pins them.
-  PrebuiltArtifact serve(List<int> bytes, {String file = 'libchat_lottie.so'}) {
+  PrebuiltArtifact serve(List<int> bytes, {String file = 'libmpx_lottie.so'}) {
     handler = (request) async {
       request.response.add(bytes);
       await request.response.close();
@@ -97,7 +97,7 @@ void main() {
       final ready = result as PrebuiltReady;
       expect(ready.file.readAsBytesSync(), _payload);
       expect(ready.file.path, contains(_digest));
-      expect(ready.file.path, endsWith('libchat_lottie.dylib'));
+      expect(ready.file.path, endsWith('libmpx_lottie.dylib'));
       expect(leftovers(), [ready.file.path], reason: 'no temp file remains');
     });
 
@@ -222,12 +222,12 @@ void main() {
     test('a partial temp file is never taken for the artifact', () async {
       await server.close(force: true);
       final dir = Directory('${cache.path}/$_digest')..createSync();
-      File('${dir.path}/libchat_lottie.dylib.part').writeAsBytesSync(_payload);
+      File('${dir.path}/libmpx_lottie.dylib.part').writeAsBytesSync(_payload);
 
       final result = await fetch();
 
       expect(result, isA<PrebuiltUnavailable>());
-      expect(File('${dir.path}/libchat_lottie.dylib').existsSync(), isFalse);
+      expect(File('${dir.path}/libmpx_lottie.dylib').existsSync(), isFalse);
     });
   });
 
@@ -344,7 +344,7 @@ void main() {
           }
         });
       });
-      url = Uri.parse('http://127.0.0.1:${raw.port}/libchat_lottie.dylib');
+      url = Uri.parse('http://127.0.0.1:${raw.port}/libmpx_lottie.dylib');
 
       final result = await fetch(timeout: const Duration(milliseconds: 300));
 
@@ -405,7 +405,7 @@ void main() {
         if (outside.existsSync()) outside.deleteSync();
       });
       final dir = Directory('${cache.path}/$_digest')..createSync();
-      Link('${dir.path}/libchat_lottie.dylib').createSync(outside.path);
+      Link('${dir.path}/libmpx_lottie.dylib').createSync(outside.path);
       final before = requests;
 
       final result = await fetch();
@@ -424,7 +424,7 @@ void main() {
         'through', () async {
       final outside = Directory.systemTemp.createTempSync('prebuilt_outside');
       addTearDown(() => outside.deleteSync(recursive: true));
-      File('${outside.path}/libchat_lottie.dylib').writeAsBytesSync(_payload);
+      File('${outside.path}/libmpx_lottie.dylib').writeAsBytesSync(_payload);
       Link('${cache.path}/$_digest').createSync(outside.path);
       final before = requests;
 
@@ -438,7 +438,7 @@ void main() {
       expect(requests, before + 1);
       expect(
         outside.listSync().map((e) => e.uri.pathSegments.last),
-        ['libchat_lottie.dylib'],
+        ['libmpx_lottie.dylib'],
         reason: 'nothing was written into the link target',
       );
     }, skip: posixOnly);

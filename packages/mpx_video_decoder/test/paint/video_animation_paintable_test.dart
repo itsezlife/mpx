@@ -1,13 +1,12 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/testing.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_decoder/testing.dart';
-import 'package:video_decoder/video_decoder.dart';
-import 'package:video_native/video_native.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
+import 'package:mpx_video_decoder/mpx_video_decoder.dart';
+import 'package:mpx_video_decoder/testing.dart';
 
 const _info = VideoInfo(
   width: 16,
@@ -46,7 +45,7 @@ void main() {
   late FakeVideoEngine engine;
   late ManualPlaybackTickSource ticks;
   late PlaybackClock clock;
-  late ManualRetentionTimers timers;
+  late ManualTimers timers;
   late VideoFrameScheduler scheduler;
   late VideoClip clip;
   var now = Duration.zero;
@@ -105,7 +104,7 @@ void main() {
     engine = FakeVideoEngine()..accept(bytes, _info, frameCount: 3);
     ticks = ManualPlaybackTickSource();
     clock = PlaybackClock(ticks: ticks);
-    timers = ManualRetentionTimers();
+    timers = ManualTimers();
     scheduler = build();
     clip =
         ((await engine.open(bytes, width: 16, height: 16)) as VideoClipOpened)

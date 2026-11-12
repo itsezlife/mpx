@@ -1,5 +1,5 @@
-use chat_lottie::{
-    chat_lottie_compress_region, chat_lottie_decompress_region, chat_lottie_lz4_bound,
+use mpx_lottie::{
+    mpx_lottie_compress_region, mpx_lottie_decompress_region, mpx_lottie_lz4_bound,
 };
 
 const GUARD: u8 = 0xAB;
@@ -46,10 +46,10 @@ fn page_with(pixels: &[u8], w: u32, h: u32, x0: usize, y0: usize) -> (Vec<u8>, u
 }
 
 fn compress(target: &[u8], stride: usize, w: u32, h: u32) -> Vec<u8> {
-    let mut dst = vec![0u8; chat_lottie_lz4_bound(w, h)];
+    let mut dst = vec![0u8; mpx_lottie_lz4_bound(w, h)];
     let mut len = 0usize;
     let status = unsafe {
-        chat_lottie_compress_region(
+        mpx_lottie_compress_region(
             target.as_ptr(),
             stride,
             w,
@@ -66,7 +66,7 @@ fn compress(target: &[u8], stride: usize, w: u32, h: u32) -> Vec<u8> {
 
 fn decompress(src: &[u8], target: &mut [u8], stride: usize, w: u32, h: u32) -> i32 {
     unsafe {
-        chat_lottie_decompress_region(src.as_ptr(), src.len(), target.as_mut_ptr(), stride, w, h)
+        mpx_lottie_decompress_region(src.as_ptr(), src.len(), target.as_mut_ptr(), stride, w, h)
     }
 }
 
@@ -114,15 +114,15 @@ fn noise_round_trips_and_never_exceeds_the_bound() {
         let px = noise((w * h * 4) as usize);
         assert_eq!(round_trip(&px, w, h), px);
         let (page, stride) = page_with(&px, w, h, 0, 0);
-        assert!(compress(&page, stride, w, h).len() <= chat_lottie_lz4_bound(w, h));
+        assert!(compress(&page, stride, w, h).len() <= mpx_lottie_lz4_bound(w, h));
     }
 }
 
 #[test]
 fn the_bound_covers_the_raw_size_and_is_zero_for_a_bad_size() {
-    assert!(chat_lottie_lz4_bound(10, 10) >= 400);
-    assert_eq!(chat_lottie_lz4_bound(0, 10), 0);
-    assert_eq!(chat_lottie_lz4_bound(513, 10), 0);
+    assert!(mpx_lottie_lz4_bound(10, 10) >= 400);
+    assert_eq!(mpx_lottie_lz4_bound(0, 10), 0);
+    assert_eq!(mpx_lottie_lz4_bound(513, 10), 0);
 }
 
 #[test]
@@ -148,7 +148,7 @@ fn dst_cap_one_byte_short_is_too_small_and_exact_fits() {
     let mut dst = vec![0u8; need + 1];
     let mut len = 77usize;
     let short = unsafe {
-        chat_lottie_compress_region(
+        mpx_lottie_compress_region(
             page.as_ptr(),
             stride,
             16,
@@ -162,7 +162,7 @@ fn dst_cap_one_byte_short_is_too_small_and_exact_fits() {
     assert_eq!(len, 77, "out_len is untouched on failure");
     assert_eq!(dst[need], 0, "nothing past dst_cap is written");
     let exact = unsafe {
-        chat_lottie_compress_region(
+        mpx_lottie_compress_region(
             page.as_ptr(),
             stride,
             16,
@@ -182,7 +182,7 @@ fn compress_rejects_null_and_bad_sizes() {
     let mut dst = vec![0u8; 1024];
     let mut len = 0usize;
     let call = |t: *const u8, s: usize, w: u32, h: u32, d: *mut u8, o: *mut usize| unsafe {
-        chat_lottie_compress_region(t, s, w, h, d, 1024, o)
+        mpx_lottie_compress_region(t, s, w, h, d, 1024, o)
     };
     assert_eq!(
         call(std::ptr::null(), stride, 8, 8, dst.as_mut_ptr(), &mut len),
@@ -232,7 +232,7 @@ fn decompress_rejects_null_and_bad_sizes_without_writing() {
     let packed = compress(&page, stride, 8, 8);
     let mut target = vec![GUARD; 8 * 8 * 4];
     let call = |s: *const u8, t: *mut u8, stride: usize, w: u32, h: u32| unsafe {
-        chat_lottie_decompress_region(s, packed.len(), t, stride, w, h)
+        mpx_lottie_decompress_region(s, packed.len(), t, stride, w, h)
     };
     assert_eq!(
         call(std::ptr::null(), target.as_mut_ptr(), 32, 8, 8),
@@ -315,7 +315,7 @@ fn a_length_beyond_the_address_space_is_refused_before_any_slice_is_made() {
     let dangling = std::ptr::NonNull::<u8>::dangling().as_ptr();
     let mut target = vec![GUARD; 8 * 8 * 4];
     let status = unsafe {
-        chat_lottie_decompress_region(
+        mpx_lottie_decompress_region(
             dangling,
             isize::MAX as usize + 1,
             target.as_mut_ptr(),
@@ -332,7 +332,7 @@ fn a_length_beyond_the_address_space_is_refused_before_any_slice_is_made() {
     let mut dst = vec![0u8; 1024];
     let mut len = 77usize;
     let status = unsafe {
-        chat_lottie_compress_region(
+        mpx_lottie_compress_region(
             page.as_ptr(),
             stride,
             8,

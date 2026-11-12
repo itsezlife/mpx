@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lottie_native/src/lottie_frame_codec.dart';
+import 'package:mpx_lottie/src/binding/lottie_frame_codec.dart';
 
 /// What a [LottieFrameCodecContract] run needs besides the codec.
 final class LottieFrameCodecHarness {

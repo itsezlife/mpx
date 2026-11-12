@@ -2,20 +2,17 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_decoder/testing.dart';
-import 'package:video_decoder/video_decoder.dart';
-import 'package:video_native/video_native.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
+import 'package:mpx_video_decoder/mpx_video_decoder.dart';
+import 'package:mpx_video_decoder/testing.dart';
 
 import '../support/gated_video_engine.dart';
 
-const _descriptor = ContentDescriptor(
-  key: ContentKey.document('fixture'),
-  semanticKind: SemanticKind.customEmoji,
-  mediaForm: MediaForm.video,
+const _descriptor = MediaDescriptor(
+  key: MediaKey.remote('fixture'),
+  kind: MediaKind.video,
   animated: true,
 );
 
@@ -111,7 +108,7 @@ void main() {
       engine: engine,
       atlas: VideoFrameAtlas.create(upload: (pixels, side) async => _image()),
       clock: clock,
-      startTimer: ManualRetentionTimers().start,
+      startTimer: ManualTimers().start,
     );
     decoder = VideoDecoder(
       engine: engine,
