@@ -1,0 +1,66 @@
+name: Check
+
+# The three gates, per package: tests, `dart analyze --fatal-infos`, and
+# `dart format` at 80 columns. No workspace lints: dependency direction,
+# re-exports and fakes are held by convention (AGENTS.md).
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - http_bytes_cache
+          - mpx_core
+          - mpx_lottie
+          - mpx_video_decoder
+          - mpx_player
+          - mpx_ui
+          - mpx_capture
+          - mpx
+    defaults:
+      run:
+        working-directory: packages/${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same SDK the lockfile was resolved with (root pubspec); bump together.
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.41.7
+          cache: true
+
+      - name: Resolve workspace
+        working-directory: .
+        run: flutter pub get --enforce-lockfile
+
+      # Pure-Dart packages run under `dart test`; the rest under Flutter.
+      - name: Test
+        run: |
+          if grep -q "sdk: flutter" pubspec.yaml; then
+            flutter test --concurrency 40 test/unit_test.dart
+          else
+            dart test test/unit_test.dart
+          fi
+
+      - name: Analyze
+        run: dart analyze --fatal-infos
+
+      - name: Format
+        run: >
+          find lib test -name "*.dart" ! -name "*.*.dart" -print0
+          | xargs -0 dart format --set-exit-if-changed --line-length 80 -o none

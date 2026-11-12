@@ -1,0 +1,40 @@
+name: mpx
+description: >
+  The composition root of mpx: builds a media stack from the core and the
+  bytes cache.
+version: 0.0.1
+homepage: https://github.com/itsezlife/mpx
+repository: https://github.com/itsezlife/mpx/tree/main/packages/mpx
+issue_tracker: https://github.com/itsezlife/mpx/issues
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+  flutter: '>=3.38.0'
+
+dependencies:
+  # Edges fixed by ADR 0001; nothing else in the workspace.
+  flutter:
+    sdk: flutter
+  mpx_core:
+    path: ../mpx_core
+  http_bytes_cache:
+    path: ../http_bytes_cache
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.mpx
+        pluginClass: MpxPlugin
+      ios:
+        pluginClass: MpxPlugin
+        sharedDarwinSource: true
+      macos:
+        pluginClass: MpxPlugin
+        sharedDarwinSource: true

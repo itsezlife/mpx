@@ -1,0 +1,18 @@
+name: http_bytes_cache
+description: >
+  A durable cache for HTTP response bytes, with an HTTP client, middlewares
+  and a disk store, in pure Dart.
+version: 0.0.1
+homepage: https://github.com/itsezlife/mpx
+repository: https://github.com/itsezlife/mpx/tree/main/packages/http_bytes_cache
+issue_tracker: https://github.com/itsezlife/mpx/issues
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+
+dependencies: {}
+
+dev_dependencies:
+  test: ^1.25.0

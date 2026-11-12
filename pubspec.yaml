@@ -1,0 +1,36 @@
+name: mpx_workspace
+description: Workspace root of mpx; not a package of the set.
+publish_to: none
+
+# One resolution and one lockfile for the repo (ADR 0001). Append a new
+# package here (literal paths, no globs).
+workspace:
+  - packages/http_bytes_cache
+  - packages/mpx_core
+  - packages/mpx_lottie
+  - packages/mpx_video_decoder
+  - packages/mpx_player
+  - packages/mpx_ui
+  - packages/mpx_capture
+  - packages/mpx
+
+environment:
+  sdk: ^3.11.0
+  # The SDK CI pins (.github/workflows/check.yml); bump both together.
+  flutter: 3.41.7
+
+dev_dependencies:
+  # The lint set every package includes through analysis_options.yaml.
+  flutter_lints: ^6.0.0
+  # Versioning and publishing over the workspace (ADR 0008). Package list
+  # comes from `workspace:` above.
+  melos: ^8.1.0
+
+melos:
+  repository: https://github.com/itsezlife/mpx
+  command:
+    version:
+      # Each package versions on its own (ADR 0008 leaves the mode open; the
+      # publishing research names independent as the default).
+      branch: main
+      linkToCommits: false

@@ -1,0 +1,35 @@
+name: mpx_core
+description: >
+  The core of mpx: media identity, an asset cache and decode pipeline,
+  playback clock, budgets and texture hosts.
+version: 0.0.1
+homepage: https://github.com/itsezlife/mpx
+repository: https://github.com/itsezlife/mpx/tree/main/packages/mpx_core
+issue_tracker: https://github.com/itsezlife/mpx/issues
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+  flutter: '>=3.38.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.mpx.core
+        pluginClass: MpxCorePlugin
+      ios:
+        pluginClass: MpxCorePlugin
+        sharedDarwinSource: true
+      macos:
+        pluginClass: MpxCorePlugin
+        sharedDarwinSource: true

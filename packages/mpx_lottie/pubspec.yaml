@@ -1,0 +1,25 @@
+name: mpx_lottie
+description: >
+  A vector animation decoder for mpx_core, backed by a native library built
+  by a build hook.
+version: 0.0.1
+homepage: https://github.com/itsezlife/mpx
+repository: https://github.com/itsezlife/mpx/tree/main/packages/mpx_lottie
+issue_tracker: https://github.com/itsezlife/mpx/issues
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+  flutter: '>=3.38.0'
+
+dependencies:
+  # Edges fixed by ADR 0001; nothing else in the workspace.
+  flutter:
+    sdk: flutter
+  mpx_core:
+    path: ../mpx_core
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

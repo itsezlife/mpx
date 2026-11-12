@@ -1,0 +1,40 @@
+name: mpx_player
+description: >
+  A hardware video player for mpx: a player pool with leases, one audio
+  owner, and feed playback modes.
+version: 0.0.1
+homepage: https://github.com/itsezlife/mpx
+repository: https://github.com/itsezlife/mpx/tree/main/packages/mpx_player
+issue_tracker: https://github.com/itsezlife/mpx/issues
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+  flutter: '>=3.38.0'
+
+dependencies:
+  # Edges fixed by ADR 0001; nothing else in the workspace.
+  flutter:
+    sdk: flutter
+  mpx_core:
+    path: ../mpx_core
+  http_bytes_cache:
+    path: ../http_bytes_cache
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.mpx.player
+        pluginClass: MpxPlayerPlugin
+      ios:
+        pluginClass: MpxPlayerPlugin
+        sharedDarwinSource: true
+      macos:
+        pluginClass: MpxPlayerPlugin
+        sharedDarwinSource: true

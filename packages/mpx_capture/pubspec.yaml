@@ -1,0 +1,40 @@
+name: mpx_capture
+description: >
+  Optional media capture for mpx: compression before send and round video
+  recording.
+version: 0.0.1
+homepage: https://github.com/itsezlife/mpx
+repository: https://github.com/itsezlife/mpx/tree/main/packages/mpx_capture
+issue_tracker: https://github.com/itsezlife/mpx/issues
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+  flutter: '>=3.38.0'
+
+dependencies:
+  # Edges fixed by ADR 0001; nothing else in the workspace.
+  flutter:
+    sdk: flutter
+  mpx_core:
+    path: ../mpx_core
+  http_bytes_cache:
+    path: ../http_bytes_cache
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.mpx.capture
+        pluginClass: MpxCapturePlugin
+      ios:
+        pluginClass: MpxCapturePlugin
+        sharedDarwinSource: true
+      macos:
+        pluginClass: MpxCapturePlugin
+        sharedDarwinSource: true
