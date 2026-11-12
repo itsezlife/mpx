@@ -6,3 +6,4 @@ library;
 
 export 'src/testing/bytes_store_contract.dart';
 export 'src/testing/fake_bytes_ports.dart';
+export 'src/testing/ranged_store_contract.dart';

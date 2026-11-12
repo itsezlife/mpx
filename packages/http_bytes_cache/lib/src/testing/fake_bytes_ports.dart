@@ -38,11 +38,13 @@ final class FakeBytesIndex implements IBytesIndex {
   }
 }
 
-/// In-memory [IBytesFileBlobStore] keyed by [BytesCacheKey.value].
+/// In-memory [IBytesFileBlobStore] and [IBytesRangedBlobStore] keyed by
+/// [BytesCacheKey.value].
 ///
 /// [pathOf] names a path under [root] that is never created, so stores built
 /// on it hand out [FileLease]s whose pinning tests can observe in [payloads].
-final class FakeBytesBlobStore implements IBytesFileBlobStore {
+final class FakeBytesBlobStore
+    implements IBytesFileBlobStore, IBytesRangedBlobStore {
   /// Fake directory the [pathOf] paths sit under.
   static const String root = '/fake-bytes-blobs';
 
@@ -64,6 +66,28 @@ final class FakeBytesBlobStore implements IBytesFileBlobStore {
   @override
   Future<void> delete(BytesCacheKey key) async {
     payloads.remove(key.value);
+  }
+
+  @override
+  Future<void> writeAt(BytesCacheKey key, int offset, Uint8List bytes) async {
+    final current = payloads[key.value] ?? Uint8List(0);
+    final end = offset + bytes.length;
+    final grown = current.length >= end
+        ? Uint8List.fromList(current)
+        : (Uint8List(end)..setAll(0, current));
+    payloads[key.value] = grown..setAll(offset, bytes);
+  }
+
+  @override
+  Future<Uint8List?> readAt(BytesCacheKey key, int offset, int length) async {
+    final current = payloads[key.value];
+    if (current == null || current.length < offset + length) return null;
+    return Uint8List.sublistView(current, offset, offset + length);
+  }
+
+  @override
+  Future<void> clear(BytesCacheKey key) async {
+    payloads[key.value] = Uint8List(0);
   }
 
   /// Drops payloads whose key is not in [keep], like a platform reclaim.

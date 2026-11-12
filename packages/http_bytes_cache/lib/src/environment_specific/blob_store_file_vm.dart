@@ -28,7 +28,8 @@ import 'package:path/path.dart' as p;
 /// RPC futures complete with [StateError] instead of hanging, the dead
 /// controller is dropped, and a later op may respawn. [close] still fails
 /// pending with a closed [StateError] and refuses further RPCs.
-final class BytesBlobStore$File$VM implements IBytesFileBlobStore {
+final class BytesBlobStore$File$VM
+    implements IBytesFileBlobStore, IBytesRangedBlobStore {
   /// Roots the store at [directory]. The directory is created on
   /// [ensureDirectory] / first write, not in this constructor.
   BytesBlobStore$File$VM({required this.directory});
@@ -88,6 +89,55 @@ final class BytesBlobStore$File$VM implements IBytesFileBlobStore {
   @override
   Future<void> delete(BytesCacheKey key) => deletePath(_pathFor(key));
 
+  @override
+  Future<void> writeAt(BytesCacheKey key, int offset, Uint8List bytes) async {
+    final payload = bytes.lengthInBytes >= transferByteThreshold
+        ? TransferableTypedData.fromList([bytes])
+        : bytes;
+    await _rpc(
+      (
+        id: -1,
+        op: .writeAt,
+        path: _pathFor(key),
+        bytes: payload,
+        indexedKeys: null,
+        offset: offset,
+        length: 0,
+      ),
+    );
+  }
+
+  @override
+  Future<Uint8List?> readAt(BytesCacheKey key, int offset, int length) async {
+    final response = await _rpc(
+      (
+        id: -1,
+        op: .readAt,
+        path: _pathFor(key),
+        bytes: null,
+        indexedKeys: null,
+        offset: offset,
+        length: length,
+      ),
+    );
+    return response.bytes;
+  }
+
+  @override
+  Future<void> clear(BytesCacheKey key) async {
+    await _rpc(
+      (
+        id: -1,
+        op: .clear,
+        path: _pathFor(key),
+        bytes: null,
+        indexedKeys: null,
+        offset: 0,
+        length: 0,
+      ),
+    );
+  }
+
   /// Creates [directory] (and parents) on the worker.
   Future<void> ensureDirectory() async {
     await _rpc(
@@ -97,6 +147,8 @@ final class BytesBlobStore$File$VM implements IBytesFileBlobStore {
         path: directory,
         bytes: null,
         indexedKeys: null,
+        offset: 0,
+        length: 0,
       ),
     );
   }
@@ -112,6 +164,8 @@ final class BytesBlobStore$File$VM implements IBytesFileBlobStore {
         path: path,
         bytes: null,
         indexedKeys: null,
+        offset: 0,
+        length: 0,
       ),
     );
     return response.bytes;
@@ -133,6 +187,8 @@ final class BytesBlobStore$File$VM implements IBytesFileBlobStore {
         path: path,
         bytes: payload,
         indexedKeys: null,
+        offset: 0,
+        length: 0,
       ),
     );
   }
@@ -146,6 +202,8 @@ final class BytesBlobStore$File$VM implements IBytesFileBlobStore {
         path: path,
         bytes: null,
         indexedKeys: null,
+        offset: 0,
+        length: 0,
       ),
     );
   }
@@ -162,6 +220,8 @@ final class BytesBlobStore$File$VM implements IBytesFileBlobStore {
         path: directory,
         bytes: null,
         indexedKeys: indexedKeys,
+        offset: 0,
+        length: 0,
       ),
     );
   }
@@ -175,6 +235,8 @@ final class BytesBlobStore$File$VM implements IBytesFileBlobStore {
         path: directory,
         bytes: null,
         indexedKeys: null,
+        offset: 0,
+        length: 0,
       ),
     );
   }
@@ -218,6 +280,8 @@ final class BytesBlobStore$File$VM implements IBytesFileBlobStore {
       path: template.path,
       bytes: template.bytes,
       indexedKeys: template.indexedKeys,
+      offset: template.offset,
+      length: template.length,
     ));
     final response = await completer.future;
     return switch (response.error) {
@@ -323,7 +387,17 @@ final class BytesBlobStore$File$VM implements IBytesFileBlobStore {
 
 // --- Isolate protocol -------------------------------------------------------
 
-enum _BlobIoOp { read, write, delete, reclaim, wipe, mkdir }
+enum _BlobIoOp {
+  read,
+  write,
+  delete,
+  reclaim,
+  wipe,
+  mkdir,
+  writeAt,
+  readAt,
+  clear,
+}
 
 /// [bytes] is [Uint8List], [TransferableTypedData], or null (non-write ops).
 typedef _BlobIoRequest = ({
@@ -332,6 +406,8 @@ typedef _BlobIoRequest = ({
   String path,
   Object? bytes,
   Set<String>? indexedKeys,
+  int offset,
+  int length,
 });
 
 typedef _BlobIoResponse = ({
@@ -371,6 +447,22 @@ Future<void> _fileBlobIoHandler(
           send((id: request.id, bytes: null, error: null));
         case .mkdir:
           Directory(request.path).createSync(recursive: true);
+          send((id: request.id, bytes: null, error: null));
+        case .writeAt:
+          _writeAt(
+            request.path,
+            request.offset,
+            _materializeWriteBytes(request.bytes),
+          );
+          send((id: request.id, bytes: null, error: null));
+        case .readAt:
+          send((
+            id: request.id,
+            bytes: _readAt(request.path, request.offset, request.length),
+            error: null,
+          ));
+        case .clear:
+          _clear(request.path);
           send((id: request.id, bytes: null, error: null));
       }
     } on Object catch (error) {
@@ -422,6 +514,49 @@ void _writeAtomic(String path, Uint8List bytes) {
       // Target already gone.
     }
     temp.renameSync(path);
+  }
+}
+
+/// Writes in place: a sparse payload grows by offset writes, never by
+/// replacing the file, so a native reader holding it open sees every write.
+void _writeAt(String path, int offset, Uint8List bytes) {
+  final file = File(path);
+  file.parent.createSync(recursive: true);
+  final handle = file.openSync(mode: FileMode.append);
+  try {
+    handle
+      ..setPositionSync(offset)
+      ..writeFromSync(bytes);
+  } finally {
+    handle.closeSync();
+  }
+}
+
+Uint8List? _readAt(String path, int offset, int length) {
+  final RandomAccessFile handle;
+  try {
+    handle = File(path).openSync();
+  } on FileSystemException {
+    return null;
+  }
+  try {
+    if (handle.lengthSync() < offset + length) return null;
+    handle.setPositionSync(offset);
+    return handle.readSync(length);
+  } finally {
+    handle.closeSync();
+  }
+}
+
+/// Truncates in place (same file), creating it when absent.
+void _clear(String path) {
+  final file = File(path);
+  file.parent.createSync(recursive: true);
+  final handle = file.openSync(mode: FileMode.append);
+  try {
+    handle.truncateSync(0);
+  } finally {
+    handle.closeSync();
   }
 }
 

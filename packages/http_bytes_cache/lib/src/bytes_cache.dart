@@ -8,6 +8,8 @@ import 'package:crypto/crypto.dart';
 import 'package:http_bytes_cache/src/bytes_diagnostics.dart';
 import 'package:http_bytes_cache/src/environment_specific/cache_open.dart'
     as environment_specific;
+import 'package:http_bytes_cache/src/http/byte_range.dart';
+import 'package:http_bytes_cache/src/ranged/byte_range_set.dart';
 import 'package:meta/meta.dart';
 
 /// Cache identity for remote bytes (disk / durable store / PageStorage).
@@ -606,10 +608,31 @@ final class BytesRecord {
     this.httpCacheMeta,
     this.quota = _defaultQuotaName,
     this.payloadKey,
+    this.ranges,
+    this.totalLength,
   });
 
   /// Entry identity.
   final BytesCacheKey key;
+
+  /// Bytes present in the sparse payload of a ranged resource; null for a
+  /// whole resource. [byteLength] is their sum.
+  final ByteRangeSet? ranges;
+
+  /// Length of the whole representation a ranged row holds part of, when
+  /// known. Null for a whole resource.
+  final int? totalLength;
+
+  /// Whether this row is a ranged resource.
+  bool get isRanged => ranges != null;
+
+  /// Whether this row can be read whole: a whole resource, or a ranged one
+  /// whose ranges cover its known [totalLength].
+  bool get isWhole => switch ((ranges, totalLength)) {
+    (null, _) => true,
+    (final set?, final total?) => total > 0 && set.covers(0, total),
+    (_, null) => false,
+  };
 
   /// Key the payload is stored under when it is not [key]: an alias row
   /// ([IBytesStore.alias]) reads another row's payload. Null for a row that
@@ -653,6 +676,8 @@ final class BytesRecord {
     httpCacheMeta: httpCacheMeta ?? this.httpCacheMeta,
     quota: quota ?? this.quota,
     payloadKey: payloadKey ?? this.payloadKey,
+    ranges: ranges,
+    totalLength: totalLength,
   );
 }
 
@@ -725,6 +750,25 @@ abstract interface class IBytesBlobStore {
 abstract interface class IBytesFileBlobStore implements IBytesBlobStore {
   /// Absolute path of the payload file for [key], whether or not it exists.
   String pathOf(BytesCacheKey key);
+}
+
+/// Payload port that writes and reads a payload in place, at offsets: the
+/// sparse files of ranged resources.
+///
+/// [IndexedBytesCache] serves [IRangedBytesStore] only over a blob store of
+/// this kind; others answer [IRangedBytesStore.supportsRanges] false.
+abstract interface class IBytesRangedBlobStore implements IBytesBlobStore {
+  /// Writes [bytes] at [offset] of [key]'s payload, creating it when absent.
+  /// Bytes outside the write are left as they are.
+  Future<void> writeAt(BytesCacheKey key, int offset, Uint8List bytes);
+
+  /// Reads [length] bytes at [offset], or null when the payload is missing
+  /// or shorter.
+  Future<Uint8List?> readAt(BytesCacheKey key, int offset, int length);
+
+  /// Empties [key]'s payload in place, creating it when absent. In place, so
+  /// a reader that holds the file open keeps reading the same file.
+  Future<void> clear(BytesCacheKey key);
 }
 
 /// A held path to a stored payload file.
@@ -853,6 +897,99 @@ abstract interface class IBytesStore implements IBytesCache, IBytesRichCache {
   Future<void> release(BytesCacheKey local);
 }
 
+/// What a ranged resource holds: the representation's validator and length,
+/// and the byte ranges present.
+@immutable
+final class RangedState {
+  /// State of one ranged resource.
+  const RangedState({
+    required this.ranges,
+    this.totalLength,
+    this.validator,
+  });
+
+  /// Bytes present.
+  final ByteRangeSet ranges;
+
+  /// Length of the representation, when known.
+  final int? totalLength;
+
+  /// The representation's validators (ETag / Last-Modified) the bytes belong
+  /// to; bytes under another validator are never mixed in.
+  final HttpCacheMeta? validator;
+
+  /// Whether every byte of the representation is present.
+  bool get isComplete => switch (totalLength) {
+    final total? => total > 0 && ranges.covers(0, total),
+    null => false,
+  };
+}
+
+/// A store that also keeps ranged resources: one sparse payload per key with
+/// the ranges present, the representation's validator and its length.
+///
+/// Ranged rows share the index, the quotas and the eviction pass with whole
+/// rows; their [BytesRecord.byteLength] is the bytes present, counted against
+/// [BytesQuota.videoRanges] unless a write names another quota. Eviction takes
+/// a ranged resource whole, never part of it, and never one held open through
+/// a [FileLease] ([openRanged], [IBytesStore.leaseFile]). An incomplete
+/// ranged resource is a miss for whole reads ([IBytesCache.read],
+/// [IBytesStore.contains]); a complete one reads like a whole resource.
+///
+/// Implemented by [IndexedBytesCache] and the stores [BytesCache.open]
+/// returns; [supportsRanges] says whether the payload port can write at
+/// offsets (the VM store can, browser storage cannot).
+abstract interface class IRangedBytesStore implements IBytesStore {
+  /// Whether this store keeps ranged resources. When false, every ranged
+  /// operation throws [UnsupportedError].
+  bool get supportsRanges;
+
+  /// The ranged state of [key] from RAM, or null when [key] holds no ranged
+  /// resource.
+  RangedState? rangesOf(BytesCacheKey key);
+
+  /// Makes [key] a ranged resource (empty when it held none) and leases its
+  /// payload file, so readers can open it before any byte lands and eviction
+  /// leaves it alone until the lease is released. [quota] defaults to
+  /// [BytesQuota.videoRanges]. A whole resource at [key] is kept when
+  /// complete bytes are already there.
+  Future<FileLease> openRanged(BytesCacheKey key, {BytesQuota? quota});
+
+  /// Writes [bytes] at [offset] of [key]'s sparse payload and adds them to
+  /// its ranges. Returns the state after the write.
+  ///
+  /// [validator] identifies the representation the bytes come from. When it
+  /// differs from the stored one (another ETag; without ETags another
+  /// Last-Modified), or [totalLength] differs from a known length, every
+  /// span is dropped first: bytes of two representations never mix. A whole
+  /// resource at [key] is replaced.
+  ///
+  /// The range index is committed lazily (at most every few seconds, with
+  /// any other mutation, and on close); the bytes are in the file when this
+  /// returns.
+  Future<RangedState> writeRange(
+    BytesCacheKey key,
+    int offset,
+    Uint8List bytes, {
+    HttpCacheMeta? validator,
+    int? totalLength,
+    BytesQuota? quota,
+  });
+
+  /// Drops every span of [key] and records a new representation
+  /// ([validator], [totalLength]): what a `200` to a range request means.
+  Future<RangedState> resetRanges(
+    BytesCacheKey key, {
+    HttpCacheMeta? validator,
+    int? totalLength,
+    BytesQuota? quota,
+  });
+
+  /// The bytes of [range] (which must be closed) when all are present,
+  /// else null. Counts as a use.
+  Future<Uint8List?> readRange(BytesCacheKey key, ByteRange range);
+}
+
 /// [IBytesCache] that keeps metadata and payloads in separate stores.
 ///
 /// ## Hot path
@@ -903,7 +1040,7 @@ abstract interface class IBytesStore implements IBytesCache, IBytesRichCache {
 /// Also implements [IBytesRichCache]: [readRich] returns the same hit or
 /// miss as [read], and attaches [BytesRecord] timestamps plus
 /// [HttpCacheMeta] when the index row has them.
-final class IndexedBytesCache implements IBytesStore {
+final class IndexedBytesCache implements IRangedBytesStore {
   /// Wires [index] and [blobs] under [retention], shared by [quotas].
   ///
   /// [clock] is injectable for tests (defaults to UTC now).
@@ -917,6 +1054,7 @@ final class IndexedBytesCache implements IBytesStore {
     Iterable<BytesQuota> quotas = BytesQuota.standard,
     DateTime Function()? clock,
     Future<void> Function(Set<String> indexedKeys)? reclaimOrphans,
+    this.rangeCommitDelay = const Duration(seconds: 2),
   }) : _quotas = {for (final quota in quotas) quota.name: quota},
        _index = index,
        _blobs = blobs,
@@ -930,6 +1068,12 @@ final class IndexedBytesCache implements IBytesStore {
   /// Eviction policy for this instance.
   final BytesRetention retention;
   final DateTime Function() _clock;
+
+  /// How long ranged writes may sit in RAM before one epoch trims and
+  /// commits them. Ranged writes land per network chunk; committing the
+  /// whole index document each time would rewrite it many times a second.
+  final Duration rangeCommitDelay;
+  Timer? _rangeCommit;
 
   /// Quotas by name: the configured ones, plus any a write brought along.
   final Map<String, BytesQuota> _quotas;
@@ -963,7 +1107,7 @@ final class IndexedBytesCache implements IBytesStore {
   bool contains(BytesCacheKey key) {
     _ensureOpen();
     final record = _index.peek(key);
-    return record != null && _isLive(record, _clock());
+    return record != null && record.isWhole && _isLive(record, _clock());
   }
 
   @override
@@ -1055,7 +1199,9 @@ final class IndexedBytesCache implements IBytesStore {
         _ensureOpen();
         final source = await _index.get(local);
         final now = _clock();
-        if (source == null || !_isLive(source, now)) return false;
+        if (source == null || !source.isWhole || !_isLive(source, now)) {
+          return false;
+        }
         final previous = await _index.get(server);
         if (previous?.payload == source.payload) return true;
 
@@ -1109,6 +1255,8 @@ final class IndexedBytesCache implements IBytesStore {
       if (!_isLive(record, now)) {
         return const _ReadProbe.needsDelete();
       }
+      // A ranged resource with holes is not a whole body; it stays.
+      if (!record.isWhole) return const _ReadProbe.miss();
 
       final bytes = await _blobs.read(
         record.payload,
@@ -1319,12 +1467,247 @@ final class IndexedBytesCache implements IBytesStore {
   @override
   Future<void> close() => _runExclusive(() async {
     if (_closed) return;
+    _rangeCommit?.cancel();
+    if (_rangeCommit != null) {
+      _rangeCommit = null;
+      await _flushPendingAccess();
+      await _index.commit();
+    }
     _closed = true;
     _pendingAccess.clear();
     _leases.clear();
     _orphanedLeases.clear();
     _registered.clear();
   });
+
+  // --- Ranged resources ---
+
+  @override
+  bool get supportsRanges => _blobs is IBytesRangedBlobStore;
+
+  IBytesRangedBlobStore get _rangedBlobs => switch (_blobs) {
+    final IBytesRangedBlobStore ranged => ranged,
+    _ => throw UnsupportedError(
+      'This store keeps no ranged resources: its payload port cannot write '
+      'at offsets.',
+    ),
+  };
+
+  @override
+  RangedState? rangesOf(BytesCacheKey key) {
+    _ensureOpen();
+    return switch (_index.peek(key)) {
+      final record? when record.payload == key => _stateOf(record),
+      _ => null,
+    };
+  }
+
+  /// A whole resource reads as a complete ranged one.
+  static RangedState _stateOf(BytesRecord record) => RangedState(
+    ranges: record.ranges ?? ByteRangeSet.empty.add(0, record.byteLength),
+    totalLength: record.isRanged ? record.totalLength : record.byteLength,
+    validator: record.httpCacheMeta,
+  );
+
+  @override
+  Future<FileLease> openRanged(BytesCacheKey key, {BytesQuota? quota}) {
+    final blobs = _rangedBlobs;
+    return _runExclusive(() async {
+      _ensureOpen();
+      final previous = await _index.get(key);
+      final keepsBytes = previous != null && previous.payload == key;
+      if (!keepsBytes) {
+        final preEpoch = await _captureIndexSnapshot();
+        await _flushPendingAccess();
+        await _putRanged(
+          key,
+          previous: previous,
+          ranges: ByteRangeSet.empty,
+          quota: quota,
+        );
+        await blobs.clear(key);
+        await _commitOrRollback(preEpoch);
+      }
+      _pendingAccess[key] = _clock();
+      _leases.update(key, (n) => n + 1, ifAbsent: () => 1);
+      return FileLease(
+        key: key,
+        path: switch (blobs) {
+          final IBytesFileBlobStore files => files.pathOf(key),
+          _ => '',
+        },
+        onRelease: () => _releaseLease(key),
+      );
+    });
+  }
+
+  @override
+  Future<RangedState> writeRange(
+    BytesCacheKey key,
+    int offset,
+    Uint8List bytes, {
+    HttpCacheMeta? validator,
+    int? totalLength,
+    BytesQuota? quota,
+  }) {
+    final blobs = _rangedBlobs;
+    return _runExclusive(() async {
+      _ensureOpen();
+      final previous = await _index.get(key);
+      var ranges = ByteRangeSet.empty;
+      var total = totalLength;
+      var meta = validator;
+      final stored = previous != null && previous.payload == key
+          ? _stateOf(previous)
+          : null;
+      final sameRepresentation =
+          stored != null &&
+          _sameValidator(stored.validator, validator) &&
+          (totalLength == null ||
+              stored.totalLength == null ||
+              stored.totalLength == totalLength);
+      if (sameRepresentation) {
+        ranges = stored.ranges;
+        total ??= stored.totalLength;
+        meta ??= stored.validator;
+      } else {
+        await blobs.clear(key);
+      }
+      if (bytes.isNotEmpty) {
+        await blobs.writeAt(key, offset, bytes);
+        ranges = ranges.add(offset, offset + bytes.length);
+      }
+      await _putRanged(
+        key,
+        previous: previous,
+        ranges: ranges,
+        totalLength: total,
+        validator: meta,
+        quota: quota,
+      );
+      _scheduleRangeCommit();
+      return RangedState(ranges: ranges, totalLength: total, validator: meta);
+    });
+  }
+
+  @override
+  Future<RangedState> resetRanges(
+    BytesCacheKey key, {
+    HttpCacheMeta? validator,
+    int? totalLength,
+    BytesQuota? quota,
+  }) {
+    final blobs = _rangedBlobs;
+    return _runExclusive(() async {
+      _ensureOpen();
+      final preEpoch = await _captureIndexSnapshot();
+      await _flushPendingAccess();
+      final previous = await _index.get(key);
+      await blobs.clear(key);
+      await _putRanged(
+        key,
+        previous: previous,
+        ranges: ByteRangeSet.empty,
+        totalLength: totalLength,
+        validator: validator,
+        quota: quota,
+      );
+      await _commitOrRollback(preEpoch);
+      return RangedState(
+        ranges: ByteRangeSet.empty,
+        totalLength: totalLength,
+        validator: validator,
+      );
+    });
+  }
+
+  @override
+  Future<Uint8List?> readRange(BytesCacheKey key, ByteRange range) {
+    final blobs = _rangedBlobs;
+    final end = switch (range.end) {
+      final e? => e,
+      null => throw ArgumentError.value(range, 'range', 'must be closed'),
+    };
+    return _runShared(() async {
+      _ensureOpen();
+      final record = await _index.get(key);
+      if (record == null || record.payload != key) return null;
+      if (!_stateOf(record).ranges.covers(range.start, end)) return null;
+      _pendingAccess[key] = _clock();
+      return blobs.readAt(key, range.start, end - range.start);
+    });
+  }
+
+  /// Puts [key]'s ranged row in the RAM mirror, dropping the payload a
+  /// previous alias row read when nothing else reads it.
+  Future<void> _putRanged(
+    BytesCacheKey key, {
+    required BytesRecord? previous,
+    required ByteRangeSet ranges,
+    int? totalLength,
+    HttpCacheMeta? validator,
+    BytesQuota? quota,
+  }) async {
+    if (quota != null) _quotas.putIfAbsent(quota.name, () => quota);
+    final now = _clock();
+    _orphanedLeases.remove(key);
+    await _index.put(
+      BytesRecord(
+        key: key,
+        writtenAt: now,
+        accessedAt: now,
+        byteLength: ranges.coveredBytes,
+        httpCacheMeta: validator,
+        quota:
+            quota?.name ??
+            (previous?.isRanged ?? false
+                ? previous!.quota
+                : BytesQuota.videoRanges.name),
+        ranges: ranges,
+        totalLength: totalLength,
+      ),
+    );
+    if (previous case final row? when row.payload != key) {
+      await _dropPayloadIfUnread(row.payload);
+    }
+  }
+
+  /// Whether bytes stored under [stored] and bytes from [incoming] are one
+  /// representation: equal ETags when either has one, else equal
+  /// Last-Modified.
+  static bool _sameValidator(HttpCacheMeta? stored, HttpCacheMeta? incoming) {
+    final storedTag = stored?.etag;
+    final incomingTag = incoming?.etag;
+    if (storedTag != null || incomingTag != null) {
+      return storedTag == incomingTag;
+    }
+    return stored?.lastModified == incoming?.lastModified;
+  }
+
+  /// One trim-and-commit epoch for ranged writes, at most every
+  /// [rangeCommitDelay]. Any other epoch commits them sooner.
+  void _scheduleRangeCommit() {
+    if (_rangeCommit != null || _closed) return;
+    _rangeCommit = Timer(rangeCommitDelay, () {
+      _runExclusive(() async {
+        _rangeCommit = null;
+        if (_closed) return;
+        final preEpoch = await _captureIndexSnapshot();
+        await _flushPendingAccess();
+        await _trimCapacity();
+        await _commitOrRollback(preEpoch);
+      }).catchError((Object error, StackTrace stackTrace) {
+        BytesDiagnostics.current.report(
+          BytesLogEvent(
+            level: BytesLogLevel.error,
+            message: 'bytes store: committing ranged writes: $error',
+            op: BytesLogOp.quotaTrim,
+            stackTrace: stackTrace,
+          ),
+        );
+      });
+    });
+  }
 
   /// Registers as a reader on [_exclusiveTail], then runs [action] without
   /// holding the tail so other readers can overlap.
@@ -1428,7 +1811,9 @@ final class IndexedBytesCache implements IBytesStore {
           live.byteLength != value.byteLength ||
           live.httpCacheMeta != value.httpCacheMeta ||
           live.quota != value.quota ||
-          live.payloadKey != value.payloadKey) {
+          live.payloadKey != value.payloadKey ||
+          live.ranges != value.ranges ||
+          live.totalLength != value.totalLength) {
         await _index.put(value);
       }
     }

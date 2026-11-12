@@ -1,13 +1,16 @@
 import 'dart:convert';
 
 import 'package:http_bytes_cache/src/bytes_cache.dart';
+import 'package:http_bytes_cache/src/ranged/byte_range_set.dart';
 
 /// Records ↔ UTF-8 JSON bytes for the durable index document.
 ///
 /// Shape: `{"v":1,"e":{"<key>":{"w":ms,"a":ms,"n":byteLength,"q"?:quota,
 /// "b"?:payloadKey,"h"?:{…}}}}`. `q` is the [BytesRecord.quota] name, left
 /// out for the default quota; a row without it reads as [BytesQuota.images].
-/// `b` is [BytesRecord.payloadKey], present only on alias rows.
+/// `b` is [BytesRecord.payloadKey], present only on alias rows. A ranged
+/// row adds `r`, its [BytesRecord.ranges] as `[s0, e0, s1, e1, …]`, and `t`,
+/// its [BytesRecord.totalLength] when known.
 /// Optional `h` is [HttpCacheMeta] on the wire (`et`, `lm`, `d`, `x`,
 /// `cc`, `ag`, `lv`). Missing `h`, or missing keys inside it, decode as null
 /// meta. Old documents stay valid. Unknown [version] or a broken structure
@@ -67,6 +70,8 @@ final class _BytesIndexDocumentEncoder
             'b': payload.value,
           if (value.httpCacheMeta case final meta? when !meta.isEmpty)
             'h': _encodeHttpMeta(meta),
+          if (value.ranges case final ranges?) 'r': ranges.toFlatList(),
+          if (value.totalLength case final total?) 't': total,
         },
     },
   };
@@ -135,6 +140,21 @@ final class _BytesIndexDocumentDecoder
               final String payload => BytesCacheKey(payload),
               _ => throw const FormatException(
                 'image bytes index: invalid payload key',
+              ),
+            },
+            ranges: switch (map['r']) {
+              null => null,
+              final List<Object?> flat when flat.every((n) => n is int) =>
+                ByteRangeSet.fromFlatList(flat.cast<int>()),
+              _ => throw const FormatException(
+                'image bytes index: invalid ranges',
+              ),
+            },
+            totalLength: switch (map['t']) {
+              null => null,
+              final int total => total,
+              _ => throw const FormatException(
+                'image bytes index: invalid total length',
               ),
             },
             quota: switch (map['q']) {

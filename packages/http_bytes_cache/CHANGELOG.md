@@ -49,8 +49,17 @@
   `range_not_satisfiable`. Streamed GETs are never coalesced and hold a slot
   until their body ends. The conditional middleware sends `If-Range` (strong
   ETag only) on range GETs.
-- `package:http_bytes_cache/testing.dart`: `runBytesStoreContract` and
-  in-memory index and blob fakes.
+- Ranged resources: `IRangedBytesStore` keeps a sparse payload per key with
+  its ranges, length and validator, in the same index and quotas (counted
+  against `video_ranges`, evicted whole, never while leased). Another
+  validator drops every span. The VM store supports it; web stores report
+  `supportsRanges == false`.
+- `RangedBytes` / `RangedResource` fetch missing ranges in chunked range GETs
+  (one shared resource per key) and announce each write (`RangeLanded`). A
+  `200` to a range GET drops the spans and keeps the new body; a server
+  without `Accept-Ranges` is read sequentially.
+- `package:http_bytes_cache/testing.dart`: `runBytesStoreContract`,
+  `runRangedBytesStoreContract` and in-memory index and blob fakes.
 
 ## 0.1.0
 

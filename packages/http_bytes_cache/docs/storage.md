@@ -34,6 +34,33 @@ both on evict / TTL / trim.
 Keeping the split lets prune and LRU scan sizes and access times without
 loading every payload.
 
+### Ranged resources
+
+A ranged row (`BytesRecord.ranges` / `totalLength`) holds part of a
+representation in one sparse payload. The payload port that keeps them is
+`IBytesRangedBlobStore` (`writeAt`, `readAt`, `clear`); the VM store
+implements it with in-place writes on the isolate worker (never temp + rename,
+so a reader holding the file open sees every write; `clear` truncates in
+place). Web stores do not, so `IRangedBytesStore.supportsRanges` is false
+there and ranged operations throw `UnsupportedError`.
+
+- `byteLength` is the bytes present; the row counts against `video_ranges`
+  unless a write names another quota, and is evicted whole, never while
+  leased (`openRanged` leases the file).
+- `writeRange` with a validator other than the stored one (ETag, else
+  Last-Modified) or another total length drops every span first;
+  `resetRanges` does it explicitly (a `200` to a range GET).
+- An incomplete ranged row is a miss for `read` / `contains` (not deleted);
+  a complete one reads whole. A whole row reads as a complete ranged one.
+- `writeRange` mutates RAM and the file but does not commit the index: one
+  trim + commit epoch runs at most every `rangeCommitDelay` (2 s), sooner
+  with any other epoch, and at close. A crash loses at most that much range
+  bookkeeping, never claims bytes that were not written.
+
+`RangedBytes` fetches into a ranged row: one shared `RangedResource` per key,
+chunked single-range GETs through `HttpBytesClient.stream`, and the "range
+landed" signal (`RangedEvent`) after each write.
+
 ## Concurrent reads vs exclusive mutate
 
 `IndexedBytesCache` uses language primitives only (shared/exclusive gate).
@@ -156,8 +183,10 @@ Remote bytes are disposable: corrupt recovery prefers wipe over crash loops.
 Cache:
 
 ```text
-{"v":1,"e":{"<key>":{"w":ms,"a":ms,"n":byteLength,"h"?:{"et","lm","d","x","cc","ag","lv"}}}}
+{"v":1,"e":{"<key>":{"w":ms,"a":ms,"n":byteLength,"q"?,"b"?,"r"?:[s0,e0,…],"t"?:total,"h"?:{"et","lm","d","x","cc","ag","lv"}}}}
 ```
+
+`r` and `t` appear on ranged rows only (merged half-open spans, total length).
 
 Optional `h` is HTTP validators and freshness (`HttpCacheMeta`). A missing
 `h`, or missing keys inside it, decodes as null meta. Existing caches that

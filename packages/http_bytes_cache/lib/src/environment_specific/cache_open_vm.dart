@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:http_bytes_cache/src/bytes_cache.dart';
 import 'package:http_bytes_cache/src/environment_specific/blob_store_file_vm.dart';
 import 'package:http_bytes_cache/src/environment_specific/index_file_vm.dart';
+import 'package:http_bytes_cache/src/http/byte_range.dart';
 
 /// VM hook behind [BytesCache.open].
 ///
@@ -65,7 +66,7 @@ Future<IBytesStore> $openBytesCache({
 ///
 /// Orphan reclaim on open/prune stays on the inner brain’s exclusive
 /// gate. This wrapper does not reclaim outside that domain.
-final class BytesCache$VM implements IBytesStore {
+final class BytesCache$VM implements IRangedBytesStore {
   BytesCache$VM({
     required IndexedBytesCache inner,
     required BytesBlobStore$File$VM blobs,
@@ -112,6 +113,50 @@ final class BytesCache$VM implements IBytesStore {
 
   @override
   Future<void> evict(BytesCacheKey key) => _inner.evict(key);
+
+  @override
+  bool get supportsRanges => _inner.supportsRanges;
+
+  @override
+  RangedState? rangesOf(BytesCacheKey key) => _inner.rangesOf(key);
+
+  @override
+  Future<FileLease> openRanged(BytesCacheKey key, {BytesQuota? quota}) =>
+      _inner.openRanged(key, quota: quota);
+
+  @override
+  Future<RangedState> writeRange(
+    BytesCacheKey key,
+    int offset,
+    Uint8List bytes, {
+    HttpCacheMeta? validator,
+    int? totalLength,
+    BytesQuota? quota,
+  }) => _inner.writeRange(
+    key,
+    offset,
+    bytes,
+    validator: validator,
+    totalLength: totalLength,
+    quota: quota,
+  );
+
+  @override
+  Future<RangedState> resetRanges(
+    BytesCacheKey key, {
+    HttpCacheMeta? validator,
+    int? totalLength,
+    BytesQuota? quota,
+  }) => _inner.resetRanges(
+    key,
+    validator: validator,
+    totalLength: totalLength,
+    quota: quota,
+  );
+
+  @override
+  Future<Uint8List?> readRange(BytesCacheKey key, ByteRange range) =>
+      _inner.readRange(key, range);
 
   @override
   Future<BytesPruneReport> prune() => _inner.prune();

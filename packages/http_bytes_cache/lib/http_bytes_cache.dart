@@ -34,4 +34,6 @@ export 'src/http/middlewares/timeout_middleware.dart';
 export 'src/http/request_priority.dart';
 export 'src/http/retry_backoff.dart';
 export 'src/http_cache_freshness.dart';
+export 'src/ranged/byte_range_set.dart';
+export 'src/ranged/ranged_bytes.dart';
 export 'src/util/byte_count_format.dart';

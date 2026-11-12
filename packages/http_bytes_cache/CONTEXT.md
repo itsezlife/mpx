@@ -65,6 +65,20 @@ holds it. An alias onto a key with bytes replaces them; chains stay flat.
 `release(local)` drops the local key (an evict under the producer's name).
 _Avoid_: re-keying or copying a captured file after upload
 
+**Ranged resource** / **IRangedBytesStore**:
+A resource kept as one sparse payload plus the ranges present, its total
+length and its validator (`RangedState`). Bytes of two representations never
+mix: another validator or a `200` to a range GET drops every span. Evicted
+whole, never while leased. Incomplete ones are misses for whole reads.
+`RangedBytes` / `RangedResource` fetch into it (one shared resource per key).
+_Avoid_: a second cache for video; buffering a video body whole
+
+**Range landed**:
+The signal that bytes are in the sparse file and can be read
+(`RangeLanded`, after each write); `RangesReset` when every span dropped.
+Native readers wake on it.
+_Avoid_: polling the file; signalling before the write returns
+
 **BytesPeek**:
 `BytesResolver.peek(request)`: `cached`, `inFlight` or `absent`, from the
 store's RAM index plus resolves and GETs underway. Cached wins over in flight.
