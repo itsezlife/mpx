@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_player/src/audio/audio_focus.dart';
 import 'package:mpx_player/src/player/player_state.dart';
 
 /// Makes the engines of one platform: Media3 on Android, AVPlayer on Apple, a
@@ -14,6 +15,11 @@ abstract interface class PlayerBackend {
   /// The engine reads the media's bytes itself, by [key], through the bytes
   /// cache's reader of ranged resources; the pool hands it nothing else.
   PlayerEngine create(MediaKey key);
+
+  /// The platform's audio session, through which the pool's sound owner
+  /// asks for the right to play sound and hears calls, other apps and
+  /// outputs take it away. [NoAudioFocus] where the platform has none.
+  AudioFocus get audioFocus;
 }
 
 /// One native player: a decoder, a buffer and a texture its frames land in.

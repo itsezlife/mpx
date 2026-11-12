@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_player/src/audio/audio_focus.dart';
 import 'package:mpx_player/src/backend/player_backend.dart';
 import 'package:mpx_player/src/player/player_state.dart';
 
@@ -62,20 +65,50 @@ final class PlayerBudget {
 /// warm, so a surface that takes the key again (the viewer closing back onto
 /// its bubble) finds it where it was, until the budget needs its engine.
 ///
+/// ## The sound owner
+///
+/// The pool is the app's one audio owner: at most one player is audible
+/// (playing, not muted, not at its end). A player that becomes audible
+/// takes the sound and pauses the previous owner; muted players play
+/// beside it. While a player owns the sound the pool holds the platform's
+/// audio focus ([PlayerBackend.audioFocus]): a call or an alarm pauses the
+/// owner and its end resumes it; another app taking the sound, or the
+/// headphones coming out, pauses it for good. When the owner's last view
+/// goes and no other view takes it in the same turn, the host decides what
+/// happens ([onSoundOwnerLeftScreen]: pause, or picture in picture); without
+/// a host decision the owner pauses.
+///
 /// Single-threaded: every call is on the UI isolate.
 final class PlayerPool {
   /// Creates a pool over [backend].
   PlayerPool({
     required PlayerBackend backend,
     PlayerBudget budget = const PlayerBudget(),
+    this.onSoundOwnerLeftScreen,
   }) : _backend = backend,
-       _budget = budget;
+       _budget = budget {
+    _focusChanges = backend.audioFocus.changes.listen(_onFocusChange);
+  }
 
   final PlayerBackend _backend;
   PlayerBudget _budget;
   final Map<MediaKey, _Player> _players = {};
   int _uses = 0;
   bool _disposed = false;
+
+  /// Told the key of the sound owner when no view shows it any more, so the
+  /// host pauses it or moves it to picture in picture. Null pauses it.
+  final void Function(MediaKey key)? onSoundOwnerLeftScreen;
+
+  late final StreamSubscription<AudioFocusChange> _focusChanges;
+  _Player? _owner;
+  // The owner a transient interruption paused; resumed when focus returns.
+  _Player? _resumeOnGain;
+  bool _focusHeld = false;
+
+  /// The key of the player that owns the sound, or null when none is
+  /// audible.
+  MediaKey? get soundOwner => _owner?.key;
 
   /// How many engines the pool may hold and play.
   PlayerBudget get budget => _budget;
@@ -103,10 +136,15 @@ final class PlayerPool {
     return PlayerLease._(player);
   }
 
-  /// Releases every engine. Leases still around go silent. Idempotent.
+  /// Releases every engine and gives the audio focus back. Leases still
+  /// around go silent. Idempotent.
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    unawaited(_focusChanges.cancel());
+    _owner = null;
+    _resumeOnGain = null;
+    _setFocus(held: false);
     for (final player in _players.values) {
       player.dispose();
     }
@@ -148,6 +186,83 @@ final class PlayerPool {
       if (player.leases == 0) _forget(player);
       excess--;
     }
+  }
+
+  // --- Sound owner ----------------------------------------------------------
+
+  // Called whenever [player]'s audibility may have changed: a command, an
+  // engine state, a pause by the budget. An audible player takes the sound;
+  // an owner that went quiet gives it back, unless an interruption paused
+  // it and focus is due back.
+  void _soundChanged(_Player player) {
+    if (_disposed) return;
+    if (player.isAudible) {
+      if (identical(_owner, player)) return;
+      final previous = _owner;
+      _owner = player;
+      _resumeOnGain = null;
+      previous?.pause();
+      _setFocus(held: true);
+    } else if (identical(_owner, player) && !identical(_resumeOnGain, player)) {
+      _owner = null;
+      _setFocus(held: false);
+    }
+  }
+
+  // [player] was paused or muted by a command, not by an interruption: it
+  // is not resumed when focus comes back.
+  void _quietedByCommand(_Player player) {
+    if (identical(_resumeOnGain, player)) _resumeOnGain = null;
+    _soundChanged(player);
+  }
+
+  void _setFocus({required bool held}) {
+    if (held == _focusHeld) return;
+    _focusHeld = held;
+    if (held) {
+      _backend.audioFocus.request();
+    } else {
+      _backend.audioFocus.abandon();
+    }
+  }
+
+  void _onFocusChange(AudioFocusChange change) {
+    if (_disposed) return;
+    final owner = _owner;
+    switch (change) {
+      case AudioFocusChange.interrupted:
+        if (owner == null || !owner.isAudible) return;
+        _resumeOnGain = owner;
+        owner.pauseQuietly();
+      case AudioFocusChange.gained:
+        final paused = _resumeOnGain;
+        _resumeOnGain = null;
+        if (paused != null && !paused.disposed && paused.leases > 0) {
+          paused.play();
+        } else if (paused != null) {
+          _soundChanged(paused);
+        }
+      case AudioFocusChange.lost || AudioFocusChange.outputRemoved:
+        _resumeOnGain = null;
+        owner?.pause();
+    }
+  }
+
+  // The last view of [player] went. If no view takes it in the same turn (a
+  // hand-off from the bubble to the viewer detaches one and attaches the
+  // other within one frame) and it still owns the sound, the host decides.
+  void _viewsGone(_Player player) {
+    if (!identical(_owner, player)) return;
+    scheduleMicrotask(() {
+      if (_disposed || !identical(_owner, player) || player.views > 0) return;
+      if (!player.isAudible) return;
+      final decide = onSoundOwnerLeftScreen;
+      if (decide != null) {
+        decide(player.key);
+      } else {
+        player.pause();
+      }
+    });
   }
 
   void _forget(_Player player) {
@@ -226,9 +341,12 @@ final class PlayerLease {
   /// detached. Shown players are the last the budget releases.
   PlayerViewAttachment attachView() {
     if (!_live) return PlayerViewAttachment._(null);
-    _player.views++;
-    _player.touch();
-    return PlayerViewAttachment._(() => _player.views--);
+    final player = _player..touch();
+    player.views++;
+    return PlayerViewAttachment._(() {
+      player.views--;
+      if (player.views == 0 && !player.disposed) player.pool._viewsGone(player);
+    });
   }
 
   /// Gives the lease back. The last lease of a player pauses it; the player
@@ -280,6 +398,12 @@ final class _Player {
 
   bool get isPlaying => _engine != null && state.value.playing;
 
+  // Playing, not muted and not at its end: the player is heard.
+  bool get isAudible =>
+      isPlaying &&
+      state.value.volume > 0 &&
+      state.value.phase != PlayerPhase.ended;
+
   Duration get position => _engine?.position ?? _resumeAt;
 
   void touch() => lastUse = pool._nextUse();
@@ -306,7 +430,9 @@ final class _Player {
 
   void _mirror() {
     final engine = _engine;
-    if (engine != null && !disposed) state.value = engine.state.value;
+    if (engine == null || disposed) return;
+    state.value = engine.state.value;
+    pool._soundChanged(this);
   }
 
   void prepare() {
@@ -318,10 +444,19 @@ final class _Player {
     touch();
     state.value = state.value.copyWith(playing: true);
     _ensureEngine().play();
-    pool._enforce(keep: this);
+    pool
+      .._enforce(keep: this)
+      .._soundChanged(this);
   }
 
   void pause() {
+    pauseQuietly();
+    pool._quietedByCommand(this);
+  }
+
+  // Pauses without telling the sound owner it was a command: an
+  // interruption pauses this way and resumes when focus returns.
+  void pauseQuietly() {
     _engine?.pause();
     if (!disposed) state.value = state.value.copyWith(playing: false);
   }
@@ -352,6 +487,7 @@ final class _Player {
     touch();
     _engine?.setVolume(volume);
     if (_engine == null) state.value = state.value.copyWith(volume: volume);
+    pool._quietedByCommand(this);
   }
 
   void leaseReleased() {
@@ -368,6 +504,7 @@ final class _Player {
     _resumeAt = engine.position;
     _dropEngine(engine);
     if (!disposed) state.value = state.value.released();
+    pool._soundChanged(this);
   }
 
   void _dropEngine(PlayerEngine engine) {

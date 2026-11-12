@@ -3,6 +3,7 @@ import 'dart:ui' show Size;
 
 import 'package:flutter/foundation.dart';
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_player/src/audio/audio_focus.dart';
 import 'package:mpx_player/src/backend/player_backend.dart';
 import 'package:mpx_player/src/player/player_state.dart';
 
@@ -33,6 +34,9 @@ final class FakePlayerBackend implements PlayerBackend {
 
   /// Keys whose engines fail to prepare.
   final Set<MediaKey> unplayable;
+
+  @override
+  final FakeAudioFocus audioFocus = FakeAudioFocus();
 
   final List<FakePlayerEngine> _created = [];
   int _nextTexture = 1;
@@ -233,4 +237,34 @@ final class FakePlayerEngine implements PlayerEngine {
   void _emit(PlayerState next) {
     if (_state.value != next) _state.value = next;
   }
+}
+
+/// An [AudioFocus] a test drives: it records requests and emits the changes
+/// the test asks for.
+final class FakeAudioFocus implements AudioFocus {
+  final StreamController<AudioFocusChange> _changes =
+      StreamController.broadcast();
+  int _requests = 0;
+  bool _held = false;
+
+  /// Whether the pool holds the focus now: requested and not abandoned.
+  bool get held => _held;
+
+  /// How many times the pool requested focus.
+  int get requests => _requests;
+
+  @override
+  void request() {
+    _requests++;
+    _held = true;
+  }
+
+  @override
+  void abandon() => _held = false;
+
+  @override
+  Stream<AudioFocusChange> get changes => _changes.stream;
+
+  /// Reports [change] as the system would.
+  void emit(AudioFocusChange change) => _changes.add(change);
 }

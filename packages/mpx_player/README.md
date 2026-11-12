@@ -35,12 +35,14 @@ lease.release();
 - One immutable `PlayerState` per player; the playhead is read per frame
 - `PlayerBudget` of playing and prepared engines, coldest released first
 - `PlayerView` with a stand-in until the first frame
+- One sound owner app-wide: a new audible player pauses the previous;
+  calls, other apps and headphones go through the backend's `AudioFocus`
 - `FakePlayerBackend` and `PlayerEngineContract` in `testing.dart`
 - `FeedPolicy`: the 25 feed knobs with reference defaults per mode;
   `FeedListPlanner` decides what a list plays, shows in view and preloads
 - `FeedSignals`: network, power and heat from the host's own listenables
 
-Planned: Media3 and AVPlayer backends, one audio owner, the pager mode.
+Planned: Media3 and AVPlayer backends, the pager mode.
 
 ## Docs
 

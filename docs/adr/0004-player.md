@@ -44,6 +44,7 @@ surfaces.
 | --- | --- |
 | Audio owner | One per app, inside `mpx_player`. A new audible player silences the previous |
 | System focus | Calls, other apps, headphones handled by the audio owner |
+| Implemented as | The pool itself is the owner (`PlayerPool.soundOwner`); audible = playing, volume above 0, not ended; a new owner pauses the previous; muted players play beside it. Platform focus through `PlayerBackend.audioFocus` (`AudioFocus`: `request`, `abandon`, `changes` of `gained` / `lost` / `interrupted` / `outputRemoved`). An interruption (a duck request included: video is often speech) pauses and resumes on `gained`; `lost` and `outputRemoved` pause for good. Leaving the screen: `PlayerPool.onSoundOwnerLeftScreen(key)`, fired when the owner's last view goes and none takes it in the same turn; pauses when the host passes none |
 | Leaving the screen | The host decides: pause or PiP |
 
 ### Hand-off with the software path
@@ -127,7 +128,6 @@ the bytes cache, with playlists still through the loader.
 - Concurrent decoder limits on Apple: undocumented, measure on device.
 - The probe ran on a simulator and macOS, not a physical iOS device.
 - The loopback proxy for Apple HLS: design and timing.
-- Type name for the audio owner.
 
 ## Provenance
 
