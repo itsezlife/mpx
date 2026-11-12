@@ -57,7 +57,8 @@ Constants with file and line: research `04-viewer-anatomy`.
 | --- | --- |
 | `GallerySource` | Indexed; loads both ways; total count for "5 of 120". A `Listenable` with `count`, `itemAt(index)` (null while not loaded) and `loadAround(index)`; items are `GalleryItem(key, kind, size)` |
 | `OriginBridge` | For any index: rect, corner radius, clip and the bubble's current frame (`GalleryOrigin`, frame as a `ui.Image`). When the viewer closes on another item, the host scrolls its list to that item's origin first (`reveal(index)`); `setHidden(index, hidden:)` hides the bubble while the viewer's copy covers it |
-| Actions | The host supplies the action set and handlers per index (icon, label, handler) |
+| Actions | The host supplies the action set and handlers per index (`ViewerAction`: label, icon, handler, in the bar or the menu) |
+| Files | A host callback `openFile(key) -> ViewerFile?` (`path`, `release`); the host wraps the bytes cache's file lease in it, so `mpx_ui` takes no cache dependency. The viewer releases files an action opened when the action completes |
 | Caption and author | Builders; rich text stays on the host's side |
 | Tokens | Colours and typography from the host (`ViewerTokens`, defaulting to the Android reference's values); no `chrome_foundation` dependency |
 | Backdrop | The viewer reports the scale the host draws its surface at (`onBackdropScale`); it cannot reach the surface itself |
@@ -82,7 +83,7 @@ the package's own actions.
 | Action | Owner |
 | --- | --- |
 | Speed, quality, PiP, rotation | Package |
-| Save, share | Host, on every platform: permissions, gallery and share plugins are the app's choice. The package hands the host the file path in `http_bytes_cache` and the current frame; the example implements both |
+| Save, share | Host, on every platform: permissions, gallery and share plugins are the app's choice. The package hands the host the cached file (`ViewerActionRequest.file`, a `ViewerFile` over the bytes cache's file lease) and the current frame (`frame()`, the picture as shown); the example implements both |
 
 ### Playback
 

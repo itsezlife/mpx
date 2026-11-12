@@ -43,6 +43,19 @@ MediaViewer.show(
   initialIndex: 4,
   bridge: origins, // your OriginBridge: where each item sits on screen
   tokens: ViewerTokens(background: theme.colorScheme.scrim),
+  chrome: ViewerChrome(
+    title: (context, i, item) => Text(authorOf(i)),
+    openFile: (key) async => leaseFromYourCache(key), // a ViewerFile
+    actions: (i, item) => [
+      ViewerAction(
+        label: 'Save',
+        onSelected: (request) async {
+          final file = await request.file();
+          if (file != null) await saveToGallery(file.path);
+        },
+      ),
+    ],
+  ),
 );
 ```
 
@@ -52,6 +65,8 @@ MediaViewer.show(
   policy's floor, the items ahead preload by stage
 - `MediaViewer`: photos open from and close to their origin; drag down to
   dismiss, double tap and pinch to zoom, swipe to page; `ViewerPolicy.$Android`
+- Viewer chrome: bars, counter, caption, thumbnail strip and menu; save and
+  share stay the host's actions, handed the cached file and the current frame
 
 Planned: viewer video, iOS and desktop policies, feed pager.
 

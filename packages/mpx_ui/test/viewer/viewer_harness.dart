@@ -15,12 +15,12 @@ MediaKey photoKey(int index) => MediaKey.remote('photo-$index');
 
 /// A viewer over three photos, the first with an origin.
 final class ViewerHarness {
-  ViewerHarness() {
+  ViewerHarness({int count = 3}) {
     producer = FakeAssetProducer();
     clock = PlaybackClock(ticks: ManualPlaybackTickSource());
     scope = AssetCacheScope(producer: producer, clock: clock);
     source = FakeGallerySource([
-      for (var i = 0; i < 3; i++)
+      for (var i = 0; i < count; i++)
         GalleryItem(photoKey(i), size: const Size(1200, 900)),
     ]);
     bridge = FakeOriginBridge({
@@ -43,7 +43,7 @@ final class ViewerHarness {
   Future<void> pump(
     WidgetTester tester, {
     ViewerPolicy policy = ViewerPolicy.$Android,
-    ViewerOverlayBuilder? overlayBuilder,
+    ViewerChrome? chrome,
     bool open = true,
   }) async {
     tester.view.physicalSize = viewerSize;
@@ -65,7 +65,7 @@ final class ViewerHarness {
           scope: scope,
           onClosed: () => closed++,
           onBackdropScale: backdrop.add,
-          overlayBuilder: overlayBuilder,
+          chrome: chrome,
         ),
       ),
     );

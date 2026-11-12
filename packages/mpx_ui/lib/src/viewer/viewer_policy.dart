@@ -1,5 +1,101 @@
 import 'package:flutter/animation.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
+
+/// The layout of the viewer's chrome in one reference: bars, the "N of M"
+/// counter, the caption and the thumbnail strip. Logical pixels.
+@immutable
+final class ViewerChromeMetrics {
+  /// Creates metrics.
+  const ViewerChromeMetrics({
+    required this.topBarHeight,
+    required this.counterGap,
+    required this.counterHeight,
+    required this.counterPadding,
+    required this.counterRadius,
+    required this.captionPadding,
+    required this.captionMaxLines,
+    required this.stripHeight,
+    required this.thumbSize,
+    required this.thumbTop,
+    required this.thumbSpacing,
+    required this.thumbRadius,
+    required this.currentThumbMaxWidth,
+    required this.currentThumbPadding,
+    required this.menuItemHeight,
+    required this.menuMinWidth,
+  });
+
+  /// The Android reference's chrome: a 56 px action bar, the counter pill 10
+  /// px under it, a caption that shows up to five lines before it scrolls,
+  /// and a 68 px strip of 42 x 56 thumbnails.
+  static const ViewerChromeMetrics android = ViewerChromeMetrics(
+    topBarHeight: 56,
+    counterGap: 10,
+    counterHeight: 23,
+    counterPadding: 9,
+    counterRadius: 12,
+    captionPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    captionMaxLines: 5,
+    stripHeight: 68,
+    thumbSize: Size(42, 56),
+    thumbTop: 10,
+    thumbSpacing: 1,
+    thumbRadius: 2,
+    currentThumbMaxWidth: 84,
+    currentThumbPadding: 8,
+    menuItemHeight: 48,
+    menuMinWidth: 196,
+  );
+
+  /// The top bar's height under the status bar.
+  final double topBarHeight;
+
+  /// The space between the top bar and the counter pill.
+  final double counterGap;
+
+  /// The counter pill's height.
+  final double counterHeight;
+
+  /// The counter pill's horizontal padding.
+  final double counterPadding;
+
+  /// The counter pill's corner radius.
+  final double counterRadius;
+
+  /// The padding around the caption.
+  final EdgeInsets captionPadding;
+
+  /// How many caption lines show before the caption scrolls.
+  final int captionMaxLines;
+
+  /// The thumbnail strip's height.
+  final double stripHeight;
+
+  /// A thumbnail's size.
+  final Size thumbSize;
+
+  /// A thumbnail's distance from the top of the strip.
+  final double thumbTop;
+
+  /// The space between thumbnails.
+  final double thumbSpacing;
+
+  /// A thumbnail's corner radius.
+  final double thumbRadius;
+
+  /// The widest the current thumbnail grows, by its aspect ratio.
+  final double currentThumbMaxWidth;
+
+  /// The space on each side of the current thumbnail.
+  final double currentThumbPadding;
+
+  /// The height of one item of the overflow menu.
+  final double menuItemHeight;
+
+  /// The overflow menu's narrowest width.
+  final double menuMinWidth;
+}
 
 /// The gesture, transition and timing rules of the fullscreen viewer, as pure
 /// values: no platform reads. One viewer structure runs any policy, so a host
@@ -33,6 +129,7 @@ final class ViewerPolicy {
     required this.controlsDuration,
     required this.controlsSlide,
     required this.videoAutoHide,
+    required this.chrome,
   });
 
   /// The Android reference: the picture morphs from its origin in 200 ms
@@ -65,6 +162,7 @@ final class ViewerPolicy {
     controlsDuration: Duration(milliseconds: 200),
     controlsSlide: 24,
     videoAutoHide: Duration(milliseconds: 3000),
+    chrome: ViewerChromeMetrics.android,
   );
 
   /// How long the picture morphs from its origin to full size.
@@ -140,6 +238,9 @@ final class ViewerPolicy {
 
   /// How long the bars stay over a playing video before they hide.
   final Duration videoAutoHide;
+
+  /// The layout of the bars, counter, caption and strip.
+  final ViewerChromeMetrics chrome;
 
   /// Whether a drag of [dx], [dy] from its start has become a dismiss drag.
   bool startsDismiss(double dx, double dy) {

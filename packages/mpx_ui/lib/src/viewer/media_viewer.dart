@@ -1,23 +1,17 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_ui/src/viewer/gallery_source.dart';
 import 'package:mpx_ui/src/viewer/origin_bridge.dart';
+import 'package:mpx_ui/src/viewer/viewer_actions.dart';
+import 'package:mpx_ui/src/viewer/viewer_chrome_overlay.dart';
 import 'package:mpx_ui/src/viewer/viewer_photo_page.dart';
 import 'package:mpx_ui/src/viewer/viewer_policy.dart';
 import 'package:mpx_ui/src/viewer/viewer_tokens.dart';
-
-/// Builds what the viewer draws over its pages (bars, menu, caption) for the
-/// item at [index], with [controls] telling whether they show.
-typedef ViewerOverlayBuilder =
-    Widget Function(
-      BuildContext context,
-      int index,
-      ValueListenable<bool> controls,
-    );
 
 /// The fullscreen viewer: pages through a [GallerySource], opening from and
 /// closing to each item's place on the host's surface through an
@@ -42,6 +36,15 @@ typedef ViewerOverlayBuilder =
 /// the policy's range, and a horizontal swipe pages while the picture is not
 /// zoomed.
 ///
+/// ## Chrome
+///
+/// With [chrome] the viewer draws the top bar, the counter, the caption, the
+/// thumbnail strip and the overflow menu; a tap on the picture shows or hides
+/// them. The host supplies the actions per item and the title, subtitle and
+/// caption builders. An action gets the item's cached file (through
+/// [ViewerChrome.openFile], released when the action completes) and the
+/// picture as it shows.
+///
 /// Media is drawn through the core's asset cache ([scope], or the closest
 /// `AssetCacheProvider`); until the item's own picture arrives the origin's
 /// current frame shows.
@@ -58,7 +61,7 @@ class MediaViewer extends StatefulWidget {
     this.onClosed,
     this.onIndexChanged,
     this.onBackdropScale,
-    this.overlayBuilder,
+    this.chrome,
   });
 
   /// The items.
@@ -91,8 +94,8 @@ class MediaViewer extends StatefulWidget {
   /// [ViewerPolicy.backdropScale].
   final ValueChanged<double>? onBackdropScale;
 
-  /// Draws the chrome over the pages; nothing when null.
-  final ViewerOverlayBuilder? overlayBuilder;
+  /// The bars, menu and caption, and the host's actions; none when null.
+  final ViewerChrome? chrome;
 
   /// Pushes a viewer as a transparent route over [context]'s navigator and
   /// completes when it has closed.
@@ -105,7 +108,7 @@ class MediaViewer extends StatefulWidget {
     ViewerTokens tokens = const ViewerTokens(),
     AssetCacheScope? scope,
     ValueChanged<double>? onBackdropScale,
-    ViewerOverlayBuilder? overlayBuilder,
+    ViewerChrome? chrome,
   }) {
     final cache = scope ?? AssetCacheProvider.of(context);
     return Navigator.of(context).push<void>(
@@ -121,7 +124,7 @@ class MediaViewer extends StatefulWidget {
           tokens: tokens,
           scope: cache,
           onBackdropScale: onBackdropScale,
-          overlayBuilder: overlayBuilder,
+          chrome: chrome,
           onClosed: () => Navigator.of(routeContext).pop(),
         ),
       ),
@@ -166,6 +169,9 @@ class MediaViewerState extends State<MediaViewer>
 
   /// Whether the open transition has finished and the close has not begun.
   bool get isOpen => _phase == _Phase.open;
+
+  /// Whether the chrome shows.
+  bool get controlsVisible => _controls.value;
 
   /// The vertical offset of the picture from where it rests, positive down.
   double get dragOffset => _drag;
@@ -218,6 +224,37 @@ class MediaViewerState extends State<MediaViewer>
     if (hidden ? _hidden.add(index) : _hidden.remove(index)) {
       bridge.setHidden(index, hidden: hidden);
     }
+  }
+
+  // --- Actions --------------------------------------------------------------
+
+  final Map<int, GlobalKey> _frameKeys = {};
+
+  /// Runs [action] for the item at [index]: hands it the item, a way to open
+  /// its cached file and the picture as shown, waits for it, then releases
+  /// the files it opened.
+  Future<void> runAction(ViewerAction action, int index) async {
+    final item = widget.source.itemAt(index);
+    if (item == null) return;
+    final opener = widget.chrome?.openFile;
+    final request = ViewerActionRequest(
+      index: index,
+      item: item,
+      openFile: () async => opener == null ? null : await opener(item.key),
+      captureFrame: () => _captureFrame(index),
+    );
+    try {
+      await action.onSelected(request);
+    } finally {
+      request.complete();
+    }
+  }
+
+  Future<ui.Image?> _captureFrame(int index) async {
+    final boundary = _frameKeys[index]?.currentContext?.findRenderObject();
+    if (boundary is! RenderRepaintBoundary || !boundary.hasSize) return null;
+    final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
+    return boundary.toImage(pixelRatio: dpr);
   }
 
   // --- Open -----------------------------------------------------------------
@@ -392,8 +429,26 @@ class MediaViewerState extends State<MediaViewer>
               ),
             ),
             if (_phase == _Phase.open) _pagesView() else _morph(),
-            if (widget.overlayBuilder != null && _phase == _Phase.open)
-              widget.overlayBuilder!(context, _index, _controls),
+            if (widget.chrome case final chrome? when _phase == _Phase.open)
+              ViewerChromeOverlay(
+                chrome: chrome,
+                index: _index,
+                source: widget.source,
+                controls: _controls,
+                tokens: widget.tokens,
+                policy: widget.policy,
+                scope: widget.scope,
+                onBack: () => unawaited(close()),
+                onSelectIndex: (index) => unawaited(
+                  _pages.animateToPage(
+                    index,
+                    duration: widget.policy.controlsDuration,
+                    curve: Curves.easeOut,
+                  ),
+                ),
+                onAction: (action, index) =>
+                    unawaited(runAction(action, index)),
+              ),
           ],
         ),
       );
@@ -448,7 +503,10 @@ class MediaViewerState extends State<MediaViewer>
       drag: _dragEvents,
       onZoomedChanged: (zoomed) => setState(() => _zoomed = zoomed),
       onTap: () => _controls.value = !_controls.value,
-      child: _picture(index, item, fitted, BoxFit.contain),
+      child: RepaintBoundary(
+        key: _frameKeys.putIfAbsent(index, GlobalKey.new),
+        child: _picture(index, item, fitted, BoxFit.contain),
+      ),
     );
   }
 
