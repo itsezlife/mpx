@@ -1,5 +1,8 @@
 /// Fakes and contract suites for the seams of `mpx_ui`.
 ///
 /// Opt-in: production entry points never export these, and production code
-/// never imports them. Empty until the package gains a seam.
+/// never imports them.
 library;
+
+export 'src/testing/fake_gallery_source.dart';
+export 'src/testing/fake_origin_bridge.dart';

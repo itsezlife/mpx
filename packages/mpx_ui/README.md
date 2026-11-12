@@ -2,7 +2,8 @@
 
 Optional media UI for mpx: a fullscreen media viewer and feed list and pager widgets.
 
-> Early: the feed list works; the viewer and the pager are on their way.
+> Early: the feed list and the photo viewer work; video in the viewer and
+> the pager are on their way.
 
 ## Install
 
@@ -33,12 +34,26 @@ FeedListView(
 );
 ```
 
+Open the viewer from a list:
+
+```dart
+MediaViewer.show(
+  context,
+  source: gallery, // your GallerySource
+  initialIndex: 4,
+  bridge: origins, // your OriginBridge: where each item sits on screen
+  tokens: ViewerTokens(background: theme.colorScheme.scrim),
+);
+```
+
 ## Features
 
 - `FeedListView`: every visible clip plays muted, frames advance above the
   policy's floor, the items ahead preload by stage
+- `MediaViewer`: photos open from and close to their origin; drag down to
+  dismiss, double tap and pinch to zoom, swipe to page; `ViewerPolicy.$Android`
 
-Planned: fullscreen viewer, feed pager.
+Planned: viewer video, iOS and desktop policies, feed pager.
 
 ## Docs
 
