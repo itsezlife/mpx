@@ -157,6 +157,14 @@ Conditional middleware; conflating retention TTL with Cache-Control freshness;
 serving stale on cancel / auth / 404; host `allowStale` flags; breaking
 bytes-only `resolve` for origin alone
 
+**RevalidationPolicy**:
+Per request, what a stale hit costs the caller. `http` (default) waits for the
+conditional or full GET; `staleWhileRevalidate` serves the hit at once and
+refreshes in the background at background priority; `immutable` serves any
+hit and never asks the origin (media content keys).
+_Avoid_: blocking paint on a revalidation of a mutable avatar; revalidating
+immutable media
+
 **HttpCacheFreshness** / **HttpCacheMeta**:
 HTTP freshness policy and per-entry response meta (`etag`, `lastModified`,
 `date`, `expires`, `cacheControl`, `age`, `lastValidatedAt`). Drives whether a

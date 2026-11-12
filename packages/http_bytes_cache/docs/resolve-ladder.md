@@ -105,6 +105,17 @@ part of identity or coalesce.
    report through `BytesDiagnostics` and do not fail `resolve`. A throwing
    host `onEvent` is swallowed inside `report`.
 
+`BytesRequest.revalidation` changes steps 2–3 per request:
+`RevalidationPolicy.immutable` treats every hit as fresh (no GET ever);
+`staleWhileRevalidate` returns a stale hit at once with `BytesOrigin.cache`
+and runs steps 3–7 in the background with no caller token or progress sink,
+at `RequestPriority.background`. A background failure leaves the stale row and
+reports `revalidate_background`. `http` (the default) is the ladder above.
+
+`BytesResolver.peek(request)` answers synchronously: `cached` when the store's
+RAM index holds the key, `inFlight` when a resolve or GET for it is underway,
+else `absent`.
+
 Bytes-only `resolve` returns the body. Additive `resolveRich` returns the same
 body plus binary `BytesOrigin` (`cache` | `network`) for paint policy.
 Ladder `resolve_*` diagnostics stay the detailed channel; origin does not mirror

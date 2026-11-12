@@ -32,6 +32,10 @@
   serves by priority, then arrival; a coalesced GET takes its callers' highest
   priority, and a GET whose last caller cancels leaves the queue at once. The
   `pool` dependency is gone.
+- `RevalidationPolicy` per request: `http` (the default, unchanged),
+  `staleWhileRevalidate` (serve a stale hit at once and refresh it in the
+  background through ETag / Last-Modified; a 304 refreshes the meta, a 200
+  replaces the bytes) and `immutable` (never revalidate; for media).
 - `package:http_bytes_cache/testing.dart`: `runBytesStoreContract` and
   in-memory index and blob fakes.
 

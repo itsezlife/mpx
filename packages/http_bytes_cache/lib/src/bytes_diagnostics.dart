@@ -125,6 +125,9 @@ extension type const BytesLogOp(String value) implements String {
   /// Debug only when diagnostics are audible.
   static const resolveUnconditional = BytesLogOp('resolve_unconditional');
 
+  /// A stale-while-revalidate background refresh failed; the stale row stays.
+  static const revalidateBackground = BytesLogOp('revalidate_background');
+
   /// A registered quota's eviction callback threw. The store counts it as
   /// freeing nothing and moves on to other quotas.
   static const quotaEvict = BytesLogOp('quota_evict');

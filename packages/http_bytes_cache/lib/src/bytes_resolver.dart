@@ -43,6 +43,27 @@ enum BytesPeek {
   absent,
 }
 
+/// Whether a cache hit may be served without asking the origin first.
+///
+/// Freshness ([HttpCacheFreshness]) decides whether a hit is stale; this
+/// policy decides what a stale hit costs the caller.
+enum RevalidationPolicy {
+  /// Follow HTTP freshness: a stale hit with validators waits for a
+  /// conditional GET, one without validators for a full GET. The default.
+  http,
+
+  /// Serve any hit at once; when it is stale, revalidate in the background
+  /// (conditional GET with ETag / Last-Modified, else a full GET) at
+  /// [RequestPriority.background]. A 304 refreshes the row's meta, a 200
+  /// replaces its bytes, a failure leaves the stale row. For mutable
+  /// resources such as avatars.
+  staleWhileRevalidate,
+
+  /// Serve any hit at once and never revalidate: the bytes under this key
+  /// never change. For media, whose content key names one immutable body.
+  immutable,
+}
+
 /// Full body bytes plus [BytesOrigin].
 ///
 /// Returned by [IBytesResolver.resolveRich]. Bytes-only
@@ -76,6 +97,7 @@ final class BytesRequest {
     this.cancelToken,
     this.quota,
     this.priority,
+    this.revalidation = RevalidationPolicy.http,
   });
 
   /// Absolute or [Uri.base]-relative URL.
@@ -147,6 +169,10 @@ final class BytesRequest {
   /// [RequestPriority.visible]. The caller may change it while the request
   /// is queued. Not part of identity.
   final PriorityToken? priority;
+
+  /// What a stale cache hit costs this caller (see [RevalidationPolicy]).
+  /// Not part of identity.
+  final RevalidationPolicy revalidation;
 }
 
 /// Looks up bytes in a cache, then fetches, then write-through.
@@ -386,12 +412,32 @@ final class BytesResolver implements IBytesResolver {
 
     final hit = await _readRich(cache, key, cacheContext);
     if (hit case final cached? when cached.bytes.isNotEmpty) {
-      final fresh = HttpCacheFreshness.isFresh(
-        cached.httpCacheMeta,
-        now: now,
-        writtenAt: cached.writtenAt,
-      );
+      final fresh =
+          request.revalidation == RevalidationPolicy.immutable ||
+          HttpCacheFreshness.isFresh(
+            cached.httpCacheMeta,
+            now: now,
+            writtenAt: cached.writtenAt,
+          );
       if (fresh) {
+        return BytesResolveResult(
+          bytes: cached.bytes,
+          origin: BytesOrigin.cache,
+        );
+      }
+
+      if (request.revalidation == RevalidationPolicy.staleWhileRevalidate) {
+        unawaited(
+          _revalidateInBackground(
+            request: request,
+            key: key,
+            cache: cache,
+            client: client,
+            cacheContext: cacheContext,
+            cached: cached,
+            now: now,
+          ),
+        );
         return BytesResolveResult(
           bytes: cached.bytes,
           origin: BytesOrigin.cache,
@@ -424,6 +470,64 @@ final class BytesResolver implements IBytesResolver {
         _ => null,
       },
     );
+  }
+
+  /// Stale-while-revalidate refresh after [cached] was already served.
+  ///
+  /// Runs the blocking ladder steps for a stale hit with nobody waiting: no
+  /// caller cancel token or progress sink, background priority. Writes land
+  /// through the same soft write-through; a failure only reports.
+  Future<void> _revalidateInBackground({
+    required BytesRequest request,
+    required BytesCacheKey key,
+    required IBytesCache cache,
+    required HttpBytesClient client,
+    required CacheContext? cacheContext,
+    required BytesRichHit cached,
+    required DateTime now,
+  }) async {
+    final background = BytesRequest(
+      url: request.url,
+      headers: request.headers,
+      cacheKey: request.cacheKey,
+      skipCache: request.skipCache,
+      quota: request.quota,
+      priority: PriorityToken(RequestPriority.background),
+    );
+    try {
+      if (HttpCacheFreshness.hasValidators(cached.httpCacheMeta)) {
+        await _revalidate(
+          request: background,
+          key: key,
+          cache: cache,
+          client: client,
+          cacheContext: cacheContext,
+          cached: cached,
+          now: now,
+        );
+      } else {
+        await _fetchAndStore(
+          request: background,
+          key: key,
+          cache: cache,
+          client: client,
+          cacheContext: cacheContext,
+          now: now,
+          staleBytes: cached.bytes,
+        );
+      }
+    } on Object catch (error, stackTrace) {
+      _effectiveDiagnostics.report(
+        BytesLogEvent(
+          level: BytesLogLevel.warning,
+          message:
+              'BytesResolver background revalidation failed for ${key.value}: '
+              '$error',
+          op: BytesLogOp.revalidateBackground,
+          stackTrace: stackTrace,
+        ),
+      );
+    }
   }
 
   /// Conditional GET for a stale hit that still has validators.
