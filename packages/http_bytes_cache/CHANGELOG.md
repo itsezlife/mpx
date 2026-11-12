@@ -41,6 +41,8 @@
   while aliased keys keep the bytes. A payload read by several keys counts
   once against the budget and goes with its last reader. The index keeps the
   shared payload key per row.
+- **Breaking for implementers:** `IBytesCache.write` takes a `quota`, and
+  `IBytesIndex` needs a sync `peek`. Callers are unaffected.
 - `package:http_bytes_cache/testing.dart`: `runBytesStoreContract` and
   in-memory index and blob fakes.
 
