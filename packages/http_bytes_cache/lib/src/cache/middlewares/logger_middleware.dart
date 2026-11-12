@@ -91,7 +91,10 @@ final class CacheLoggerMiddleware$Developer {
     CacheOperation$Close() => 'close',
   };
 
-  static String _outcome(CacheOperation operation, CacheOperationResult result) {
+  static String _outcome(
+    CacheOperation operation,
+    CacheOperationResult result,
+  ) {
     return switch ((operation, result)) {
       (CacheOperation$Read(), CacheOperationResult$Read(:final hit?)) =>
         'read hit (${ByteCountFormat.format(hit.bytes.length)})',

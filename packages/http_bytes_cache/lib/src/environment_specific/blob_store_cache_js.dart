@@ -24,7 +24,9 @@ final class BytesBlobStore$Cache$JS implements IBytesBlobStore {
 
   /// Opens (or creates) the payload Cache.
   static Future<BytesBlobStore$Cache$JS> open() async {
-    final cache = await web.window.caches.open(BytesWebKeys.blobsCacheName).toDart;
+    final cache = await web.window.caches
+        .open(BytesWebKeys.blobsCacheName)
+        .toDart;
     return BytesBlobStore$Cache$JS._(cache);
   }
 

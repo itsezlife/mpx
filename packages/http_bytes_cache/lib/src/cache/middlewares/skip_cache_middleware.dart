@@ -34,7 +34,8 @@ final class SkipCacheMiddleware {
 
   /// Optional host policy. Combined with [CacheContext.skipCache] via OR:
   /// either the context flag or a true predicate skips.
-  final bool Function(CacheOperation operation, CacheContext context)? shouldSkip;
+  final bool Function(CacheOperation operation, CacheContext context)?
+  shouldSkip;
 
   /// Wraps [innerHandler] with skip-cache short-circuit on read/write.
   CacheHandler call(CacheHandler innerHandler) => (operation, context) async {
@@ -44,7 +45,9 @@ final class SkipCacheMiddleware {
     return switch (operation) {
       CacheOperation$Read() => const CacheOperationResult$Read(null),
       CacheOperation$Write() => const CacheOperationResult$Write(),
-      CacheOperation$Evict() || CacheOperation$Prune() || CacheOperation$Close() => innerHandler(operation, context),
+      CacheOperation$Evict() ||
+      CacheOperation$Prune() ||
+      CacheOperation$Close() => innerHandler(operation, context),
     };
   };
 

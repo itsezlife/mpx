@@ -101,24 +101,29 @@ Future<({IBytesCache cache, Future<void> Function() dispose})> _openDurable({
   return (cache: cache, dispose: () => _disposeDurable(cache, dir));
 }
 
-StoreScenario _warmHit(String name, Uint8List payload, _OpenCache open) => StoreScenario(
-  name: name,
-  bytes: payload.length,
-  prepare: () async {
-    final opened = await open(retention: BytesRetention.standard);
-    const key = BytesCacheKey('warm');
-    await opened.cache.write(key, payload);
-    return PreparedScenario(
-      op: () async {
-        final bytes = await opened.cache.read(key);
-        return sinkBytes(bytes);
+StoreScenario _warmHit(String name, Uint8List payload, _OpenCache open) =>
+    StoreScenario(
+      name: name,
+      bytes: payload.length,
+      prepare: () async {
+        final opened = await open(retention: BytesRetention.standard);
+        const key = BytesCacheKey('warm');
+        await opened.cache.write(key, payload);
+        return PreparedScenario(
+          op: () async {
+            final bytes = await opened.cache.read(key);
+            return sinkBytes(bytes);
+          },
+          dispose: opened.dispose,
+        );
       },
-      dispose: opened.dispose,
     );
-  },
-);
 
-StoreScenario _concurrentReads(String name, Uint8List payload, _OpenCache open) => StoreScenario(
+StoreScenario _concurrentReads(
+  String name,
+  Uint8List payload,
+  _OpenCache open,
+) => StoreScenario(
   name: name,
   bytes: payload.length,
   prepare: () async {
@@ -145,111 +150,116 @@ StoreScenario _concurrentReads(String name, Uint8List payload, _OpenCache open) 
 
 /// Soft-LRU touch of N keys, then one overflow [write] that flushes pending
 /// access, capacity-trims, and durable-[commit]s once (real exclusive epoch).
-StoreScenario _writeEpoch(String name, Uint8List payload, _OpenCache open) => StoreScenario(
-  name: name,
-  bytes: payload.length,
-  prepare: () async {
-    final opened = await open(
-      retention: const BytesRetention.maxEntries(_writeEpochKeys),
-    );
-    final keys = <BytesCacheKey>[
-      for (var i = 0; i < _writeEpochKeys; i++) BytesCacheKey('w$i'),
-    ];
-    for (final key in keys) {
-      await opened.cache.write(key, payload);
-    }
-    var overflow = 0;
-    return PreparedScenario(
-      op: () async {
+StoreScenario _writeEpoch(String name, Uint8List payload, _OpenCache open) =>
+    StoreScenario(
+      name: name,
+      bytes: payload.length,
+      prepare: () async {
+        final opened = await open(
+          retention: const BytesRetention.maxEntries(_writeEpochKeys),
+        );
+        final keys = <BytesCacheKey>[
+          for (var i = 0; i < _writeEpochKeys; i++) BytesCacheKey('w$i'),
+        ];
         for (final key in keys) {
-          await opened.cache.read(key);
+          await opened.cache.write(key, payload);
         }
-        final overflowKey = BytesCacheKey('overflow_$overflow');
-        overflow++;
-        await opened.cache.write(overflowKey, payload);
-        return payload.length ^ overflow;
+        var overflow = 0;
+        return PreparedScenario(
+          op: () async {
+            for (final key in keys) {
+              await opened.cache.read(key);
+            }
+            final overflowKey = BytesCacheKey('overflow_$overflow');
+            overflow++;
+            await opened.cache.write(overflowKey, payload);
+            return payload.length ^ overflow;
+          },
+          dispose: opened.dispose,
+        );
       },
-      dispose: opened.dispose,
     );
-  },
-);
 
-StoreScenario _evict(String name, Uint8List payload, _OpenCache open) => StoreScenario(
-  name: name,
-  bytes: payload.length,
-  prepare: () async {
-    final opened = await open(retention: BytesRetention.standard);
-    const key = BytesCacheKey('evict');
-    return PreparedScenario(
-      op: () async {
-        await opened.cache.write(key, payload);
-        await opened.cache.evict(key);
-        return payload.length;
+StoreScenario _evict(String name, Uint8List payload, _OpenCache open) =>
+    StoreScenario(
+      name: name,
+      bytes: payload.length,
+      prepare: () async {
+        final opened = await open(retention: BytesRetention.standard);
+        const key = BytesCacheKey('evict');
+        return PreparedScenario(
+          op: () async {
+            await opened.cache.write(key, payload);
+            await opened.cache.evict(key);
+            return payload.length;
+          },
+          dispose: opened.dispose,
+        );
       },
-      dispose: opened.dispose,
     );
-  },
-);
 
-StoreScenario _prune(String name, Uint8List payload, _OpenCache open) => StoreScenario(
-  name: name,
-  bytes: payload.length,
-  prepare: () async {
-    final opened = await open(
-      retention: const BytesRetention.maxEntries(_pruneMaxEntries),
-    );
-    return PreparedScenario(
-      op: () async {
-        for (var i = 0; i < _pruneSeedKeys; i++) {
-          await opened.cache.write(BytesCacheKey('p$i'), payload);
-        }
-        final report = await opened.cache.prune();
-        return report.freedBytes ^ report.evictedKeys.length;
+StoreScenario _prune(String name, Uint8List payload, _OpenCache open) =>
+    StoreScenario(
+      name: name,
+      bytes: payload.length,
+      prepare: () async {
+        final opened = await open(
+          retention: const BytesRetention.maxEntries(_pruneMaxEntries),
+        );
+        return PreparedScenario(
+          op: () async {
+            for (var i = 0; i < _pruneSeedKeys; i++) {
+              await opened.cache.write(BytesCacheKey('p$i'), payload);
+            }
+            final report = await opened.cache.prune();
+            return report.freedBytes ^ report.evictedKeys.length;
+          },
+          dispose: opened.dispose,
+        );
       },
-      dispose: opened.dispose,
     );
-  },
-);
 
 /// Seed on disk, then each timed op is open → first read → close (cold durable
 /// path after reopen; open cost is intentional).
-StoreScenario _durableColdRoundTrip(String name, Uint8List payload) => StoreScenario(
-  name: name,
-  bytes: payload.length,
-  prepare: () async {
-    final dir = _tempDir();
-    const key = BytesCacheKey('cold');
-    final seed = await BytesCache.open(
-      directory: dir.path,
-      retention: BytesRetention.standard,
-      throwOnOpenFailure: true,
-    );
-    await seed.write(key, payload);
-    await seed.close();
-    return PreparedScenario(
-      op: () async {
-        final cache = await BytesCache.open(
+StoreScenario _durableColdRoundTrip(String name, Uint8List payload) =>
+    StoreScenario(
+      name: name,
+      bytes: payload.length,
+      prepare: () async {
+        final dir = _tempDir();
+        const key = BytesCacheKey('cold');
+        final seed = await BytesCache.open(
           directory: dir.path,
           retention: BytesRetention.standard,
           throwOnOpenFailure: true,
         );
-        try {
-          final bytes = await cache.read(key);
-          return sinkBytes(bytes);
-        } finally {
-          await cache.close();
-        }
-      },
-      dispose: () async {
-        if (dir.existsSync()) {
-          dir.deleteSync(recursive: true);
-        }
+        await seed.write(key, payload);
+        await seed.close();
+        return PreparedScenario(
+          op: () async {
+            final cache = await BytesCache.open(
+              directory: dir.path,
+              retention: BytesRetention.standard,
+              throwOnOpenFailure: true,
+            );
+            try {
+              final bytes = await cache.read(key);
+              return sinkBytes(bytes);
+            } finally {
+              await cache.close();
+            }
+          },
+          dispose: () async {
+            if (dir.existsSync()) {
+              dir.deleteSync(recursive: true);
+            }
+          },
+        );
       },
     );
-  },
-);
 
-Directory _tempDir() => Directory.systemTemp.createTempSync('http_bytes_cache_bench_');
+Directory _tempDir() =>
+    Directory.systemTemp.createTempSync('http_bytes_cache_bench_');
 
 Future<void> _disposeDurable(IBytesCache cache, Directory dir) async {
   await cache.close();

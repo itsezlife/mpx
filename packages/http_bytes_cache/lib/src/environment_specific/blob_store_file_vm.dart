@@ -75,10 +75,12 @@ final class BytesBlobStore$File$VM implements IBytesBlobStore {
   String _pathFor(BytesCacheKey key) => p.join(directory, key.value);
 
   @override
-  Future<Uint8List?> read(BytesCacheKey key, {int? knownByteLength}) => readPath(_pathFor(key));
+  Future<Uint8List?> read(BytesCacheKey key, {int? knownByteLength}) =>
+      readPath(_pathFor(key));
 
   @override
-  Future<void> write(BytesCacheKey key, Uint8List bytes) => writePathAtomic(_pathFor(key), bytes);
+  Future<void> write(BytesCacheKey key, Uint8List bytes) =>
+      writePathAtomic(_pathFor(key), bytes);
 
   @override
   Future<void> delete(BytesCacheKey key) => deletePath(_pathFor(key));
@@ -118,7 +120,9 @@ final class BytesBlobStore$File$VM implements IBytesBlobStore {
   /// isolate send does not copy again. The caller may keep using [bytes];
   /// [TransferableTypedData.fromList] prepares its own buffer.
   Future<void> writePathAtomic(String path, Uint8List bytes) async {
-    final payload = bytes.lengthInBytes >= transferByteThreshold ? TransferableTypedData.fromList([bytes]) : bytes;
+    final payload = bytes.lengthInBytes >= transferByteThreshold
+        ? TransferableTypedData.fromList([bytes])
+        : bytes;
     await _rpc(
       (
         id: -1,
@@ -219,7 +223,8 @@ final class BytesBlobStore$File$VM implements IBytesBlobStore {
     };
   }
 
-  Future<IsolateController<_BlobIoRequest, _BlobIoResponse>> _ensureSpawned() async {
+  Future<IsolateController<_BlobIoRequest, _BlobIoResponse>>
+  _ensureSpawned() async {
     if (_controller case final existing?) return existing;
 
     if (_spawning case final spawning?) {
@@ -234,11 +239,12 @@ final class BytesBlobStore$File$VM implements IBytesBlobStore {
 
     final completer = _spawning = Completer<void>();
     try {
-      final controller = await IsolateController.spawn<void, _BlobIoRequest, _BlobIoResponse>(
-        handler: _fileBlobIoHandler,
-        payload: null,
-        name: 'image_bytes_blob_io',
-      );
+      final controller =
+          await IsolateController.spawn<void, _BlobIoRequest, _BlobIoResponse>(
+            handler: _fileBlobIoHandler,
+            payload: null,
+            name: 'image_bytes_blob_io',
+          );
       _subscription = controller.stream.listen(
         _onResponse,
         onError: (Object error, StackTrace stackTrace) {
@@ -374,10 +380,15 @@ Future<void> _fileBlobIoHandler(
 ///
 /// [TransferableTypedData] must be materialized exactly once on this isolate.
 Uint8List _materializeWriteBytes(Object? bytes) => switch (bytes) {
-  final TransferableTypedData transferable => transferable.materialize().asUint8List(),
+  final TransferableTypedData transferable =>
+    transferable.materialize().asUint8List(),
   final Uint8List list => list,
   null => throw ArgumentError.notNull('bytes'),
-  _ => throw ArgumentError.value(bytes, 'bytes', 'Uint8List or TransferableTypedData'),
+  _ => throw ArgumentError.value(
+    bytes,
+    'bytes',
+    'Uint8List or TransferableTypedData',
+  ),
 };
 
 /// Miss is normal: try read, map [FileSystemException] to null.

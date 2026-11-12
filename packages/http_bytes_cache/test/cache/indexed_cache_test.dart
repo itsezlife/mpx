@@ -33,16 +33,19 @@ void main() {
       expect(index.records[key.value]?.byteLength, 4);
     });
 
-    test('hot-path blob read forwards index byteLength as knownByteLength', () async {
-      const key = BytesCacheKey('sized');
-      final bytes = Uint8List.fromList([9, 8, 7, 6]);
+    test(
+      'hot-path blob read forwards index byteLength as knownByteLength',
+      () async {
+        const key = BytesCacheKey('sized');
+        final bytes = Uint8List.fromList([9, 8, 7, 6]);
 
-      await cache.write(key, bytes);
-      blobs.lastKnownByteLength = null;
+        await cache.write(key, bytes);
+        blobs.lastKnownByteLength = null;
 
-      expect(await cache.read(key), bytes);
-      expect(blobs.lastKnownByteLength, bytes.length);
-    });
+        expect(await cache.read(key), bytes);
+        expect(blobs.lastKnownByteLength, bytes.length);
+      },
+    );
 
     test('empty write is not retained as capacity waste', () async {
       cache = IndexedBytesCache(
@@ -63,16 +66,19 @@ void main() {
       expect(await cache.read(keepKey), Uint8List.fromList([1]));
     });
 
-    test('empty write evicts a previously stored payload for the same key', () async {
-      const key = BytesCacheKey('logo');
-      await cache.write(key, Uint8List.fromList([1, 2]));
+    test(
+      'empty write evicts a previously stored payload for the same key',
+      () async {
+        const key = BytesCacheKey('logo');
+        await cache.write(key, Uint8List.fromList([1, 2]));
 
-      await cache.write(key, Uint8List(0));
+        await cache.write(key, Uint8List(0));
 
-      expect(await cache.read(key), isNull);
-      expect(blobs.store.containsKey(key.value), isFalse);
-      expect(index.records.containsKey(key.value), isFalse);
-    });
+        expect(await cache.read(key), isNull);
+        expect(blobs.store.containsKey(key.value), isFalse);
+        expect(index.records.containsKey(key.value), isFalse);
+      },
+    );
 
     test('read of sticky empty payload misses and scrubs the entry', () async {
       const key = BytesCacheKey('sticky');
@@ -101,31 +107,37 @@ void main() {
 
       expect(index.putCount, putsBefore);
       expect(index.commitCount, commitsBefore);
-      expect(index.records[key.value]?.accessedAt, DateTime.utc(2024, 1, 1, 12));
-    });
-
-    test('soft-LRU flush + capacity trim in one write commits meta once', () async {
-      cache = IndexedBytesCache(
-        index: index,
-        blobs: blobs,
-        retention: const BytesRetention.maxEntries(2),
-        clock: () => now,
+      expect(
+        index.records[key.value]?.accessedAt,
+        DateTime.utc(2024, 1, 1, 12),
       );
-
-      await cache.write(const BytesCacheKey('a'), Uint8List.fromList([1]));
-      now = now.add(const Duration(seconds: 1));
-      await cache.write(const BytesCacheKey('b'), Uint8List.fromList([2]));
-      now = now.add(const Duration(seconds: 1));
-      await cache.read(const BytesCacheKey('a'));
-      now = now.add(const Duration(seconds: 1));
-      final commitsBefore = index.commitCount;
-
-      await cache.write(const BytesCacheKey('c'), Uint8List.fromList([3]));
-
-      // Flush touches a, put c, delete b: many RAM puts/deletes, one durable commit.
-      expect(index.commitCount, commitsBefore + 1);
-      expect(index.putCount, greaterThan(1));
     });
+
+    test(
+      'soft-LRU flush + capacity trim in one write commits meta once',
+      () async {
+        cache = IndexedBytesCache(
+          index: index,
+          blobs: blobs,
+          retention: const BytesRetention.maxEntries(2),
+          clock: () => now,
+        );
+
+        await cache.write(const BytesCacheKey('a'), Uint8List.fromList([1]));
+        now = now.add(const Duration(seconds: 1));
+        await cache.write(const BytesCacheKey('b'), Uint8List.fromList([2]));
+        now = now.add(const Duration(seconds: 1));
+        await cache.read(const BytesCacheKey('a'));
+        now = now.add(const Duration(seconds: 1));
+        final commitsBefore = index.commitCount;
+
+        await cache.write(const BytesCacheKey('c'), Uint8List.fromList([3]));
+
+        // Flush touches a, put c, delete b: many RAM puts/deletes, one durable commit.
+        expect(index.commitCount, commitsBefore + 1);
+        expect(index.putCount, greaterThan(1));
+      },
+    );
 
     test('concurrent reads overlap when no mutate is in flight', () async {
       var inFlight = 0;
@@ -150,31 +162,34 @@ void main() {
       expect(maxInFlight, greaterThan(1));
     });
 
-    test('TTL cleanup re-checks under exclusive so a racing write survives', () async {
-      cache = IndexedBytesCache(
-        index: index,
-        blobs: blobs,
-        retention: const BytesRetention.maxAge(Duration(hours: 1)),
-        clock: () => now,
-      );
-      const key = BytesCacheKey('race-ttl');
-      await cache.write(key, Uint8List.fromList([1]));
-      now = now.add(const Duration(hours: 2));
-      index.opDelay = const Duration(milliseconds: 10);
-      blobs.opDelay = const Duration(milliseconds: 10);
+    test(
+      'TTL cleanup re-checks under exclusive so a racing write survives',
+      () async {
+        cache = IndexedBytesCache(
+          index: index,
+          blobs: blobs,
+          retention: const BytesRetention.maxAge(Duration(hours: 1)),
+          clock: () => now,
+        );
+        const key = BytesCacheKey('race-ttl');
+        await cache.write(key, Uint8List.fromList([1]));
+        now = now.add(const Duration(hours: 2));
+        index.opDelay = const Duration(milliseconds: 10);
+        blobs.opDelay = const Duration(milliseconds: 10);
 
-      // Shared probe sees expired while write waits for readers; write refreshes
-      // before the exclusive cleanup. Without re-check, cleanup would tear the
-      // refreshed pair.
-      await (
-        cache.read(key),
-        cache.write(key, Uint8List.fromList([9, 9])),
-      ).wait;
+        // Shared probe sees expired while write waits for readers; write refreshes
+        // before the exclusive cleanup. Without re-check, cleanup would tear the
+        // refreshed pair.
+        await (
+          cache.read(key),
+          cache.write(key, Uint8List.fromList([9, 9])),
+        ).wait;
 
-      expect(await cache.read(key), Uint8List.fromList([9, 9]));
-      expect(index.records.containsKey(key.value), isTrue);
-      expect(blobs.store[key.value], Uint8List.fromList([9, 9]));
-    });
+        expect(await cache.read(key), Uint8List.fromList([9, 9]));
+        expect(index.records.containsKey(key.value), isTrue);
+        expect(blobs.store[key.value], Uint8List.fromList([9, 9]));
+      },
+    );
 
     test('reclaim and write cannot tear an index/blob pair', () async {
       const orphanKey = BytesCacheKey('orphan-blob');
@@ -220,26 +235,35 @@ void main() {
       now = now.add(const Duration(seconds: 1));
       await cache.write(const BytesCacheKey('c'), Uint8List.fromList([3]));
 
-      expect(await cache.read(const BytesCacheKey('a')), Uint8List.fromList([1]));
-      expect(await cache.read(const BytesCacheKey('b')), isNull);
-      expect(await cache.read(const BytesCacheKey('c')), Uint8List.fromList([3]));
-    });
-
-    test('TTL: read after maxAge returns null and deletes both stores', () async {
-      cache = IndexedBytesCache(
-        index: index,
-        blobs: blobs,
-        retention: const BytesRetention.maxAge(Duration(hours: 1)),
-        clock: () => now,
+      expect(
+        await cache.read(const BytesCacheKey('a')),
+        Uint8List.fromList([1]),
       );
-      const key = BytesCacheKey('logo');
-      await cache.write(key, Uint8List.fromList([1]));
-      now = now.add(const Duration(hours: 2));
-
-      expect(await cache.read(key), isNull);
-      expect(index.records.containsKey(key.value), isFalse);
-      expect(blobs.store.containsKey(key.value), isFalse);
+      expect(await cache.read(const BytesCacheKey('b')), isNull);
+      expect(
+        await cache.read(const BytesCacheKey('c')),
+        Uint8List.fromList([3]),
+      );
     });
+
+    test(
+      'TTL: read after maxAge returns null and deletes both stores',
+      () async {
+        cache = IndexedBytesCache(
+          index: index,
+          blobs: blobs,
+          retention: const BytesRetention.maxAge(Duration(hours: 1)),
+          clock: () => now,
+        );
+        const key = BytesCacheKey('logo');
+        await cache.write(key, Uint8List.fromList([1]));
+        now = now.add(const Duration(hours: 2));
+
+        expect(await cache.read(key), isNull);
+        expect(index.records.containsKey(key.value), isFalse);
+        expect(blobs.store.containsKey(key.value), isFalse);
+      },
+    );
 
     test('prune removes expired entries', () async {
       cache = IndexedBytesCache(
@@ -304,9 +328,15 @@ void main() {
       now = now.add(const Duration(seconds: 1));
       await cache.write(const BytesCacheKey('c'), Uint8List.fromList([5, 6]));
 
-      expect(await cache.read(const BytesCacheKey('a')), Uint8List.fromList([1, 2]));
+      expect(
+        await cache.read(const BytesCacheKey('a')),
+        Uint8List.fromList([1, 2]),
+      );
       expect(await cache.read(const BytesCacheKey('b')), isNull);
-      expect(await cache.read(const BytesCacheKey('c')), Uint8List.fromList([5, 6]));
+      expect(
+        await cache.read(const BytesCacheKey('c')),
+        Uint8List.fromList([5, 6]),
+      );
     });
 
     test('concurrent mutate leaves index and blob pairs intact', () async {
@@ -360,7 +390,10 @@ void main() {
       await cache.write(priorKey, priorBytes);
       index.commitError = StateError('durable index commit failed');
 
-      await expectLater(cache.write(failedKey, failedBytes), throwsA(isA<StateError>()));
+      await expectLater(
+        cache.write(failedKey, failedBytes),
+        throwsA(isA<StateError>()),
+      );
 
       // Must not treat the optimistic RAM put as a durable hit.
       expect(await cache.read(failedKey), isNull);

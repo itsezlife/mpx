@@ -104,9 +104,12 @@ class HttpBytesRetryMiddleware {
     HttpBytesHandler innerHandler,
   ) => (request, context) async {
     final retries = context.retries ?? backoff.maxRetries;
-    final idempotent = _kIdempotentMethods.contains(request.method.toUpperCase()) || context.retryNonIdempotent;
+    final idempotent =
+        _kIdempotentMethods.contains(request.method.toUpperCase()) ||
+        context.retryNonIdempotent;
 
-    final shouldNotRetry = context.noRetry || retries < 1 || !idempotent || !request.canBeRetried;
+    final shouldNotRetry =
+        context.noRetry || retries < 1 || !idempotent || !request.canBeRetried;
     if (shouldNotRetry) return innerHandler(request, context);
 
     final evaluate = retryEvaluator ?? defaultRetryEvaluator;
@@ -118,10 +121,13 @@ class HttpBytesRetryMiddleware {
         return await innerHandler(clonedRequest, context);
       } on Object catch (e) {
         final mechanicForbidsRetry = switch (e) {
-          HttpBytesException$Cancelled() || HttpBytesException$Timeout() => true,
+          HttpBytesException$Cancelled() ||
+          HttpBytesException$Timeout() => true,
           _ => false,
         };
-        if (mechanicForbidsRetry || attempt >= retries || !evaluate(e, attempt)) {
+        if (mechanicForbidsRetry ||
+            attempt >= retries ||
+            !evaluate(e, attempt)) {
           rethrow;
         }
         final delay = _retryAfter(e) ?? backoff.backoff(attempt, _random);

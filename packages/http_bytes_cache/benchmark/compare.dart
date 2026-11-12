@@ -43,8 +43,12 @@ Future<void> runCompare() async {
 
   final baseline = save ? null : _loadBaseline();
 
-  print('scenario                          bytes    us/op       baseline    delta');
-  print('--------------------------------  -------  ----------  ----------  ----------');
+  print(
+    'scenario                          bytes    us/op       baseline    delta',
+  );
+  print(
+    '--------------------------------  -------  ----------  ----------  ----------',
+  );
   var total = 0.0;
   var baseTotal = 0.0;
   for (final entry in results.entries) {
@@ -63,7 +67,9 @@ Future<void> runCompare() async {
       '${deltaStr.padLeft(10)}',
     );
   }
-  print('--------------------------------  -------  ----------  ----------  ----------');
+  print(
+    '--------------------------------  -------  ----------  ----------  ----------',
+  );
   final totalDelta = baseTotal > 0 ? _delta(baseTotal, total) : '-';
   print(
     '${'TOTAL'.padRight(32)}  '

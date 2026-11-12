@@ -67,11 +67,19 @@ void main() {
       );
       addTearDown(second.close);
 
-      expect(await second.read(const BytesCacheKey('a')), Uint8List.fromList([1]));
-      expect(await second.read(const BytesCacheKey('b')), isNull);
-      expect(await second.read(const BytesCacheKey('c')), Uint8List.fromList([3]));
       expect(
-        File(p.join(tempDir.path, BytesBlobStore$File$VM.indexFileName)).existsSync(),
+        await second.read(const BytesCacheKey('a')),
+        Uint8List.fromList([1]),
+      );
+      expect(await second.read(const BytesCacheKey('b')), isNull);
+      expect(
+        await second.read(const BytesCacheKey('c')),
+        Uint8List.fromList([3]),
+      );
+      expect(
+        File(
+          p.join(tempDir.path, BytesBlobStore$File$VM.indexFileName),
+        ).existsSync(),
         isTrue,
       );
     });
@@ -100,7 +108,8 @@ void main() {
     });
 
     test('open failure degrades to memory and reports a warning', () async {
-      final blocker = File(p.join(tempDir.path, 'not_a_directory'))..writeAsBytesSync([1]);
+      final blocker = File(p.join(tempDir.path, 'not_a_directory'))
+        ..writeAsBytesSync([1]);
       final events = <BytesLogEvent>[];
 
       final cache = await BytesCache.open(
@@ -123,7 +132,8 @@ void main() {
 
     test('open failure degrade closes the partial VM worker', () async {
       BytesBlobStore$File$VM.debugActiveWorkerCount = 0;
-      final blocker = File(p.join(tempDir.path, 'not_a_directory'))..writeAsBytesSync([1]);
+      final blocker = File(p.join(tempDir.path, 'not_a_directory'))
+        ..writeAsBytesSync([1]);
 
       final cache = await BytesCache.open(
         directory: p.join(blocker.path, 'nested'),
@@ -140,7 +150,8 @@ void main() {
     });
 
     test('open failure throws when throwOnOpenFailure is true', () async {
-      final blocker = File(p.join(tempDir.path, 'not_a_directory'))..writeAsBytesSync([1]);
+      final blocker = File(p.join(tempDir.path, 'not_a_directory'))
+        ..writeAsBytesSync([1]);
 
       await expectLater(
         BytesCache.open(
@@ -153,7 +164,8 @@ void main() {
 
     test('throwOnOpenFailure also closes the partial VM worker', () async {
       BytesBlobStore$File$VM.debugActiveWorkerCount = 0;
-      final blocker = File(p.join(tempDir.path, 'not_a_directory'))..writeAsBytesSync([1]);
+      final blocker = File(p.join(tempDir.path, 'not_a_directory'))
+        ..writeAsBytesSync([1]);
 
       await expectLater(
         BytesCache.open(
@@ -169,23 +181,26 @@ void main() {
       );
     });
 
-    test('missing VM directory throws ArgumentError without degrading', () async {
-      BytesBlobStore$File$VM.debugActiveWorkerCount = 0;
+    test(
+      'missing VM directory throws ArgumentError without degrading',
+      () async {
+        BytesBlobStore$File$VM.debugActiveWorkerCount = 0;
 
-      await expectLater(
-        BytesCache.open(directory: null),
-        throwsA(isA<ArgumentError>()),
-      );
-      await expectLater(
-        BytesCache.open(directory: ''),
-        throwsA(isA<ArgumentError>()),
-      );
-      expect(
-        BytesBlobStore$File$VM.debugActiveWorkerCount,
-        0,
-        reason: 'host wiring ArgumentError must not spawn or leak a worker',
-      );
-    });
+        await expectLater(
+          BytesCache.open(directory: null),
+          throwsA(isA<ArgumentError>()),
+        );
+        await expectLater(
+          BytesCache.open(directory: ''),
+          throwsA(isA<ArgumentError>()),
+        );
+        expect(
+          BytesBlobStore$File$VM.debugActiveWorkerCount,
+          0,
+          reason: 'host wiring ArgumentError must not spawn or leak a worker',
+        );
+      },
+    );
 
     test('soft LRU: capacity trim after read flush on write', () async {
       var now = DateTime.utc(2024, 1, 1);
@@ -204,9 +219,15 @@ void main() {
       now = now.add(const Duration(seconds: 1));
       await cache.write(const BytesCacheKey('c'), Uint8List.fromList([3]));
 
-      expect(await cache.read(const BytesCacheKey('a')), Uint8List.fromList([1]));
+      expect(
+        await cache.read(const BytesCacheKey('a')),
+        Uint8List.fromList([1]),
+      );
       expect(await cache.read(const BytesCacheKey('b')), isNull);
-      expect(await cache.read(const BytesCacheKey('c')), Uint8List.fromList([3]));
+      expect(
+        await cache.read(const BytesCacheKey('c')),
+        Uint8List.fromList([3]),
+      );
     });
 
     test('orphan blob without index is reclaimed on open', () async {
@@ -235,7 +256,10 @@ void main() {
       await cache.prune();
 
       expect(File(p.join(tempDir.path, 'stray')).existsSync(), isFalse);
-      expect(await cache.read(const BytesCacheKey('kept')), Uint8List.fromList([4]));
+      expect(
+        await cache.read(const BytesCacheKey('kept')),
+        Uint8List.fromList([4]),
+      );
     });
 
     test('temp-only blob file is not a cache hit', () async {
@@ -251,7 +275,9 @@ void main() {
     });
 
     test('corrupt index recovers by wiping without crash-looping', () async {
-      File(p.join(tempDir.path, BytesBlobStore$File$VM.indexFileName)).writeAsBytesSync(
+      File(
+        p.join(tempDir.path, BytesBlobStore$File$VM.indexFileName),
+      ).writeAsBytesSync(
         const Utf8Encoder().convert('not-json'),
       );
       File(p.join(tempDir.path, 'stale')).writeAsBytesSync([9]);
@@ -272,7 +298,9 @@ void main() {
     });
 
     test('unrecognized index version recovers by wiping', () async {
-      File(p.join(tempDir.path, BytesBlobStore$File$VM.indexFileName)).writeAsBytesSync(
+      File(
+        p.join(tempDir.path, BytesBlobStore$File$VM.indexFileName),
+      ).writeAsBytesSync(
         const JsonEncoder().fuse(const Utf8Encoder()).convert({
           'v': 99,
           'e': {

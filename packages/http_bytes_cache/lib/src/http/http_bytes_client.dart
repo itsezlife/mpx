@@ -20,7 +20,8 @@ typedef HttpBytesHandler =
     );
 
 /// A function that takes an [HttpBytesHandler] and returns an [HttpBytesHandler].
-typedef HttpBytesMiddleware = HttpBytesHandler Function(HttpBytesHandler innerHandler);
+typedef HttpBytesMiddleware =
+    HttpBytesHandler Function(HttpBytesHandler innerHandler);
 
 /// Ad-hoc [HttpBytesMiddleware] from optional request/response/error hooks,
 /// plus [merge] for outermost-first chains.
@@ -28,8 +29,10 @@ typedef HttpBytesMiddleware = HttpBytesHandler Function(HttpBytesHandler innerHa
 extension type HttpBytesMiddlewareWrapper._(HttpBytesMiddleware _fn) {
   /// Creates a new [HttpBytesMiddleware] from the given callbacks.
   factory HttpBytesMiddlewareWrapper({
-    Future<void> Function(HttpBytesRequest request, HttpBytesContext context)? onRequest,
-    Future<void> Function(HttpBytesResponse response, HttpBytesContext context)? onResponse,
+    Future<void> Function(HttpBytesRequest request, HttpBytesContext context)?
+    onRequest,
+    Future<void> Function(HttpBytesResponse response, HttpBytesContext context)?
+    onResponse,
     Future<void> Function(
       Object error,
       StackTrace stackTrace,
@@ -74,7 +77,8 @@ extension type HttpBytesMiddlewareWrapper._(HttpBytesMiddleware _fn) {
 /// ([etag] / [lastModified] for [HttpBytesConditionalMiddleware]), and
 /// [identityOverride] (coalesce key from the resolver) live here. Seed slots
 /// before [HttpBytesClient.send].
-extension type HttpBytesContext(Map<String, Object?> _map) implements Map<String, Object?> {
+extension type HttpBytesContext(Map<String, Object?> _map)
+    implements Map<String, Object?> {
   /// Empty context for a new send.
   factory HttpBytesContext.empty() => HttpBytesContext(<String, Object?>{});
 
@@ -133,7 +137,8 @@ extension type HttpBytesContext(Map<String, Object?> _map) implements Map<String
     final CancelToken t => t,
     _ => null,
   };
-  set callerCancelToken(CancelToken? value) => _set(callerCancelTokenKey, value);
+  set callerCancelToken(CancelToken? value) =>
+      _set(callerCancelTokenKey, value);
 
   /// Connect timeout override ([Duration] / `int` ms / [DateTime] deadline).
   Object? get connectTimeout => _map[connectTimeoutKey];
@@ -144,18 +149,22 @@ extension type HttpBytesContext(Map<String, Object?> _map) implements Map<String
   set receiveTimeout(Object? value) => _set(receiveTimeoutKey, value);
 
   /// Progress sink while the response body is read.
-  BytesProgressCallback? get onBytesProgress => switch (_map[onBytesProgressKey]) {
-    final BytesProgressCallback cb => cb,
-    _ => null,
-  };
-  set onBytesProgress(BytesProgressCallback? value) => _set(onBytesProgressKey, value);
+  BytesProgressCallback? get onBytesProgress =>
+      switch (_map[onBytesProgressKey]) {
+        final BytesProgressCallback cb => cb,
+        _ => null,
+      };
+  set onBytesProgress(BytesProgressCallback? value) =>
+      _set(onBytesProgressKey, value);
 
   /// Success predicate; default is 2xx or 304 Not Modified.
-  bool Function(int statusCode)? get validateStatus => switch (_map[validateStatusKey]) {
-    final bool Function(int statusCode) predicate => predicate,
-    _ => null,
-  };
-  set validateStatus(bool Function(int statusCode)? value) => _set(validateStatusKey, value);
+  bool Function(int statusCode)? get validateStatus =>
+      switch (_map[validateStatusKey]) {
+        final bool Function(int statusCode) predicate => predicate,
+        _ => null,
+      };
+  set validateStatus(bool Function(int statusCode)? value) =>
+      _set(validateStatusKey, value);
 
   /// When `true`, [HttpBytesRetryMiddleware] skips retry for this send.
   bool get noRetry => _map[noRetryKey] == true;
@@ -170,7 +179,8 @@ extension type HttpBytesContext(Map<String, Object?> _map) implements Map<String
 
   /// When `true`, allow retry even if the method is not idempotent.
   bool get retryNonIdempotent => _map[retryNonIdempotentKey] == true;
-  set retryNonIdempotent(bool value) => _set(retryNonIdempotentKey, value ? true : null);
+  set retryNonIdempotent(bool value) =>
+      _set(retryNonIdempotentKey, value ? true : null);
 
   /// Stored `ETag` for conditional GET. Non-empty → `If-None-Match` on the wire
   /// when [HttpBytesConditionalMiddleware] is in the stack. Not part of coalesce
@@ -199,7 +209,8 @@ extension type HttpBytesContext(Map<String, Object?> _map) implements Map<String
     final BytesCacheKey k => k,
     _ => null,
   };
-  set identityOverride(BytesCacheKey? value) => _set(identityOverrideKey, value);
+  set identityOverride(BytesCacheKey? value) =>
+      _set(identityOverrideKey, value);
 
   void _set(String key, Object? value) {
     if (value == null) {
@@ -216,7 +227,8 @@ extension type HttpBytesContext(Map<String, Object?> _map) implements Map<String
 ///
 /// Middlewares may [clone] to adjust method, URL, or headers while keeping the
 /// same abort trigger when the underlying request is [http.Abortable].
-extension type const HttpBytesRequest(http.BaseRequest _request) implements http.BaseRequest {
+extension type const HttpBytesRequest(http.BaseRequest _request)
+    implements http.BaseRequest {
   /// Whether [clone] can replay this request for [HttpBytesRetryMiddleware].
   ///
   /// True for [http.Request] / [http.AbortableRequest] (buffered body). False
@@ -363,7 +375,8 @@ final class HttpBytesClient {
     this.validateStatus,
   }) : assert(maxConcurrent > 0, 'maxConcurrent must be > 0'),
        middlewares = List<HttpBytesMiddleware>.unmodifiable(
-         middlewares ?? <HttpBytesMiddleware>[const HttpBytesTimeoutMiddleware()],
+         middlewares ??
+             <HttpBytesMiddleware>[const HttpBytesTimeoutMiddleware()],
        ) {
     final internalClient = client ?? http.Client();
     _ownsClient = client == null;
@@ -666,7 +679,8 @@ final class _HttpBytesInFlight {
   final Set<_HttpBytesSubscriber> _subscribers = <_HttpBytesSubscriber>{};
 
   /// Completes when the shared GET finishes (success or error), after fan-out.
-  Future<void> get done => _flight.future.then<void>((_) {}, onError: (_, _) {});
+  Future<void> get done =>
+      _flight.future.then<void>((_) {}, onError: (_, _) {});
 
   /// Starter: count toward last-subscriber abort without a result Future.
   void trackCaller(CancelToken callerToken) {
@@ -875,7 +889,10 @@ HttpBytesHandler _createClientSend(
         }
 
         final statusCode = streamedResponse.statusCode;
-        final isSuccess = context.validateStatus ?? validateStatusDefault ?? _defaultValidateStatus;
+        final isSuccess =
+            context.validateStatus ??
+            validateStatusDefault ??
+            _defaultValidateStatus;
         if (!isSuccess(statusCode)) {
           unawaited(streamedResponse.stream.drain<void>());
           throwError(
@@ -899,7 +916,8 @@ HttpBytesHandler _createClientSend(
 
         // Report download progress as the body is consumed, if a callback was provided.
         // `total` is the Content-Length, or `null` when the server did not declare one.
-        if (context.onBytesProgress case final onBytesProgress? when !isNotModified) {
+        if (context.onBytesProgress case final onBytesProgress?
+            when !isNotModified) {
           final total = contentLength > 0 ? contentLength : null;
           var received = 0;
           byteStream = http.ByteStream(
@@ -939,7 +957,8 @@ HttpBytesHandler _createClientSend(
 /// 304 is a first-class revalidation success (headers present; body optional
 /// and ignored). Without it, conditional GETs would surface as `$Request` and
 /// Retry would never see a clean success.
-bool _defaultValidateStatus(int statusCode) => (statusCode >= 200 && statusCode < 300) || statusCode == 304;
+bool _defaultValidateStatus(int statusCode) =>
+    (statusCode >= 200 && statusCode < 300) || statusCode == 304;
 
 /// Maps a non-success [statusCode] to a typed [HttpBytesException].
 ///
@@ -960,7 +979,8 @@ HttpBytesException _statusToException(
   final data = <String, Object?>{
     'url': url.toString(),
     'headers': headers,
-    if (statusCode == 429 || statusCode == 503) 'retry-after': ?headers['retry-after'],
+    if (statusCode == 429 || statusCode == 503)
+      'retry-after': ?headers['retry-after'],
   };
   return switch (statusCode) {
     401 || 403 => HttpBytesException$Authentication(
@@ -1222,7 +1242,8 @@ final class HttpBytesException$Cancelled extends HttpBytesException {
 /// {@template http_bytes_exception_timeout}
 /// Client timeout exception — thrown when a connect or receive timeout fires.
 /// {@endtemplate}
-final class HttpBytesException$Timeout extends HttpBytesException implements TimeoutException {
+final class HttpBytesException$Timeout extends HttpBytesException
+    implements TimeoutException {
   /// {@macro http_bytes_exception_timeout}
   const HttpBytesException$Timeout({
     required this.code,

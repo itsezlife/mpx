@@ -120,7 +120,9 @@ Stream<String> _$directoryKeys(web.FileSystemDirectoryHandle directory) async* {
   if (iterator == null) return;
   final jsIterator = iterator as JSObject;
   while (true) {
-    final next = await jsIterator.callMethod<JSPromise<JSObject>>('next'.toJS).toDart;
+    final next = await jsIterator
+        .callMethod<JSPromise<JSObject>>('next'.toJS)
+        .toDart;
     final done = next.getProperty('done'.toJS);
     if (done case final JSBoolean flag when flag.toDart) break;
     yield switch (next.getProperty('value'.toJS)) {

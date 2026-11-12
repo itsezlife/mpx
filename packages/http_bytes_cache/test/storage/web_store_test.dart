@@ -6,7 +6,8 @@ import 'package:http_bytes_cache/src/bytes_web_keys.dart';
 import 'package:test/test.dart';
 
 /// Builds UTF-8 JSON bytes without the domain index codec (fixtures only).
-List<int> _jsonObjectBytes(Object? value) => const JsonEncoder().fuse(const Utf8Encoder()).convert(value);
+List<int> _jsonObjectBytes(Object? value) =>
+    const JsonEncoder().fuse(const Utf8Encoder()).convert(value);
 
 void main() {
   group('BytesIndexDocumentCodec', () {

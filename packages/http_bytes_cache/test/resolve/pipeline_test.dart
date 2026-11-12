@@ -51,7 +51,9 @@ void main() {
       final client = buildClient(
         httpClient: MockClient((_) async {
           attempts++;
-          return attempts == 1 ? http.Response('busy', 503) : http.Response.bytes(Uint8List.fromList([1]), 200);
+          return attempts == 1
+              ? http.Response('busy', 503)
+              : http.Response.bytes(Uint8List.fromList([1]), 200);
         }),
       );
 
@@ -98,7 +100,9 @@ void main() {
       final client = buildClient(
         httpClient: MockClient((_) async {
           attempts++;
-          return attempts == 1 ? http.Response('missing', 404) : http.Response.bytes(Uint8List.fromList([1]), 200);
+          return attempts == 1
+              ? http.Response('missing', 404)
+              : http.Response.bytes(Uint8List.fromList([1]), 200);
         }),
         retryEvaluator: (_, _) => true,
       );
@@ -179,7 +183,11 @@ void main() {
         client.getBytes(Uri.parse('https://cdn.test/data')),
         throwsA(isA<HttpBytesException$Server>()),
       );
-      expect(attempts, 1, reason: 'budget exhausted after the first attempt — no retry');
+      expect(
+        attempts,
+        1,
+        reason: 'budget exhausted after the first attempt — no retry',
+      );
     });
 
     test('does not retry a 304 Not Modified success', () async {
@@ -285,7 +293,9 @@ void main() {
         connectTimeout: const Duration(milliseconds: 30),
         httpClient: MockClient.streaming((request, _) async {
           attempts++;
-          (request as http.Abortable).abortTrigger?.then((_) => aborted = true).ignore();
+          (request as http.Abortable).abortTrigger
+              ?.then((_) => aborted = true)
+              .ignore();
           await Future<void>.delayed(const Duration(milliseconds: 300));
           return http.StreamedResponse(const Stream<List<int>>.empty(), 200);
         }),
@@ -300,38 +310,47 @@ void main() {
       expect(aborted, isTrue, reason: 'timeout cancels the request token');
     });
 
-    test('receive timeout fires when the body stalls mid-stream and aborts', () async {
-      final body = StreamController<List<int>>();
-      var aborted = false;
-      final client = HttpBytesClient(
-        client: MockClient.streaming((request, _) async {
-          (request as http.Abortable).abortTrigger?.then((_) => aborted = true).ignore();
-          body.add(const [1, 2]);
-          return http.StreamedResponse(body.stream, 200, contentLength: 10);
-        }),
-        middlewares: <HttpBytesMiddleware>[
-          const HttpBytesTimeoutMiddleware(
-            connectTimeout: Duration(seconds: 5),
-            receiveTimeout: Duration(milliseconds: 30),
-          ),
-        ],
-      );
-      addTearDown(client.close);
+    test(
+      'receive timeout fires when the body stalls mid-stream and aborts',
+      () async {
+        final body = StreamController<List<int>>();
+        var aborted = false;
+        final client = HttpBytesClient(
+          client: MockClient.streaming((request, _) async {
+            (request as http.Abortable).abortTrigger
+                ?.then((_) => aborted = true)
+                .ignore();
+            body.add(const [1, 2]);
+            return http.StreamedResponse(body.stream, 200, contentLength: 10);
+          }),
+          middlewares: <HttpBytesMiddleware>[
+            const HttpBytesTimeoutMiddleware(
+              connectTimeout: Duration(seconds: 5),
+              receiveTimeout: Duration(milliseconds: 30),
+            ),
+          ],
+        );
+        addTearDown(client.close);
 
-      await expectLater(
-        client.getBytes(Uri.parse('https://cdn.test/slow')),
-        throwsA(
-          isA<HttpBytesException$Timeout>().having(
-            (e) => e.code,
-            'code',
-            'receive_timeout',
+        await expectLater(
+          client.getBytes(Uri.parse('https://cdn.test/slow')),
+          throwsA(
+            isA<HttpBytesException$Timeout>().having(
+              (e) => e.code,
+              'code',
+              'receive_timeout',
+            ),
           ),
-        ),
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-      expect(aborted, isTrue, reason: 'receive timeout cancels the request token');
-      await body.close();
-    });
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        expect(
+          aborted,
+          isTrue,
+          reason: 'receive timeout cancels the request token',
+        );
+        await body.close();
+      },
+    );
   });
 
   group('Cancellation', () {
@@ -348,29 +367,34 @@ void main() {
         Uri.parse('https://cdn.test/slow'),
         cancelToken: token,
       );
-      unawaited(Future<void>.delayed(const Duration(milliseconds: 20), token.cancel));
+      unawaited(
+        Future<void>.delayed(const Duration(milliseconds: 20), token.cancel),
+      );
 
       await expectLater(future, throwsA(isA<HttpBytesException$Cancelled>()));
     });
 
-    test(r'already-cancelled CancelToken surfaces $Cancelled without a wire hit', () async {
-      var attempts = 0;
-      final client = buildClient(
-        httpClient: MockClient((_) async {
-          attempts++;
-          return http.Response.bytes(Uint8List.fromList([1]), 200);
-        }),
-      );
+    test(
+      r'already-cancelled CancelToken surfaces $Cancelled without a wire hit',
+      () async {
+        var attempts = 0;
+        final client = buildClient(
+          httpClient: MockClient((_) async {
+            attempts++;
+            return http.Response.bytes(Uint8List.fromList([1]), 200);
+          }),
+        );
 
-      expect(
-        () => client.getBytes(
-          Uri.parse('https://cdn.test/pre'),
-          cancelToken: CancelToken()..cancel(),
-        ),
-        throwsA(isA<HttpBytesException$Cancelled>()),
-      );
-      expect(attempts, 0);
-    });
+        expect(
+          () => client.getBytes(
+            Uri.parse('https://cdn.test/pre'),
+            cancelToken: CancelToken()..cancel(),
+          ),
+          throwsA(isA<HttpBytesException$Cancelled>()),
+        );
+        expect(attempts, 0);
+      },
+    );
   });
 
   group('validateStatus', () {
@@ -469,24 +493,31 @@ void main() {
   });
 
   group('canBeRetried', () {
-    test('true for Request / AbortableRequest, false for multipart/streamed', () {
-      final uri = Uri.parse('https://cdn.test/x');
-      expect(HttpBytesRequest(http.Request('GET', uri)).canBeRetried, isTrue);
-      expect(
-        HttpBytesRequest(
-          http.AbortableRequest('GET', uri, abortTrigger: Completer<void>().future),
-        ).canBeRetried,
-        isTrue,
-      );
-      expect(
-        HttpBytesRequest(http.MultipartRequest('POST', uri)).canBeRetried,
-        isFalse,
-      );
-      expect(
-        HttpBytesRequest(http.StreamedRequest('POST', uri)).canBeRetried,
-        isFalse,
-      );
-    });
+    test(
+      'true for Request / AbortableRequest, false for multipart/streamed',
+      () {
+        final uri = Uri.parse('https://cdn.test/x');
+        expect(HttpBytesRequest(http.Request('GET', uri)).canBeRetried, isTrue);
+        expect(
+          HttpBytesRequest(
+            http.AbortableRequest(
+              'GET',
+              uri,
+              abortTrigger: Completer<void>().future,
+            ),
+          ).canBeRetried,
+          isTrue,
+        );
+        expect(
+          HttpBytesRequest(http.MultipartRequest('POST', uri)).canBeRetried,
+          isFalse,
+        );
+        expect(
+          HttpBytesRequest(http.StreamedRequest('POST', uri)).canBeRetried,
+          isFalse,
+        );
+      },
+    );
   });
 
   group('Full pipeline (Bearer → Retry → Timeout)', () {
@@ -500,7 +531,9 @@ void main() {
         httpClient: MockClient((request) async {
           attempts++;
           seenAuth = request.headers['authorization'];
-          return attempts == 1 ? http.Response('busy', 503) : http.Response.bytes(Uint8List.fromList([3]), 200);
+          return attempts == 1
+              ? http.Response('busy', 503)
+              : http.Response.bytes(Uint8List.fromList([3]), 200);
         }),
       );
 
@@ -547,7 +580,8 @@ void main() {
     test('429 is Request and carries retry-after', () async {
       final client = HttpBytesClient(
         client: MockClient(
-          (_) async => http.Response('slow', 429, headers: {'retry-after': '5'}),
+          (_) async =>
+              http.Response('slow', 429, headers: {'retry-after': '5'}),
         ),
         middlewares: const [],
       );

@@ -34,7 +34,9 @@ final class BytesIndex$Cache$JS implements IBytesIndex {
   static Future<BytesIndex$Cache$JS> open({
     required Future<void> Function() onWipe,
   }) async {
-    final cache = await web.window.caches.open(BytesWebKeys.indexCacheName).toDart;
+    final cache = await web.window.caches
+        .open(BytesWebKeys.indexCacheName)
+        .toDart;
     final match = await cache.match(BytesWebKeys.indexDocumentUrl.toJS).toDart;
     return switch (match) {
       null => BytesIndex$Cache$JS._(
@@ -64,7 +66,8 @@ final class BytesIndex$Cache$JS implements IBytesIndex {
       BytesDiagnostics.current.report(
         BytesLogEvent(
           level: BytesLogLevel.warning,
-          message: 'image bytes index: wiping corrupt or unrecognized Cache document: $error',
+          message:
+              'image bytes index: wiping corrupt or unrecognized Cache document: $error',
           op: BytesLogOp.indexWipe,
           stackTrace: stackTrace,
         ),

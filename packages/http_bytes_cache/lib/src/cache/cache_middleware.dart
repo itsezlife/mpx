@@ -24,8 +24,10 @@ extension type CacheMiddlewareWrapper._(CacheMiddleware _fn) {
   /// Hooks around the next handler. Any of [onOperation], [onResult], or
   /// [onError] may be omitted.
   factory CacheMiddlewareWrapper({
-    Future<void> Function(CacheOperation operation, CacheContext context)? onOperation,
-    Future<void> Function(CacheOperationResult result, CacheContext context)? onResult,
+    Future<void> Function(CacheOperation operation, CacheContext context)?
+    onOperation,
+    Future<void> Function(CacheOperationResult result, CacheContext context)?
+    onResult,
     Future<void> Function(
       Object error,
       StackTrace stackTrace,
@@ -70,7 +72,8 @@ extension type CacheMiddlewareWrapper._(CacheMiddleware _fn) {
 /// [CacheContext.empty]. Seed [skipCache] (or other policy keys) via
 /// [MiddlewareBytesCache.execute]. [BytesResolver] does this when
 /// [BytesRequest.skipCache] is true.
-extension type CacheContext(Map<String, Object?> _map) implements Map<String, Object?> {
+extension type CacheContext(Map<String, Object?> _map)
+    implements Map<String, Object?> {
   /// Fresh map for a new dispatch.
   factory CacheContext.empty() => CacheContext(<String, Object?>{});
 

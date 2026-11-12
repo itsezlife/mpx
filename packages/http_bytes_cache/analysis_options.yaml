@@ -8,7 +8,7 @@
 # Formatter page_width is 80, the width the repo gates check.
 
 formatter:
-  page_width: 120
+  page_width: 80
   trailing_commas: preserve
 
 analyzer:

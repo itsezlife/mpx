@@ -9,7 +9,8 @@ import 'package:http_bytes_cache/src/bytes_cache.dart';
 /// `cc`, `ag`, `lv`). Missing `h`, or missing keys inside it, decode as null
 /// meta. Old documents stay valid. Unknown [version] or a broken structure
 /// throws [FormatException] so open can wipe.
-final class BytesIndexDocumentCodec extends Codec<Map<String, BytesRecord>, List<int>> {
+final class BytesIndexDocumentCodec
+    extends Codec<Map<String, BytesRecord>, List<int>> {
   /// Shared codec instance for durable index adapters.
   const BytesIndexDocumentCodec();
 
@@ -32,17 +33,21 @@ final class BytesIndexDocumentCodec extends Codec<Map<String, BytesRecord>, List
 }
 
 /// Records ↔ JSON-compatible object (internal half of the bytes codec).
-final class _BytesIndexDocumentJsonCodec extends Codec<Map<String, BytesRecord>, Object?> {
+final class _BytesIndexDocumentJsonCodec
+    extends Codec<Map<String, BytesRecord>, Object?> {
   const _BytesIndexDocumentJsonCodec();
 
   @override
-  Converter<Map<String, BytesRecord>, Object?> get encoder => const _BytesIndexDocumentEncoder();
+  Converter<Map<String, BytesRecord>, Object?> get encoder =>
+      const _BytesIndexDocumentEncoder();
 
   @override
-  Converter<Object?, Map<String, BytesRecord>> get decoder => const _BytesIndexDocumentDecoder();
+  Converter<Object?, Map<String, BytesRecord>> get decoder =>
+      const _BytesIndexDocumentDecoder();
 }
 
-final class _BytesIndexDocumentEncoder extends Converter<Map<String, BytesRecord>, Object?> {
+final class _BytesIndexDocumentEncoder
+    extends Converter<Map<String, BytesRecord>, Object?> {
   const _BytesIndexDocumentEncoder();
 
   @override
@@ -54,7 +59,8 @@ final class _BytesIndexDocumentEncoder extends Converter<Map<String, BytesRecord
           'w': value.writtenAt.toUtc().millisecondsSinceEpoch,
           'a': value.accessedAt.toUtc().millisecondsSinceEpoch,
           'n': value.byteLength,
-          if (value.httpCacheMeta case final meta? when !meta.isEmpty) 'h': _encodeHttpMeta(meta),
+          if (value.httpCacheMeta case final meta? when !meta.isEmpty)
+            'h': _encodeHttpMeta(meta),
         },
     },
   };
@@ -70,7 +76,8 @@ final class _BytesIndexDocumentEncoder extends Converter<Map<String, BytesRecord
   };
 }
 
-final class _BytesIndexDocumentDecoder extends Converter<Object?, Map<String, BytesRecord>> {
+final class _BytesIndexDocumentDecoder
+    extends Converter<Object?, Map<String, BytesRecord>> {
   const _BytesIndexDocumentDecoder();
 
   @override
@@ -87,45 +94,50 @@ final class _BytesIndexDocumentDecoder extends Converter<Object?, Map<String, By
             value,
           ),
       },
-    {'v': final Object? version} when version != BytesIndexDocumentCodec.version => throw FormatException(
-      'image bytes index: unsupported version $version',
-    ),
+    {'v': final Object? version}
+        when version != BytesIndexDocumentCodec.version =>
+      throw FormatException(
+        'image bytes index: unsupported version $version',
+      ),
     _ => throw const FormatException(
       'image bytes index: root is not a versioned entries object',
     ),
   };
 
-  static BytesRecord _recordFromEntry(BytesCacheKey key, Object? raw) => switch (raw) {
-    {
-          'w': final int writtenAtMs,
-          'a': final int accessedAtMs,
-          'n': final int byteLength,
-        } &&
-        final Map map =>
-      BytesRecord(
-        key: key,
-        writtenAt: DateTime.fromMillisecondsSinceEpoch(
-          writtenAtMs,
-          isUtc: true,
+  static BytesRecord _recordFromEntry(BytesCacheKey key, Object? raw) =>
+      switch (raw) {
+        {
+              'w': final int writtenAtMs,
+              'a': final int accessedAtMs,
+              'n': final int byteLength,
+            } &&
+            final Map map =>
+          BytesRecord(
+            key: key,
+            writtenAt: DateTime.fromMillisecondsSinceEpoch(
+              writtenAtMs,
+              isUtc: true,
+            ),
+            accessedAt: DateTime.fromMillisecondsSinceEpoch(
+              accessedAtMs,
+              isUtc: true,
+            ),
+            byteLength: byteLength,
+            httpCacheMeta: _httpMetaFrom(map['h']),
+          ),
+        _ => throw const FormatException(
+          'image bytes index: invalid entry fields',
         ),
-        accessedAt: DateTime.fromMillisecondsSinceEpoch(
-          accessedAtMs,
-          isUtc: true,
-        ),
-        byteLength: byteLength,
-        httpCacheMeta: _httpMetaFrom(map['h']),
-      ),
-    _ => throw const FormatException(
-      'image bytes index: invalid entry fields',
-    ),
-  };
+      };
 
   /// Missing or null `h` becomes null meta. Wrong `h` type or field types throw
   /// [FormatException] so open can wipe instead of keeping half-parsed validators.
   static HttpCacheMeta? _httpMetaFrom(Object? raw) => switch (raw) {
     null => null,
     final Map map => _httpMetaFromMap(map),
-    _ => throw const FormatException('image bytes index: invalid HTTP cache meta'),
+    _ => throw const FormatException(
+      'image bytes index: invalid HTTP cache meta',
+    ),
   };
 
   static HttpCacheMeta? _httpMetaFromMap(Map map) {
@@ -137,14 +149,18 @@ final class _BytesIndexDocumentDecoder extends Converter<Object?, Map<String, By
     final lastModified = switch (map['lm']) {
       null => null,
       final String s => s,
-      _ => throw const FormatException('image bytes index: invalid lastModified'),
+      _ => throw const FormatException(
+        'image bytes index: invalid lastModified',
+      ),
     };
     final date = _optionalUtcMs(map['d'], 'date');
     final expires = _optionalUtcMs(map['x'], 'expires');
     final cacheControl = switch (map['cc']) {
       null => null,
       final String s => s,
-      _ => throw const FormatException('image bytes index: invalid cacheControl'),
+      _ => throw const FormatException(
+        'image bytes index: invalid cacheControl',
+      ),
     };
     final age = switch (map['ag']) {
       null => null,

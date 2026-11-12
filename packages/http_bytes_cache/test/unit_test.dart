@@ -1,6 +1,7 @@
 import 'package:test/test.dart';
 
-import 'cache/cache_logger_middleware_test.dart' as cache_logger_middleware_test;
+import 'cache/cache_logger_middleware_test.dart'
+    as cache_logger_middleware_test;
 import 'cache/cache_middleware_test.dart' as cache_middleware_test;
 import 'cache/cache_test.dart' as cache_test;
 import 'cache/indexed_cache_test.dart' as indexed_cache_test;
@@ -8,7 +9,8 @@ import 'cache/skip_cache_middleware_test.dart' as skip_cache_middleware_test;
 import 'open/open_test.dart' as open_test;
 import 'resolve/bearer_middleware_test.dart' as bearer_middleware_test;
 import 'resolve/client_test.dart' as client_test;
-import 'resolve/conditional_middleware_test.dart' as conditional_middleware_test;
+import 'resolve/conditional_middleware_test.dart'
+    as conditional_middleware_test;
 import 'resolve/freshness_test.dart' as freshness_test;
 import 'resolve/logger_middleware_test.dart' as logger_middleware_test;
 import 'resolve/pipeline_test.dart' as pipeline_test;

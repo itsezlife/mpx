@@ -77,7 +77,8 @@ final class BytesIndex$File$VM implements IBytesIndex {
       BytesDiagnostics.current.report(
         BytesLogEvent(
           level: BytesLogLevel.warning,
-          message: 'image bytes index: wiping corrupt or unrecognized file document: $error',
+          message:
+              'image bytes index: wiping corrupt or unrecognized file document: $error',
           op: BytesLogOp.indexWipe,
           stackTrace: stackTrace,
         ),

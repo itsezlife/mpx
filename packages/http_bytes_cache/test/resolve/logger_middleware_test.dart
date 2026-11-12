@@ -9,30 +9,35 @@ import 'package:test/test.dart';
 
 void main() {
   group(r'HttpBytesLoggerMiddleware$Developer', () {
-    test('emits downloaded size on success without changing the body', () async {
-      final lines = <String>[];
-      final client = HttpBytesClient(
-        client: MockClient(
-          (_) async => http.Response.bytes(Uint8List.fromList([1, 2]), 200),
-        ),
-        middlewares: <HttpBytesMiddleware>[
-          HttpBytesLoggerMiddleware$Developer(
-            debugEmit: (message, {required level, stackTrace}) {
-              lines.add(message);
-            },
+    test(
+      'emits downloaded size on success without changing the body',
+      () async {
+        final lines = <String>[];
+        final client = HttpBytesClient(
+          client: MockClient(
+            (_) async => http.Response.bytes(Uint8List.fromList([1, 2]), 200),
           ),
-        ],
-      );
-      addTearDown(client.close);
+          middlewares: <HttpBytesMiddleware>[
+            HttpBytesLoggerMiddleware$Developer(
+              debugEmit: (message, {required level, stackTrace}) {
+                lines.add(message);
+              },
+            ),
+          ],
+        );
+        addTearDown(client.close);
 
-      final bytes = await client.getBytes(Uri.parse('https://cdn.test/a.png'));
-      expect(bytes, Uint8List.fromList([1, 2]));
-      expect(lines, hasLength(1));
-      expect(
-        lines.single,
-        matches(r'^\[GET\] https://cdn\.test/a\.png -> 200 \| 2 B \| \d+ms$'),
-      );
-    });
+        final bytes = await client.getBytes(
+          Uri.parse('https://cdn.test/a.png'),
+        );
+        expect(bytes, Uint8List.fromList([1, 2]));
+        expect(lines, hasLength(1));
+        expect(
+          lines.single,
+          matches(r'^\[GET\] https://cdn\.test/a\.png -> 200 \| 2 B \| \d+ms$'),
+        );
+      },
+    );
 
     test('formats larger sizes compactly', () async {
       final lines = <String>[];
@@ -117,7 +122,11 @@ void main() {
 
     test('logResponse / logError flags suppress emission', () async {
       final lines = <String>[];
-      void capture(String message, {required int level, StackTrace? stackTrace}) {
+      void capture(
+        String message, {
+        required int level,
+        StackTrace? stackTrace,
+      }) {
         lines.add(message);
       }
 
@@ -194,7 +203,9 @@ void main() {
       );
       addTearDown(client.close);
 
-      final bytes = await client.getBytes(Uri.parse('https://cdn.test/safe.png'));
+      final bytes = await client.getBytes(
+        Uri.parse('https://cdn.test/safe.png'),
+      );
       expect(bytes, Uint8List.fromList([9]));
     });
 

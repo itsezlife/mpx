@@ -109,7 +109,8 @@ class HttpBytesTimeoutMiddleware {
   static Duration? _resolve(Object? raw, Duration fallback) => switch (raw) {
     final Duration d when d > Duration.zero => d,
     final int ms when ms > 0 => Duration(milliseconds: ms),
-    final DateTime d when d.isAfter(DateTime.now()) => d.difference(DateTime.now()).abs(),
+    final DateTime d when d.isAfter(DateTime.now()) =>
+      d.difference(DateTime.now()).abs(),
     Duration() || int() || DateTime() => null, // explicit zero/past ⇒ disabled
     _ => fallback,
   };

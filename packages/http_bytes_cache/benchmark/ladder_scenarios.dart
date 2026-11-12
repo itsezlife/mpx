@@ -156,7 +156,8 @@ StoreScenario _sameUrlBurst(String name, Uint8List payload) => StoreScenario(
       op: () async {
         await harness.cache.evict(key);
         final results = await Future.wait([
-          for (var i = 0; i < _burstFanOut; i++) harness.resolver.resolve(request),
+          for (var i = 0; i < _burstFanOut; i++)
+            harness.resolver.resolve(request),
         ]);
         var sink = 0;
         for (final bytes in results) {
@@ -182,7 +183,8 @@ StoreScenario _distinctKeyGrid(String name, Uint8List payload) => StoreScenario(
       op: () async {
         final g = generation++;
         final requests = <BytesRequest>[
-          for (var i = 0; i < _gridKeys; i++) BytesRequest(url: 'https://bench.invalid/grid/$g/$i.svg'),
+          for (var i = 0; i < _gridKeys; i++)
+            BytesRequest(url: 'https://bench.invalid/grid/$g/$i.svg'),
         ];
         final results = await Future.wait(
           requests.map(harness.resolver.resolve),

@@ -25,14 +25,15 @@ void main() {
           (innerHandler) => (operation, context) async {
             final result = await innerHandler(operation, context);
             return switch (result) {
-              CacheOperationResult$Read(:final hit?) => CacheOperationResult$Read(
-                CacheReadHit(
-                  bytes: hit.bytes,
-                  writtenAt: hit.writtenAt,
-                  accessedAt: hit.accessedAt,
-                  httpCacheMeta: const HttpCacheMeta(etag: '"abc"'),
+              CacheOperationResult$Read(:final hit?) =>
+                CacheOperationResult$Read(
+                  CacheReadHit(
+                    bytes: hit.bytes,
+                    writtenAt: hit.writtenAt,
+                    accessedAt: hit.accessedAt,
+                    httpCacheMeta: const HttpCacheMeta(etag: '"abc"'),
+                  ),
                 ),
-              ),
               _ => result,
             };
           },
@@ -44,7 +45,9 @@ void main() {
 
       expect(await cache.read(key), bytes);
 
-      final rich = await cache.execute(const CacheOperation$Read(BytesCacheKey('logo')));
+      final rich = await cache.execute(
+        const CacheOperation$Read(BytesCacheKey('logo')),
+      );
       expect(
         rich,
         isA<CacheOperationResult$Read>().having(
@@ -55,31 +58,40 @@ void main() {
       );
     });
 
-    test('Memory round-trips HTTP cache meta through execute; public read stays bytes', () async {
-      final inner = MemoryBytesCache();
-      final cache = MiddlewareBytesCache(inner: inner);
-      const key = BytesCacheKey('logo');
-      final bytes = Uint8List.fromList([1, 2, 3]);
-      const meta = HttpCacheMeta(
-        etag: '"v1"',
-        cacheControl: 'max-age=60',
-      );
+    test(
+      'Memory round-trips HTTP cache meta through execute; public read stays bytes',
+      () async {
+        final inner = MemoryBytesCache();
+        final cache = MiddlewareBytesCache(inner: inner);
+        const key = BytesCacheKey('logo');
+        final bytes = Uint8List.fromList([1, 2, 3]);
+        const meta = HttpCacheMeta(
+          etag: '"v1"',
+          cacheControl: 'max-age=60',
+        );
 
-      await cache.execute(CacheOperation$Write(key, bytes, httpCacheMeta: meta));
+        await cache.execute(
+          CacheOperation$Write(key, bytes, httpCacheMeta: meta),
+        );
 
-      expect(await cache.read(key), bytes);
-      expect(await inner.read(key), bytes);
+        expect(await cache.read(key), bytes);
+        expect(await inner.read(key), bytes);
 
-      final rich = await cache.execute(const CacheOperation$Read(key));
-      expect(
-        rich,
-        isA<CacheOperationResult$Read>()
-            .having((r) => r.hit?.bytes, 'bytes', bytes)
-            .having((r) => r.hit?.httpCacheMeta?.etag, 'etag', '"v1"')
-            .having((r) => r.hit?.httpCacheMeta?.cacheControl, 'cacheControl', 'max-age=60')
-            .having((r) => r.hit?.writtenAt, 'writtenAt', isNotNull),
-      );
-    });
+        final rich = await cache.execute(const CacheOperation$Read(key));
+        expect(
+          rich,
+          isA<CacheOperationResult$Read>()
+              .having((r) => r.hit?.bytes, 'bytes', bytes)
+              .having((r) => r.hit?.httpCacheMeta?.etag, 'etag', '"v1"')
+              .having(
+                (r) => r.hit?.httpCacheMeta?.cacheControl,
+                'cacheControl',
+                'max-age=60',
+              )
+              .having((r) => r.hit?.writtenAt, 'writtenAt', isNotNull),
+        );
+      },
+    );
 
     test('forwards evict, prune, and close to the inner store', () async {
       final inner = MemoryBytesCache(

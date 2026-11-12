@@ -126,8 +126,14 @@ void main() {
       );
       final context = CacheContext.empty()..skipCache = true;
 
-      final result = await cache.execute(const CacheOperation$Read(key), context);
-      expect(result, isA<CacheOperationResult$Read>().having((r) => r.hit, 'hit', isNull));
+      final result = await cache.execute(
+        const CacheOperation$Read(key),
+        context,
+      );
+      expect(
+        result,
+        isA<CacheOperationResult$Read>().having((r) => r.hit, 'hit', isNull),
+      );
       expect(await inner.read(key), Uint8List.fromList([1]));
       expect(lines.single, contains('read miss'));
     });

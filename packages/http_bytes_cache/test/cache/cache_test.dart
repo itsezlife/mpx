@@ -67,9 +67,15 @@ void main() {
       now = now.add(const Duration(seconds: 1));
       await cache.write(const BytesCacheKey('c'), Uint8List.fromList([3]));
 
-      expect(await cache.read(const BytesCacheKey('a')), Uint8List.fromList([1]));
+      expect(
+        await cache.read(const BytesCacheKey('a')),
+        Uint8List.fromList([1]),
+      );
       expect(await cache.read(const BytesCacheKey('b')), isNull);
-      expect(await cache.read(const BytesCacheKey('c')), Uint8List.fromList([3]));
+      expect(
+        await cache.read(const BytesCacheKey('c')),
+        Uint8List.fromList([3]),
+      );
     });
 
     test('prune removes expired and reports keys', () async {
@@ -86,7 +92,10 @@ void main() {
 
       expect(report.evictedKeys, [const BytesCacheKey('old')]);
       expect(await cache.read(const BytesCacheKey('old')), isNull);
-      expect(await cache.read(const BytesCacheKey('fresh')), Uint8List.fromList([2]));
+      expect(
+        await cache.read(const BytesCacheKey('fresh')),
+        Uint8List.fromList([2]),
+      );
     });
 
     test('evict removes a single key', () async {
@@ -113,15 +122,18 @@ void main() {
       expect(await cache.read(keepKey), Uint8List.fromList([1]));
     });
 
-    test('empty write evicts a previously stored payload for the same key', () async {
-      final cache = MemoryBytesCache();
-      const key = BytesCacheKey('logo');
-      await cache.write(key, Uint8List.fromList([1, 2]));
+    test(
+      'empty write evicts a previously stored payload for the same key',
+      () async {
+        final cache = MemoryBytesCache();
+        const key = BytesCacheKey('logo');
+        await cache.write(key, Uint8List.fromList([1, 2]));
 
-      await cache.write(key, Uint8List(0));
+        await cache.write(key, Uint8List(0));
 
-      expect(await cache.read(key), isNull);
-    });
+        expect(await cache.read(key), isNull);
+      },
+    );
   });
 
   group('NoOpBytesCache', () {
@@ -195,7 +207,10 @@ void main() {
       expect(withValidators, equals(plain));
       expect(mixedCase, equals(plain));
       expect(
-        BytesCacheKey.canonicalHeaders(const {'If-None-Match': '"v1"', 'Authorization': 't'}),
+        BytesCacheKey.canonicalHeaders(const {
+          'If-None-Match': '"v1"',
+          'Authorization': 't',
+        }),
         equals(BytesCacheKey.canonicalHeaders(const {'Authorization': 't'})),
       );
       // Authorization still participates; only conditionals are stripped.
@@ -247,8 +262,12 @@ void main() {
 
     test('long basename stays within length cap and remains distinct', () {
       final longName = '${'a' * 200}.svg';
-      final a = BytesCacheKey.fromUrl('https://cdn.example.com/icons/$longName');
-      final b = BytesCacheKey.fromUrl('https://cdn.example.com/other/$longName');
+      final a = BytesCacheKey.fromUrl(
+        'https://cdn.example.com/icons/$longName',
+      );
+      final b = BytesCacheKey.fromUrl(
+        'https://cdn.example.com/other/$longName',
+      );
       expect(a.value.length, lessThanOrEqualTo(180));
       expect(b.value.length, lessThanOrEqualTo(180));
       expect(a, isNot(equals(b)));
@@ -257,37 +276,50 @@ void main() {
     test('relative and absolute Uri.base equivalents share one key', () {
       const relative = 'icons/logo.svg';
       final absolute = Uri.base.resolve(relative).toString();
-      expect(BytesCacheKey.fromUrl(relative), equals(BytesCacheKey.fromUrl(absolute)));
-    });
-
-    test('URL containing |… without headers differs from clean URL plus those headers', () {
-      final poisoned = BytesCacheKey.fromUrl(
-        'https://cdn.example.com/a.svg|authorization=Bearer x',
-      );
-      final clean = BytesCacheKey.fromUrl(
-        'https://cdn.example.com/a.svg',
-        headers: const {'Authorization': 'Bearer x'},
-      );
-      expect(poisoned, isNot(equals(clean)));
-    });
-
-    test('pipe inside a header value cannot forge another URL+headers fingerprint', () {
-      final withPipeInValue = BytesCacheKey.fromUrl(
-        'https://cdn.example.com/a.svg',
-        headers: const {'authorization': 'Bearer x|foo=bar'},
-      );
-      final withPipeInUrl = BytesCacheKey.fromUrl(
-        'https://cdn.example.com/a.svg|authorization=Bearer x',
-        headers: const {'foo': 'bar'},
-      );
-      expect(withPipeInValue, isNot(equals(withPipeInUrl)));
-      // Same host/basename would still collide if fingerprint material used a
-      // raw `url|headers` join — assert the trailing fingerprint segments differ.
       expect(
-        withPipeInValue.value.substring(withPipeInValue.value.length - 12),
-        isNot(equals(withPipeInUrl.value.substring(withPipeInUrl.value.length - 12))),
+        BytesCacheKey.fromUrl(relative),
+        equals(BytesCacheKey.fromUrl(absolute)),
       );
     });
+
+    test(
+      'URL containing |… without headers differs from clean URL plus those headers',
+      () {
+        final poisoned = BytesCacheKey.fromUrl(
+          'https://cdn.example.com/a.svg|authorization=Bearer x',
+        );
+        final clean = BytesCacheKey.fromUrl(
+          'https://cdn.example.com/a.svg',
+          headers: const {'Authorization': 'Bearer x'},
+        );
+        expect(poisoned, isNot(equals(clean)));
+      },
+    );
+
+    test(
+      'pipe inside a header value cannot forge another URL+headers fingerprint',
+      () {
+        final withPipeInValue = BytesCacheKey.fromUrl(
+          'https://cdn.example.com/a.svg',
+          headers: const {'authorization': 'Bearer x|foo=bar'},
+        );
+        final withPipeInUrl = BytesCacheKey.fromUrl(
+          'https://cdn.example.com/a.svg|authorization=Bearer x',
+          headers: const {'foo': 'bar'},
+        );
+        expect(withPipeInValue, isNot(equals(withPipeInUrl)));
+        // Same host/basename would still collide if fingerprint material used a
+        // raw `url|headers` join — assert the trailing fingerprint segments differ.
+        expect(
+          withPipeInValue.value.substring(withPipeInValue.value.length - 12),
+          isNot(
+            equals(
+              withPipeInUrl.value.substring(withPipeInUrl.value.length - 12),
+            ),
+          ),
+        );
+      },
+    );
   });
 
   group('BytesRetention.standard', () {
@@ -403,13 +435,18 @@ final class _ClosableProbeCache implements IBytesCache {
   Future<Uint8List?> read(BytesCacheKey key) async => null;
 
   @override
-  Future<void> write(BytesCacheKey key, Uint8List bytes, {HttpCacheMeta? httpCacheMeta}) async {}
+  Future<void> write(
+    BytesCacheKey key,
+    Uint8List bytes, {
+    HttpCacheMeta? httpCacheMeta,
+  }) async {}
 
   @override
   Future<void> evict(BytesCacheKey key) async {}
 
   @override
-  Future<BytesPruneReport> prune() async => const BytesPruneReport(evictedKeys: [], freedBytes: 0);
+  Future<BytesPruneReport> prune() async =>
+      const BytesPruneReport(evictedKeys: [], freedBytes: 0);
 
   @override
   Future<void> close() async {

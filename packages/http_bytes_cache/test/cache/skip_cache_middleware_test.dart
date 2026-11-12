@@ -17,9 +17,15 @@ void main() {
       );
       final context = CacheContext.empty()..skipCache = true;
 
-      final result = await cache.execute(const CacheOperation$Read(key), context);
+      final result = await cache.execute(
+        const CacheOperation$Read(key),
+        context,
+      );
 
-      expect(result, isA<CacheOperationResult$Read>().having((r) => r.hit, 'hit', isNull));
+      expect(
+        result,
+        isA<CacheOperationResult$Read>().having((r) => r.hit, 'hit', isNull),
+      );
       expect(await inner.read(key), bytes);
     });
 
@@ -65,7 +71,8 @@ void main() {
         middlewares: <CacheMiddleware>[
           SkipCacheMiddleware(
             shouldSkip: (operation, _) => switch (operation) {
-              CacheOperation$Read(:final key) || CacheOperation$Write(:final key) => key.value.contains('secret'),
+              CacheOperation$Read(:final key) ||
+              CacheOperation$Write(:final key) => key.value.contains('secret'),
               _ => false,
             },
           ),

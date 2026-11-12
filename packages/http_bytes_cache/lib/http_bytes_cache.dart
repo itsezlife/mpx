@@ -15,7 +15,8 @@
 /// not depend on a product logger.
 library;
 
-export 'package:cancel_token/cancel_token.dart' show CancelToken, CancelledException;
+export 'package:cancel_token/cancel_token.dart'
+    show CancelToken, CancelledException;
 
 export 'src/bytes_cache.dart';
 export 'src/bytes_diagnostics.dart';

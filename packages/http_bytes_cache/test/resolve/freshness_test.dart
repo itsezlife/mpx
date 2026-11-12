@@ -112,7 +112,10 @@ void main() {
       );
       expect(
         HttpCacheFreshness.isFresh(
-          const HttpCacheMeta(etag: '"v1"', cacheControl: 'max-age=3600, must-revalidate'),
+          const HttpCacheMeta(
+            etag: '"v1"',
+            cacheControl: 'max-age=3600, must-revalidate',
+          ),
           now: now,
         ),
         isFalse,

@@ -6,7 +6,8 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:http_bytes_cache/src/bytes_diagnostics.dart';
-import 'package:http_bytes_cache/src/environment_specific/cache_open.dart' as environment_specific;
+import 'package:http_bytes_cache/src/environment_specific/cache_open.dart'
+    as environment_specific;
 import 'package:meta/meta.dart';
 
 /// Cache identity for remote bytes (disk / durable store / PageStorage).
@@ -56,10 +57,16 @@ final class BytesCacheKey {
       final segments? when segments.isNotEmpty => segments.last,
       _ => 'asset',
     };
-    var safeName = pathSeg.replaceAll(RegExp('[^a-zA-Z0-9._-]'), '_').replaceAll('..', '_');
-    final fingerprint = sha1.convert(_fingerprintMaterial(canonicalUrl, headers)).toString().substring(0, 12);
+    var safeName = pathSeg
+        .replaceAll(RegExp('[^a-zA-Z0-9._-]'), '_')
+        .replaceAll('..', '_');
+    final fingerprint = sha1
+        .convert(_fingerprintMaterial(canonicalUrl, headers))
+        .toString()
+        .substring(0, 12);
     // Reserve room for host + '_' + '_' + 12-char fingerprint.
-    final maxNameLen = (_maxValueLength - host.length - fingerprint.length - 2).clamp(8, _maxBasenameLength);
+    final maxNameLen = (_maxValueLength - host.length - fingerprint.length - 2)
+        .clamp(8, _maxBasenameLength);
     if (safeName.length > maxNameLen) {
       safeName = safeName.substring(0, maxNameLen);
     }
@@ -102,7 +109,8 @@ final class BytesCacheKey {
     if (headers == null || headers.isEmpty) return '';
     final normalized = <String, String>{
       for (final MapEntry(:key, :value) in headers.entries)
-        if (!_conditionalRequestHeaders.contains(key.toLowerCase())) key.toLowerCase(): value,
+        if (!_conditionalRequestHeaders.contains(key.toLowerCase()))
+          key.toLowerCase(): value,
     };
     if (normalized.isEmpty) return '';
     final keys = normalized.keys.toList()..sort();
@@ -114,7 +122,10 @@ final class BytesCacheKey {
   /// Without length prefixes, a delimiter join such as `url|headers` lets a
   /// URL that embeds `|…` forge the same fingerprint bytes as a clean URL plus
   /// those headers (or a header value that embeds further `|` fields).
-  static List<int> _fingerprintMaterial(String canonicalUrl, Map<String, String>? headers) {
+  static List<int> _fingerprintMaterial(
+    String canonicalUrl,
+    Map<String, String>? headers,
+  ) {
     final urlBytes = const Utf8Encoder().convert(canonicalUrl);
     final headerBytes = const Utf8Encoder().convert(canonicalHeaders(headers));
     return <int>[
@@ -133,7 +144,8 @@ final class BytesCacheKey {
   ];
 
   @override
-  bool operator ==(Object other) => identical(this, other) || other is BytesCacheKey && other.value == value;
+  bool operator ==(Object other) =>
+      identical(this, other) || other is BytesCacheKey && other.value == value;
 
   @override
   int get hashCode => value.hashCode;
@@ -162,7 +174,8 @@ sealed class BytesRetention {
   ///
   /// [maxEntries] must be positive — a zero or negative cap is nonsense
   /// retention that would either retain nothing useful or never trim.
-  const factory BytesRetention.maxEntries(int maxEntries) = BytesRetentionMaxEntries;
+  const factory BytesRetention.maxEntries(int maxEntries) =
+      BytesRetentionMaxEntries;
 
   /// Keep total payload size at or under [maxBytes] (LRU by last access).
   ///
@@ -193,34 +206,35 @@ sealed class BytesRetention {
   );
 
   /// Flattened view of this policy for implementers.
-  ({Duration? maxAge, int? maxEntries, int? maxBytes}) get limits => switch (this) {
-    BytesRetentionUnlimited() => (
-      maxAge: null,
-      maxEntries: null,
-      maxBytes: null,
-    ),
-    BytesRetentionMaxAge(:final maxAge) => (
-      maxAge: maxAge,
-      maxEntries: null,
-      maxBytes: null,
-    ),
-    BytesRetentionMaxEntries(:final maxEntries) => (
-      maxAge: null,
-      maxEntries: maxEntries,
-      maxBytes: null,
-    ),
-    BytesRetentionMaxBytes(:final maxBytes) => (
-      maxAge: null,
-      maxEntries: null,
-      maxBytes: maxBytes,
-    ),
-    BytesRetentionCompound(
-      :final maxAge,
-      :final maxEntries,
-      :final maxBytes,
-    ) =>
-      (maxAge: maxAge, maxEntries: maxEntries, maxBytes: maxBytes),
-  };
+  ({Duration? maxAge, int? maxEntries, int? maxBytes}) get limits =>
+      switch (this) {
+        BytesRetentionUnlimited() => (
+          maxAge: null,
+          maxEntries: null,
+          maxBytes: null,
+        ),
+        BytesRetentionMaxAge(:final maxAge) => (
+          maxAge: maxAge,
+          maxEntries: null,
+          maxBytes: null,
+        ),
+        BytesRetentionMaxEntries(:final maxEntries) => (
+          maxAge: null,
+          maxEntries: maxEntries,
+          maxBytes: null,
+        ),
+        BytesRetentionMaxBytes(:final maxBytes) => (
+          maxAge: null,
+          maxEntries: null,
+          maxBytes: maxBytes,
+        ),
+        BytesRetentionCompound(
+          :final maxAge,
+          :final maxEntries,
+          :final maxBytes,
+        ) =>
+          (maxAge: maxAge, maxEntries: maxEntries, maxBytes: maxBytes),
+      };
 }
 
 /// Variant of [BytesRetention.unlimited].
@@ -244,7 +258,8 @@ final class BytesRetentionMaxAge extends BytesRetention {
 @immutable
 final class BytesRetentionMaxEntries extends BytesRetention {
   /// See [BytesRetention.maxEntries].
-  const BytesRetentionMaxEntries(this.maxEntries) : assert(maxEntries > 0, 'maxEntries must be > 0');
+  const BytesRetentionMaxEntries(this.maxEntries)
+    : assert(maxEntries > 0, 'maxEntries must be > 0');
 
   /// Maximum number of keys retained.
   final int maxEntries;
@@ -254,7 +269,8 @@ final class BytesRetentionMaxEntries extends BytesRetention {
 @immutable
 final class BytesRetentionMaxBytes extends BytesRetention {
   /// See [BytesRetention.maxBytes].
-  const BytesRetentionMaxBytes(this.maxBytes) : assert(maxBytes > 0, 'maxBytes must be > 0');
+  const BytesRetentionMaxBytes(this.maxBytes)
+    : assert(maxBytes > 0, 'maxBytes must be > 0');
 
   /// Maximum sum of [BytesRecord.byteLength] across entries.
   final int maxBytes;
@@ -268,8 +284,14 @@ final class BytesRetentionCompound extends BytesRetention {
     this.maxAge,
     this.maxEntries,
     this.maxBytes,
-  }) : assert(maxEntries == null || maxEntries > 0, 'maxEntries must be > 0 when set'),
-       assert(maxBytes == null || maxBytes > 0, 'maxBytes must be > 0 when set');
+  }) : assert(
+         maxEntries == null || maxEntries > 0,
+         'maxEntries must be > 0 when set',
+       ),
+       assert(
+         maxBytes == null || maxBytes > 0,
+         'maxBytes must be > 0 when set',
+       );
 
   /// Optional TTL since write.
   final Duration? maxAge;
@@ -655,7 +677,8 @@ final class IndexedBytesCache implements IBytesCache, IBytesRichCache {
   /// Concurrent with other pure reads. TTL expiry and index-without-blob
   /// cleanup upgrade to the exclusive mutate path.
   @override
-  Future<Uint8List?> read(BytesCacheKey key) async => (await readRich(key))?.bytes;
+  Future<Uint8List?> read(BytesCacheKey key) async =>
+      (await readRich(key))?.bytes;
 
   /// Same probe as [read], then retention timestamps and [HttpCacheMeta]
   /// from the index row when the hit succeeds.
@@ -667,7 +690,8 @@ final class IndexedBytesCache implements IBytesCache, IBytesRichCache {
       if (record == null) return const _ReadProbe.miss();
 
       final now = _clock();
-      if (retention.limits.maxAge case final maxAge? when now.difference(record.writtenAt) > maxAge) {
+      if (retention.limits.maxAge case final maxAge?
+          when now.difference(record.writtenAt) > maxAge) {
         return const _ReadProbe.needsDelete();
       }
 
@@ -724,7 +748,10 @@ final class IndexedBytesCache implements IBytesCache, IBytesRichCache {
         // Re-check: a write may have restored the blob after the shared probe.
         final record = await _index.get(key);
         if (record == null) return null;
-        final bytes = await _blobs.read(key, knownByteLength: record.byteLength);
+        final bytes = await _blobs.read(
+          key,
+          knownByteLength: record.byteLength,
+        );
         switch (bytes) {
           case final b? when b.isNotEmpty:
             final now = _clock();
@@ -873,7 +900,9 @@ final class IndexedBytesCache implements IBytesCache, IBytesRichCache {
   Future<T> _runShared<T>(Future<T> Function() action) {
     final ready = Completer<void>();
     final previous = _exclusiveTail;
-    _exclusiveTail = previous.catchError((Object _, StackTrace __) {}).then((_) {
+    _exclusiveTail = previous.catchError((Object _, StackTrace __) {}).then((
+      _,
+    ) {
       _readerCount++;
       ready.complete();
     });
@@ -940,7 +969,9 @@ final class IndexedBytesCache implements IBytesCache, IBytesRichCache {
   /// whose payloads were already deleted; the next read heals those as
   /// index-without-blob, and those previously durable bodies stay gone. That
   /// cost beats fail-closing the whole instance on a transient meta error.
-  Future<void> _commitOrRollback(Map<BytesCacheKey, BytesRecord> preEpoch) async {
+  Future<void> _commitOrRollback(
+    Map<BytesCacheKey, BytesRecord> preEpoch,
+  ) async {
     try {
       await _index.commit();
     } catch (error, stackTrace) {
@@ -949,7 +980,9 @@ final class IndexedBytesCache implements IBytesCache, IBytesRichCache {
     }
   }
 
-  Future<void> _restoreIndexMirror(Map<BytesCacheKey, BytesRecord> before) async {
+  Future<void> _restoreIndexMirror(
+    Map<BytesCacheKey, BytesRecord> before,
+  ) async {
     final current = (await _index.values()).toList();
     for (final record in current) {
       if (!before.containsKey(record.key)) {
@@ -1093,14 +1126,16 @@ final class MemoryBytesCache implements IBytesCache, IBytesRichCache {
 
   /// Returns bytes or `null` if missing / past TTL / empty sticky payload.
   @override
-  Future<Uint8List?> read(BytesCacheKey key) async => (await readRich(key))?.bytes;
+  Future<Uint8List?> read(BytesCacheKey key) async =>
+      (await readRich(key))?.bytes;
 
   /// Same miss rules as [read], plus timestamps and [HttpCacheMeta].
   @override
   Future<BytesRichHit?> readRich(BytesCacheKey key) async {
     if (_entries[key] case final entry?) {
       final now = _clock();
-      if (retention.limits.maxAge case final maxAge? when now.difference(entry.writtenAt) > maxAge) {
+      if (retention.limits.maxAge case final maxAge?
+          when now.difference(entry.writtenAt) > maxAge) {
         _entries.remove(key);
         return null;
       }
@@ -1185,11 +1220,15 @@ final class MemoryBytesCache implements IBytesCache, IBytesRichCache {
     var freed = 0;
 
     bool overCapacity() {
-      if (limits.maxEntries case final maxEntries? when _entries.length > maxEntries) {
+      if (limits.maxEntries case final maxEntries?
+          when _entries.length > maxEntries) {
         return true;
       }
       if (limits.maxBytes case final maxBytes?) {
-        final total = _entries.values.fold<int>(0, (s, e) => s + e.bytes.length);
+        final total = _entries.values.fold<int>(
+          0,
+          (s, e) => s + e.bytes.length,
+        );
         if (total > maxBytes) return true;
       }
       return false;
@@ -1244,7 +1283,8 @@ final class NoOpBytesCache implements IBytesCache {
 
   /// Returns an empty [BytesPruneReport].
   @override
-  Future<BytesPruneReport> prune() async => const BytesPruneReport(evictedKeys: [], freedBytes: 0);
+  Future<BytesPruneReport> prune() async =>
+      const BytesPruneReport(evictedKeys: [], freedBytes: 0);
 
   /// No resources to release. Idempotent so tearDown can call [close] uniformly.
   @override
@@ -1254,7 +1294,8 @@ final class NoOpBytesCache implements IBytesCache {
 /// Process-wide [IBytesCache] and the way to open the durable store.
 abstract final class BytesCache {
   /// Shared instance. [NoOpBytesCache] until [configure] or [debugShared].
-  static IBytesCache shared() => debugShared ?? _shared ?? const NoOpBytesCache();
+  static IBytesCache shared() =>
+      debugShared ?? _shared ?? const NoOpBytesCache();
 
   static IBytesCache? _shared;
 
@@ -1300,7 +1341,8 @@ abstract final class BytesCache {
       diagnostics.report(
         BytesLogEvent(
           level: BytesLogLevel.warning,
-          message: 'image bytes cache: open failed, using in-memory store: $error',
+          message:
+              'image bytes cache: open failed, using in-memory store: $error',
           op: BytesLogOp.openDegraded,
           stackTrace: stackTrace,
         ),
@@ -1348,7 +1390,9 @@ abstract final class BytesCache {
     BytesDiagnostics.current = const BytesDiagnostics.silent();
     await previous?.close();
     _shared = null;
-    for (final hook in List<FutureOr<void> Function()>.of(_afterResetSharedHooks)) {
+    for (final hook in List<FutureOr<void> Function()>.of(
+      _afterResetSharedHooks,
+    )) {
       await hook();
     }
   }

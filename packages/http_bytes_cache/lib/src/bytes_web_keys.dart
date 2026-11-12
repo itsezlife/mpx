@@ -24,10 +24,12 @@ abstract final class BytesWebKeys {
   static const String opfsBlobsDirectoryName = 'image_bytes_blobs_v1';
 
   /// Single document URL inside [indexCacheName].
-  static const String indexDocumentUrl = 'https://image-bytes.invalid/v1/index.json';
+  static const String indexDocumentUrl =
+      'https://image-bytes.invalid/v1/index.json';
 
   /// Payload URL for [key] inside [blobsCacheName].
-  static String blobUrl(BytesCacheKey key) => 'https://image-bytes.invalid/v1/blob/${Uri.encodeComponent(key.value)}';
+  static String blobUrl(BytesCacheKey key) =>
+      'https://image-bytes.invalid/v1/blob/${Uri.encodeComponent(key.value)}';
 
   /// Inverse of [blobUrl]. Returns `null` when [url] is not a blob entry.
   static String? keyValueFromBlobUrl(String url) {
@@ -36,7 +38,8 @@ abstract final class BytesWebKeys {
       null => null,
       final parsed when parsed.host != 'image-bytes.invalid' => null,
       final parsed => switch (parsed.pathSegments) {
-        [final v, final kind, final encoded] when v == 'v1' && kind == 'blob' => Uri.decodeComponent(encoded),
+        [final v, final kind, final encoded] when v == 'v1' && kind == 'blob' =>
+          Uri.decodeComponent(encoded),
         _ => null,
       },
     };

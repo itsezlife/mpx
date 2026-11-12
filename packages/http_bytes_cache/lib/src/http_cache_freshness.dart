@@ -66,7 +66,12 @@ abstract final class HttpCacheFreshness {
           return !hasValidators;
         }
 
-        final lifetime = _freshnessLifetime(m, directives, now: now, writtenAt: writtenAt);
+        final lifetime = _freshnessLifetime(
+          m,
+          directives,
+          now: now,
+          writtenAt: writtenAt,
+        );
         if (lifetime <= Duration.zero) return false;
         return _currentAge(m, now: now, writtenAt: writtenAt) <= lifetime;
     }
@@ -182,10 +187,16 @@ abstract final class HttpCacheFreshness {
   }) {
     final responseTime = meta.lastValidatedAt ?? writtenAt ?? meta.date ?? now;
     final dateValue = meta.date ?? responseTime;
-    final apparentAge = responseTime.isAfter(dateValue) ? responseTime.difference(dateValue) : Duration.zero;
+    final apparentAge = responseTime.isAfter(dateValue)
+        ? responseTime.difference(dateValue)
+        : Duration.zero;
     final ageHeader = meta.age ?? Duration.zero;
-    final correctedInitialAge = apparentAge > ageHeader ? apparentAge : ageHeader;
-    final residentTime = now.isAfter(responseTime) ? now.difference(responseTime) : Duration.zero;
+    final correctedInitialAge = apparentAge > ageHeader
+        ? apparentAge
+        : ageHeader;
+    final residentTime = now.isAfter(responseTime)
+        ? now.difference(responseTime)
+        : Duration.zero;
     return correctedInitialAge + residentTime;
   }
 
@@ -209,7 +220,8 @@ abstract final class HttpCacheFreshness {
             case 'immutable':
               immutable = true;
             case final d when d.startsWith('max-age='):
-              if (int.tryParse(d.substring('max-age='.length).trim()) case final seconds? when seconds >= 0) {
+              if (int.tryParse(d.substring('max-age='.length).trim())
+                  case final seconds? when seconds >= 0) {
                 maxAge = Duration(seconds: seconds);
               }
             case _:

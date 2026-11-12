@@ -62,52 +62,57 @@ void main() {
 
       final path = p.join(tempDir.path, 'ok.bin');
       final bytes = Uint8List.fromList([7, 8, 9]);
-      await store.writePathAtomic(path, bytes).timeout(const Duration(seconds: 2));
+      await store
+          .writePathAtomic(path, bytes)
+          .timeout(const Duration(seconds: 2));
       expect(await store.readPath(path), bytes);
     });
 
-    test('dead worker mid-read does not stall the exclusive mutate gate', () async {
-      final blobs = BytesBlobStore$File$VM(directory: tempDir.path);
-      addTearDown(blobs.close);
-      await blobs.ensureDirectory();
-      final index = await BytesIndex$File$VM.open(
-        directory: tempDir.path,
-        io: blobs,
-        onWipe: blobs.wipeAll,
-      );
-      final cache = IndexedBytesCache(
-        index: index,
-        blobs: blobs,
-        retention: const BytesRetention.unlimited(),
-      );
-      addTearDown(cache.close);
+    test(
+      'dead worker mid-read does not stall the exclusive mutate gate',
+      () async {
+        final blobs = BytesBlobStore$File$VM(directory: tempDir.path);
+        addTearDown(blobs.close);
+        await blobs.ensureDirectory();
+        final index = await BytesIndex$File$VM.open(
+          directory: tempDir.path,
+          io: blobs,
+          onWipe: blobs.wipeAll,
+        );
+        final cache = IndexedBytesCache(
+          index: index,
+          blobs: blobs,
+          retention: const BytesRetention.unlimited(),
+        );
+        addTearDown(cache.close);
 
-      const hungKey = BytesCacheKey('hung');
-      const okKey = BytesCacheKey('ok');
-      final payload = Uint8List.fromList([1, 2, 3]);
-      await cache.write(hungKey, payload);
+        const hungKey = BytesCacheKey('hung');
+        const okKey = BytesCacheKey('ok');
+        final payload = Uint8List.fromList([1, 2, 3]);
+        await cache.write(hungKey, payload);
 
-      final blobPath = p.join(tempDir.path, hungKey.value);
-      File(blobPath).deleteSync();
-      expect((await Process.run('mkfifo', [blobPath])).exitCode, 0);
+        final blobPath = p.join(tempDir.path, hungKey.value);
+        File(blobPath).deleteSync();
+        expect((await Process.run('mkfifo', [blobPath])).exitCode, 0);
 
-      final hungRead = cache.read(hungKey);
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+        final hungRead = cache.read(hungKey);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
 
-      // Exclusive write waits for the shared reader that is blocked on the FIFO.
-      final nextWrite = cache.write(okKey, Uint8List.fromList([9]));
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+        // Exclusive write waits for the shared reader that is blocked on the FIFO.
+        final nextWrite = cache.write(okKey, Uint8List.fromList([9]));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
 
-      final failedRead = expectLater(
-        hungRead.timeout(const Duration(seconds: 2)),
-        throwsA(isA<StateError>()),
-      );
-      blobs.debugKillWorker();
-      await _releaseFifo(blobPath);
-      await failedRead;
-      await nextWrite.timeout(const Duration(seconds: 2));
-      expect(await cache.read(okKey), Uint8List.fromList([9]));
-    });
+        final failedRead = expectLater(
+          hungRead.timeout(const Duration(seconds: 2)),
+          throwsA(isA<StateError>()),
+        );
+        blobs.debugKillWorker();
+        await _releaseFifo(blobPath);
+        await failedRead;
+        await nextWrite.timeout(const Duration(seconds: 2));
+        expect(await cache.read(okKey), Uint8List.fromList([9]));
+      },
+    );
   });
 }
 

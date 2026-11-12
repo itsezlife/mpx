@@ -274,7 +274,8 @@ final class BytesResolver implements IBytesResolver {
   final BytesDiagnostics? _diagnostics;
   final DateTime Function() _clock;
 
-  BytesDiagnostics get _effectiveDiagnostics => _diagnostics ?? BytesDiagnostics.current;
+  BytesDiagnostics get _effectiveDiagnostics =>
+      _diagnostics ?? BytesDiagnostics.current;
 
   @override
   Future<Uint8List> resolve(BytesRequest request) async {
@@ -284,7 +285,9 @@ final class BytesResolver implements IBytesResolver {
 
   @override
   Future<BytesResolveResult> resolveRich(BytesRequest request) async {
-    final key = request.cacheKey ?? BytesCacheKey.fromUrl(request.url, headers: request.headers);
+    final key =
+        request.cacheKey ??
+        BytesCacheKey.fromUrl(request.url, headers: request.headers);
     final cache = _cacheOf();
     final client = _clientOf();
     final now = _clock();
@@ -294,7 +297,8 @@ final class BytesResolver implements IBytesResolver {
     // across users. Silent when diagnostics are silent (default).
     // Only checks Authorization on the request map. Bearer-injected tokens
     // are not visible here.
-    if (request.cacheKey case final _? when _hasAuthorizationHeader(request.headers)) {
+    if (request.cacheKey case final _?
+        when _hasAuthorizationHeader(request.headers)) {
       _effectiveDiagnostics.report(
         BytesLogEvent(
           level: BytesLogLevel.debug,
@@ -388,11 +392,14 @@ final class BytesResolver implements IBytesResolver {
           headers: response.headers,
           validatedAt: now,
         );
-        unawaited(_softWrite(cache, key, cached.bytes, cacheContext, refreshed));
+        unawaited(
+          _softWrite(cache, key, cached.bytes, cacheContext, refreshed),
+        );
         _effectiveDiagnostics.report(
           BytesLogEvent(
             level: BytesLogLevel.debug,
-            message: 'BytesResolver revalidated ${key.value} (304); reused cached bytes',
+            message:
+                'BytesResolver revalidated ${key.value} (304); reused cached bytes',
             op: BytesLogOp.resolveRevalidated,
           ),
         );
@@ -500,7 +507,9 @@ final class BytesResolver implements IBytesResolver {
     // Only the three transient classes qualify. Exhaustiveness keeps
     // Cancelled / Authentication / Request / Internal on the failure path.
     final allowStale = switch (error) {
-      HttpBytesException$Network() || HttpBytesException$Timeout() || HttpBytesException$Server() => true,
+      HttpBytesException$Network() ||
+      HttpBytesException$Timeout() ||
+      HttpBytesException$Server() => true,
       HttpBytesException$Cancelled() ||
       HttpBytesException$Authentication() ||
       HttpBytesException$Request() ||
@@ -561,19 +570,21 @@ final class BytesResolver implements IBytesResolver {
     Uint8List bytes,
     CacheContext? cacheContext,
     HttpCacheMeta? httpCacheMeta,
-  ) => _write(cache, key, bytes, cacheContext, httpCacheMeta: httpCacheMeta).catchError((
-    Object error,
-    StackTrace stackTrace,
-  ) {
-    _effectiveDiagnostics.report(
-      BytesLogEvent(
-        level: BytesLogLevel.error,
-        message: 'BytesResolver write-through failed for ${key.value}: $error',
-        op: BytesLogOp.writeThrough,
-        stackTrace: stackTrace,
-      ),
-    );
-  });
+  ) => _write(cache, key, bytes, cacheContext, httpCacheMeta: httpCacheMeta)
+      .catchError((
+        Object error,
+        StackTrace stackTrace,
+      ) {
+        _effectiveDiagnostics.report(
+          BytesLogEvent(
+            level: BytesLogLevel.error,
+            message:
+                'BytesResolver write-through failed for ${key.value}: $error',
+            op: BytesLogOp.writeThrough,
+            stackTrace: stackTrace,
+          ),
+        );
+      });
 
   /// Rich durable read (bytes + HTTP meta). Falls back to bytes-only stores.
   Future<BytesRichHit?> _readRich(

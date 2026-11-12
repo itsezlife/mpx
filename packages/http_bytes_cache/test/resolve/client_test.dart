@@ -113,31 +113,36 @@ void main() {
       );
     });
 
-    test('treats 304 Not Modified as success without requiring a body', () async {
-      final client = HttpBytesClient(
-        client: MockClient(
-          (_) async => http.Response.bytes(
-            Uint8List(0),
-            304,
-            headers: {'etag': '"v1"', 'cache-control': 'max-age=60'},
+    test(
+      'treats 304 Not Modified as success without requiring a body',
+      () async {
+        final client = HttpBytesClient(
+          client: MockClient(
+            (_) async => http.Response.bytes(
+              Uint8List(0),
+              304,
+              headers: {'etag': '"v1"', 'cache-control': 'max-age=60'},
+            ),
           ),
-        ),
-        middlewares: const [],
-      );
-      addTearDown(client.close);
+          middlewares: const [],
+        );
+        addTearDown(client.close);
 
-      final response = await client.send(
-        HttpBytesRequest(http.Request('GET', Uri.parse('https://cdn.example.com/a.svg'))),
-      );
+        final response = await client.send(
+          HttpBytesRequest(
+            http.Request('GET', Uri.parse('https://cdn.example.com/a.svg')),
+          ),
+        );
 
-      expect(response.statusCode, 304);
-      expect(response.headers['etag'], '"v1"');
-      expect(await response.toBytes(), isEmpty);
-      expect(
-        await client.getBytes(Uri.parse('https://cdn.example.com/a.svg')),
-        isEmpty,
-      );
-    });
+        expect(response.statusCode, 304);
+        expect(response.headers['etag'], '"v1"');
+        expect(await response.toBytes(), isEmpty);
+        expect(
+          await client.getBytes(Uri.parse('https://cdn.example.com/a.svg')),
+          isEmpty,
+        );
+      },
+    );
 
     test('ignores a non-empty illegal 304 body', () async {
       final client = HttpBytesClient(
@@ -154,8 +159,11 @@ void main() {
 
       final reports = <(int, int?)>[];
       final response = await client.send(
-        HttpBytesRequest(http.Request('GET', Uri.parse('https://cdn.example.com/a.svg'))),
-        onBytesProgress: (cumulative, total) => reports.add((cumulative, total)),
+        HttpBytesRequest(
+          http.Request('GET', Uri.parse('https://cdn.example.com/a.svg')),
+        ),
+        onBytesProgress: (cumulative, total) =>
+            reports.add((cumulative, total)),
       );
 
       expect(response.statusCode, 304);
@@ -168,44 +176,50 @@ void main() {
       );
     });
 
-    test(r'throws HttpBytesException$Network when the client fails without a response', () async {
-      final client = HttpBytesClient(
-        client: MockClient(
-          (_) async => throw http.ClientException('socket hung up'),
-        ),
-      );
-      addTearDown(client.close);
+    test(
+      r'throws HttpBytesException$Network when the client fails without a response',
+      () async {
+        final client = HttpBytesClient(
+          client: MockClient(
+            (_) async => throw http.ClientException('socket hung up'),
+          ),
+        );
+        addTearDown(client.close);
 
-      await expectLater(
-        client.getBytes(Uri.parse('https://cdn.example.com/down.svg')),
-        throwsA(isA<HttpBytesException$Network>()),
-      );
-    });
+        await expectLater(
+          client.getBytes(Uri.parse('https://cdn.example.com/down.svg')),
+          throwsA(isA<HttpBytesException$Network>()),
+        );
+      },
+    );
 
-    test('coalesces concurrent identical url and headers into one GET', () async {
-      var hits = 0;
-      final release = Completer<void>();
-      final client = HttpBytesClient(
-        client: MockClient((_) async {
-          hits++;
-          await release.future;
-          return http.Response.bytes(Uint8List.fromList([9]), 200);
-        }),
-      );
-      addTearDown(client.close);
+    test(
+      'coalesces concurrent identical url and headers into one GET',
+      () async {
+        var hits = 0;
+        final release = Completer<void>();
+        final client = HttpBytesClient(
+          client: MockClient((_) async {
+            hits++;
+            await release.future;
+            return http.Response.bytes(Uint8List.fromList([9]), 200);
+          }),
+        );
+        addTearDown(client.close);
 
-      final url = Uri.parse('https://cdn.example.com/same.svg');
-      const headers = {'Authorization': 'Bearer x'};
+        final url = Uri.parse('https://cdn.example.com/same.svg');
+        const headers = {'Authorization': 'Bearer x'};
 
-      final a = client.getBytes(url, headers: headers);
-      final b = client.getBytes(url, headers: headers);
-      release.complete();
+        final a = client.getBytes(url, headers: headers);
+        final b = client.getBytes(url, headers: headers);
+        release.complete();
 
-      final results = await (a, b).wait;
-      expect(results.$1, Uint8List.fromList([9]));
-      expect(results.$2, Uint8List.fromList([9]));
-      expect(hits, 1);
-    });
+        final results = await (a, b).wait;
+        expect(results.$1, Uint8List.fromList([9]));
+        expect(results.$2, Uint8List.fromList([9]));
+        expect(hits, 1);
+      },
+    );
 
     test(
       'canceling one coalesced subscriber leaves the other running',
@@ -239,7 +253,9 @@ void main() {
         );
         addTearDown(client.close);
 
-        final url = Uri.parse('https://cdn.example.com/coalesce-cancel-one.svg');
+        final url = Uri.parse(
+          'https://cdn.example.com/coalesce-cancel-one.svg',
+        );
         final a = client.getBytes(url, cancelToken: tokenA);
         final b = client.getBytes(url, cancelToken: tokenB);
         await Future<void>.delayed(Duration.zero);
@@ -278,7 +294,9 @@ void main() {
         );
         addTearDown(client.close);
 
-        final url = Uri.parse('https://cdn.example.com/coalesce-cancel-last.svg');
+        final url = Uri.parse(
+          'https://cdn.example.com/coalesce-cancel-last.svg',
+        );
         final a = client.getBytes(url, cancelToken: tokenA);
         final b = client.getBytes(url, cancelToken: tokenB);
         await Future<void>.delayed(Duration.zero);
@@ -323,39 +341,43 @@ void main() {
       expect(seenAuth, 'Bearer secret');
     });
 
-    test('coalesce identity unchanged when starter supplies onBytesProgress', () async {
-      var hits = 0;
-      final release = Completer<void>();
-      final reports = <(int cumulative, int? total)>[];
-      final client = HttpBytesClient(
-        client: _GatedChunkedBodyClient(
-          release: release,
-          onSend: () => hits++,
-          chunks: [
-            [1, 2],
-          ],
-          contentLength: 2,
-        ),
-      );
-      addTearDown(client.close);
+    test(
+      'coalesce identity unchanged when starter supplies onBytesProgress',
+      () async {
+        var hits = 0;
+        final release = Completer<void>();
+        final reports = <(int cumulative, int? total)>[];
+        final client = HttpBytesClient(
+          client: _GatedChunkedBodyClient(
+            release: release,
+            onSend: () => hits++,
+            chunks: [
+              [1, 2],
+            ],
+            contentLength: 2,
+          ),
+        );
+        addTearDown(client.close);
 
-      final url = Uri.parse('https://cdn.example.com/coalesce-progress.svg');
-      final a = client.getBytes(
-        url,
-        onBytesProgress: (cumulative, total) => reports.add((cumulative, total)),
-      );
-      final b = client.getBytes(
-        url,
-        onBytesProgress: (_, __) => fail('joiner sink must not run'),
-      );
-      release.complete();
+        final url = Uri.parse('https://cdn.example.com/coalesce-progress.svg');
+        final a = client.getBytes(
+          url,
+          onBytesProgress: (cumulative, total) =>
+              reports.add((cumulative, total)),
+        );
+        final b = client.getBytes(
+          url,
+          onBytesProgress: (_, __) => fail('joiner sink must not run'),
+        );
+        release.complete();
 
-      final results = await (a, b).wait;
-      expect(results.$1, Uint8List.fromList([1, 2]));
-      expect(results.$2, Uint8List.fromList([1, 2]));
-      expect(hits, 1);
-      expect(reports, [(2, 2)]);
-    });
+        final results = await (a, b).wait;
+        expect(results.$1, Uint8List.fromList([1, 2]));
+        expect(results.$2, Uint8List.fromList([1, 2]));
+        expect(hits, 1);
+        expect(reports, [(2, 2)]);
+      },
+    );
 
     test('does not coalesce when headers differ', () async {
       var hits = 0;
@@ -376,37 +398,40 @@ void main() {
       expect(hits, 2);
     });
 
-    test('identityOverride coalesces despite different Authorization headers', () async {
-      var hits = 0;
-      final release = Completer<void>();
-      final client = HttpBytesClient(
-        client: MockClient((_) async {
-          hits++;
-          await release.future;
-          return http.Response.bytes(Uint8List.fromList([3]), 200);
-        }),
-      );
-      addTearDown(client.close);
+    test(
+      'identityOverride coalesces despite different Authorization headers',
+      () async {
+        var hits = 0;
+        final release = Completer<void>();
+        final client = HttpBytesClient(
+          client: MockClient((_) async {
+            hits++;
+            await release.future;
+            return http.Response.bytes(Uint8List.fromList([3]), 200);
+          }),
+        );
+        addTearDown(client.close);
 
-      final url = Uri.parse('https://cdn.example.com/override.svg');
-      const override = BytesCacheKey('host_identity');
-      final a = client.getBytes(
-        url,
-        headers: const {'Authorization': 'Bearer a'},
-        context: HttpBytesContext.empty()..identityOverride = override,
-      );
-      final b = client.getBytes(
-        url,
-        headers: const {'Authorization': 'Bearer b'},
-        context: HttpBytesContext.empty()..identityOverride = override,
-      );
-      release.complete();
+        final url = Uri.parse('https://cdn.example.com/override.svg');
+        const override = BytesCacheKey('host_identity');
+        final a = client.getBytes(
+          url,
+          headers: const {'Authorization': 'Bearer a'},
+          context: HttpBytesContext.empty()..identityOverride = override,
+        );
+        final b = client.getBytes(
+          url,
+          headers: const {'Authorization': 'Bearer b'},
+          context: HttpBytesContext.empty()..identityOverride = override,
+        );
+        release.complete();
 
-      final results = await (a, b).wait;
-      expect(results.$1, Uint8List.fromList([3]));
-      expect(results.$2, Uint8List.fromList([3]));
-      expect(hits, 1);
-    });
+        final results = await (a, b).wait;
+        expect(results.$1, Uint8List.fromList([3]));
+        expect(results.$2, Uint8List.fromList([3]));
+        expect(hits, 1);
+      },
+    );
 
     test('coalesces when only conditional headers differ', () async {
       var hits = 0;
@@ -437,28 +462,36 @@ void main() {
       expect(hits, 1);
     });
 
-    test('does not coalesce URL-with-|… into clean URL plus those headers', () async {
-      var hits = 0;
-      final release = Completer<void>();
-      final client = HttpBytesClient(
-        client: MockClient((_) async {
-          hits++;
-          await release.future;
-          return http.Response.bytes(Uint8List.fromList([1]), 200);
-        }),
-      );
-      addTearDown(client.close);
+    test(
+      'does not coalesce URL-with-|… into clean URL plus those headers',
+      () async {
+        var hits = 0;
+        final release = Completer<void>();
+        final client = HttpBytesClient(
+          client: MockClient((_) async {
+            hits++;
+            await release.future;
+            return http.Response.bytes(Uint8List.fromList([1]), 200);
+          }),
+        );
+        addTearDown(client.close);
 
-      final poisoned = Uri.parse('https://cdn.example.com/a.svg|authorization=Bearer x');
-      final clean = Uri.parse('https://cdn.example.com/a.svg');
+        final poisoned = Uri.parse(
+          'https://cdn.example.com/a.svg|authorization=Bearer x',
+        );
+        final clean = Uri.parse('https://cdn.example.com/a.svg');
 
-      final a = client.getBytes(poisoned);
-      final b = client.getBytes(clean, headers: const {'Authorization': 'Bearer x'});
-      release.complete();
+        final a = client.getBytes(poisoned);
+        final b = client.getBytes(
+          clean,
+          headers: const {'Authorization': 'Bearer x'},
+        );
+        release.complete();
 
-      await (a, b).wait;
-      expect(hits, 2);
-    });
+        await (a, b).wait;
+        expect(hits, 2);
+      },
+    );
 
     test('limits concurrent GETs to maxConcurrent', () async {
       var inFlight = 0;
@@ -477,7 +510,8 @@ void main() {
       addTearDown(client.close);
 
       final futures = [
-        for (var i = 0; i < 5; i++) client.getBytes(Uri.parse('https://cdn.example.com/$i.svg')),
+        for (var i = 0; i < 5; i++)
+          client.getBytes(Uri.parse('https://cdn.example.com/$i.svg')),
       ];
 
       await Future<void>.delayed(Duration.zero);
@@ -489,56 +523,66 @@ void main() {
       expect(peak, 2);
     });
 
-    test(r'throws HttpBytesException$Timeout when GET stalls past connect Timeout', () async {
-      final client = HttpBytesClient(
-        middlewares: <HttpBytesMiddleware>[
-          const HttpBytesTimeoutMiddleware(
-            connectTimeout: Duration(milliseconds: 20),
-            receiveTimeout: Duration(seconds: 30),
-          ),
-        ],
-        client: MockClient((_) async {
-          await Future<void>.delayed(const Duration(seconds: 5));
-          return http.Response.bytes(Uint8List.fromList([1]), 200);
-        }),
-      );
-      addTearDown(client.close);
+    test(
+      r'throws HttpBytesException$Timeout when GET stalls past connect Timeout',
+      () async {
+        final client = HttpBytesClient(
+          middlewares: <HttpBytesMiddleware>[
+            const HttpBytesTimeoutMiddleware(
+              connectTimeout: Duration(milliseconds: 20),
+              receiveTimeout: Duration(seconds: 30),
+            ),
+          ],
+          client: MockClient((_) async {
+            await Future<void>.delayed(const Duration(seconds: 5));
+            return http.Response.bytes(Uint8List.fromList([1]), 200);
+          }),
+        );
+        addTearDown(client.close);
 
-      await expectLater(
-        client.getBytes(Uri.parse('https://cdn.example.com/slow.svg')),
-        throwsA(
-          isA<HttpBytesException$Timeout>().having((e) => e.code, 'code', 'timeout'),
-        ),
-      );
-    });
-
-    test(r'throws HttpBytesException$Timeout when body idle past receive Timeout', () async {
-      final client = HttpBytesClient(
-        middlewares: <HttpBytesMiddleware>[
-          const HttpBytesTimeoutMiddleware(
-            connectTimeout: Duration(seconds: 30),
-            receiveTimeout: Duration(milliseconds: 40),
+        await expectLater(
+          client.getBytes(Uri.parse('https://cdn.example.com/slow.svg')),
+          throwsA(
+            isA<HttpBytesException$Timeout>().having(
+              (e) => e.code,
+              'code',
+              'timeout',
+            ),
           ),
-        ],
-        client: _StallingBodyClient(
-          firstChunk: [1],
-          stall: const Duration(seconds: 5),
-          secondChunk: [2],
-        ),
-      );
-      addTearDown(client.close);
+        );
+      },
+    );
 
-      await expectLater(
-        client.getBytes(Uri.parse('https://cdn.example.com/stall.svg')),
-        throwsA(
-          isA<HttpBytesException$Timeout>().having(
-            (e) => e.code,
-            'code',
-            'receive_timeout',
+    test(
+      r'throws HttpBytesException$Timeout when body idle past receive Timeout',
+      () async {
+        final client = HttpBytesClient(
+          middlewares: <HttpBytesMiddleware>[
+            const HttpBytesTimeoutMiddleware(
+              connectTimeout: Duration(seconds: 30),
+              receiveTimeout: Duration(milliseconds: 40),
+            ),
+          ],
+          client: _StallingBodyClient(
+            firstChunk: [1],
+            stall: const Duration(seconds: 5),
+            secondChunk: [2],
           ),
-        ),
-      );
-    });
+        );
+        addTearDown(client.close);
+
+        await expectLater(
+          client.getBytes(Uri.parse('https://cdn.example.com/stall.svg')),
+          throwsA(
+            isA<HttpBytesException$Timeout>().having(
+              (e) => e.code,
+              'code',
+              'receive_timeout',
+            ),
+          ),
+        );
+      },
+    );
 
     test('empty middleware list does not apply default Timeout', () async {
       final client = HttpBytesClient(
@@ -556,36 +600,41 @@ void main() {
       expect(bytes, Uint8List.fromList([7]));
     });
 
-    test('timeout aborts AbortableRequest when the client honors abortTrigger', () async {
-      var sawAbortable = false;
-      var abortCompleted = false;
-      final client = HttpBytesClient(
-        middlewares: <HttpBytesMiddleware>[
-          const HttpBytesTimeoutMiddleware(
-            connectTimeout: Duration(milliseconds: 30),
-            receiveTimeout: Duration(seconds: 30),
+    test(
+      'timeout aborts AbortableRequest when the client honors abortTrigger',
+      () async {
+        var sawAbortable = false;
+        var abortCompleted = false;
+        final client = HttpBytesClient(
+          middlewares: <HttpBytesMiddleware>[
+            const HttpBytesTimeoutMiddleware(
+              connectTimeout: Duration(milliseconds: 30),
+              receiveTimeout: Duration(seconds: 30),
+            ),
+          ],
+          client: _AbortHonoringClient(
+            onRequest: (request) {
+              if (request case http.Abortable(:final abortTrigger?)) {
+                sawAbortable = true;
+                unawaited(
+                  abortTrigger.whenComplete(() => abortCompleted = true),
+                );
+              }
+            },
           ),
-        ],
-        client: _AbortHonoringClient(
-          onRequest: (request) {
-            if (request case http.Abortable(:final abortTrigger?)) {
-              sawAbortable = true;
-              unawaited(abortTrigger.whenComplete(() => abortCompleted = true));
-            }
-          },
-        ),
-      );
-      addTearDown(client.close);
+        );
+        addTearDown(client.close);
 
-      await expectLater(
-        client.getBytes(Uri.parse('https://cdn.example.com/abort.svg')),
-        throwsA(isA<HttpBytesException$Timeout>()),
-      );
-      // Let abortTrigger.whenComplete run after HttpBytesTimeoutMiddleware cancels the token.
-      await Future<void>.delayed(Duration.zero);
-      expect(sawAbortable, isTrue);
-      expect(abortCompleted, isTrue);
-    });
+        await expectLater(
+          client.getBytes(Uri.parse('https://cdn.example.com/abort.svg')),
+          throwsA(isA<HttpBytesException$Timeout>()),
+        );
+        // Let abortTrigger.whenComplete run after HttpBytesTimeoutMiddleware cancels the token.
+        await Future<void>.delayed(Duration.zero);
+        expect(sawAbortable, isTrue);
+        expect(abortCompleted, isTrue);
+      },
+    );
 
     test(r'CancelToken cancel surfaces HttpBytesException$Cancelled', () async {
       final token = CancelToken();
@@ -611,38 +660,44 @@ void main() {
       await expectLater(future, throwsA(isA<HttpBytesException$Cancelled>()));
     });
 
-    test(r'already-cancelled CancelToken surfaces HttpBytesException$Cancelled', () async {
-      final token = CancelToken()..cancel();
-      final client = HttpBytesClient(
-        middlewares: const [],
-        client: MockClient(
-          (_) async => http.Response.bytes(Uint8List.fromList([1]), 200),
-        ),
-      );
-      addTearDown(client.close);
+    test(
+      r'already-cancelled CancelToken surfaces HttpBytesException$Cancelled',
+      () async {
+        final token = CancelToken()..cancel();
+        final client = HttpBytesClient(
+          middlewares: const [],
+          client: MockClient(
+            (_) async => http.Response.bytes(Uint8List.fromList([1]), 200),
+          ),
+        );
+        addTearDown(client.close);
 
-      expect(
-        () => client.getBytes(
-          Uri.parse('https://cdn.example.com/pre-cancelled.svg'),
-          cancelToken: token,
-        ),
-        throwsA(isA<HttpBytesException$Cancelled>()),
-      );
-    });
+        expect(
+          () => client.getBytes(
+            Uri.parse('https://cdn.example.com/pre-cancelled.svg'),
+            cancelToken: token,
+          ),
+          throwsA(isA<HttpBytesException$Cancelled>()),
+        );
+      },
+    );
 
-    test(r'rejects getBytes after close with HttpBytesException$Internal', () async {
-      final client = HttpBytesClient(
-        client: MockClient(
-          (_) async => http.Response.bytes(Uint8List.fromList([1]), 200),
-        ),
-      );
-      await client.close();
+    test(
+      r'rejects getBytes after close with HttpBytesException$Internal',
+      () async {
+        final client = HttpBytesClient(
+          client: MockClient(
+            (_) async => http.Response.bytes(Uint8List.fromList([1]), 200),
+          ),
+        );
+        await client.close();
 
-      expect(
-        () => client.getBytes(Uri.parse('https://cdn.example.com/a.svg')),
-        throwsA(isA<HttpBytesException$Internal>()),
-      );
-    });
+        expect(
+          () => client.getBytes(Uri.parse('https://cdn.example.com/a.svg')),
+          throwsA(isA<HttpBytesException$Internal>()),
+        );
+      },
+    );
 
     test('reports cumulative bytes and total while reading the body', () async {
       final chunks = <List<int>>[
@@ -660,7 +715,8 @@ void main() {
 
       final bytes = await client.getBytes(
         Uri.parse('https://cdn.example.com/progress.svg'),
-        onBytesProgress: (cumulative, total) => reports.add((cumulative, total)),
+        onBytesProgress: (cumulative, total) =>
+            reports.add((cumulative, total)),
       );
 
       expect(bytes, Uint8List.fromList([1, 2, 3, 4, 5]));
@@ -680,7 +736,8 @@ void main() {
 
       await client.getBytes(
         Uri.parse('https://cdn.example.com/no-length.svg'),
-        onBytesProgress: (cumulative, total) => reports.add((cumulative, total)),
+        onBytesProgress: (cumulative, total) =>
+            reports.add((cumulative, total)),
       );
 
       expect(reports, [(2, null)]);
@@ -897,7 +954,9 @@ final class _AbortHonoringClient extends http.BaseClient {
 
       final bytes = await Future.any<Uint8List>([
         body(),
-        abortTrigger.then((_) => throw http.RequestAbortedException(request.url)),
+        abortTrigger.then(
+          (_) => throw http.RequestAbortedException(request.url),
+        ),
       ]);
       return http.StreamedResponse(
         Stream.value(bytes),

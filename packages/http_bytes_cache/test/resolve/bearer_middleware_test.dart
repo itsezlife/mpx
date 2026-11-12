@@ -25,20 +25,23 @@ void main() {
   }
 
   group('HttpBytesBearerMiddleware', () {
-    test('attaches "Authorization: Bearer <token>" from getToken on success', () async {
-      Map<String, String>? seen;
-      final client = clientWith(
-        MockClient((request) async {
-          seen = Map<String, String>.of(request.headers);
-          return http.Response.bytes(Uint8List.fromList([1]), 200);
-        }),
-        getToken: () async => 'tok-123',
-      );
+    test(
+      'attaches "Authorization: Bearer <token>" from getToken on success',
+      () async {
+        Map<String, String>? seen;
+        final client = clientWith(
+          MockClient((request) async {
+            seen = Map<String, String>.of(request.headers);
+            return http.Response.bytes(Uint8List.fromList([1]), 200);
+          }),
+          getToken: () async => 'tok-123',
+        );
 
-      await client.getBytes(Uri.parse('https://cdn.test/data'));
+        await client.getBytes(Uri.parse('https://cdn.test/data'));
 
-      expect(seen?['authorization'], equals('Bearer tok-123'));
-    });
+        expect(seen?['authorization'], equals('Bearer tok-123'));
+      },
+    );
 
     test('fails fast when the token is null — no request is sent', () async {
       var requestSent = false;
@@ -80,53 +83,62 @@ void main() {
       expect(requestSent, isFalse);
     });
 
-    test(r'does not swallow a 401 from the server (still $Authentication)', () async {
-      final client = clientWith(
-        MockClient((_) async => http.Response('unauthorized', 401)),
-        getToken: () async => 'tok',
-      );
+    test(
+      r'does not swallow a 401 from the server (still $Authentication)',
+      () async {
+        final client = clientWith(
+          MockClient((_) async => http.Response('unauthorized', 401)),
+          getToken: () async => 'tok',
+        );
 
-      await expectLater(
-        client.getBytes(Uri.parse('https://cdn.test/data')),
-        throwsA(
-          isA<HttpBytesException$Authentication>().having(
-            (e) => e.statusCode,
-            'statusCode',
-            401,
+        await expectLater(
+          client.getBytes(Uri.parse('https://cdn.test/data')),
+          throwsA(
+            isA<HttpBytesException$Authentication>().having(
+              (e) => e.statusCode,
+              'statusCode',
+              401,
+            ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
 
-    test(r'does not swallow a 403 from the server (still $Authentication)', () async {
-      final client = clientWith(
-        MockClient((_) async => http.Response('forbidden', 403)),
-        getToken: () async => 'tok',
-      );
+    test(
+      r'does not swallow a 403 from the server (still $Authentication)',
+      () async {
+        final client = clientWith(
+          MockClient((_) async => http.Response('forbidden', 403)),
+          getToken: () async => 'tok',
+        );
 
-      await expectLater(
-        client.getBytes(Uri.parse('https://cdn.test/data')),
-        throwsA(
-          isA<HttpBytesException$Authentication>().having(
-            (e) => e.statusCode,
-            'statusCode',
-            403,
+        await expectLater(
+          client.getBytes(Uri.parse('https://cdn.test/data')),
+          throwsA(
+            isA<HttpBytesException$Authentication>().having(
+              (e) => e.statusCode,
+              'statusCode',
+              403,
+            ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
 
-    test(r'does not special-case a non-auth error (500) — still $Server', () async {
-      final client = clientWith(
-        MockClient((_) async => http.Response('boom', 500)),
-        getToken: () async => 'tok',
-      );
+    test(
+      r'does not special-case a non-auth error (500) — still $Server',
+      () async {
+        final client = clientWith(
+          MockClient((_) async => http.Response('boom', 500)),
+          getToken: () async => 'tok',
+        );
 
-      await expectLater(
-        client.getBytes(Uri.parse('https://cdn.test/data')),
-        throwsA(isA<HttpBytesException$Server>()),
-      );
-    });
+        await expectLater(
+          client.getBytes(Uri.parse('https://cdn.test/data')),
+          throwsA(isA<HttpBytesException$Server>()),
+        );
+      },
+    );
 
     test('token is read per request', () async {
       var n = 0;

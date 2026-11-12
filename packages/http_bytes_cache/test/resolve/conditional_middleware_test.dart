@@ -90,24 +90,27 @@ void main() {
       expect(seen?['if-modified-since'], 'Thu, 01 Jan 1970 00:00:00 GMT');
     });
 
-    test('adds no conditional headers when context has no validators', () async {
-      Map<String, String>? seen;
-      final client = clientWith(
-        MockClient((request) async {
-          seen = Map<String, String>.of(request.headers);
-          return http.Response.bytes(Uint8List.fromList([1]), 200);
-        }),
-      );
+    test(
+      'adds no conditional headers when context has no validators',
+      () async {
+        Map<String, String>? seen;
+        final client = clientWith(
+          MockClient((request) async {
+            seen = Map<String, String>.of(request.headers);
+            return http.Response.bytes(Uint8List.fromList([1]), 200);
+          }),
+        );
 
-      await client.send(
-        HttpBytesRequest(
-          http.Request('GET', Uri.parse('https://cdn.test/plain')),
-        ),
-      );
+        await client.send(
+          HttpBytesRequest(
+            http.Request('GET', Uri.parse('https://cdn.test/plain')),
+          ),
+        );
 
-      expect(seen?.containsKey('if-none-match'), isFalse);
-      expect(seen?.containsKey('if-modified-since'), isFalse);
-    });
+        expect(seen?.containsKey('if-none-match'), isFalse);
+        expect(seen?.containsKey('if-modified-since'), isFalse);
+      },
+    );
 
     test('ignores empty validator strings', () async {
       Map<String, String>? seen;
@@ -166,7 +169,8 @@ void main() {
         // Winner's headers are on the wire; joiners share that flight.
         final wire = seen.single;
         expect(
-          wire.containsKey('if-none-match') || wire.containsKey('if-modified-since'),
+          wire.containsKey('if-none-match') ||
+              wire.containsKey('if-modified-since'),
           isTrue,
         );
       },
@@ -179,7 +183,11 @@ void main() {
         final client = clientWith(
           MockClient((request) async {
             seen = Map<String, String>.of(request.headers);
-            return http.Response.bytes(Uint8List(0), 304, headers: {'etag': '"v1"'});
+            return http.Response.bytes(
+              Uint8List(0),
+              304,
+              headers: {'etag': '"v1"'},
+            );
           }),
         );
 
