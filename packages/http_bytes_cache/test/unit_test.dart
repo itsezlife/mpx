@@ -17,6 +17,7 @@ import 'resolve/peek_test.dart' as peek_test;
 import 'resolve/pipeline_test.dart' as pipeline_test;
 import 'resolve/priority_test.dart' as priority_test;
 import 'resolve/progress_fanout_test.dart' as progress_fanout_test;
+import 'resolve/range_request_test.dart' as range_request_test;
 import 'resolve/resolver_test.dart' as resolver_test;
 import 'resolve/swr_test.dart' as swr_test;
 import 'storage/blob_store_vm_test.dart' as blob_store_vm_test;
@@ -46,6 +47,7 @@ void main() => group('Unit', () {
   peek_test.main();
   priority_test.main();
   swr_test.main();
+  range_request_test.main();
   bearer_middleware_test.main();
   conditional_middleware_test.main();
   logger_middleware_test.main();

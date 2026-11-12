@@ -3,7 +3,8 @@ import 'package:meta/meta.dart';
 
 /// {@template http_bytes_conditional}
 /// Opt-in conditional GET layer: reads validators from [HttpBytesContext] and
-/// sets `If-None-Match` / `If-Modified-Since` on the outgoing request.
+/// sets `If-None-Match` / `If-Modified-Since` on the outgoing request, or, on
+/// a range GET ([HttpBytesContext.range]), `If-Range` with a strong ETag only.
 ///
 /// Seed [HttpBytesContext.etag] and/or [HttpBytesContext.lastModified]
 /// (resolver or host). Empty or missing slots add nothing; the GET stays
@@ -38,6 +39,16 @@ class HttpBytesConditionalMiddleware {
   HttpBytesHandler call(
     HttpBytesHandler innerHandler,
   ) => (request, context) async {
+    if (context.range != null) {
+      // A range GET validates with If-Range, which must not carry a weak
+      // ETag (RFC 9110 13.1.5): without a strong one it goes unconditional,
+      // and the caller compares the answer's validator instead.
+      if (context.etag case final etag?
+          when !etag.trimLeft().startsWith('W/')) {
+        request.headers['if-range'] = etag;
+      }
+      return innerHandler(request, context);
+    }
     if (context.etag case final etag?) {
       request.headers['if-none-match'] = etag;
     }

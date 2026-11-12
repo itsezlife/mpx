@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:cancel_token/cancel_token.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_bytes_cache/src/bytes_cache.dart';
+import 'package:http_bytes_cache/src/http/byte_range.dart';
 import 'package:http_bytes_cache/src/http/middlewares/timeout_middleware.dart';
 import 'package:http_bytes_cache/src/http/request_priority.dart';
 import 'package:meta/meta.dart';
@@ -122,6 +123,9 @@ extension type HttpBytesContext(Map<String, Object?> _map)
   /// This caller's [PriorityToken] for the slot queue.
   static const priorityKey = 'priority';
 
+  /// The [ByteRange] a range GET asks for ([HttpBytesClient.stream]).
+  static const rangeKey = 'range';
+
   /// Explicit coalesce identity ([BytesCacheKey]). When set, post-middleware
   /// URL + headers are ignored for the in-flight key; headers still go on the
   /// wire. [BytesResolver] sets this from [BytesRequest.cacheKey].
@@ -212,6 +216,16 @@ extension type HttpBytesContext(Map<String, Object?> _map)
     _ => null,
   };
   set lastModified(String? value) => _set(lastModifiedKey, value);
+
+  /// The range this GET asks for, or null for a full GET. Set by
+  /// [HttpBytesClient.stream], which also puts the `Range` header on the
+  /// request; middlewares read it to tell a range GET apart (the conditional
+  /// middleware sends `If-Range` instead of `If-None-Match`).
+  ByteRange? get range => switch (_map[rangeKey]) {
+    final ByteRange r => r,
+    _ => null,
+  };
+  set range(ByteRange? value) => _set(rangeKey, value);
 
   /// Explicit coalesce identity. When set, wins over post-middleware URL +
   /// headers for the in-flight key. Durable ladder keys use the same value via
@@ -327,6 +341,27 @@ final class HttpBytesResponse {
 
   /// Consolidated body when the client has already consumed [stream].
   final Uint8List? body;
+
+  /// Whether this is a `206 Partial Content` answer to a range GET.
+  bool get isPartial => statusCode == 206;
+
+  /// The parsed `Content-Range` of a `206`, or null.
+  ContentRange? get contentRange =>
+      isPartial ? ContentRange.parse(headers['content-range']) : null;
+
+  /// Length of the whole representation: the `Content-Range` total of a
+  /// `206`, else the declared length of a full body; null when unknown.
+  int? get totalLength => switch (statusCode) {
+    206 => contentRange?.totalLength,
+    _ when contentLength > 0 => contentLength,
+    _ => null,
+  };
+
+  /// Whether the server advertised `Accept-Ranges: bytes`. A `206` proves
+  /// range support whatever the header says.
+  bool get acceptsRanges =>
+      isPartial ||
+      (headers['accept-ranges']?.toLowerCase().contains('bytes') ?? false);
 
   /// Returns the response body as bytes.
   ///
@@ -490,6 +525,54 @@ final class HttpBytesClient {
     priority: priority,
   );
 
+  /// GETs [url] and returns the response with its body still streaming.
+  ///
+  /// For bodies too large to buffer and for ranged resources: pass [range]
+  /// for a single-range GET (the `Range` header and
+  /// [HttpBytesContext.range]). The answer may be a `206` with
+  /// [HttpBytesResponse.contentRange], or a `200` with the whole body when the
+  /// server ignores ranges or `If-Range` failed; a `416` fails as
+  /// [HttpBytesException$Request] (`range_not_satisfiable`). Middlewares run
+  /// as for [getBytes] (timeout covers headers and body idle gaps).
+  ///
+  /// A streamed GET is never coalesced: two callers get two GETs. It holds
+  /// one of the [maxConcurrent] slots, queued by [priority], until its body
+  /// ends, fails or its subscription is cancelled; cancelling the
+  /// subscription or [cancelToken] aborts the socket. Listen to or cancel
+  /// the body, or cancel [cancelToken], so the slot comes back.
+  Future<HttpBytesResponse> stream(
+    Uri url, {
+    Map<String, String>? headers,
+    ByteRange? range,
+    CancelToken? cancelToken,
+    BytesProgressCallback? onBytesProgress,
+    PriorityToken? priority,
+    Map<String, Object?>? context,
+  }) async {
+    if (_closed) {
+      throw const HttpBytesException$Internal(
+        code: 'closed',
+        message: 'HttpBytesClient is closed.',
+        statusCode: 0,
+      );
+    }
+    final callerToken = cancelToken ?? CancelToken();
+    final ctx = HttpBytesContext(context ?? <String, Object?>{})
+      ..callerCancelToken = callerToken
+      ..onBytesProgress = onBytesProgress
+      ..range = range;
+    ctx[_kStreamed] = true;
+    if (priority != null) ctx.priority = priority;
+    final request = http.Request('GET', url);
+    if (headers case final h?) request.headers.addAll(h);
+    if (range != null) request.headers['range'] = range.header;
+    return _raceCallerCancel(
+      callerToken,
+      url,
+      () => _handler(HttpBytesRequest(request), ctx),
+    );
+  }
+
   /// GETs [url] and returns the response body (delegates to [_sendUnstreamed]).
   ///
   /// Pass [context] to seed typed slots (e.g. [HttpBytesContext.identityOverride]
@@ -626,6 +709,9 @@ final class HttpBytesClient {
 
     return (request, context) async {
       final callerToken = context.callerCancelToken ?? CancelToken();
+      if (context[_kStreamed] == true) {
+        return _sendStreamed(clientSend, request, context, callerToken);
+      }
 
       // Explicit override (resolver cacheKey) wins for coalesce; otherwise
       // fingerprint post-middleware URL + headers (Bearer Auth participates;
@@ -689,6 +775,63 @@ final class HttpBytesClient {
     };
   }
 
+  /// A [stream] GET: its own flight (never shared), a slot held until the
+  /// body ends, and a body that maps an abort to [HttpBytesException$Cancelled].
+  Future<HttpBytesResponse> _sendStreamed(
+    HttpBytesHandler clientSend,
+    HttpBytesRequest request,
+    HttpBytesContext context,
+    CancelToken callerToken,
+  ) async {
+    final flightToken = CancelToken();
+    context.cancelToken = flightToken;
+    final abortable = http.AbortableRequest(
+      'GET',
+      request.url,
+      abortTrigger: flightToken.whenCancel,
+    )..headers.addAll(request.headers);
+    final flight = _HttpBytesInFlight(
+      flightToken: flightToken,
+      onAbandoned: () {},
+    );
+    context[_kInFlight] = flight;
+    flight.trackCaller(
+      callerToken,
+      onProgress: context.onBytesProgress,
+      priority: context.priority,
+    );
+
+    await _slots.acquire(flight);
+    var released = false;
+    void release() {
+      if (released) return;
+      released = true;
+      _slots.release();
+    }
+
+    unawaited(flightToken.whenCancel.then((_) => release()));
+    final HttpBytesResponse response;
+    try {
+      response = await clientSend(HttpBytesRequest(abortable), context);
+    } on Object {
+      release();
+      rethrow;
+    }
+    return response.clone(
+      stream: http.ByteStream(
+        _slotBoundBody(
+          response.stream,
+          url: request.url,
+          onEnd: release,
+          onAbandon: () {
+            release();
+            flightToken.cancel();
+          },
+        ),
+      ),
+    );
+  }
+
   /// Closes the slot queue and, when this instance created the client, the
   /// client. Queued GETs fail; running ones finish first.
   Future<void> close() async {
@@ -703,6 +846,56 @@ final class HttpBytesClient {
 
 /// Context slot for the in-flight entry started by coalesce (starter path).
 const _kInFlight = 'httpBytesInFlight';
+
+/// Context marker for a [HttpBytesClient.stream] GET: no coalesce, no buffer.
+const _kStreamed = 'httpBytesStreamed';
+
+/// Forwards [source], calling [onEnd] once it ends or fails and [onAbandon]
+/// when the listener cancels first. An aborted socket surfaces as
+/// [HttpBytesException$Cancelled], like an abort before the headers.
+Stream<List<int>> _slotBoundBody(
+  Stream<List<int>> source, {
+  required Uri url,
+  required void Function() onEnd,
+  required void Function() onAbandon,
+}) {
+  StreamSubscription<List<int>>? subscription;
+  var ended = false;
+  late final StreamController<List<int>> controller;
+  controller = StreamController<List<int>>(
+    onListen: () {
+      subscription = source.listen(
+        controller.add,
+        onError: (Object error, StackTrace stackTrace) {
+          ended = true;
+          onEnd();
+          controller.addError(
+            switch (error) {
+              http.RequestAbortedException() => HttpBytesException$Cancelled(
+                error: error,
+                data: <String, Object?>{'url': url.toString()},
+              ),
+              _ => error,
+            },
+            stackTrace,
+          );
+        },
+        onDone: () {
+          ended = true;
+          onEnd();
+          unawaited(controller.close());
+        },
+      );
+    },
+    onPause: () => subscription?.pause(),
+    onResume: () => subscription?.resume(),
+    onCancel: () {
+      if (!ended) onAbandon();
+      return subscription?.cancel();
+    },
+  );
+  return controller.stream;
+}
 
 /// One coalesced in-flight GET with N caller subscribers.
 ///
@@ -894,16 +1087,22 @@ final class _PrioritySlots {
     _HttpBytesInFlight flight,
     Future<T> Function() work,
   ) async {
-    await _acquire(flight);
+    await acquire(flight);
     try {
       return await work();
     } finally {
-      _active--;
-      _dispatch();
+      release();
     }
   }
 
-  Future<void> _acquire(_HttpBytesInFlight flight) {
+  /// Gives back a slot [acquire] took.
+  void release() {
+    _active--;
+    _dispatch();
+  }
+
+  /// Takes a slot for [flight], waiting in the queue when none is free.
+  Future<void> acquire(_HttpBytesInFlight flight) {
     if (_closed) {
       return Future<void>.error(
         const HttpBytesException$Internal(
@@ -1213,6 +1412,10 @@ HttpBytesException _statusToException(
 /// Per-code semantic `(code, message)` for a non-success HTTP [statusCode].
 /// Unlisted codes fall back to a generic server (5xx) or client label.
 (String, String) _codeAndMessageFor(int statusCode) => switch (statusCode) {
+  416 => (
+    'range_not_satisfiable',
+    'Range not satisfiable (HTTP 416). The range starts past the end.',
+  ),
   503 => (
     'service_unavailable',
     'Service unavailable (HTTP 503). The server is currently unable to handle the request.',

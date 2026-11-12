@@ -234,6 +234,21 @@ A caller that joins mid-body first hears the last value; a cancelled caller
 stops hearing while the others continue. 304 reports nothing. Coalesced joiners each get their own Future to
 the same buffered response; the progress sink does not change coalesce identity.
 
+### Streaming and range GETs
+
+`stream(url, range:)` runs the same middleware chain but neither coalesces nor
+buffers: the response's body is still streaming. It takes one slot, queued by
+priority, and holds it until the body ends, fails or its subscription is
+cancelled (which also aborts the socket). `range` is a half-open `ByteRange`;
+it becomes the `Range` header and `HttpBytesContext.range`. A `206` exposes
+`contentRange` and `totalLength`; a `200` to a range GET is the whole body
+(the server ignores ranges, or `If-Range` failed); a `416` fails as `$Request`
+with code `range_not_satisfiable` and the `Content-Range: bytes */n` header in
+`data`. `acceptsRanges` reads `Accept-Ranges`. Single ranges only: multipart
+answers are never asked for. On a range GET the conditional middleware sends
+`If-Range` with the ETag when it is strong, and neither `If-None-Match` nor
+`If-Modified-Since`.
+
 After `close`, new `send` / `getBytes` calls throw `HttpBytesException$Internal`;
 in-flight work may still finish or fail. If the client created its own
 `http.Client`, `close` closes that client. Pool wait before a slot is not timed

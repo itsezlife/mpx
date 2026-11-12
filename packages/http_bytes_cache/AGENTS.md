@@ -40,6 +40,7 @@ More: [`docs/development.md`](docs/development.md).
 | `bytes_resolver.dart` | Ladder: freshness → conditional/unconditional GET → write-through | [resolve-ladder](docs/resolve-ladder.md) |
 | `http_cache_freshness.dart` | Freshness policy + response-meta helpers | [resolve-ladder](docs/resolve-ladder.md) |
 | `http/http_bytes_client.dart` | HTTP GET types, middleware chain, client, priority slot queue, progress fan-out | [resolve-ladder](docs/resolve-ladder.md) |
+| `http/byte_range.dart` | `ByteRange` (half-open request range), `ContentRange` parse | [resolve-ladder](docs/resolve-ladder.md) |
 | `http/request_priority.dart` | `RequestPriority`, `PriorityToken` | [resolve-ladder](docs/resolve-ladder.md) |
 | `testing/` (via `lib/testing.dart`) | `runBytesStoreContract`, in-memory index / blob fakes | [development](docs/development.md) |
 | `http/middlewares/` | HTTP middlewares (`Timeout`, opt-in `Retry`, `Bearer`, `Conditional`, `Logger$Developer`) | [resolve-ladder](docs/resolve-ladder.md) |

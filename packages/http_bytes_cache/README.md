@@ -47,6 +47,7 @@ Future<void> main() async {
 - Per-request revalidation: follow HTTP freshness, stale-while-revalidate, or
   immutable.
 - A synchronous peek: cached, in flight, or absent.
+- Streaming bodies and single-range GETs (`206`, `Content-Range`, `If-Range`).
 - Middleware chains for HTTP (timeout, retry, bearer, conditional, logger) and
   for the cache (skip-cache, logger).
 - Stable identity from the canonical URL and headers, or a host-supplied cache

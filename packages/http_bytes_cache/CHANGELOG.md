@@ -43,6 +43,12 @@
   shared payload key per row.
 - **Breaking for implementers:** `IBytesCache.write` takes a `quota`, and
   `IBytesIndex` needs a sync `peek`. Callers are unaffected.
+- `HttpBytesClient.stream` returns a response whose body is still
+  streaming, and takes a single `ByteRange`. `206` answers expose
+  `contentRange` and `totalLength`; a `416` fails as
+  `range_not_satisfiable`. Streamed GETs are never coalesced and hold a slot
+  until their body ends. The conditional middleware sends `If-Range` (strong
+  ETag only) on range GETs.
 - `package:http_bytes_cache/testing.dart`: `runBytesStoreContract` and
   in-memory index and blob fakes.
 
