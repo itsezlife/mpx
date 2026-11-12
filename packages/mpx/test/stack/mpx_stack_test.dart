@@ -1,0 +1,175 @@
+import 'dart:typed_data';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:http_bytes_cache/http_bytes_cache.dart';
+import 'package:mpx/mpx.dart';
+import 'package:mpx/testing.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
+
+const MediaKey _key = MediaKey.remote('loop');
+final Uint8List _body = Uint8List.fromList(List.filled(16, 7));
+
+void main() {
+  late FakeDeviceSignals signals;
+  late HttpBytesClient client;
+  late List<String> requested;
+
+  setUp(() {
+    signals = FakeDeviceSignals();
+    requested = [];
+    client = HttpBytesClient(
+      client: MockClient((request) async {
+        requested.add(request.url.path);
+        return http.Response.bytes(_body, 200);
+      }),
+    );
+  });
+
+  tearDown(() async {
+    await client.close();
+    signals.dispose();
+  });
+
+  Future<MpxStack> create({
+    MpxDecoderFactory? decoders,
+    Map<BytesQuota, QuotaEvictor> registeredQuotas = const {},
+  }) async {
+    final stack = await MpxStack.create(
+      locate: (descriptor, _) =>
+          MediaLocation('https://cdn.test/${descriptor.key.encoded}'),
+      decoders: decoders,
+      registeredQuotas: registeredQuotas,
+      signals: signals,
+      client: client,
+      platformTextures: false,
+    );
+    addTearDown(stack.dispose);
+    return stack;
+  }
+
+  testWidgets('media reaches the host decoder through the bytes cache', (
+    tester,
+  ) async {
+    final decoder = FakeDecoder();
+    final stack = await create(decoders: (_) => {MediaKind.video: decoder});
+    stack.pipeline.know(
+      const MediaDescriptor(key: _key, kind: MediaKind.video),
+    );
+
+    final binding = stack.scope.attach(
+      _key,
+      const AssetSpec(pixelWidth: 8, pixelHeight: 8),
+      const AssetProfile(),
+    );
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+
+    expect(requested, ['/${_key.encoded}']);
+    expect(decoder.decodes, hasLength(1));
+    final content = decoder.decodes.single.request.content as FetchedBytes;
+    expect(content.bytes, _body);
+    expect(stack.fetcher.needsDownload(_key), isFalse);
+    binding.detach();
+  });
+
+  testWidgets('a host decoder for a still replaces the engine codec', (
+    tester,
+  ) async {
+    final decoder = FakeDecoder();
+    final stack = await create(decoders: (_) => {MediaKind.still: decoder});
+    stack.pipeline.know(
+      const MediaDescriptor(key: _key, kind: MediaKind.still),
+    );
+
+    stack.scope
+        .attach(
+          _key,
+          const AssetSpec(pixelWidth: 8, pixelHeight: 8),
+          const AssetProfile(),
+        )
+        .detach();
+    final binding = stack.scope.attach(
+      _key,
+      const AssetSpec(pixelWidth: 8, pixelHeight: 8),
+      const AssetProfile(),
+    );
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+
+    expect(decoder.decodes, hasLength(1));
+    binding.detach();
+  });
+
+  testWidgets('host decoders share the stack clock', (tester) async {
+    PlaybackClock? seen;
+    final stack = await create(
+      decoders: (context) {
+        seen = context.clock;
+        return const {};
+      },
+    );
+
+    expect(seen, same(stack.scope.clock));
+  });
+
+  testWidgets('teardowns a decoder registers run on dispose', (tester) async {
+    final log = <String>[];
+    final stack = await create(
+      decoders: (context) {
+        context
+          ..onDispose(() => log.add('engine'))
+          ..onDispose(() => log.add('scheduler'));
+        return const {};
+      },
+    );
+
+    await stack.dispose();
+
+    expect(log, ['scheduler', 'engine']);
+  });
+
+  testWidgets('power saving pauses playback', (tester) async {
+    final stack = await create();
+    final clock = stack.scope.clock;
+    expect(clock.pausedLayers, isNot(contains(PlaybackPauseLayer.lowPower)));
+
+    signals.powerSaving.value = true;
+    expect(clock.pausedLayers, contains(PlaybackPauseLayer.lowPower));
+
+    signals.powerSaving.value = false;
+    expect(clock.pausedLayers, isNot(contains(PlaybackPauseLayer.lowPower)));
+  });
+
+  testWidgets('a serious thermal status pauses playback', (tester) async {
+    final stack = await create();
+    final clock = stack.scope.clock;
+
+    signals.thermal.value = ThermalStatus.fair;
+    expect(clock.pausedLayers, isNot(contains(PlaybackPauseLayer.lowPower)));
+
+    signals.thermal.value = ThermalStatus.serious;
+    expect(clock.pausedLayers, contains(PlaybackPauseLayer.lowPower));
+  });
+
+  testWidgets('host quota folders are registered with the store', (
+    tester,
+  ) async {
+    final stack = await create(
+      registeredQuotas: {BytesQuota.lottieFrames: (bytes) async => bytes},
+    );
+
+    final registration = stack.registeredQuotas[BytesQuota.lottieFrames.name];
+    expect(registration, isNotNull);
+    expect(
+      () => stack.store.registerQuota(
+        BytesQuota.lottieFrames,
+        onEvict: (_) async => 0,
+      ),
+      throwsStateError,
+      reason: 'the name is taken by the stack registration',
+    );
+  });
+}

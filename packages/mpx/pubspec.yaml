@@ -21,10 +21,16 @@ dependencies:
     path: ../mpx_core
   http_bytes_cache:
     path: ../http_bytes_cache
+  # Hashes media keys too long for a cache key.
+  crypto: ^3.0.6
   # The contract suite in testing.dart registers tests itself, and a library
   # cannot import a dev dependency.
   flutter_test:
     sdk: flutter
+
+dev_dependencies:
+  # MockClient plays the origin in the fetch adapter's tests.
+  http: ^1.6.0
 
 flutter:
   plugin:

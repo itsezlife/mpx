@@ -147,10 +147,13 @@ abstract final class AssetFetcherContract {
             cancellation: CancellationToken(),
           ),
         );
+        // Watched before awaiting the first: a fetcher may fail the second
+        // before it serves the first.
+        final failed = expectLater(second, throwsA(isA<FetchFailure>()));
         harness.elapse();
 
         expect(await first, isA<FetchedContent>());
-        await expectLater(second, throwsA(isA<FetchFailure>()));
+        await failed;
       });
     });
   }

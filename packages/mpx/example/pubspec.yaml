@@ -1,5 +1,5 @@
 name: mpx_example
-description: Shows what mpx reads from the device; also the native build check.
+description: Shows an mpx stack drawing a still, an animated image, Lottie and a video loop.
 publish_to: none
 resolution: workspace
 
@@ -7,11 +7,24 @@ environment:
   sdk: ^3.11.0
   flutter: '>=3.38.0'
 
+# The example shows the whole set, so it takes the decoders `mpx` itself
+# never depends on.
 dependencies:
   flutter:
     sdk: flutter
+  http: ^1.6.0
+  http_bytes_cache:
+    path: ../../http_bytes_cache
   mpx:
     path: ..
+  mpx_core:
+    path: ../../mpx_core
+  mpx_lottie:
+    path: ../../mpx_lottie
+  mpx_video_decoder:
+    path: ../../mpx_video_decoder
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/media/

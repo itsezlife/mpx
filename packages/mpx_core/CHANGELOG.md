@@ -10,6 +10,8 @@
 - Platform frame texture hosts (Android, iOS, macOS) on channel
   `dev.mpx.frame_texture`, native library `libmpx_frame_texture`.
 - `ImageCodecDecoder` for the engine's image formats.
+- `AssetFetcherContract` watches the failing fetch before awaiting the
+  served one, so a fetcher that fails it first passes.
 
 ## 0.0.1
 

@@ -141,6 +141,14 @@ resume, the whole body buffered by design.
 - The hook dependencies stay on `code_assets` 1.2 / `hooks` 2.0 /
   `native_toolchain_c` 0.19.2 until the pinned Flutter SDK allows `meta`
   1.19: `code_assets` 2.x needs `hooks` 2.2, which needs it.
+- The fetch adapter (`BytesCacheFetcher` in `mpx`) keys content by
+  `MediaKey.encoded` and a thumbnail by `thumbnail-` plus that form (a form
+  over 180 characters becomes `hashed-` and its SHA-1). It serves a held part
+  straight from the store, before asking the host for a URL; passes
+  `immutable` unless the host's location asks otherwise; maps placeholder and
+  visible work to `visible`, preload to `preload`; answers `needsDownload` as
+  "not cached" (absent or in flight). Content goes out as bytes: a file lease
+  has no release point in the fetch contract.
 
 ## Open in implementation
 
