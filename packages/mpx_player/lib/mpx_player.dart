@@ -8,10 +8,17 @@
 /// one surface to another keeps position and buffer. A `PlayerBudget` bounds
 /// how many players hold an engine and how many play.
 ///
+/// A `FeedPolicy` holds the rules of a scrolling surface (the 25 feed knobs
+/// with reference defaults); `FeedListPlanner` turns what a list shows into
+/// what plays, what is in view and what preloads.
+///
 /// Single-threaded on the UI isolate; no static state.
 library;
 
 export 'src/backend/player_backend.dart';
+export 'src/feed/feed_item.dart';
+export 'src/feed/feed_list_plan.dart';
+export 'src/feed/feed_policy.dart';
 export 'src/player/player_state.dart';
 export 'src/pool/player_pool.dart';
 export 'src/widget/player_view.dart';

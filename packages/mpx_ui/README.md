@@ -2,8 +2,7 @@
 
 Optional media UI for mpx: a fullscreen media viewer and feed list and pager widgets.
 
-> Skeleton: the API lands with the tickets of the mpx build order. Nothing is
-> usable yet.
+> Early: the feed list works; the viewer and the pager are on their way.
 
 ## Install
 
@@ -21,12 +20,25 @@ dependencies:
 
 ```dart
 import 'package:mpx_ui/mpx_ui.dart';
+
+FeedListView(
+  itemCount: clips.length,
+  itemExtent: 240,
+  itemOf: (i) => FeedItem(clips[i].key, byteSize: clips[i].size),
+  presetOf: (i, profile) => AssetPresets.media(
+    size: const Size(360, 240),
+    devicePixelRatio: 3,
+    profile: profile,
+  ),
+);
 ```
 
-## Features (planned)
+## Features
 
-- Fullscreen viewer
-- Feed list and pager widgets
+- `FeedListView`: every visible clip plays muted, frames advance above the
+  policy's floor, the items ahead preload by stage
+
+Planned: fullscreen viewer, feed pager.
 
 ## Docs
 

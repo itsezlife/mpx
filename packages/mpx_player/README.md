@@ -36,8 +36,10 @@ lease.release();
 - `PlayerBudget` of playing and prepared engines, coldest released first
 - `PlayerView` with a stand-in until the first frame
 - `FakePlayerBackend` and `PlayerEngineContract` in `testing.dart`
+- `FeedPolicy`: the 25 feed knobs with reference defaults per mode;
+  `FeedListPlanner` decides what a list plays, shows in view and preloads
 
-Planned: Media3 and AVPlayer backends, one audio owner, feed modes.
+Planned: Media3 and AVPlayer backends, one audio owner, the pager mode.
 
 ## Docs
 

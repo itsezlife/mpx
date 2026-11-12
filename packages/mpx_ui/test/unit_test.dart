@@ -6,8 +6,8 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'feed/feed_list_view_test.dart' as feed_list_view_test;
+
 void main() {
-  // The stub has no behaviour yet; this keeps the entrypoint runnable until
-  // the first real test file replaces it.
-  test('package stub loads', () {});
+  group('feed_list_view_test', feed_list_view_test.main);
 }

@@ -1,0 +1,153 @@
+import 'package:flutter/widgets.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
+import 'package:mpx_player/mpx_player.dart';
+import 'package:mpx_ui/mpx_ui.dart';
+
+const _extent = 200.0;
+const _viewport = Size(400, 500);
+
+MediaKey _key(int index) => MediaKey.remote('clip-$index');
+
+void main() {
+  late FakeAssetProducer producer;
+  late PlaybackClock clock;
+  late AssetCacheScope scope;
+
+  setUp(() {
+    producer = FakeAssetProducer();
+    clock = PlaybackClock(ticks: ManualPlaybackTickSource());
+    scope = AssetCacheScope(producer: producer, clock: clock);
+  });
+  tearDown(() {
+    scope.dispose();
+    clock.dispose();
+  });
+
+  AssetPreset preset(int index, AssetProfile profile) => AssetPreset(
+    size: const Size(_extent, _extent),
+    spec: const AssetSpec(pixelWidth: 200, pixelHeight: 200),
+    profile: profile,
+  );
+
+  Future<ScrollController> pumpList(
+    WidgetTester tester, {
+    FeedPolicy policy = const FeedPolicy.list(),
+    FeedConditions conditions = const FeedConditions(),
+    ValueChanged<int?>? onInView,
+  }) async {
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    tester.view.physicalSize = _viewport;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: FeedListView(
+          itemCount: 30,
+          itemExtent: _extent,
+          itemOf: (index) => FeedItem(_key(index)),
+          presetOf: preset,
+          policy: policy,
+          conditions: conditions,
+          scope: scope,
+          controller: controller,
+          onInViewChanged: onInView,
+        ),
+      ),
+    );
+    await tester.pump();
+    return controller;
+  }
+
+  List<FakeAssetAttempt> attemptsFor(int index) => [
+    for (final attempt in producer.attempts)
+      if (attempt.request.key == _key(index)) attempt,
+  ];
+
+  testWidgets('visible clips attach; the items ahead preload first frames', (
+    tester,
+  ) async {
+    await pumpList(tester);
+
+    // 500 px shows items 0 and 1 whole and half of 2.
+    for (final index in [0, 1, 2]) {
+      expect(
+        scope.isAttached(_key(index), preset(0, const AssetProfile()).spec),
+        isTrue,
+      );
+    }
+    // Item 3 lies in the list's cache extent: its cell is built, hidden, and
+    // its binding wants the whole clip.
+    expect(attemptsFor(3).single.demand.priority, AssetPriority.preload);
+    expect(attemptsFor(3).single.demand.preloadStage, isNull);
+    for (final index in [4, 5]) {
+      final attempts = attemptsFor(index);
+      expect(attempts, hasLength(1), reason: 'item $index preloads');
+      expect(attempts.single.demand.preloadStage, AssetPreloadStage.firstFrame);
+      expect(attempts.single.demand.distance, index - 2);
+    }
+    expect(attemptsFor(6), isEmpty);
+  });
+
+  testWidgets('scrolling moves the window and cancels what left it', (
+    tester,
+  ) async {
+    final controller = await pumpList(tester);
+    final firstFive = attemptsFor(5).single;
+
+    controller.jumpTo(_extent * 10);
+    await tester.pump();
+
+    expect(firstFive.isCancelled, isTrue);
+    // Item 13 is in the cache extent; 14 is preloaded.
+    expect(
+      attemptsFor(14).single.demand.preloadStage,
+      AssetPreloadStage.firstFrame,
+    );
+
+    controller.jumpTo(_extent * 5);
+    await tester.pump();
+    // Scrolling back preloads below the first visible item (3 and 4 are in
+    // the cache extent).
+    expect(
+      attemptsFor(2).last.demand.preloadStage,
+      AssetPreloadStage.firstFrame,
+    );
+  });
+
+  testWidgets('the item in view is reported', (tester) async {
+    final inView = <int?>[];
+    final controller = await pumpList(tester, onInView: inView.add);
+
+    controller.jumpTo(_extent * 3 + 50);
+    await tester.pump();
+
+    // Items 0 and 1 show whole; 1 is nearer the centre.
+    expect(inView, [1, 4]);
+  });
+
+  testWidgets('clips that do not autoplay attach still', (tester) async {
+    await pumpList(tester, conditions: const FeedConditions(powerSaving: true));
+
+    for (final index in [0, 1, 2]) {
+      expect(attemptsFor(index).single.demand.priority, AssetPriority.visible);
+    }
+    // Preloads of items that will not play ask for their metadata only.
+    expect(
+      attemptsFor(4).single.demand.preloadStage,
+      AssetPreloadStage.metadata,
+    );
+  });
+
+  testWidgets('leaving the tree cancels every preload', (tester) async {
+    await pumpList(tester);
+    final preloads = [4, 5].map((i) => attemptsFor(i).single).toList();
+
+    await tester.pumpWidget(const SizedBox());
+
+    expect(preloads.every((attempt) => attempt.isCancelled), isTrue);
+  });
+}
