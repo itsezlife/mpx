@@ -41,12 +41,21 @@ Future<void> main() async {
   revalidate with ETag / Last-Modified, and a network error can serve held
   bytes.
 - In-flight coalescing: concurrent requests for one resource share one GET;
-  each caller can cancel on its own.
+  each caller can cancel on its own, and every caller hears its progress.
+- Request priorities (visible, preload, background) that can change while a
+  request waits for one of the six slots.
+- Per-request revalidation: follow HTTP freshness, stale-while-revalidate, or
+  immutable.
+- A synchronous peek: cached, in flight, or absent.
 - Middleware chains for HTTP (timeout, retry, bearer, conditional, logger) and
   for the cache (skip-cache, logger).
 - Stable identity from the canonical URL and headers, or a host-supplied cache
   key.
-- Retention by age, entry count and total bytes, with no background timer.
+- One store budget shared by named quotas (images, video ranges, Lottie
+  frames, glyphs), including quotas over folders other owners keep. Age counts
+  from last use; no background timer.
+- Leased file paths that eviction leaves alone, and aliases that let a local
+  file answer for its server key without a copy.
 - VM and web stores; open falls back to memory on a hard storage failure.
 - Soft diagnostics: silent, `developer.log`, or a host callback.
 

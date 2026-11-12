@@ -604,10 +604,19 @@ final class BytesRecord {
     required this.byteLength,
     this.httpCacheMeta,
     this.quota = _defaultQuotaName,
+    this.payloadKey,
   });
 
   /// Entry identity.
   final BytesCacheKey key;
+
+  /// Key the payload is stored under when it is not [key]: an alias row
+  /// ([IBytesStore.alias]) reads another row's payload. Null for a row that
+  /// owns its payload.
+  final BytesCacheKey? payloadKey;
+
+  /// Key of the payload this row reads.
+  BytesCacheKey get payload => payloadKey ?? key;
 
   /// [BytesQuota.name] of the quota this row counts against.
   final String quota;
@@ -634,6 +643,7 @@ final class BytesRecord {
     int? byteLength,
     HttpCacheMeta? httpCacheMeta,
     String? quota,
+    BytesCacheKey? payloadKey,
   }) => BytesRecord(
     key: key,
     writtenAt: writtenAt ?? this.writtenAt,
@@ -641,6 +651,7 @@ final class BytesRecord {
     byteLength: byteLength ?? this.byteLength,
     httpCacheMeta: httpCacheMeta ?? this.httpCacheMeta,
     quota: quota ?? this.quota,
+    payloadKey: payloadKey ?? this.payloadKey,
   );
 }
 
@@ -825,6 +836,20 @@ abstract interface class IBytesStore implements IBytesCache, IBytesRichCache {
     BytesQuota quota, {
     required QuotaEvictor onEvict,
   });
+
+  /// Makes [server] resolve to the bytes [local] holds, with no copy or move.
+  ///
+  /// The two keys share one payload from then on: each keeps its own last use
+  /// and expires on its own, and the payload goes when no key reads it. When
+  /// [server] already held bytes, the alias replaces them. Aliasing a key that
+  /// is itself an alias points at the same payload, so chains stay flat.
+  /// Returns false, changing nothing, when [local] holds nothing.
+  Future<bool> alias(BytesCacheKey local, BytesCacheKey server);
+
+  /// Drops [local] once its bytes answer for a server key (or are no longer
+  /// wanted); retention drops it otherwise. Keys aliased to it keep the
+  /// bytes. Same as [evict], named for the producer's side of [alias].
+  Future<void> release(BytesCacheKey local);
 }
 
 /// [IBytesCache] that keeps metadata and payloads in separate stores.
@@ -910,10 +935,11 @@ final class IndexedBytesCache implements IBytesStore {
 
   final Map<BytesCacheKey, DateTime> _pendingAccess = {};
 
-  /// Held [FileLease]s per key. Eviction, expiry and reclaim skip these.
+  /// Held [FileLease]s per payload key. Eviction, expiry and reclaim skip
+  /// these payloads and the rows that read them.
   final Map<BytesCacheKey, int> _leases = {};
 
-  /// Leased keys whose row is gone; their payload goes with the last lease.
+  /// Leased payloads no row reads any more; they go with the last lease.
   final Set<BytesCacheKey> _orphanedLeases = {};
 
   /// Quotas over files other owners keep, by quota name.
@@ -949,11 +975,12 @@ final class IndexedBytesCache implements IBytesStore {
         final now = _clock();
         if (!_isLive(record, now)) return null;
         _pendingAccess[key] = now;
-        _leases.update(key, (n) => n + 1, ifAbsent: () => 1);
+        final payload = record.payload;
+        _leases.update(payload, (n) => n + 1, ifAbsent: () => 1);
         return FileLease(
           key: key,
-          path: files.pathOf(key),
-          onRelease: () => _releaseLease(key),
+          path: files.pathOf(payload),
+          onRelease: () => _releaseLease(payload),
         );
       });
     }
@@ -1008,23 +1035,53 @@ final class IndexedBytesCache implements IBytesStore {
     });
   }
 
-  Future<void> _releaseLease(BytesCacheKey key) async {
+  Future<void> _releaseLease(BytesCacheKey payload) async {
     if (_closed) return;
-    final left = _leases.update(key, (n) => n - 1);
+    final left = _leases.update(payload, (n) => n - 1);
     if (left > 0) return;
-    _leases.remove(key);
-    if (!_orphanedLeases.remove(key)) return;
+    _leases.remove(payload);
+    if (!_orphanedLeases.remove(payload)) return;
     await _runExclusive(() async {
-      if (_closed || _leases.containsKey(key)) return;
-      // A write after the evict may have given the key a row again.
-      if (await _index.get(key) == null) await _blobs.delete(key);
+      if (_closed || _leases.containsKey(payload)) return;
+      // A write after the evict may have given the payload a reader again.
+      if (!await _isReferenced(payload)) await _blobs.delete(payload);
     });
   }
+
+  @override
+  Future<bool> alias(BytesCacheKey local, BytesCacheKey server) =>
+      _runExclusive(() async {
+        _ensureOpen();
+        final source = await _index.get(local);
+        final now = _clock();
+        if (source == null || !_isLive(source, now)) return false;
+        final previous = await _index.get(server);
+        if (previous?.payload == source.payload) return true;
+
+        final preEpoch = await _captureIndexSnapshot();
+        await _flushPendingAccess();
+        await _index.put(
+          BytesRecord(
+            key: server,
+            writtenAt: now,
+            accessedAt: now,
+            byteLength: source.byteLength,
+            quota: source.quota,
+            payloadKey: source.payload == server ? null : source.payload,
+          ),
+        );
+        if (previous != null) await _dropPayloadIfUnread(previous.payload);
+        await _commitOrRollback(preEpoch);
+        return true;
+      });
+
+  @override
+  Future<void> release(BytesCacheKey local) => evict(local);
 
   /// Leased rows stay live past their age: someone holds their file. Age
   /// counts from the last use, including one still soft in [_pendingAccess].
   bool _isLive(BytesRecord record, DateTime now) =>
-      _leases.containsKey(record.key) ||
+      _leases.containsKey(record.payload) ||
       !retention.isExpired(_lastUse(record), now: now);
 
   DateTime _lastUse(BytesRecord record) =>
@@ -1052,7 +1109,10 @@ final class IndexedBytesCache implements IBytesStore {
         return const _ReadProbe.needsDelete();
       }
 
-      final bytes = await _blobs.read(key, knownByteLength: record.byteLength);
+      final bytes = await _blobs.read(
+        record.payload,
+        knownByteLength: record.byteLength,
+      );
       if (bytes == null) return const _ReadProbe.needsIndexDelete();
       // Legacy / corrupt empty rows still count toward capacity; scrub as miss.
       if (bytes.isEmpty) return const _ReadProbe.needsDelete();
@@ -1102,7 +1162,7 @@ final class IndexedBytesCache implements IBytesStore {
         final record = await _index.get(key);
         if (record == null) return null;
         final bytes = await _blobs.read(
-          key,
+          record.payload,
           knownByteLength: record.byteLength,
         );
         switch (bytes) {
@@ -1137,7 +1197,10 @@ final class IndexedBytesCache implements IBytesStore {
     Map<BytesCacheKey, BytesRecord> preEpoch,
     BytesRecord record,
   ) async {
-    final bytes = await _blobs.read(key, knownByteLength: record.byteLength);
+    final bytes = await _blobs.read(
+      record.payload,
+      knownByteLength: record.byteLength,
+    );
     if (bytes == null || bytes.isEmpty) {
       _pendingAccess.remove(key);
       await _deleteBoth(key);
@@ -1176,8 +1239,10 @@ final class IndexedBytesCache implements IBytesStore {
       await _flushPendingAccess();
       final now = _clock();
       if (quota != null) _quotas.putIfAbsent(quota.name, () => quota);
-      final quotaName =
-          quota?.name ?? (await _index.get(key))?.quota ?? _defaultQuotaName;
+      final previous = await _index.get(key);
+      final quotaName = quota?.name ?? previous?.quota ?? _defaultQuotaName;
+      // The key gets its own payload: an alias row stops reading the shared
+      // one, which stays for the keys still reading it.
       await _blobs.write(key, bytes);
       _orphanedLeases.remove(key);
       await _index.put(
@@ -1190,6 +1255,9 @@ final class IndexedBytesCache implements IBytesStore {
           quota: quotaName,
         ),
       );
+      if (previous case final row? when row.payload != key) {
+        await _dropPayloadIfUnread(row.payload);
+      }
       await _trimCapacity();
       await _commitOrRollback(preEpoch);
     });
@@ -1358,7 +1426,8 @@ final class IndexedBytesCache implements IBytesStore {
           live.accessedAt != value.accessedAt ||
           live.byteLength != value.byteLength ||
           live.httpCacheMeta != value.httpCacheMeta ||
-          live.quota != value.quota) {
+          live.quota != value.quota ||
+          live.payloadKey != value.payloadKey) {
         await _index.put(value);
       }
     }
@@ -1375,22 +1444,40 @@ final class IndexedBytesCache implements IBytesStore {
     }
   }
 
-  /// Drops [key]'s row and payload; a leased payload waits for its release.
-  Future<void> _deleteBoth(BytesCacheKey key) async {
+  /// Drops [key]'s row, and its payload when no other row reads it.
+  ///
+  /// Pass [payloadStillRead] when the caller already knows (a trim pass
+  /// counts references once), to skip the index scan.
+  Future<void> _deleteBoth(BytesCacheKey key, {bool? payloadStillRead}) async {
     _pendingAccess.remove(key);
+    final record = await _index.get(key);
     await _index.delete(key);
-    if (_leases.containsKey(key)) {
-      _orphanedLeases.add(key);
+    final payload = record?.payload ?? key;
+    if (payloadStillRead ?? await _isReferenced(payload)) return;
+    await _dropUnreadPayload(payload);
+  }
+
+  Future<void> _dropPayloadIfUnread(BytesCacheKey payload) async {
+    if (!await _isReferenced(payload)) await _dropUnreadPayload(payload);
+  }
+
+  /// Deletes a payload no row reads; a leased one waits for its release.
+  Future<void> _dropUnreadPayload(BytesCacheKey payload) async {
+    if (_leases.containsKey(payload)) {
+      _orphanedLeases.add(payload);
     } else {
-      await _blobs.delete(key);
+      await _blobs.delete(payload);
     }
   }
+
+  Future<bool> _isReferenced(BytesCacheKey payload) async =>
+      (await _index.values()).any((record) => record.payload == payload);
 
   Future<void> _reclaimOrphansUnlocked() async {
     final reclaim = _reclaimOrphans;
     if (reclaim == null) return;
     final keys = {
-      for (final record in await _index.values()) record.key.value,
+      for (final record in await _index.values()) record.payload.value,
       for (final key in _leases.keys) key.value,
     };
     await reclaim(keys);
@@ -1416,11 +1503,24 @@ final class IndexedBytesCache implements IBytesStore {
     );
     var totalBytes = 0;
     var totalEntries = 0;
+    // A payload several keys read (an alias) counts once, against the quota
+    // of the first row seen, and is freed only with its last reader.
+    final readers = <BytesCacheKey, int>{};
+    final holder = <BytesCacheKey, _QuotaUsage>{};
     for (final record in await _index.values()) {
-      usageOf(
-        record.quota,
-      ).count(record, isCandidate: !_leases.containsKey(record.key));
-      totalBytes += record.byteLength;
+      final quota = usageOf(record.quota);
+      final payload = record.payload;
+      final first = !readers.containsKey(payload);
+      readers.update(payload, (n) => n + 1, ifAbsent: () => 1);
+      if (first) {
+        holder[payload] = quota;
+        totalBytes += record.byteLength;
+      }
+      quota.count(
+        record,
+        countsBytes: first,
+        isCandidate: !_leases.containsKey(payload),
+      );
       totalEntries++;
     }
     for (final registered in _registered.values) {
@@ -1435,9 +1535,13 @@ final class IndexedBytesCache implements IBytesStore {
     Future<void> take(_QuotaUsage quota, {required int bytesNeeded}) async {
       if (quota.hasRows) {
         final victim = quota.takeOldest();
-        totalBytes -= victim.byteLength;
         totalEntries--;
         victims.add(victim);
+        final left = readers.update(victim.payload, (n) => n - 1);
+        if (left == 0) {
+          holder[victim.payload]!.freeBytes(victim.byteLength);
+          totalBytes -= victim.byteLength;
+        }
         return;
       }
       final freed = await _askOwner(quota, bytesNeeded);
@@ -1482,9 +1586,10 @@ final class IndexedBytesCache implements IBytesStore {
 
     var freed = 0;
     for (final victim in victims) {
-      freed += victim.byteLength;
+      final stillRead = readers[victim.payload]! > 0;
+      if (!stillRead) freed += victim.byteLength;
       evicted?.add(victim.key);
-      await _deleteBoth(victim.key);
+      await _deleteBoth(victim.key, payloadStillRead: stillRead);
     }
     return freed;
   }
@@ -1540,11 +1645,17 @@ final class _QuotaUsage {
 
   int get bytes => _rowBytes + (registered?.usedBytes ?? 0);
 
-  void count(BytesRecord record, {required bool isCandidate}) {
-    _rowBytes += record.byteLength;
+  void count(
+    BytesRecord record, {
+    required bool countsBytes,
+    required bool isCandidate,
+  }) {
+    if (countsBytes) _rowBytes += record.byteLength;
     entries++;
     if (isCandidate) candidates.add(record);
   }
+
+  void freeBytes(int byteLength) => _rowBytes -= byteLength;
 
   bool get hasRows => _next < candidates.length;
 
@@ -1572,9 +1683,10 @@ final class _QuotaUsage {
   double pressure(int fallback) =>
       bytes / (quota.maxBytes ?? (fallback > 0 ? fallback : 1));
 
+  /// Next victim; its bytes leave the plan through [freeBytes] once no other
+  /// row reads its payload.
   BytesRecord takeOldest() {
     final victim = candidates[_next++];
-    _rowBytes -= victim.byteLength;
     entries--;
     return victim;
   }
@@ -1666,6 +1778,28 @@ final class MemoryBytesCache implements IBytesStore {
   Future<FileLease?> leaseFile(BytesCacheKey key) async => null;
 
   final Set<String> _registered = {};
+
+  /// [server] gets an entry over the same [Uint8List] as [local]: no copy.
+  @override
+  Future<bool> alias(BytesCacheKey local, BytesCacheKey server) async {
+    final source = _entries[local];
+    final now = _clock();
+    if (source == null ||
+        source.bytes.isEmpty ||
+        retention.isExpired(source.accessedAt, now: now)) {
+      return false;
+    }
+    if (local == server) return true;
+    _entries[server] = _MemoryEntry(
+      bytes: source.bytes,
+      writtenAt: now,
+      accessedAt: now,
+    );
+    return true;
+  }
+
+  @override
+  Future<void> release(BytesCacheKey local) => evict(local);
 
   /// Accepts the registration but never asks the owner: a memory store keeps
   /// no disk budget for another owner's files to count against.

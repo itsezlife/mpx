@@ -57,6 +57,14 @@ files (`IBytesFileBlobStore`, the VM store) hand them out.
 _Avoid_: handing out a path without a lease; copying a payload to a temp file
 to give it a path
 
+**Alias** / **release**:
+`IBytesStore.alias(local, server)`: the server key gets a row that reads the
+local key's payload (`BytesRecord.payloadKey`), no copy or move. Each key
+keeps its own last use; the payload goes when no row reads it and no lease
+holds it. An alias onto a key with bytes replaces them; chains stay flat.
+`release(local)` drops the local key (an evict under the producer's name).
+_Avoid_: re-keying or copying a captured file after upload
+
 **BytesPeek**:
 `BytesResolver.peek(request)`: `cached`, `inFlight` or `absent`, from the
 store's RAM index plus resolves and GETs underway. Cached wins over in flight.

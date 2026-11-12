@@ -19,7 +19,8 @@ refused.
 ### `IBytesIndex`
 
 Records per `BytesCacheKey`: `writtenAt`, `accessedAt`, `byteLength`, the
-quota name (`q` in the document, left out for `images`), and optional HTTP
+quota name (`q` in the document, left out for `images`), the payload key of an
+alias row (`b`, left out when the row owns its payload), and optional HTTP
 cache meta (`etag`, `lastModified`, `date`, `expires`,
 `cacheControl`, `age`, `lastValidatedAt`). Those validators are not part of
 key identity. `get` / `put` / `delete` / `values` mutate the RAM mirror.

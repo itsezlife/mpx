@@ -34,12 +34,14 @@ More: [`docs/development.md`](docs/development.md).
 
 | Path | What | Doc |
 | --- | --- | --- |
-| `bytes_cache.dart` | `BytesCacheKey`, retention, ports, `IndexedBytesCache`, Memory/NoOp, `HttpCacheMeta` / rich hit, `BytesCache` open/configure | [architecture](docs/architecture.md), [storage](docs/storage.md) |
+| `bytes_cache.dart` | `BytesCacheKey`, retention, quotas, ports, `IBytesStore`, `FileLease`, `RegisteredQuota`, `IndexedBytesCache`, Memory/NoOp, `HttpCacheMeta` / rich hit, `BytesCache` open/configure | [architecture](docs/architecture.md), [storage](docs/storage.md) |
 | `cache/cache_middleware.dart` | Sealed `CacheOperation` / result, `CacheMiddleware` fold, `MiddlewareBytesCache`, rich `CacheReadHit` | [resolve-ladder](docs/resolve-ladder.md) |
 | `cache/middlewares/` | Opt-in Skip-cache + Cache `Logger$Developer` | [resolve-ladder](docs/resolve-ladder.md) |
 | `bytes_resolver.dart` | Ladder: freshness → conditional/unconditional GET → write-through | [resolve-ladder](docs/resolve-ladder.md) |
 | `http_cache_freshness.dart` | Freshness policy + response-meta helpers | [resolve-ladder](docs/resolve-ladder.md) |
-| `http/http_bytes_client.dart` | HTTP GET types, middleware chain, client | [resolve-ladder](docs/resolve-ladder.md) |
+| `http/http_bytes_client.dart` | HTTP GET types, middleware chain, client, priority slot queue, progress fan-out | [resolve-ladder](docs/resolve-ladder.md) |
+| `http/request_priority.dart` | `RequestPriority`, `PriorityToken` | [resolve-ladder](docs/resolve-ladder.md) |
+| `testing/` (via `lib/testing.dart`) | `runBytesStoreContract`, in-memory index / blob fakes | [development](docs/development.md) |
 | `http/middlewares/` | HTTP middlewares (`Timeout`, opt-in `Retry`, `Bearer`, `Conditional`, `Logger$Developer`) | [resolve-ladder](docs/resolve-ladder.md) |
 | `bytes_diagnostics.dart` | Soft-path policy (`silent` / `developer` / `onEvent`); ops include revalidated / stale-used / unconditional | [resolve-ladder](docs/resolve-ladder.md) |
 | `bytes_index_document.dart` | Versioned index JSON codec (`v:1`, additive HTTP `h` meta) | [storage](docs/storage.md) |

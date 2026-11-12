@@ -36,6 +36,11 @@
   `staleWhileRevalidate` (serve a stale hit at once and refresh it in the
   background through ETag / Last-Modified; a 304 refreshes the meta, a 200
   replaces the bytes) and `immutable` (never revalidate; for media).
+- `IBytesStore.alias(local, server)` makes a server key resolve to a locally
+  produced payload with no copy or move; `release(local)` drops the local key
+  while aliased keys keep the bytes. A payload read by several keys counts
+  once against the budget and goes with its last reader. The index keeps the
+  shared payload key per row.
 - `package:http_bytes_cache/testing.dart`: `runBytesStoreContract` and
   in-memory index and blob fakes.
 

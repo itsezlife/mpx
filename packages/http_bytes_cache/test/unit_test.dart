@@ -21,6 +21,7 @@ import 'resolve/resolver_test.dart' as resolver_test;
 import 'resolve/swr_test.dart' as swr_test;
 import 'storage/blob_store_vm_test.dart' as blob_store_vm_test;
 import 'storage/web_store_test.dart' as web_store_test;
+import 'store/alias_test.dart' as alias_test;
 import 'store/file_lease_test.dart' as file_lease_test;
 import 'store/quotas_test.dart' as quotas_test;
 import 'store/registered_quotas_test.dart' as registered_quotas_test;
@@ -54,4 +55,5 @@ void main() => group('Unit', () {
   file_lease_test.main();
   quotas_test.main();
   registered_quotas_test.main();
+  alias_test.main();
 });

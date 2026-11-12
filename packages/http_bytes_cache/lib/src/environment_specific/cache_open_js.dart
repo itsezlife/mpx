@@ -92,6 +92,13 @@ final class BytesCache$JS implements IBytesStore {
   }) => _inner.registerQuota(quota, onEvict: onEvict);
 
   @override
+  Future<bool> alias(BytesCacheKey local, BytesCacheKey server) =>
+      _inner.alias(local, server);
+
+  @override
+  Future<void> release(BytesCacheKey local) => _inner.release(local);
+
+  @override
   Future<void> write(
     BytesCacheKey key,
     Uint8List bytes, {

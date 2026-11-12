@@ -352,6 +352,17 @@ final class MiddlewareBytesCache implements IBytesStore {
     _ => RegisteredQuota(quota: quota, onEvict: onEvict),
   };
 
+  @override
+  Future<bool> alias(BytesCacheKey local, BytesCacheKey server) async =>
+      switch (inner) {
+        final IBytesStore store => store.alias(local, server),
+        _ => false,
+      };
+
+  /// Runs through the chain as an evict.
+  @override
+  Future<void> release(BytesCacheKey local) => evict(local);
+
   /// Writes [bytes] under [key] as [CacheOperation$Write].
   @override
   Future<void> write(

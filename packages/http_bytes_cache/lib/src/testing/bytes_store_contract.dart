@@ -85,6 +85,34 @@ void runBytesStoreContract(String name, BytesStoreFactory create) {
       });
     });
 
+    group('alias and release', () {
+      const local = BytesCacheKey('contract-local');
+      const server = BytesCacheKey('contract-server');
+
+      test('the server key resolves to the local bytes', () async {
+        final store = await open();
+        await store.write(local, bytes);
+        expect(await store.alias(local, server), isTrue);
+        expect(await store.read(server), bytes);
+        expect(store.contains(server), isTrue);
+      });
+
+      test('releasing the local key keeps the aliased bytes', () async {
+        final store = await open();
+        await store.write(local, bytes);
+        await store.alias(local, server);
+        await store.release(local);
+        expect(await store.read(local), isNull);
+        expect(await store.read(server), bytes);
+      });
+
+      test('aliasing a key that holds nothing is refused', () async {
+        final store = await open();
+        expect(await store.alias(local, server), isFalse);
+        expect(store.contains(server), isFalse);
+      });
+    });
+
     group('leaseFile', () {
       test('is null for a key never written', () async {
         final store = await open();
