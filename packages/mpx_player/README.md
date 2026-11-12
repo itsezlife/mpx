@@ -38,6 +38,7 @@ lease.release();
 - `FakePlayerBackend` and `PlayerEngineContract` in `testing.dart`
 - `FeedPolicy`: the 25 feed knobs with reference defaults per mode;
   `FeedListPlanner` decides what a list plays, shows in view and preloads
+- `FeedSignals`: network, power and heat from the host's own listenables
 
 Planned: Media3 and AVPlayer backends, one audio owner, the pager mode.
 

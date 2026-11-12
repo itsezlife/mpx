@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -34,7 +35,7 @@ void main() {
   Future<ScrollController> pumpList(
     WidgetTester tester, {
     FeedPolicy policy = const FeedPolicy.list(),
-    FeedConditions conditions = const FeedConditions(),
+    ValueListenable<FeedConditions>? conditions,
     ValueChanged<int?>? onInView,
   }) async {
     final controller = ScrollController();
@@ -130,7 +131,11 @@ void main() {
   });
 
   testWidgets('clips that do not autoplay attach still', (tester) async {
-    await pumpList(tester, conditions: const FeedConditions(powerSaving: true));
+    final saving = ValueNotifier(true);
+    addTearDown(saving.dispose);
+    final signals = FeedSignals(powerSaving: saving);
+    addTearDown(signals.dispose);
+    await pumpList(tester, conditions: signals);
 
     for (final index in [0, 1, 2]) {
       expect(attemptsFor(index).single.demand.priority, AssetPriority.visible);
@@ -149,5 +154,24 @@ void main() {
     await tester.pumpWidget(const SizedBox());
 
     expect(preloads.every((attempt) => attempt.isCancelled), isTrue);
+  });
+
+  testWidgets('plans again when the signals change', (tester) async {
+    final saving = ValueNotifier(true);
+    addTearDown(saving.dispose);
+    final signals = FeedSignals(powerSaving: saving);
+    addTearDown(signals.dispose);
+    await pumpList(tester, conditions: signals);
+    final metadataOnly = attemptsFor(4).single;
+    expect(metadataOnly.demand.preloadStage, AssetPreloadStage.metadata);
+
+    saving.value = false;
+    await tester.pump();
+
+    expect(metadataOnly.isCancelled, isTrue);
+    expect(
+      attemptsFor(4).last.demand.preloadStage,
+      AssetPreloadStage.firstFrame,
+    );
   });
 }

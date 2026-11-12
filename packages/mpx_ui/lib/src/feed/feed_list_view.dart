@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_player/mpx_player.dart';
@@ -31,7 +32,7 @@ class FeedListView extends StatefulWidget {
     required this.presetOf,
     super.key,
     this.policy = const FeedPolicy.list(),
-    this.conditions = const FeedConditions(),
+    this.conditions,
     this.scope,
     this.controller,
     this.cellBuilder,
@@ -53,8 +54,10 @@ class FeedListView extends StatefulWidget {
   /// The rules; list mode.
   final FeedPolicy policy;
 
-  /// The device's conditions the autoplay gate weighs.
-  final FeedConditions conditions;
+  /// The device's conditions the autoplay gate weighs, live (a
+  /// `FeedSignals`); the neutral `FeedConditions` when null. The list plans
+  /// again when they change.
+  final ValueListenable<FeedConditions>? conditions;
 
   /// The cache the clips attach to.
   final AssetCacheScope? scope;
@@ -90,6 +93,16 @@ class _FeedListViewState extends State<FeedListView> {
   bool _measureScheduled = false;
 
   @override
+  void initState() {
+    super.initState();
+    widget.conditions?.addListener(_conditionsChanged);
+  }
+
+  void _conditionsChanged() {
+    if (mounted) _measure();
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final scope = widget.scope ?? AssetCacheProvider.of(context);
@@ -103,6 +116,10 @@ class _FeedListViewState extends State<FeedListView> {
   @override
   void didUpdateWidget(FeedListView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(widget.conditions, oldWidget.conditions)) {
+      oldWidget.conditions?.removeListener(_conditionsChanged);
+      widget.conditions?.addListener(_conditionsChanged);
+    }
     if (widget.scope != oldWidget.scope) {
       final scope = widget.scope ?? AssetCacheProvider.of(context);
       if (!identical(scope, _scope)) {
@@ -115,6 +132,7 @@ class _FeedListViewState extends State<FeedListView> {
 
   @override
   void dispose() {
+    widget.conditions?.removeListener(_conditionsChanged);
     _cancelAll();
     _ownController?.dispose();
     super.dispose();
@@ -160,8 +178,11 @@ class _FeedListViewState extends State<FeedListView> {
     final centre = offset + position.viewportDimension / 2;
     final extent = widget.itemExtent;
     final scope = _scope!;
-    final plan = FeedListPlanner(widget.policy, conditions: widget.conditions)
-        .plan(
+    final plan =
+        FeedListPlanner(
+          widget.policy,
+          conditions: widget.conditions?.value ?? const FeedConditions(),
+        ).plan(
           FeedListViewport(
             itemCount: widget.itemCount,
             visible: visible,
