@@ -30,6 +30,7 @@ export 'src/http/middlewares/conditional_middleware.dart';
 export 'src/http/middlewares/logger_middleware.dart';
 export 'src/http/middlewares/retry_middleware.dart';
 export 'src/http/middlewares/timeout_middleware.dart';
+export 'src/http/request_priority.dart';
 export 'src/http/retry_backoff.dart';
 export 'src/http_cache_freshness.dart';
 export 'src/util/byte_count_format.dart';

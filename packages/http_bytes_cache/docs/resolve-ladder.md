@@ -160,7 +160,7 @@ GET bodies only. Callers own disk cache and decode.
 
 | Knob | Default | Notes |
 | --- | --- | --- |
-| `maxConcurrent` | 6 | Further callers wait in `Pool` |
+| `maxConcurrent` | 6 | Further callers wait in a queue served by `RequestPriority`, then arrival |
 | `middlewares` | Timeout only (~15s connect + receive) | `null` → default [HttpBytesTimeoutMiddleware]; `[]` → no Timeout. Connect bounds headers; receive bounds idle body gaps. Opt-in: [HttpBytesRetryMiddleware], [HttpBytesBearerMiddleware], [HttpBytesConditionalMiddleware], [HttpBytesLoggerMiddleware$Developer] (outermost) |
 
 Middleware list order is outermost first (first entry wraps the rest). Coalesce

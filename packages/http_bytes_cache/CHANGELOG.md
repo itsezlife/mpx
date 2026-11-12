@@ -26,6 +26,12 @@
   30 days since last use, 10 000 entries and 1 GiB.
 - One eviction pass plans from a single index listing (was one listing per
   victim).
+- Request priorities: `RequestPriority` (visible > preload > background) on a
+  `PriorityToken` the caller may change while the GET is queued.
+  `BytesRequest.priority`, `send` / `getBytes(priority:)`. The six-slot queue
+  serves by priority, then arrival; a coalesced GET takes its callers' highest
+  priority, and a GET whose last caller cancels leaves the queue at once. The
+  `pool` dependency is gone.
 - `package:http_bytes_cache/testing.dart`: `runBytesStoreContract` and
   in-memory index and blob fakes.
 

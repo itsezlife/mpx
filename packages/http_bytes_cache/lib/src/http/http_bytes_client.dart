@@ -5,8 +5,8 @@ import 'package:cancel_token/cancel_token.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_bytes_cache/src/bytes_cache.dart';
 import 'package:http_bytes_cache/src/http/middlewares/timeout_middleware.dart';
+import 'package:http_bytes_cache/src/http/request_priority.dart';
 import 'package:meta/meta.dart';
-import 'package:pool/pool.dart';
 
 /// Observes cumulative HTTP body bytes while a network GET consolidates.
 ///
@@ -119,6 +119,9 @@ extension type HttpBytesContext(Map<String, Object?> _map)
   /// (`If-Modified-Since`).
   static const lastModifiedKey = 'last-modified';
 
+  /// This caller's [PriorityToken] for the slot queue.
+  static const priorityKey = 'priority';
+
   /// Explicit coalesce identity ([BytesCacheKey]). When set, post-middleware
   /// URL + headers are ignored for the in-flight key; headers still go on the
   /// wire. [BytesResolver] sets this from [BytesRequest.cacheKey].
@@ -142,6 +145,13 @@ extension type HttpBytesContext(Map<String, Object?> _map)
   };
   set callerCancelToken(CancelToken? value) =>
       _set(callerCancelTokenKey, value);
+
+  /// This caller's priority; null means [RequestPriority.visible].
+  PriorityToken? get priority => switch (_map[priorityKey]) {
+    final PriorityToken t => t,
+    _ => null,
+  };
+  set priority(PriorityToken? value) => _set(priorityKey, value);
 
   /// Connect timeout override ([Duration] / `int` ms / [DateTime] deadline).
   Object? get connectTimeout => _map[connectTimeoutKey];
@@ -364,6 +374,11 @@ final class HttpBytesResponse {
 ///   abort). Timeout middleware cancels that same flight token and still
 ///   surfaces [HttpBytesException$Timeout], not Cancelled.
 ///
+/// GETs share [maxConcurrent] slots. Waiting GETs are served by priority
+/// ([PriorityToken], read when a slot frees), then by arrival; a coalesced GET
+/// takes the highest priority among its callers, and a GET whose last caller
+/// cancels leaves the queue at once.
+///
 /// Status handling: default success is 2xx **or** 304 Not Modified. A 304
 /// completes with headers and an empty body (illegal non-empty 304 bodies are
 /// ignored). Empty-body-as-[HttpBytesException$Internal] still applies when a
@@ -384,7 +399,7 @@ final class HttpBytesClient {
     final internalClient = client ?? http.Client();
     _ownsClient = client == null;
     _client = internalClient;
-    _pool = Pool(maxConcurrent);
+    _slots = _PrioritySlots(maxConcurrent);
     final pipeline = HttpBytesMiddlewareWrapper.merge([...this.middlewares]);
     // User middlewares (Bearer, Retry, Timeout, …) wrap coalesce+send so
     // identity sees post-middleware headers; joiners do not hold a pool slot.
@@ -432,7 +447,7 @@ final class HttpBytesClient {
 
   late final http.Client _client;
   late final bool _ownsClient;
-  late final Pool _pool;
+  late final _PrioritySlots _slots;
 
   /// Composed middleware chain ending at [http.Client.send].
   late final HttpBytesHandler _handler;
@@ -458,17 +473,21 @@ final class HttpBytesClient {
   bool isInFlight(BytesCacheKey key) => _inFlight.containsKey(key.value);
 
   /// Runs [request] through middlewares (delegates to [_sendUnstreamed]).
+  ///
+  /// [priority] places the GET in the slot queue (null: visible).
   Future<HttpBytesResponse> send(
     HttpBytesRequest request, {
     Map<String, Object?>? context,
     CancelToken? cancelToken,
     BytesProgressCallback? onBytesProgress,
+    PriorityToken? priority,
   }) => _sendUnstreamed(
     url: request.url,
     headers: request.headers,
     context: context,
     cancelToken: cancelToken,
     onBytesProgress: onBytesProgress,
+    priority: priority,
   );
 
   /// GETs [url] and returns the response body (delegates to [_sendUnstreamed]).
@@ -481,6 +500,7 @@ final class HttpBytesClient {
     BytesProgressCallback? onBytesProgress,
     CancelToken? cancelToken,
     Map<String, Object?>? context,
+    PriorityToken? priority,
   }) async {
     final response = await _sendUnstreamed(
       url: url,
@@ -488,6 +508,7 @@ final class HttpBytesClient {
       cancelToken: cancelToken,
       onBytesProgress: onBytesProgress,
       context: context,
+      priority: priority,
     );
     return response.toBytes();
   }
@@ -505,6 +526,7 @@ final class HttpBytesClient {
     Map<String, Object?>? context,
     CancelToken? cancelToken,
     BytesProgressCallback? onBytesProgress,
+    PriorityToken? priority,
   }) async {
     if (_closed) {
       throw const HttpBytesException$Internal(
@@ -525,6 +547,7 @@ final class HttpBytesClient {
     final ctx = HttpBytesContext(context ?? <String, Object?>{})
       ..callerCancelToken = callerToken
       ..onBytesProgress = onBytesProgress;
+    if (priority != null) ctx.priority = priority;
 
     // Plain Request through middleware so Bearer/Retry can mutate/clone headers
     // before coalesce; AbortableRequest is built when a flight starts.
@@ -620,6 +643,7 @@ final class HttpBytesClient {
           callerToken,
           request.url,
           onProgress: context.onBytesProgress,
+          priority: context.priority,
         );
       }
 
@@ -641,7 +665,11 @@ final class HttpBytesClient {
       // Starter: cancel interest only (result comes from streaming → buffer).
       // Do not attach a subscriber Future — that would uncaught-error on
       // completeError while getBytes already rethrows the same failure.
-      flight.trackCaller(callerToken, onProgress: context.onBytesProgress);
+      flight.trackCaller(
+        callerToken,
+        onProgress: context.onBytesProgress,
+        priority: context.priority,
+      );
 
       unawaited(
         flight.done.whenComplete(() {
@@ -650,7 +678,8 @@ final class HttpBytesClient {
       );
 
       try {
-        return await _pool.withResource(
+        return await _slots.run(
+          flight,
           () => clientSend(HttpBytesRequest(abortable), context),
         );
       } on Object catch (error, stackTrace) {
@@ -660,11 +689,12 @@ final class HttpBytesClient {
     };
   }
 
-  /// Closes the pool and, when this instance created the client, the client.
+  /// Closes the slot queue and, when this instance created the client, the
+  /// client. Queued GETs fail; running ones finish first.
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
-    await _pool.close();
+    await _slots.close();
     if (_ownsClient) {
       _client.close();
     }
@@ -709,10 +739,12 @@ final class _HttpBytesInFlight {
   void trackCaller(
     CancelToken callerToken, {
     BytesProgressCallback? onProgress,
+    PriorityToken? priority,
   }) {
     final subscriber = _HttpBytesSubscriber(
       token: callerToken,
       onProgress: onProgress,
+      priority: priority,
     );
     _subscribers.add(subscriber);
     unawaited(
@@ -727,12 +759,14 @@ final class _HttpBytesInFlight {
     CancelToken callerToken,
     Uri url, {
     BytesProgressCallback? onProgress,
+    PriorityToken? priority,
   }) {
     final completer = Completer<HttpBytesResponse>();
     final subscriber = _HttpBytesSubscriber(
       token: callerToken,
       completer: completer,
       onProgress: onProgress,
+      priority: priority,
     );
     _subscribers.add(subscriber);
     if ((onProgress, _lastProgress) case (final sink?, (final c, final t)?)) {
@@ -768,6 +802,16 @@ final class _HttpBytesInFlight {
     );
 
     return completer.future;
+  }
+
+  /// The highest priority among live subscribers, read when a slot frees.
+  RequestPriority get priority {
+    var best = RequestPriority.background;
+    for (final subscriber in _subscribers) {
+      final mine = subscriber.priority?.priority ?? RequestPriority.visible;
+      if (mine.isAbove(best)) best = mine;
+    }
+    return best;
   }
 
   /// Fans one body progress report out to every live subscriber.
@@ -814,15 +858,125 @@ final class _HttpBytesSubscriber {
     required this.token,
     this.completer,
     this.onProgress,
+    this.priority,
   });
 
   final CancelToken token;
+
+  /// This caller's priority; null means visible.
+  final PriorityToken? priority;
 
   /// This caller's progress sink, if it asked for one.
   final BytesProgressCallback? onProgress;
 
   /// Non-null for joiners; starters track cancel only.
   final Completer<HttpBytesResponse>? completer;
+}
+
+/// The [HttpBytesClient]'s concurrency cap: a fixed number of slots and a
+/// queue served by flight priority, then arrival.
+///
+/// Priorities are read when a slot frees, not when a GET queues, so a caller
+/// raising its [PriorityToken] overtakes work queued before it. A queued
+/// flight whose token cancels (its last caller left) leaves the queue at once
+/// instead of waiting for a slot only to abort. A homemade queue rather than
+/// `package:pool`: that pool is first-in first-out with no reordering.
+final class _PrioritySlots {
+  _PrioritySlots(this.capacity);
+
+  final int capacity;
+  var _active = 0;
+  var _closed = false;
+  final List<_SlotWaiter> _queue = [];
+  Completer<void>? _idle;
+
+  Future<T> run<T>(
+    _HttpBytesInFlight flight,
+    Future<T> Function() work,
+  ) async {
+    await _acquire(flight);
+    try {
+      return await work();
+    } finally {
+      _active--;
+      _dispatch();
+    }
+  }
+
+  Future<void> _acquire(_HttpBytesInFlight flight) {
+    if (_closed) {
+      return Future<void>.error(
+        const HttpBytesException$Internal(
+          code: 'closed',
+          message: 'HttpBytesClient is closed.',
+          statusCode: 0,
+        ),
+      );
+    }
+    if (_active < capacity) {
+      _active++;
+      return Future<void>.value();
+    }
+    final waiter = _SlotWaiter(flight);
+    _queue.add(waiter);
+    unawaited(
+      flight.flightToken.whenCancel.then((_) {
+        if (!_queue.remove(waiter)) return;
+        waiter.completer.completeError(
+          HttpBytesException$Cancelled(
+            error: CancelledException(flight.flightToken.reason),
+          ),
+        );
+      }),
+    );
+    return waiter.completer.future;
+  }
+
+  void _dispatch() {
+    while (_active < capacity && _queue.isNotEmpty) {
+      var next = _queue.first;
+      var nextPriority = next.flight.priority;
+      for (final waiter in _queue.skip(1)) {
+        final priority = waiter.flight.priority;
+        // Arrival order breaks ties: the queue is kept in arrival order.
+        if (priority.isAbove(nextPriority)) {
+          next = waiter;
+          nextPriority = priority;
+        }
+      }
+      _queue.remove(next);
+      _active++;
+      next.completer.complete();
+    }
+    if (_active == 0) {
+      _idle?.complete();
+      _idle = null;
+    }
+  }
+
+  Future<void> close() async {
+    _closed = true;
+    final queued = List.of(_queue);
+    _queue.clear();
+    for (final waiter in queued) {
+      waiter.completer.completeError(
+        const HttpBytesException$Internal(
+          code: 'closed',
+          message: 'HttpBytesClient is closed.',
+          statusCode: 0,
+        ),
+      );
+    }
+    if (_active == 0) return;
+    await (_idle ??= Completer<void>()).future;
+  }
+}
+
+final class _SlotWaiter {
+  _SlotWaiter(this.flight);
+
+  final _HttpBytesInFlight flight;
+  final Completer<void> completer = Completer<void>();
 }
 
 /// Completes with [HttpBytesException$Cancelled] when [token] cancels, or with

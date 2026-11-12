@@ -9,6 +9,7 @@ import 'package:http_bytes_cache/src/cache/cache_middleware.dart';
 import 'package:http_bytes_cache/src/cache/middlewares/skip_cache_middleware.dart';
 import 'package:http_bytes_cache/src/http/http_bytes_client.dart';
 import 'package:http_bytes_cache/src/http/middlewares/conditional_middleware.dart';
+import 'package:http_bytes_cache/src/http/request_priority.dart';
 import 'package:http_bytes_cache/src/http_cache_freshness.dart';
 import 'package:meta/meta.dart';
 
@@ -74,6 +75,7 @@ final class BytesRequest {
     this.onBytesProgress,
     this.cancelToken,
     this.quota,
+    this.priority,
   });
 
   /// Absolute or [Uri.base]-relative URL.
@@ -140,6 +142,11 @@ final class BytesRequest {
   /// Null keeps the quota a stored row already has, else
   /// [BytesQuota.images]. Not part of identity.
   final BytesQuota? quota;
+
+  /// Where the network GET waits in the client's slot queue; null is
+  /// [RequestPriority.visible]. The caller may change it while the request
+  /// is queued. Not part of identity.
+  final PriorityToken? priority;
 }
 
 /// Looks up bytes in a cache, then fetches, then write-through.
@@ -639,6 +646,7 @@ final class BytesResolver implements IBytesResolver {
       context: httpContext,
       cancelToken: request.cancelToken,
       onBytesProgress: request.onBytesProgress,
+      priority: request.priority,
     );
   }
 

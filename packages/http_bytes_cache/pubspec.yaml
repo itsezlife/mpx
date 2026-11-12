@@ -33,7 +33,6 @@ dependencies:
   http_parser: ^4.1.2
   meta: any
   path: ^1.9.1
-  pool: ^1.5.3
   # Only lib/testing.dart needs this: its contract suites are written with the
   # test framework, and a library cannot import a dev dependency.
   test: ^1.25.0

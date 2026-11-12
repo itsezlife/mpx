@@ -179,7 +179,7 @@ _Avoid_: reclaim as a CacheOperation; assuming `skipCache` works on a plain
 store; durable IO inside logger middleware
 
 **HttpBytesClient**:
-HTTP GET with concurrency pool and in-flight coalesce by `BytesCacheKey`
+HTTP GET with a priority slot queue and in-flight coalesce by `BytesCacheKey`
 (canonical URL + canonical headers; conditionals excluded), or by
 `HttpBytesContext.identityOverride` when set. Default success is 2xx or 304 Not
 Modified (empty/ignored body; empty-body-as-`$Internal` only for non-304).
@@ -189,8 +189,8 @@ layers: [HttpBytesLoggerMiddleware$Developer], [HttpBytesRetryMiddleware],
 revalidation stack (outermost first): Logger → Retry → Timeout → Bearer →
 Conditional. Conditional maps context `etag` / `lastModified` to
 `If-None-Match` / `If-Modified-Since` (after Bearer, before coalesce). Timeout
-after pool slot via `AbortableRequest` (aborts when the client honors it). Pool
-wait for a slot is intentionally unbounded. Progress belongs to the flight:
+after pool slot via `AbortableRequest` (aborts when the client honors it). Slot
+wait is intentionally unbounded and served by priority, then arrival. Progress belongs to the flight:
 every sharer's sink hears `0` when the response starts, then cumulative bytes
 as the body is read (total when the response provides it); a late joiner first
 hears the last value. Process-wide `configure` / `shared` / `resetShared` mirror the
@@ -200,6 +200,14 @@ string joins for coalesce; assuming timeout covers pool queue time; treating 304
 as `$Request` or empty-body `$Internal`; folding validators into identity;
 synthetic chunk percents after the body is already fully buffered; putting
 Conditional outside Bearer or after coalesce
+
+**RequestPriority** / **PriorityToken**:
+How urgently a caller needs bytes: visible > preload > background. The token
+is the caller's handle, read when a client slot frees, so promoting a queued
+request overtakes earlier preload and background work. A coalesced GET takes
+its callers' highest priority. A GET already holding a slot is unaffected.
+_Avoid_: a FIFO pool under several kinds of consumers; fixing a priority at
+enqueue time
 
 **BytesDiagnostics**:
 Soft-failure and soft-path policy (silent / developer log / onEvent).
