@@ -329,6 +329,12 @@ final class MiddlewareBytesCache implements IBytesStore {
     _ => false,
   };
 
+  @override
+  Future<FileLease?> leaseFile(BytesCacheKey key) async => switch (inner) {
+    final IBytesStore store => store.leaseFile(key),
+    _ => null,
+  };
+
   /// Writes [bytes] under [key] as [CacheOperation$Write].
   @override
   Future<void> write(

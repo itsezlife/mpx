@@ -38,10 +38,19 @@ final class FakeBytesIndex implements IBytesIndex {
   }
 }
 
-/// In-memory [IBytesBlobStore] keyed by [BytesCacheKey.value].
-final class FakeBytesBlobStore implements IBytesBlobStore {
+/// In-memory [IBytesFileBlobStore] keyed by [BytesCacheKey.value].
+///
+/// [pathOf] names a path under [root] that is never created, so stores built
+/// on it hand out [FileLease]s whose pinning tests can observe in [payloads].
+final class FakeBytesBlobStore implements IBytesFileBlobStore {
+  /// Fake directory the [pathOf] paths sit under.
+  static const String root = '/fake-bytes-blobs';
+
   /// Payloads by key value. Tests may inspect or seed it.
   final Map<String, Uint8List> payloads = {};
+
+  @override
+  String pathOf(BytesCacheKey key) => '$root/${key.value}';
 
   @override
   Future<Uint8List?> read(BytesCacheKey key, {int? knownByteLength}) async =>

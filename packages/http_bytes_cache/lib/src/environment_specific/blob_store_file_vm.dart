@@ -28,7 +28,7 @@ import 'package:path/path.dart' as p;
 /// RPC futures complete with [StateError] instead of hanging, the dead
 /// controller is dropped, and a later op may respawn. [close] still fails
 /// pending with a closed [StateError] and refuses further RPCs.
-final class BytesBlobStore$File$VM implements IBytesBlobStore {
+final class BytesBlobStore$File$VM implements IBytesFileBlobStore {
   /// Roots the store at [directory]. The directory is created on
   /// [ensureDirectory] / first write, not in this constructor.
   BytesBlobStore$File$VM({required this.directory});
@@ -73,6 +73,9 @@ final class BytesBlobStore$File$VM implements IBytesBlobStore {
   }
 
   String _pathFor(BytesCacheKey key) => p.join(directory, key.value);
+
+  @override
+  String pathOf(BytesCacheKey key) => p.absolute(_pathFor(key));
 
   @override
   Future<Uint8List?> read(BytesCacheKey key, {int? knownByteLength}) =>

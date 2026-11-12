@@ -49,6 +49,14 @@ key holds bytes. `IndexedBytesCache`, the stores `BytesCache.open` returns and
 store. Contract suite: `runBytesStoreContract` in `testing.dart`.
 _Avoid_: awaiting the index to answer a peek; downcasting to a concrete store
 
+**FileLease**:
+A held path to a stored payload (`IBytesStore.leaseFile`). While held,
+eviction, expiry and orphan reclaim skip the file; an explicit evict drops the
+key at once and the file on the last release. Only payload ports that name
+files (`IBytesFileBlobStore`, the VM store) hand them out.
+_Avoid_: handing out a path without a lease; copying a payload to a temp file
+to give it a path
+
 **BytesPeek**:
 `BytesResolver.peek(request)`: `cached`, `inFlight` or `absent`, from the
 store's RAM index plus resolves and GETs underway. Cached wins over in flight.

@@ -555,6 +555,54 @@ abstract interface class IBytesBlobStore {
   Future<void> delete(BytesCacheKey key);
 }
 
+/// Payload port that keeps each payload in a file it can name.
+///
+/// [IndexedBytesCache] hands out [FileLease]s only over a blob store of this
+/// kind; stores without files (memory, browser storage) hand out none.
+abstract interface class IBytesFileBlobStore implements IBytesBlobStore {
+  /// Absolute path of the payload file for [key], whether or not it exists.
+  String pathOf(BytesCacheKey key);
+}
+
+/// A held path to a stored payload file.
+///
+/// While a lease is held, eviction, expiry and orphan reclaim leave the file in
+/// place, so a decoder or a native player can open the path at any time. An
+/// explicit [IBytesCache.evict] of a leased key drops the key at once and
+/// deletes the file when the last lease on it is released. Rewriting a leased
+/// key replaces the file atomically: a reader that already opened it keeps the
+/// old bytes, a later open sees the new ones.
+///
+/// [release] when done; it is idempotent. A lease outliving its store's close
+/// releases as a no-op.
+final class FileLease {
+  /// Leases [path] for [key]; [onRelease] runs once, on the first [release].
+  FileLease({
+    required this.key,
+    required this.path,
+    required Future<void> Function() onRelease,
+  }) : _onRelease = onRelease;
+
+  /// The key the lease was taken for.
+  final BytesCacheKey key;
+
+  /// Absolute path of the payload file.
+  final String path;
+
+  final Future<void> Function() _onRelease;
+  var _released = false;
+
+  /// Whether [release] already ran.
+  bool get isReleased => _released;
+
+  /// Gives the file back to eviction. Idempotent.
+  Future<void> release() {
+    if (_released) return Future<void>.value();
+    _released = true;
+    return _onRelease();
+  }
+}
+
 /// Store for remote bytes (any payload format).
 ///
 /// Callers and widgets talk to this type. They should not know about durable
@@ -608,6 +656,10 @@ abstract interface class IBytesStore implements IBytesCache, IBytesRichCache {
   /// A row past its retention age answers false. Optimistic about payloads:
   /// a row whose payload went missing answers true until a read heals it.
   bool contains(BytesCacheKey key);
+
+  /// Leases the payload file of [key], or null when [key] holds nothing or the
+  /// store keeps no files. Taking a lease counts as a use of [key].
+  Future<FileLease?> leaseFile(BytesCacheKey key);
 }
 
 /// [IBytesCache] that keeps metadata and payloads in separate stores.
@@ -688,6 +740,12 @@ final class IndexedBytesCache implements IBytesStore {
 
   final Map<BytesCacheKey, DateTime> _pendingAccess = {};
 
+  /// Held [FileLease]s per key. Eviction, expiry and reclaim skip these.
+  final Map<BytesCacheKey, int> _leases = {};
+
+  /// Leased keys whose row is gone; their payload goes with the last lease.
+  final Set<BytesCacheKey> _orphanedLeases = {};
+
   /// Shared/exclusive gate. Language primitives only, no Mutex package.
   ///
   /// Writers serialize on [_exclusiveTail]. Readers briefly chain on that same
@@ -704,9 +762,47 @@ final class IndexedBytesCache implements IBytesStore {
   bool contains(BytesCacheKey key) {
     _ensureOpen();
     final record = _index.peek(key);
-    return record != null &&
-        !retention.isExpired(record.writtenAt, now: _clock());
+    return record != null && _isLive(record, _clock());
   }
+
+  @override
+  Future<FileLease?> leaseFile(BytesCacheKey key) async {
+    if (_blobs case final IBytesFileBlobStore files) {
+      return _runShared(() async {
+        _ensureOpen();
+        final record = await _index.get(key);
+        if (record == null) return null;
+        final now = _clock();
+        if (!_isLive(record, now)) return null;
+        _pendingAccess[key] = now;
+        _leases.update(key, (n) => n + 1, ifAbsent: () => 1);
+        return FileLease(
+          key: key,
+          path: files.pathOf(key),
+          onRelease: () => _releaseLease(key),
+        );
+      });
+    }
+    return null;
+  }
+
+  Future<void> _releaseLease(BytesCacheKey key) async {
+    if (_closed) return;
+    final left = _leases.update(key, (n) => n - 1);
+    if (left > 0) return;
+    _leases.remove(key);
+    if (!_orphanedLeases.remove(key)) return;
+    await _runExclusive(() async {
+      if (_closed || _leases.containsKey(key)) return;
+      // A write after the evict may have given the key a row again.
+      if (await _index.get(key) == null) await _blobs.delete(key);
+    });
+  }
+
+  /// Leased rows stay live past their age: someone holds their file.
+  bool _isLive(BytesRecord record, DateTime now) =>
+      _leases.containsKey(record.key) ||
+      !retention.isExpired(record.writtenAt, now: now);
 
   /// Reads payload after TTL check. Soft-touches access time (see class docs).
   ///
@@ -726,7 +822,7 @@ final class IndexedBytesCache implements IBytesStore {
       if (record == null) return const _ReadProbe.miss();
 
       final now = _clock();
-      if (retention.isExpired(record.writtenAt, now: now)) {
+      if (!_isLive(record, now)) {
         return const _ReadProbe.needsDelete();
       }
 
@@ -766,7 +862,7 @@ final class IndexedBytesCache implements IBytesStore {
         final record = await _index.get(key);
         if (record == null) return null;
         final now = _clock();
-        if (!retention.isExpired(record.writtenAt, now: now)) {
+        if (_isLive(record, now)) {
           return _finishSharedRichHit(key, now, preEpoch, record);
         }
         await _deleteBoth(key);
@@ -853,6 +949,7 @@ final class IndexedBytesCache implements IBytesStore {
       await _flushPendingAccess();
       final now = _clock();
       await _blobs.write(key, bytes);
+      _orphanedLeases.remove(key);
       await _index.put(
         BytesRecord(
           key: key,
@@ -888,10 +985,10 @@ final class IndexedBytesCache implements IBytesStore {
     var freed = 0;
     final now = _clock();
 
-    if (retention.limits.maxAge case final maxAge?) {
+    if (retention.limits.maxAge != null) {
       final expired = [
         for (final record in await _index.values())
-          if (now.difference(record.writtenAt) > maxAge) record,
+          if (!_isLive(record, now)) record,
       ];
       for (final record in expired) {
         freed += record.byteLength;
@@ -924,6 +1021,8 @@ final class IndexedBytesCache implements IBytesStore {
     if (_closed) return;
     _closed = true;
     _pendingAccess.clear();
+    _leases.clear();
+    _orphanedLeases.clear();
   });
 
   /// Registers as a reader on [_exclusiveTail], then runs [action] without
@@ -1043,16 +1142,24 @@ final class IndexedBytesCache implements IBytesStore {
     }
   }
 
+  /// Drops [key]'s row and payload; a leased payload waits for its release.
   Future<void> _deleteBoth(BytesCacheKey key) async {
     _pendingAccess.remove(key);
     await _index.delete(key);
-    await _blobs.delete(key);
+    if (_leases.containsKey(key)) {
+      _orphanedLeases.add(key);
+    } else {
+      await _blobs.delete(key);
+    }
   }
 
   Future<void> _reclaimOrphansUnlocked() async {
     final reclaim = _reclaimOrphans;
     if (reclaim == null) return;
-    final keys = {for (final record in await _index.values()) record.key.value};
+    final keys = {
+      for (final record in await _index.values()) record.key.value,
+      for (final key in _leases.keys) key.value,
+    };
     await reclaim(keys);
   }
 
@@ -1072,10 +1179,16 @@ final class IndexedBytesCache implements IBytesStore {
         null => false,
       };
       if (!overEntries && !overBytes) break;
-      if (records.isEmpty) break;
+      // A leased file is not a candidate; when only leased rows remain the
+      // store stays over budget until a lease is released.
+      final candidates = [
+        for (final record in records)
+          if (!_leases.containsKey(record.key)) record,
+      ];
+      if (candidates.isEmpty) break;
 
-      records.sort((a, b) => a.accessedAt.compareTo(b.accessedAt));
-      final victim = records.first;
+      candidates.sort((a, b) => a.accessedAt.compareTo(b.accessedAt));
+      final victim = candidates.first;
       freed += victim.byteLength;
       evicted?.add(victim.key);
       await _deleteBoth(victim.key);
@@ -1159,6 +1272,10 @@ final class MemoryBytesCache implements IBytesStore {
   @override
   Future<Uint8List?> read(BytesCacheKey key) async =>
       (await readRich(key))?.bytes;
+
+  /// Always null: a memory store keeps no files.
+  @override
+  Future<FileLease?> leaseFile(BytesCacheKey key) async => null;
 
   @override
   bool contains(BytesCacheKey key) => switch (_entries[key]) {

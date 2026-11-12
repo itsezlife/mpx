@@ -81,6 +81,9 @@ final class BytesCache$JS implements IBytesStore {
   bool contains(BytesCacheKey key) => _inner.contains(key);
 
   @override
+  Future<FileLease?> leaseFile(BytesCacheKey key) => _inner.leaseFile(key);
+
+  @override
   Future<void> write(
     BytesCacheKey key,
     Uint8List bytes, {

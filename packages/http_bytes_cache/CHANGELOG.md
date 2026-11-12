@@ -10,6 +10,9 @@
 - `IBytesStore`: the store interface behind the ladder (`contains`, and the
   handles below). `BytesCache.open` returns one; `IBytesIndex` gains a sync
   `peek`. `HttpBytesClient.isInFlight` reports a running GET.
+- `IBytesStore.leaseFile` hands out a `FileLease`: the path of a stored
+  payload that eviction, expiry and orphan reclaim leave in place until the
+  lease is released. VM stores only; memory and web stores return null.
 - `package:http_bytes_cache/testing.dart`: `runBytesStoreContract` and
   in-memory index and blob fakes.
 

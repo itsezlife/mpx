@@ -62,5 +62,24 @@ void runBytesStoreContract(String name, BytesStoreFactory create) {
         expect(store.contains(key), isFalse);
       });
     });
+
+    group('leaseFile', () {
+      test('is null for a key never written', () async {
+        final store = await open();
+        expect(await store.leaseFile(key), isNull);
+      });
+
+      test('is null, or a releasable lease on the written key', () async {
+        final store = await open();
+        await store.write(key, bytes);
+        final lease = await store.leaseFile(key);
+        if (lease == null) return;
+        expect(lease.key, key);
+        expect(lease.path, isNotEmpty);
+        await lease.release();
+        expect(lease.isReleased, isTrue);
+        expect(store.contains(key), isTrue);
+      });
+    });
   });
 }
