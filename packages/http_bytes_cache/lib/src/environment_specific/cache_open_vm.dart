@@ -20,6 +20,7 @@ import 'package:http_bytes_cache/src/environment_specific/index_file_vm.dart';
 Future<IBytesStore> $openBytesCache({
   String? directory,
   BytesRetention retention = BytesRetention.standard,
+  Iterable<BytesQuota> quotas = BytesQuota.standard,
   DateTime Function()? clock,
 }) async {
   final root = switch (directory) {
@@ -43,6 +44,7 @@ Future<IBytesStore> $openBytesCache({
         index: index,
         blobs: blobs,
         retention: retention,
+        quotas: quotas,
         clock: clock,
         reclaimOrphans: blobs.reclaimOrphans,
       ),
@@ -92,7 +94,8 @@ final class BytesCache$VM implements IBytesStore {
     BytesCacheKey key,
     Uint8List bytes, {
     HttpCacheMeta? httpCacheMeta,
-  }) => _inner.write(key, bytes, httpCacheMeta: httpCacheMeta);
+    BytesQuota? quota,
+  }) => _inner.write(key, bytes, httpCacheMeta: httpCacheMeta, quota: quota);
 
   @override
   Future<void> evict(BytesCacheKey key) => _inner.evict(key);

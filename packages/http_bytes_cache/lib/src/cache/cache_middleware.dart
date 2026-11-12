@@ -124,7 +124,12 @@ final class CacheOperation$Read extends CacheOperation {
 /// body. Null clears prior meta for [key] on stores that keep it.
 final class CacheOperation$Write extends CacheOperation {
   /// Creates a write of [bytes] under [key].
-  const CacheOperation$Write(this.key, this.bytes, {this.httpCacheMeta});
+  const CacheOperation$Write(
+    this.key,
+    this.bytes, {
+    this.httpCacheMeta,
+    this.quota,
+  });
 
   /// Entry identity.
   final BytesCacheKey key;
@@ -134,6 +139,9 @@ final class CacheOperation$Write extends CacheOperation {
 
   /// HTTP validators / freshness to store with [bytes], or null to clear them.
   final HttpCacheMeta? httpCacheMeta;
+
+  /// Quota the row counts against; see [IBytesCache.write].
+  final BytesQuota? quota;
 }
 
 /// Delete [key] if present.
@@ -341,9 +349,15 @@ final class MiddlewareBytesCache implements IBytesStore {
     BytesCacheKey key,
     Uint8List bytes, {
     HttpCacheMeta? httpCacheMeta,
+    BytesQuota? quota,
   }) async {
     final result = await execute(
-      CacheOperation$Write(key, bytes, httpCacheMeta: httpCacheMeta),
+      CacheOperation$Write(
+        key,
+        bytes,
+        httpCacheMeta: httpCacheMeta,
+        quota: quota,
+      ),
     );
     switch (result) {
       case CacheOperationResult$Write():
@@ -420,8 +434,18 @@ final class MiddlewareBytesCache implements IBytesStore {
             },
           },
         );
-      case CacheOperation$Write(:final key, :final bytes, :final httpCacheMeta):
-        await store.write(key, bytes, httpCacheMeta: httpCacheMeta);
+      case CacheOperation$Write(
+        :final key,
+        :final bytes,
+        :final httpCacheMeta,
+        :final quota,
+      ):
+        await store.write(
+          key,
+          bytes,
+          httpCacheMeta: httpCacheMeta,
+          quota: quota,
+        );
         return const CacheOperationResult$Write();
       case CacheOperation$Evict(:final key):
         await store.evict(key);

@@ -84,11 +84,19 @@ on web; importing `package:shared` for the isolate helper; Cache-then-OPFS on
 every large hit when meta already knows the body is above the cut
 
 **BytesRetention**:
-Sealed eviction policy. TTL checked on read; capacity trimmed on write/prune.
-No background timer. Default `standard` caps age, entry count, and total bytes.
+Sealed eviction policy for the whole store. Age counts from last use, checked
+on read; capacity trimmed on write/prune. No background timer. Default
+`standard`: 30 days since last use, 10 000 entries, 1 GiB, shared by quotas.
 Non-positive `maxEntries` / `maxBytes` are asserted invalid.
 _Avoid_: background eviction timers; entry-count-only budgets for large payloads;
 zero or negative capacity caps
+
+**BytesQuota**:
+A named share of the store budget (`images`, `video_ranges`, `lottie_frames`,
+`glyphs`). A quota over its own limits evicts within itself; under total
+pressure the quota furthest over its share gives back first. Rows carry the
+quota name.
+_Avoid_: one LRU across every kind of media; a separate store per kind
 
 **BytesOrigin** (`network` / `cache`):
 Paint-relevant provenance of a resolved body. `cache` means the body was

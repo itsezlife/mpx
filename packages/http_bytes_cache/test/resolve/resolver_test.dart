@@ -1488,6 +1488,7 @@ final class _StickyEmptyBytesCache implements IBytesCache {
     BytesCacheKey key,
     Uint8List bytes, {
     HttpCacheMeta? httpCacheMeta,
+    BytesQuota? quota,
   }) async {}
 
   @override
@@ -1513,6 +1514,7 @@ final class _ThrowingWriteBytesCache implements IBytesCache {
     BytesCacheKey key,
     Uint8List bytes, {
     HttpCacheMeta? httpCacheMeta,
+    BytesQuota? quota,
   }) async {
     throw StateError('simulated durable write failure');
   }
@@ -1550,6 +1552,7 @@ final class _CloseRejectingBytesCache implements IBytesCache {
     BytesCacheKey key,
     Uint8List bytes, {
     HttpCacheMeta? httpCacheMeta,
+    BytesQuota? quota,
   }) async {
     _ensureOpen();
     _entries[key] = bytes;

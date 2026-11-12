@@ -4,7 +4,9 @@ import 'package:http_bytes_cache/src/bytes_cache.dart';
 
 /// Records ↔ UTF-8 JSON bytes for the durable index document.
 ///
-/// Shape: `{"v":1,"e":{"<key>":{"w":ms,"a":ms,"n":byteLength,"h"?:{…}}}}`.
+/// Shape: `{"v":1,"e":{"<key>":{"w":ms,"a":ms,"n":byteLength,"q"?:quota,
+/// "h"?:{…}}}}`. `q` is the [BytesRecord.quota] name, left out for the
+/// default quota; a row without it reads as [BytesQuota.images].
 /// Optional `h` is [HttpCacheMeta] on the wire (`et`, `lm`, `d`, `x`,
 /// `cc`, `ag`, `lv`). Missing `h`, or missing keys inside it, decode as null
 /// meta. Old documents stay valid. Unknown [version] or a broken structure
@@ -59,6 +61,7 @@ final class _BytesIndexDocumentEncoder
           'w': value.writtenAt.toUtc().millisecondsSinceEpoch,
           'a': value.accessedAt.toUtc().millisecondsSinceEpoch,
           'n': value.byteLength,
+          if (value.quota != BytesQuota.images.name) 'q': value.quota,
           if (value.httpCacheMeta case final meta? when !meta.isEmpty)
             'h': _encodeHttpMeta(meta),
         },
@@ -124,6 +127,13 @@ final class _BytesIndexDocumentDecoder
             ),
             byteLength: byteLength,
             httpCacheMeta: _httpMetaFrom(map['h']),
+            quota: switch (map['q']) {
+              null => BytesQuota.images.name,
+              final String name => name,
+              _ => throw const FormatException(
+                'image bytes index: invalid quota',
+              ),
+            },
           ),
         _ => throw const FormatException(
           'image bytes index: invalid entry fields',

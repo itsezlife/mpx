@@ -18,8 +18,9 @@ refused.
 
 ### `IBytesIndex`
 
-Records per `BytesCacheKey`: `writtenAt`, `accessedAt`, `byteLength`, and
-optional HTTP cache meta (`etag`, `lastModified`, `date`, `expires`,
+Records per `BytesCacheKey`: `writtenAt`, `accessedAt`, `byteLength`, the
+quota name (`q` in the document, left out for `images`), and optional HTTP
+cache meta (`etag`, `lastModified`, `date`, `expires`,
 `cacheControl`, `age`, `lastValidatedAt`). Those validators are not part of
 key identity. `get` / `put` / `delete` / `values` mutate the RAM mirror.
 `commit` writes the durable document once. Memory fakes may no-op `commit`.
@@ -84,19 +85,40 @@ IO.
 
 ## Retention
 
-Sealed `BytesRetention`. TTL is checked on `read`. Capacity is trimmed on
-`write` and `prune`. There is no background eviction timer.
+Sealed `BytesRetention`: the store's whole budget. Age counts from **last
+use** (`accessedAt`, including a soft access not yet flushed), not from the
+write, and is checked on `read`. Capacity is trimmed on `write` and `prune`.
+There is no background eviction timer.
 
 `BytesRetention.standard` (default for `open`):
 
 | Limit        | Value   |
 | ------------ | ------- |
-| `maxAge`     | 14 days |
-| `maxEntries` | 500     |
-| `maxBytes`   | 50 MiB  |
+| `maxAge`     | 30 days since last use |
+| `maxEntries` | 10 000  |
+| `maxBytes`   | 1 GiB   |
 
-Entry count alone would let a few large assets fill the device. The byte
-budget bounds that without a timer. Hosts may pass `compound`, `maxAge`,
+The entry cap bounds the index document each commit rewrites; the byte budget
+bounds the disk without a timer.
+
+### Quotas
+
+Every row belongs to a named `BytesQuota` (`write(…, quota:)`,
+`BytesRequest.quota`; null keeps the row's quota, else `images`).
+`BytesQuota.standard`:
+
+| Quota           | `maxBytes` |
+| --------------- | ---------- |
+| `images`        | 256 MiB    |
+| `video_ranges`  | 768 MiB    |
+| `lottie_frames` | 256 MiB    |
+| `glyphs`        | 32 MiB     |
+
+One eviction pass plans from one listing of the index: each quota over its own
+limits gives back its least recently used rows; then, while the store is over
+its budget, the quota with the highest bytes-used / `maxBytes` gives back one
+row at a time. Leased rows are never candidates. A quota the store was not
+configured with brings its own limits on write. Hosts may pass `compound`, `maxAge`,
 `maxEntries`, `maxBytes`, or `unlimited`. When set, `maxEntries` and
 `maxBytes` must be **positive** (asserted on the retention constructors);
 non-positive caps are nonsense policy.

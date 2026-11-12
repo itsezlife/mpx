@@ -325,9 +325,9 @@ void main() {
   group('BytesRetention.standard', () {
     test('includes maxAge, maxEntries, and maxBytes', () {
       final limits = BytesRetention.standard.limits;
-      expect(limits.maxAge, const Duration(days: 14));
-      expect(limits.maxEntries, 500);
-      expect(limits.maxBytes, 50 * 1024 * 1024);
+      expect(limits.maxAge, const Duration(days: 30));
+      expect(limits.maxEntries, 10000);
+      expect(limits.maxBytes, 1024 * 1024 * 1024);
     });
   });
 
@@ -439,6 +439,7 @@ final class _ClosableProbeCache implements IBytesCache {
     BytesCacheKey key,
     Uint8List bytes, {
     HttpCacheMeta? httpCacheMeta,
+    BytesQuota? quota,
   }) async {}
 
   @override

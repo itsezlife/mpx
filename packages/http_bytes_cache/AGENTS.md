@@ -105,8 +105,9 @@ Public API is the barrel `lib/http_bytes_cache.dart`. See
   closes the previous shared instance before assign. `BytesResolver.shared`
   re-reads process-wide cache/client on each resolve (no one-shot snapshot).
   `resetShared` also clears resolver and client shared wiring.
-- **Retention:** TTL on read; capacity on write/prune; no background timer.
-  `standard` = 14 days / 500 entries / 50 MiB. Non-positive `maxEntries` /
+- **Retention:** age from last use, checked on read; capacity on write/prune
+  in one eviction pass across quotas; no background timer. `standard` = 30
+  days / 10 000 entries / 1 GiB, shared by `BytesQuota.standard`. Non-positive `maxEntries` /
   `maxBytes` assert.
 
 ## Gotchas quick-reference

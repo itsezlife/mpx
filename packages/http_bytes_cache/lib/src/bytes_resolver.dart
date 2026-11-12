@@ -73,6 +73,7 @@ final class BytesRequest {
     this.skipCache = false,
     this.onBytesProgress,
     this.cancelToken,
+    this.quota,
   });
 
   /// Absolute or [Uri.base]-relative URL.
@@ -133,6 +134,12 @@ final class BytesRequest {
   /// fresh hit returns without consulting the token. Does not participate in
   /// [BytesCacheKey] identity or in-flight coalesce.
   final CancelToken? cancelToken;
+
+  /// The store quota the body counts against when written through.
+  ///
+  /// Null keeps the quota a stored row already has, else
+  /// [BytesQuota.images]. Not part of identity.
+  final BytesQuota? quota;
 }
 
 /// Looks up bytes in a cache, then fetches, then write-through.
@@ -447,7 +454,14 @@ final class BytesResolver implements IBytesResolver {
           validatedAt: now,
         );
         unawaited(
-          _softWrite(cache, key, cached.bytes, cacheContext, refreshed),
+          _softWrite(
+            cache,
+            key,
+            cached.bytes,
+            cacheContext,
+            refreshed,
+            quota: request.quota,
+          ),
         );
         _effectiveDiagnostics.report(
           BytesLogEvent(
@@ -468,7 +482,16 @@ final class BytesResolver implements IBytesResolver {
         response.headers,
         validatedAt: now,
       );
-      unawaited(_softWrite(cache, key, bytes, cacheContext, nextMeta));
+      unawaited(
+        _softWrite(
+          cache,
+          key,
+          bytes,
+          cacheContext,
+          nextMeta,
+          quota: request.quota,
+        ),
+      );
       return BytesResolveResult(
         bytes: bytes,
         origin: BytesOrigin.network,
@@ -531,7 +554,9 @@ final class BytesResolver implements IBytesResolver {
         response.headers,
         validatedAt: now,
       );
-      unawaited(_softWrite(cache, key, bytes, cacheContext, meta));
+      unawaited(
+        _softWrite(cache, key, bytes, cacheContext, meta, quota: request.quota),
+      );
       return BytesResolveResult(
         bytes: bytes,
         origin: BytesOrigin.network,
@@ -623,9 +648,17 @@ final class BytesResolver implements IBytesResolver {
     BytesCacheKey key,
     Uint8List bytes,
     CacheContext? cacheContext,
-    HttpCacheMeta? httpCacheMeta,
-  ) => _write(cache, key, bytes, cacheContext, httpCacheMeta: httpCacheMeta)
-      .catchError((
+    HttpCacheMeta? httpCacheMeta, {
+    BytesQuota? quota,
+  }) =>
+      _write(
+        cache,
+        key,
+        bytes,
+        cacheContext,
+        httpCacheMeta: httpCacheMeta,
+        quota: quota,
+      ).catchError((
         Object error,
         StackTrace stackTrace,
       ) {
@@ -688,14 +721,25 @@ final class BytesResolver implements IBytesResolver {
     Uint8List bytes,
     CacheContext? context, {
     HttpCacheMeta? httpCacheMeta,
+    BytesQuota? quota,
   }) async {
     switch (context) {
       case null:
-        await cache.write(key, bytes, httpCacheMeta: httpCacheMeta);
+        await cache.write(
+          key,
+          bytes,
+          httpCacheMeta: httpCacheMeta,
+          quota: quota,
+        );
       case final ctx:
         if (cache case final MiddlewareBytesCache mw) {
           final result = await mw.execute(
-            CacheOperation$Write(key, bytes, httpCacheMeta: httpCacheMeta),
+            CacheOperation$Write(
+              key,
+              bytes,
+              httpCacheMeta: httpCacheMeta,
+              quota: quota,
+            ),
             ctx,
           );
           switch (result) {
@@ -708,7 +752,12 @@ final class BytesResolver implements IBytesResolver {
               );
           }
         }
-        await cache.write(key, bytes, httpCacheMeta: httpCacheMeta);
+        await cache.write(
+          key,
+          bytes,
+          httpCacheMeta: httpCacheMeta,
+          quota: quota,
+        );
     }
   }
 

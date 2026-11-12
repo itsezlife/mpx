@@ -154,10 +154,12 @@ final class BytesCacheKey {
   String toString() => 'BytesCacheKey($value)';
 }
 
-/// How long / how much an [IBytesCache] keeps entries.
+/// How long / how much an [IBytesCache] keeps entries, across all quotas.
 ///
-/// TTL is checked on [IBytesCache.read]. Capacity is trimmed on
-/// [IBytesCache.write] and [IBytesCache.prune]. There is no
+/// Age counts from last use ([BytesRecord.accessedAt]), not from the write: a
+/// body used daily never expires. Age is checked on [IBytesCache.read].
+/// Capacity is trimmed on [IBytesCache.write] and [IBytesCache.prune]; it is
+/// the store's total budget, shared by its [BytesQuota]s. There is no
 /// background timer: without those calls, entries stay until the host deletes
 /// them.
 @immutable
@@ -167,7 +169,7 @@ sealed class BytesRetention {
   /// No automatic eviction (still removable via [IBytesCache.evict]).
   const factory BytesRetention.unlimited() = BytesRetentionUnlimited;
 
-  /// Drop when [BytesRecord.writtenAt] is older than [maxAge].
+  /// Drop a row not used for longer than [maxAge].
   const factory BytesRetention.maxAge(Duration maxAge) = BytesRetentionMaxAge;
 
   /// Keep at most [maxEntries] (LRU by last access).
@@ -196,13 +198,14 @@ sealed class BytesRetention {
 
   /// Default used by [BytesCache.open].
   ///
-  /// Caps age (14 days), entry count (500), and total payload size (50 MiB).
-  /// Entry count alone would let a few large assets fill the device; the byte
-  /// budget bounds that without needing a background eviction timer.
+  /// Drops what was not used for a month, and caps the whole store at
+  /// 10 000 entries and 1 GiB, which the [BytesQuota.standard] quotas share.
+  /// The entry cap bounds the index document every commit rewrites; the byte
+  /// budget bounds the disk without a background eviction timer.
   static const BytesRetention standard = BytesRetentionCompound(
-    maxAge: Duration(days: 14),
-    maxEntries: 500,
-    maxBytes: 50 * 1024 * 1024,
+    maxAge: Duration(days: 30),
+    maxEntries: 10000,
+    maxBytes: 1024 * 1024 * 1024,
   );
 
   /// Whether a row anchored at [anchor] is past [limits]' `maxAge` at [now].
@@ -259,7 +262,7 @@ final class BytesRetentionMaxAge extends BytesRetention {
   /// See [BytesRetention.maxAge].
   const BytesRetentionMaxAge(this.maxAge);
 
-  /// Maximum age since [BytesRecord.writtenAt].
+  /// Maximum time since last use.
   final Duration maxAge;
 }
 
@@ -302,7 +305,7 @@ final class BytesRetentionCompound extends BytesRetention {
          'maxBytes must be > 0 when set',
        );
 
-  /// Optional TTL since write.
+  /// Optional maximum time since last use.
   final Duration? maxAge;
 
   /// Optional max key count.
@@ -311,6 +314,80 @@ final class BytesRetentionCompound extends BytesRetention {
   /// Optional max total payload bytes.
   final int? maxBytes;
 }
+
+/// A named share of the store's budget, so one kind of media cannot evict
+/// every other.
+///
+/// Every row belongs to one quota ([BytesRecord.quota]). A quota over its own
+/// [maxBytes] / [maxEntries] gives back space from its own least recently used
+/// rows only. When the store as a whole is over its [BytesRetention] budget,
+/// the quota furthest over its share (bytes used / [maxBytes]) gives back
+/// first, so a long video cannot evict every avatar.
+///
+/// Identity is [name]. A store takes the limits of the quota it was configured
+/// with; a write naming a quota the store was not configured with brings its
+/// own limits.
+@immutable
+final class BytesQuota {
+  /// A quota named [name]; null limits mean only the store budget applies.
+  const BytesQuota(this.name, {this.maxBytes, this.maxEntries})
+    : assert(maxBytes == null || maxBytes > 0, 'maxBytes must be > 0'),
+      assert(maxEntries == null || maxEntries > 0, 'maxEntries must be > 0');
+
+  /// Identity of the quota; persisted on every row.
+  final String name;
+
+  /// Bytes this quota may hold before it evicts within itself.
+  final int? maxBytes;
+
+  /// Rows this quota may hold before it evicts within itself.
+  final int? maxEntries;
+
+  /// Still images, stickers, avatars: 256 MiB. Rows written without a quota,
+  /// and rows stored before quotas existed, belong here.
+  static const BytesQuota images = BytesQuota(
+    _defaultQuotaName,
+    maxBytes: 256 * 1024 * 1024,
+  );
+
+  /// Byte ranges of streamed video: 768 MiB.
+  static const BytesQuota videoRanges = BytesQuota(
+    'video_ranges',
+    maxBytes: 768 * 1024 * 1024,
+  );
+
+  /// Rendered Lottie frame caches: 256 MiB.
+  static const BytesQuota lottieFrames = BytesQuota(
+    'lottie_frames',
+    maxBytes: 256 * 1024 * 1024,
+  );
+
+  /// Glyph atlas pages: 32 MiB.
+  static const BytesQuota glyphs = BytesQuota(
+    'glyphs',
+    maxBytes: 32 * 1024 * 1024,
+  );
+
+  /// The four quotas [BytesCache.open] configures by default.
+  static const List<BytesQuota> standard = [
+    images,
+    videoRanges,
+    lottieFrames,
+    glyphs,
+  ];
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is BytesQuota && other.name == name;
+
+  @override
+  int get hashCode => name.hashCode;
+
+  @override
+  String toString() => 'BytesQuota($name)';
+}
+
+const String _defaultQuotaName = 'images';
 
 /// Keys removed and bytes freed by [IBytesCache.prune].
 @immutable
@@ -458,10 +535,14 @@ final class BytesRecord {
     required this.accessedAt,
     required this.byteLength,
     this.httpCacheMeta,
+    this.quota = _defaultQuotaName,
   });
 
   /// Entry identity.
   final BytesCacheKey key;
+
+  /// [BytesQuota.name] of the quota this row counts against.
+  final String quota;
 
   /// When the payload was last written (UTC preferred).
   final DateTime writtenAt;
@@ -484,12 +565,14 @@ final class BytesRecord {
     DateTime? accessedAt,
     int? byteLength,
     HttpCacheMeta? httpCacheMeta,
+    String? quota,
   }) => BytesRecord(
     key: key,
     writtenAt: writtenAt ?? this.writtenAt,
     accessedAt: accessedAt ?? this.accessedAt,
     byteLength: byteLength ?? this.byteLength,
     httpCacheMeta: httpCacheMeta ?? this.httpCacheMeta,
+    quota: quota ?? this.quota,
   );
 }
 
@@ -623,10 +706,15 @@ abstract interface class IBytesCache {
   /// default) clears any previous meta for [key]. That matches a bytes-only
   /// replace: the old ETag belonged to the old body. [BytesCacheKey] is
   /// unchanged either way.
+  ///
+  /// [quota] is the [BytesQuota] the row counts against. Null keeps the quota
+  /// of the row [key] already has, else [BytesQuota.images]. Stores without
+  /// quotas ignore it.
   Future<void> write(
     BytesCacheKey key,
     Uint8List bytes, {
     HttpCacheMeta? httpCacheMeta,
+    BytesQuota? quota,
   });
 
   /// Deletes one key if present (index and payload when composed).
@@ -713,7 +801,7 @@ abstract interface class IBytesStore implements IBytesCache, IBytesRichCache {
 /// miss as [read], and attaches [BytesRecord] timestamps plus
 /// [HttpCacheMeta] when the index row has them.
 final class IndexedBytesCache implements IBytesStore {
-  /// Wires [index] and [blobs] under [retention].
+  /// Wires [index] and [blobs] under [retention], shared by [quotas].
   ///
   /// [clock] is injectable for tests (defaults to UTC now).
   /// [reclaimOrphans] runs from [reclaimOrphans] and at the end of [prune]
@@ -723,9 +811,11 @@ final class IndexedBytesCache implements IBytesStore {
     required IBytesIndex index,
     required IBytesBlobStore blobs,
     this.retention = BytesRetention.standard,
+    Iterable<BytesQuota> quotas = BytesQuota.standard,
     DateTime Function()? clock,
     Future<void> Function(Set<String> indexedKeys)? reclaimOrphans,
-  }) : _index = index,
+  }) : _quotas = {for (final quota in quotas) quota.name: quota},
+       _index = index,
        _blobs = blobs,
        _clock = clock ?? _defaultClock,
        _reclaimOrphans = reclaimOrphans;
@@ -737,6 +827,9 @@ final class IndexedBytesCache implements IBytesStore {
   /// Eviction policy for this instance.
   final BytesRetention retention;
   final DateTime Function() _clock;
+
+  /// Quotas by name: the configured ones, plus any a write brought along.
+  final Map<String, BytesQuota> _quotas;
 
   final Map<BytesCacheKey, DateTime> _pendingAccess = {};
 
@@ -799,10 +892,14 @@ final class IndexedBytesCache implements IBytesStore {
     });
   }
 
-  /// Leased rows stay live past their age: someone holds their file.
+  /// Leased rows stay live past their age: someone holds their file. Age
+  /// counts from the last use, including one still soft in [_pendingAccess].
   bool _isLive(BytesRecord record, DateTime now) =>
       _leases.containsKey(record.key) ||
-      !retention.isExpired(record.writtenAt, now: now);
+      !retention.isExpired(_lastUse(record), now: now);
+
+  DateTime _lastUse(BytesRecord record) =>
+      _pendingAccess[record.key] ?? record.accessedAt;
 
   /// Reads payload after TTL check. Soft-touches access time (see class docs).
   ///
@@ -939,6 +1036,7 @@ final class IndexedBytesCache implements IBytesStore {
     BytesCacheKey key,
     Uint8List bytes, {
     HttpCacheMeta? httpCacheMeta,
+    BytesQuota? quota,
   }) {
     if (bytes.isEmpty) {
       return evict(key);
@@ -948,6 +1046,9 @@ final class IndexedBytesCache implements IBytesStore {
       final preEpoch = await _captureIndexSnapshot();
       await _flushPendingAccess();
       final now = _clock();
+      if (quota != null) _quotas.putIfAbsent(quota.name, () => quota);
+      final quotaName =
+          quota?.name ?? (await _index.get(key))?.quota ?? _defaultQuotaName;
       await _blobs.write(key, bytes);
       _orphanedLeases.remove(key);
       await _index.put(
@@ -957,6 +1058,7 @@ final class IndexedBytesCache implements IBytesStore {
           accessedAt: now,
           byteLength: bytes.length,
           httpCacheMeta: httpCacheMeta,
+          quota: quotaName,
         ),
       );
       await _trimCapacity();
@@ -1125,7 +1227,8 @@ final class IndexedBytesCache implements IBytesStore {
           live.writtenAt != value.writtenAt ||
           live.accessedAt != value.accessedAt ||
           live.byteLength != value.byteLength ||
-          live.httpCacheMeta != value.httpCacheMeta) {
+          live.httpCacheMeta != value.httpCacheMeta ||
+          live.quota != value.quota) {
         await _index.put(value);
       }
     }
@@ -1163,37 +1266,133 @@ final class IndexedBytesCache implements IBytesStore {
     await reclaim(keys);
   }
 
+  /// One eviction pass over every quota; returns the bytes it freed.
+  ///
+  /// First each quota over its own limits gives back its least recently used
+  /// rows. Then, while the store is over its [retention] budget, the quota
+  /// furthest over its share gives back one row at a time. Leased rows are
+  /// never candidates; when only leased rows remain the store stays over
+  /// budget until a lease is released.
+  ///
+  /// The plan is built from one listing of the index, so a pass costs
+  /// O(n log n) whatever the number of victims.
   Future<int> _trimCapacity({List<BytesCacheKey>? evicted}) async {
     final limits = retention.limits;
+    final usage = <String, _QuotaUsage>{};
+    var totalBytes = 0;
+    var totalEntries = 0;
+    for (final record in await _index.values()) {
+      usage
+          .putIfAbsent(
+            record.quota,
+            () =>
+                _QuotaUsage(_quotas[record.quota] ?? BytesQuota(record.quota)),
+          )
+          .count(record, isCandidate: !_leases.containsKey(record.key));
+      totalBytes += record.byteLength;
+      totalEntries++;
+    }
+    for (final quota in usage.values) {
+      quota.candidates.sort((a, b) => _lastUse(a).compareTo(_lastUse(b)));
+    }
+
+    final victims = <BytesRecord>[];
+    void take(_QuotaUsage quota) {
+      final victim = quota.takeOldest();
+      totalBytes -= victim.byteLength;
+      totalEntries--;
+      victims.add(victim);
+    }
+
+    for (final quota in usage.values) {
+      while (quota.isOverOwnLimits && quota.hasCandidates) {
+        take(quota);
+      }
+    }
+
+    bool overBudget() =>
+        switch (limits.maxBytes) {
+          final max? => totalBytes > max,
+          null => false,
+        } ||
+        switch (limits.maxEntries) {
+          final max? => totalEntries > max,
+          null => false,
+        };
+
+    while (overBudget()) {
+      final shareOf = limits.maxBytes ?? totalBytes;
+      _QuotaUsage? pick;
+      for (final quota in usage.values) {
+        if (!quota.hasCandidates) continue;
+        if (pick == null) {
+          pick = quota;
+          continue;
+        }
+        final pressure = quota.pressure(shareOf);
+        final best = pick.pressure(shareOf);
+        if (pressure > best ||
+            (pressure == best &&
+                _lastUse(quota.oldest).isBefore(_lastUse(pick.oldest)))) {
+          pick = quota;
+        }
+      }
+      if (pick == null) break;
+      take(pick);
+    }
+
     var freed = 0;
-
-    while (true) {
-      final records = (await _index.values()).toList();
-      final totalBytes = records.fold<int>(0, (s, e) => s + e.byteLength);
-      final overEntries = switch (limits.maxEntries) {
-        final max? => records.length > max,
-        null => false,
-      };
-      final overBytes = switch (limits.maxBytes) {
-        final max? => totalBytes > max,
-        null => false,
-      };
-      if (!overEntries && !overBytes) break;
-      // A leased file is not a candidate; when only leased rows remain the
-      // store stays over budget until a lease is released.
-      final candidates = [
-        for (final record in records)
-          if (!_leases.containsKey(record.key)) record,
-      ];
-      if (candidates.isEmpty) break;
-
-      candidates.sort((a, b) => a.accessedAt.compareTo(b.accessedAt));
-      final victim = candidates.first;
+    for (final victim in victims) {
       freed += victim.byteLength;
       evicted?.add(victim.key);
       await _deleteBoth(victim.key);
     }
     return freed;
+  }
+}
+
+/// One quota's usage and eviction candidates while a trim pass plans.
+final class _QuotaUsage {
+  _QuotaUsage(this.quota);
+
+  final BytesQuota quota;
+  int bytes = 0;
+  int entries = 0;
+
+  /// Unleased rows, least recently used first once sorted.
+  final List<BytesRecord> candidates = [];
+  var _next = 0;
+
+  void count(BytesRecord record, {required bool isCandidate}) {
+    bytes += record.byteLength;
+    entries++;
+    if (isCandidate) candidates.add(record);
+  }
+
+  bool get hasCandidates => _next < candidates.length;
+
+  BytesRecord get oldest => candidates[_next];
+
+  bool get isOverOwnLimits =>
+      switch (quota.maxBytes) {
+        final max? => bytes > max,
+        null => false,
+      } ||
+      switch (quota.maxEntries) {
+        final max? => entries > max,
+        null => false,
+      };
+
+  /// Share of its own budget in use; a quota without one is measured against
+  /// [fallback], the store's budget.
+  double pressure(int fallback) =>
+      bytes / (quota.maxBytes ?? (fallback > 0 ? fallback : 1));
+
+  BytesRecord takeOldest() {
+    final victim = candidates[_next++];
+    bytes -= victim.byteLength;
+    entries--;
+    return victim;
   }
 }
 
@@ -1281,7 +1480,7 @@ final class MemoryBytesCache implements IBytesStore {
   bool contains(BytesCacheKey key) => switch (_entries[key]) {
     final entry? =>
       entry.bytes.isNotEmpty &&
-          !retention.isExpired(entry.writtenAt, now: _clock()),
+          !retention.isExpired(entry.accessedAt, now: _clock()),
     null => false,
   };
 
@@ -1290,7 +1489,7 @@ final class MemoryBytesCache implements IBytesStore {
   Future<BytesRichHit?> readRich(BytesCacheKey key) async {
     if (_entries[key] case final entry?) {
       final now = _clock();
-      if (retention.isExpired(entry.writtenAt, now: now)) {
+      if (retention.isExpired(entry.accessedAt, now: now)) {
         _entries.remove(key);
         return null;
       }
@@ -1316,11 +1515,13 @@ final class MemoryBytesCache implements IBytesStore {
   /// still consumes [BytesRetention.maxEntries] capacity.
   ///
   /// [httpCacheMeta] lives in the entry for [readRich]. Null clears prior meta.
+  /// [quota] is ignored: a memory store keeps one budget.
   @override
   Future<void> write(
     BytesCacheKey key,
     Uint8List bytes, {
     HttpCacheMeta? httpCacheMeta,
+    BytesQuota? quota,
   }) async {
     if (bytes.isEmpty) {
       _entries.remove(key);
@@ -1349,9 +1550,9 @@ final class MemoryBytesCache implements IBytesStore {
     var freed = 0;
     final now = _clock();
 
-    if (retention.limits.maxAge case final maxAge?) {
+    if (retention.limits.maxAge != null) {
       final expired = _entries.entries
-          .where((e) => now.difference(e.value.writtenAt) > maxAge)
+          .where((e) => retention.isExpired(e.value.accessedAt, now: now))
           .map((e) => e.key)
           .toList();
       for (final key in expired) {
@@ -1430,6 +1631,7 @@ final class NoOpBytesCache implements IBytesCache {
     BytesCacheKey key,
     Uint8List bytes, {
     HttpCacheMeta? httpCacheMeta,
+    BytesQuota? quota,
   }) async {}
 
   /// Nothing to remove.
@@ -1456,6 +1658,9 @@ abstract final class BytesCache {
 
   /// Opens the environment-specific durable store.
   ///
+  /// [retention] is the store's whole budget; [quotas] share it (see
+  /// [BytesQuota]).
+  ///
   /// On VM, [directory] is required (hosts should pass a path under the app
   /// cache root, not documents) and the store is a file index plus
   /// one-file-per-key blobs on a long-lived isolate worker.
@@ -1478,6 +1683,7 @@ abstract final class BytesCache {
   static Future<IBytesStore> open({
     String? directory,
     BytesRetention retention = BytesRetention.standard,
+    Iterable<BytesQuota> quotas = BytesQuota.standard,
     DateTime Function()? clock,
     BytesDiagnostics diagnostics = const BytesDiagnostics.silent(),
     bool throwOnOpenFailure = false,
@@ -1487,6 +1693,7 @@ abstract final class BytesCache {
       return await environment_specific.$openBytesCache(
         directory: directory,
         retention: retention,
+        quotas: quotas,
         clock: clock,
       );
     } on Object catch (error, stackTrace) {

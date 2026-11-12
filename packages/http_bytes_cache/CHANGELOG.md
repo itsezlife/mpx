@@ -13,6 +13,15 @@
 - `IBytesStore.leaseFile` hands out a `FileLease`: the path of a stored
   payload that eviction, expiry and orphan reclaim leave in place until the
   lease is released. VM stores only; memory and web stores return null.
+- Named quotas (`BytesQuota`: images, video ranges, Lottie frames, glyphs)
+  share one store budget: a full quota evicts only within itself, and under
+  total pressure the quota furthest over its share gives back first. Writes
+  and `BytesRequest` take a `quota`; the index keeps it per row.
+- **Behaviour change:** retention age counts from last use, not from the
+  write, so a body used daily never expires. `BytesRetention.standard` is now
+  30 days since last use, 10 000 entries and 1 GiB.
+- One eviction pass plans from a single index listing (was one listing per
+  victim).
 - `package:http_bytes_cache/testing.dart`: `runBytesStoreContract` and
   in-memory index and blob fakes.
 
