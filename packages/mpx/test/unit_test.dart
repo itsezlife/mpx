@@ -6,8 +6,10 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'signals/device_signals_test.dart' as device_signals_test;
+import 'signals/fake_device_signals_test.dart' as fake_device_signals_test;
+
 void main() {
-  // The stub has no behaviour yet; this keeps the entrypoint runnable until
-  // the first real test file replaces it.
-  test('package stub loads', () {});
+  group('device_signals_test', device_signals_test.main);
+  group('fake_device_signals_test', fake_device_signals_test.main);
 }

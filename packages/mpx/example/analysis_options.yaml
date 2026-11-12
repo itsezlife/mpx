@@ -1,0 +1,6 @@
+# The repo's strict modes and lint set; an app documents no public API.
+include: ../../../analysis_options.yaml
+
+linter:
+  rules:
+    public_member_api_docs: false

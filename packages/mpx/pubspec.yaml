@@ -21,8 +21,8 @@ dependencies:
     path: ../mpx_core
   http_bytes_cache:
     path: ../http_bytes_cache
-
-dev_dependencies:
+  # The contract suite in testing.dart registers tests itself, and a library
+  # cannot import a dev dependency.
   flutter_test:
     sdk: flutter
 
