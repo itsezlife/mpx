@@ -28,10 +28,18 @@ environment:
 
 dependencies:
   cancel_token: ^0.1.1
+  # code_assets, hooks and native_toolchain_c are for hook/build.dart, which
+  # builds the native reader; hook dependencies go under dependencies.
+  # code_assets 2.x, hooks 2.2 and native_toolchain_c 0.19.4+ need meta
+  # ^1.19, which the pinned Flutter SDK (meta 1.17) does not allow yet.
+  code_assets: ^1.2.1
   crypto: ^3.0.6
+  ffi: ^2.1.4
   http: ^1.6.0
+  hooks: ^2.0.2
   http_parser: ^4.1.2
   meta: any
+  native_toolchain_c: ^0.19.2
   path: ^1.9.1
   # Only lib/testing.dart needs this: its contract suites are written with the
   # test framework, and a library cannot import a dev dependency.

@@ -123,6 +123,25 @@ resume, the whole body buffered by design.
 - `mpx_lottie`'s frame cache and the chat's glyph atlas each implement
   an eviction callback.
 
+## Settled in implementation
+
+- One index: ranged rows are index rows with their range set and total
+  length, under the same retention pass (tickets 19-21).
+- The native reader is a C library built from source by the package's build
+  hook (`hooks`, `code_assets`, `native_toolchain_c`): `http_bytes_cache`
+  stays a non-plugin package and needs no prebuilts (one small C file, the
+  platform toolchain Flutter already requires). No Windows build yet (POSIX
+  threads and `pread`). Players do not link it by name: the Dart side hands
+  them the address of its `hbc_api` function table
+  (`NativeRangedReaders.apiAddress`), and their Kotlin (through a JNI shim)
+  or Swift code calls through it, compiled against
+  `native/include/http_bytes_cache.h`. The "range landed" signal goes from
+  Dart to C over FFI (`hbc_range_landed`, a condition variable per
+  resource); a missing range reaches Dart through a `NativeCallable.listener`.
+- The hook dependencies stay on `code_assets` 1.2 / `hooks` 2.0 /
+  `native_toolchain_c` 0.19.2 until the pinned Flutter SDK allows `meta`
+  1.19: `code_assets` 2.x needs `hooks` 2.2, which needs it.
+
 ## Open in implementation
 
 - `stale-if-error` parsing and whether SWR also reads `Cache-Control`
@@ -132,12 +151,8 @@ resume, the whole body buffered by design.
 - Process-wide singletons (`shared`, diagnostics): whether to move to instance
   scope.
 - Provenance refresh: a hook between 403/410 and re-resolving an expired URL.
-- One index file or two indexes under one retention brain for whole and ranged
-  rows.
 - Quota sizes and the default last-use horizon (the chat's ADR 022 uses one
   month).
-- How the native reader ships (hook-built C library or plugin code) and how
-  Kotlin and Swift link it; whether it joins the prebuilt pipeline (ADR 0008).
 - Alias edge cases: a server key that already has bytes, chains, and release
   while a reader is open.
 - Encrypted-at-rest media: out unless DRM lands.

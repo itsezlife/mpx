@@ -6,6 +6,7 @@ import 'cache/cache_middleware_test.dart' as cache_middleware_test;
 import 'cache/cache_test.dart' as cache_test;
 import 'cache/indexed_cache_test.dart' as indexed_cache_test;
 import 'cache/skip_cache_middleware_test.dart' as skip_cache_middleware_test;
+import 'native/native_reader_test.dart' as native_reader_test;
 import 'open/open_test.dart' as open_test;
 import 'ranged/byte_range_set_test.dart' as byte_range_set_test;
 import 'ranged/fast_start_test.dart' as fast_start_test;
@@ -66,4 +67,5 @@ void main() => group('Unit', () {
   ranged_store_test.main();
   ranged_resource_test.main();
   fast_start_test.main();
+  native_reader_test.main();
 });

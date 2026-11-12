@@ -1701,7 +1701,7 @@ final class IndexedBytesCache implements IRangedBytesStore {
           BytesLogEvent(
             level: BytesLogLevel.error,
             message: 'bytes store: committing ranged writes: $error',
-            op: BytesLogOp.quotaTrim,
+            op: BytesLogOp.rangedCommit,
             stackTrace: stackTrace,
           ),
         );

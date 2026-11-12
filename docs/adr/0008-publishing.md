@@ -78,8 +78,9 @@ hosted and SDK dependencies, and forbids unpublishing after 48 hours.
 
 ## Open in implementation
 
-- How `http_bytes_cache`'s native reader is built and shipped, and whether it
-  needs prebuilts (ADR 0002).
+- Hooks 2.x for `http_bytes_cache`: its hook builds the native reader from
+  source (no prebuilts, ADR 0002) on `code_assets` 1.2 / `hooks` 2.0 until
+  the pinned Flutter SDK allows the `meta` that `code_assets` 2.x needs.
 - `melos version` mode (independent vs fixed); the research notes independent
   as the default.
 - Whether pana sees `mpx_lottie`'s web path as Wasm-ready.

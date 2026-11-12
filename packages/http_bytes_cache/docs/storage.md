@@ -64,6 +64,15 @@ head (1 MiB by default), walks the top-level MP4 boxes from offset 0 and
 ensures the whole `moov`; when `moov` follows `mdat`, the walk jumps over the
 media data and only the tail is fetched.
 
+`NativeRangedReaders` (`native_reader.dart`, VM) publishes a resource to the
+C reader with its key, file path and length, pushes its present spans, then
+forwards every `RangeLanded` / `RangesReset` and length change over FFI. A
+native read of missing bytes calls back (a `NativeCallable.listener`) and
+Dart ensures at least `readAheadBytes` from there; a failed fetch wakes the
+readers inside it with `HBC_ERR_FAILED`. Reads run on the player's threads,
+`pread` the file outside the library's lock, and never touch the Dart
+isolate.
+
 ## Concurrent reads vs exclusive mutate
 
 `IndexedBytesCache` uses language primitives only (shared/exclusive gate).

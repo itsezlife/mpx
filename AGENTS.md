@@ -29,7 +29,7 @@ A new test file is added there; a test restores any global state it changes.
 
 | Package | Role | ADR |
 | --- | --- | --- |
-| `packages/http_bytes_cache` | Pure-Dart HTTP bytes cache: resolve ladder, middlewares, disk store (later: ranged resources, native reader) | [0002](docs/adr/0002-bytes-cache.md) |
+| `packages/http_bytes_cache` | HTTP bytes cache: resolve ladder, middlewares, disk store, ranged resources; a hook-built C native reader | [0002](docs/adr/0002-bytes-cache.md) |
 | `packages/mpx_core` | Plugin: media identity, asset cache and pipeline, clock, budgets, texture hosts, image decoder | [0003](docs/adr/0003-media-core-and-decoders.md) |
 | `packages/mpx_lottie` | Vector animation decoder + native library (build hook) | [0003](docs/adr/0003-media-core-and-decoders.md) |
 | `packages/mpx_video_decoder` | Software video decoder for silent loops + native library | [0003](docs/adr/0003-media-core-and-decoders.md) |

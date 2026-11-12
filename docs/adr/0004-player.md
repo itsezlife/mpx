@@ -117,8 +117,8 @@ the bytes cache, with playlists still through the loader.
 
 ## Open in implementation
 
-- How `mpx_player`'s Kotlin and Swift code link the native reader
-  (ADR 0002).
+- The JNI shim and Swift wrapper over the reader's function table (ADR 0002
+  settles how they reach it: its address from Dart, no linking by name).
 - Whether the API exposes "texture + size + rotation" uniformly, given Android
   rotates in Dart and Apple bakes it in.
 - The player texture budget's size and how it relates to the CPU pool's.

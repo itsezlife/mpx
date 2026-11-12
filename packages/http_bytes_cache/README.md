@@ -60,6 +60,8 @@ Future<void> main() async {
   from last use; no background timer.
 - Leased file paths that eviction leaves alone, and aliases that let a local
   file answer for its server key without a copy.
+- A native reader (C, built by the package's build hook): native players read
+  cached ranges directly by key and block only on missing ones.
 - VM and web stores; open falls back to memory on a hard storage failure.
 - Soft diagnostics: silent, `developer.log`, or a host callback.
 

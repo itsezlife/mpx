@@ -79,6 +79,14 @@ The signal that bytes are in the sparse file and can be read
 Native readers wake on it.
 _Avoid_: polling the file; signalling before the write returns
 
+**Native reader**:
+The C library (`native/`, symbols `hbc_*`) that native players read ranged
+resources through, by cache key. Present bytes read straight from the sparse
+file; a missing range asks Dart to fetch (at the reader's priority) and the
+read blocks until Dart signals it landed, the read is cancelled, the fetch
+fails or the resource is unpublished. `NativeRangedReaders` is its Dart side.
+_Avoid_: a Dart round trip per read; a loopback proxy for progressive files
+
 **BytesPeek**:
 `BytesResolver.peek(request)`: `cached`, `inFlight` or `absent`, from the
 store's RAM index plus resolves and GETs underway. Cached wins over in flight.

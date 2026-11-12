@@ -135,6 +135,14 @@ extension type const BytesLogOp(String value) implements String {
   /// A trim the store ran on its own (after a registered quota's usage
   /// report) failed.
   static const quotaTrim = BytesLogOp('quota_trim');
+
+  /// The deferred trim-and-commit epoch of ranged writes failed; the next
+  /// epoch commits them.
+  static const rangedCommit = BytesLogOp('ranged_commit');
+
+  /// A fetch a native reader asked for failed; the blocked readers inside it
+  /// returned a failure.
+  static const nativeFetch = BytesLogOp('native_fetch');
 }
 
 /// Soft-path report from the bytes resolve ladder (failures and audible resolve

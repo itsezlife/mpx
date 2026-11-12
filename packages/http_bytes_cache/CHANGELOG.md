@@ -61,6 +61,12 @@
 - `RangedResource.fastStart` fetches the head of a progressive MP4, finds
   `moov` and fetches the tail when `moov` follows the media data, so playback
   starts before the file is cached. Every open of a key shares one resource.
+- Native reader (`package:http_bytes_cache/native_reader.dart`, VM): a C
+  library the package's build hook compiles. `NativeRangedReaders` publishes
+  ranged resources so native players read the sparse files directly by cache
+  key and block only on missing bytes, which Dart fetches at the reader's
+  priority and signals over FFI once landed. Players reach the C functions
+  through `NativeRangedReaders.apiAddress`. No Windows build yet.
 - `package:http_bytes_cache/testing.dart`: `runBytesStoreContract`,
   `runRangedBytesStoreContract` and in-memory index and blob fakes.
 

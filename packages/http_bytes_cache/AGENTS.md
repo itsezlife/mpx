@@ -43,6 +43,8 @@ More: [`docs/development.md`](docs/development.md).
 | `http/byte_range.dart` | `ByteRange` (half-open request range), `ContentRange` parse | [resolve-ladder](docs/resolve-ladder.md) |
 | `http/request_priority.dart` | `RequestPriority`, `PriorityToken` | [resolve-ladder](docs/resolve-ladder.md) |
 | `ranged/` | `ByteRangeSet`, `RangedBytes` / `RangedResource` (chunked range fetch, range-landed events) | [storage](docs/storage.md) |
+| `native/` (via `lib/native_reader.dart`, VM only) | `NativeRangedReaders` / `NativePublication` (publish, fetch on miss, landed signal over FFI), `NativeRangedReader`, FFI bindings | [storage](docs/storage.md) |
+| `../native/`, `../hook/build.dart` | The C reader (`http_bytes_cache.h`, `hbc_*` symbols) and the hook that compiles it | [ADR 0002](../../docs/adr/0002-bytes-cache.md) |
 | `testing/` (via `lib/testing.dart`) | `runBytesStoreContract`, `runRangedBytesStoreContract`, in-memory index / blob fakes | [development](docs/development.md) |
 | `http/middlewares/` | HTTP middlewares (`Timeout`, opt-in `Retry`, `Bearer`, `Conditional`, `Logger$Developer`) | [resolve-ladder](docs/resolve-ladder.md) |
 | `bytes_diagnostics.dart` | Soft-path policy (`silent` / `developer` / `onEvent`); ops include revalidated / stale-used / unconditional | [resolve-ladder](docs/resolve-ladder.md) |
@@ -74,7 +76,10 @@ Public API is the barrel `lib/http_bytes_cache.dart`. See
 7. **One VM test entrypoint:** a new `test/**/foo_test.dart` (except Chrome-only
    open) must be wired into `test/unit_test.dart` (import + `main()` inside
    `group('Unit', …)`) or the default suite run skips it.
-8. **Pure Dart core:** no Flutter SDK / `flutter_test`, no `package:shared`,
+8. **Pure Dart core:** the only native part is the C reader in `native/`,
+   built by `hook/build.dart` and bound in `lib/src/native/` (imported only
+   by `lib/native_reader.dart`, never by the main barrel: web code must not
+   see `dart:ffi`). No Flutter SDK / `flutter_test`, no `package:shared`,
    no `lints_tool`. No `package:flutter` or `package:shared` imports in
    `lib/`, and no dependency on `mpx_core` (ADR 0001). Paint widgets and
    Flutter adapters do not belong here. Store / ladder microbenches stay in
