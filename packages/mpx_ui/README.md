@@ -2,8 +2,8 @@
 
 Optional media UI for mpx: a fullscreen media viewer and feed list and pager widgets.
 
-> Early: the feed list and the photo viewer work; video in the viewer and
-> the pager are on their way.
+> Early: the feed list, the pager and the photo viewer work; video in the
+> viewer is on its way.
 
 ## Install
 
@@ -63,12 +63,14 @@ MediaViewer.show(
 
 - `FeedListView`: every visible clip plays muted, frames advance above the
   policy's floor, the items ahead preload by stage
+- `FeedPagerView`: the page shown plays with sound, its neighbours keep
+  prepared players, a swipe takes one over
 - `MediaViewer`: photos open from and close to their origin; drag down to
   dismiss, double tap and pinch to zoom, swipe to page; `ViewerPolicy.$Android`
 - Viewer chrome: bars, counter, caption, thumbnail strip and menu; save and
   share stay the host's actions, handed the cached file and the current frame
 
-Planned: viewer video, iOS and desktop policies, feed pager.
+Planned: viewer video, iOS and desktop policies.
 
 ## Docs
 

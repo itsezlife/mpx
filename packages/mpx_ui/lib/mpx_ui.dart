@@ -8,10 +8,13 @@
 ///
 /// `FeedListView` plays every visible clip of a list muted, as a list-mode
 /// `FeedPolicy` of `mpx_player` says, and preloads the items ahead through
-/// the core's asset cache scope.
+/// the core's asset cache scope. `FeedPagerView` plays the page shown with
+/// sound and keeps its neighbours' players prepared, as a pager-mode policy
+/// says.
 library;
 
 export 'src/feed/feed_list_view.dart';
+export 'src/feed/feed_pager_view.dart';
 export 'src/viewer/gallery_source.dart';
 export 'src/viewer/media_viewer.dart';
 export 'src/viewer/origin_bridge.dart';

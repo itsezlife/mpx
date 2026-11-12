@@ -166,7 +166,12 @@ final class FeedListPlanner {
       if (index < 0 || index >= viewport.itemCount) return;
       final stage = policy.preloadStaging(distance);
       if (stage == null) return;
-      preloads[index] = _bounded(stage, item(index), viewport.fastScroll);
+      preloads[index] = policy.boundPreload(
+        stage,
+        item(index),
+        conditions,
+        fastScroll: viewport.fastScroll,
+      );
       distances[index] = distance.abs();
     }
 
@@ -177,31 +182,5 @@ final class FeedListPlanner {
       add(trailing - d * step, -d);
     }
     return preloads;
-  }
-
-  // What the gate and the scroll speed leave of [stage]: an item that will
-  // not play gets its metadata only; one that gets a prefix at most the
-  // prefix; nothing heavier than a first frame starts during a fast scroll.
-  AssetPreloadStage _bounded(
-    AssetPreloadStage stage,
-    FeedItem item,
-    bool fastScroll,
-  ) {
-    var bounded = switch (policy.autoplayOf(item, conditions)) {
-      FeedAutoplay.none => AssetPreloadStage.metadata,
-      FeedAutoplay.prefixOnly => _atMostPrefix(stage),
-      FeedAutoplay.full => stage,
-    };
-    if (fastScroll && bounded is AssetPreloadStage$Seconds) {
-      bounded = AssetPreloadStage.metadata;
-    }
-    return bounded;
-  }
-
-  AssetPreloadStage _atMostPrefix(AssetPreloadStage stage) {
-    final prefix = policy.oversizePrefix;
-    if (prefix == null) return AssetPreloadStage.metadata;
-    final cap = AssetPreloadStage.seconds(prefix.duration);
-    return stage.compareTo(cap) <= 0 ? stage : cap;
   }
 }

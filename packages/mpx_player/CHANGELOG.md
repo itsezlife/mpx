@@ -9,6 +9,8 @@
   `FeedConditions` and `FeedListPlanner`.
 - `FeedSignals`: the host seam for network, power saving and thermal state,
   with `metered`, `powerSaving` and `stressed` for the core's pause layers.
+- `FeedPagerPlanner` and `FeedPager`: the pager mode over the pool;
+  `FeedPolicy.boundPreload` shared with the list planner.
 - One sound owner: `PlayerPool.soundOwner`, `onSoundOwnerLeftScreen`, and
   the `AudioFocus` seam on `PlayerBackend` (`FakeAudioFocus` in tests).
 

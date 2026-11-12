@@ -474,6 +474,34 @@ final class FeedPolicy {
   FeedAutoplay autoplayOf(FeedItem item, FeedConditions conditions) =>
       autoplayGate(item, conditions, this);
 
+  /// What the autoplay gate and the scroll speed leave of a preload [stage]
+  /// for [item]: an item that will not play gets its metadata only, one that
+  /// gets a prefix at most the prefix, and nothing heavier than a first frame
+  /// starts during a [fastScroll].
+  AssetPreloadStage boundPreload(
+    AssetPreloadStage stage,
+    FeedItem item,
+    FeedConditions conditions, {
+    bool fastScroll = false,
+  }) {
+    var bounded = switch (autoplayOf(item, conditions)) {
+      FeedAutoplay.none => AssetPreloadStage.metadata,
+      FeedAutoplay.prefixOnly => _atMostPrefix(stage),
+      FeedAutoplay.full => stage,
+    };
+    if (fastScroll && bounded is AssetPreloadStage$Seconds) {
+      bounded = AssetPreloadStage.metadata;
+    }
+    return bounded;
+  }
+
+  AssetPreloadStage _atMostPrefix(AssetPreloadStage stage) {
+    final prefix = oversizePrefix;
+    if (prefix == null) return AssetPreloadStage.metadata;
+    final cap = AssetPreloadStage.seconds(prefix.duration);
+    return stage.compareTo(cap) <= 0 ? stage : cap;
+  }
+
   // --- Reference defaults ---------------------------------------------------
 
   /// The reference autoplay gate.

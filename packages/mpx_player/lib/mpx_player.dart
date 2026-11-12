@@ -19,6 +19,7 @@ export 'src/audio/audio_focus.dart';
 export 'src/backend/player_backend.dart';
 export 'src/feed/feed_item.dart';
 export 'src/feed/feed_list_plan.dart';
+export 'src/feed/feed_pager.dart';
 export 'src/feed/feed_policy.dart';
 export 'src/feed/feed_signals.dart';
 export 'src/player/player_state.dart';

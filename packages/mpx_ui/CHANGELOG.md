@@ -13,6 +13,8 @@
 - `FeedListView`: a list that plays every visible clip muted and preloads
   the items ahead, by a list-mode `FeedPolicy`; it plans again when its
   `FeedSignals` change.
+- `FeedPagerView`: a pager over `FeedPager`; posters stand in until the
+  first frame, neighbours preload to their stage.
 
 ## 0.0.1
 
