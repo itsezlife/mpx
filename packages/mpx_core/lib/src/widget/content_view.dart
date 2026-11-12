@@ -87,9 +87,14 @@ class ContentView extends StatefulWidget {
     this.placeholder,
     this.placeholderTint,
     this.inView = true,
+    this.visibleFraction = 1,
     this.holdsWhileTickersOff = false,
     super.key,
-  }) : assert(opacity >= 0 && opacity <= 1, 'opacity must be within 0..1');
+  }) : assert(opacity >= 0 && opacity <= 1, 'opacity must be within 0..1'),
+       assert(
+         visibleFraction >= 0 && visibleFraction <= 1,
+         'visibleFraction must be within 0..1',
+       );
 
   /// Which content to show.
   final MediaKey content;
@@ -141,6 +146,12 @@ class ContentView extends StatefulWidget {
   /// scrolled out of a strip.
   final bool inView;
 
+  /// How much of the view its viewport shows, 0 to 1, passed to the binding
+  /// (`AssetBinding.visibleFraction`) while it is shown. A scrolling feed
+  /// sets it so a mostly hidden clip stops advancing below the profile's
+  /// `AssetProfile.advanceFloor`. 0 hides the view as [inView] false does.
+  final double visibleFraction;
+
   /// Whether a disabled [TickerMode] above holds the view rather than hiding
   /// it: it keeps its frame on screen and what it leased for it. For a
   /// surface whose tickers stop while it is still the one to come back (a
@@ -187,7 +198,7 @@ class _ContentViewState extends State<ContentView> {
         ..visible = true;
     } else {
       binding
-        ..visible = _shown
+        ..visibleFraction = _shown ? widget.visibleFraction : 0
         ..held = false;
     }
   }

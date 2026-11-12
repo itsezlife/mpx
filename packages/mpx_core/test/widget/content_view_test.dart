@@ -57,6 +57,22 @@ void main() {
       expect(producer.attempts.single.request.spec, _preset.spec);
     });
 
+    testWidgets('passes its visible fraction to the binding', (tester) async {
+      await tester.pumpWidget(
+        host(
+          ContentView(content: _sticker, preset: _preset, visibleFraction: 0.3),
+        ),
+      );
+      expect(producer.last.demand.priority, AssetPriority.visible);
+
+      await tester.pumpWidget(
+        host(
+          ContentView(content: _sticker, preset: _preset, visibleFraction: 0),
+        ),
+      );
+      expect(producer.last.demand.priority, AssetPriority.preload);
+    });
+
     testWidgets('is as large as the preset', (tester) async {
       await tester.pumpWidget(
         host(ContentView(content: _sticker, preset: _preset)),
