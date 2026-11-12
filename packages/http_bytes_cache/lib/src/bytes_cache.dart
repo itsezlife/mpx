@@ -389,6 +389,74 @@ final class BytesQuota {
 
 const String _defaultQuotaName = 'images';
 
+/// Frees up to `bytes` from a registered quota's files and returns how many
+/// bytes it freed (0 when it could free nothing).
+typedef QuotaEvictor = Future<int> Function(int bytes);
+
+/// A [BytesQuota] over files another owner keeps (a frame cache, glyph
+/// pages), counted against the store's one budget.
+///
+/// The store never reads, lists or deletes those files. The owner reports how
+/// many bytes it holds with [reportUsage]; when the store decides this quota
+/// must give back space it calls the owner's [QuotaEvictor] with the bytes it
+/// needs, and takes the returned count off [usedBytes]. A report that pushes
+/// the quota or the store over budget makes the store run an eviction pass on
+/// its own, without waiting for its next write.
+///
+/// The evictor runs inside the store's exclusive mutate domain: it must not
+/// await operations on the same store.
+final class RegisteredQuota {
+  /// Registration of [quota] for an owner whose files [onEvict] frees.
+  ///
+  /// Stores build these from [IBytesStore.registerQuota]; [onUsage] and
+  /// [onUnregister] are the store's hooks.
+  RegisteredQuota({
+    required this.quota,
+    required QuotaEvictor onEvict,
+    void Function()? onUsage,
+    void Function()? onUnregister,
+  }) : _onEvict = onEvict,
+       _onUsage = onUsage,
+       _onUnregister = onUnregister;
+
+  /// The quota whose budget the owner's files count against.
+  final BytesQuota quota;
+
+  final QuotaEvictor _onEvict;
+  final void Function()? _onUsage;
+  final void Function()? _onUnregister;
+  var _usedBytes = 0;
+  var _registered = true;
+
+  /// Bytes the owner last reported, less what it freed since.
+  int get usedBytes => _usedBytes;
+
+  /// Whether the store still counts this quota.
+  bool get isRegistered => _registered;
+
+  /// Sets the bytes the owner's files take now. Ignored after [unregister].
+  void reportUsage(int bytes) {
+    if (!_registered) return;
+    _usedBytes = bytes < 0 ? 0 : bytes;
+    _onUsage?.call();
+  }
+
+  /// Stops counting this quota; the store never asks it again. Idempotent.
+  void unregister() {
+    if (!_registered) return;
+    _registered = false;
+    _onUnregister?.call();
+  }
+
+  /// Asks the owner to free [bytes]; returns what it freed. Store side.
+  Future<int> evict(int bytes) async {
+    final freed = await _onEvict(bytes);
+    final taken = freed.clamp(0, _usedBytes);
+    _usedBytes -= taken;
+    return taken;
+  }
+}
+
 /// Keys removed and bytes freed by [IBytesCache.prune].
 @immutable
 final class BytesPruneReport {
@@ -748,6 +816,15 @@ abstract interface class IBytesStore implements IBytesCache, IBytesRichCache {
   /// Leases the payload file of [key], or null when [key] holds nothing or the
   /// store keeps no files. Taking a lease counts as a use of [key].
   Future<FileLease?> leaseFile(BytesCacheKey key);
+
+  /// Counts files another owner keeps against [quota] (see
+  /// [RegisteredQuota]); [onEvict] frees them when the store asks.
+  ///
+  /// Throws [StateError] when a quota of that name is already registered.
+  RegisteredQuota registerQuota(
+    BytesQuota quota, {
+    required QuotaEvictor onEvict,
+  });
 }
 
 /// [IBytesCache] that keeps metadata and payloads in separate stores.
@@ -839,6 +916,10 @@ final class IndexedBytesCache implements IBytesStore {
   /// Leased keys whose row is gone; their payload goes with the last lease.
   final Set<BytesCacheKey> _orphanedLeases = {};
 
+  /// Quotas over files other owners keep, by quota name.
+  final Map<String, RegisteredQuota> _registered = {};
+  var _trimScheduled = false;
+
   /// Shared/exclusive gate. Language primitives only, no Mutex package.
   ///
   /// Writers serialize on [_exclusiveTail]. Readers briefly chain on that same
@@ -877,6 +958,54 @@ final class IndexedBytesCache implements IBytesStore {
       });
     }
     return null;
+  }
+
+  @override
+  RegisteredQuota registerQuota(
+    BytesQuota quota, {
+    required QuotaEvictor onEvict,
+  }) {
+    _ensureOpen();
+    if (_registered.containsKey(quota.name)) {
+      throw StateError('Quota ${quota.name} is already registered');
+    }
+    _quotas.putIfAbsent(quota.name, () => quota);
+    late final RegisteredQuota registered;
+    registered = RegisteredQuota(
+      quota: quota,
+      onEvict: onEvict,
+      onUsage: _scheduleTrim,
+      onUnregister: () {
+        if (identical(_registered[quota.name], registered)) {
+          _registered.remove(quota.name);
+        }
+      },
+    );
+    return _registered[quota.name] = registered;
+  }
+
+  /// One eviction pass on the store's own initiative, after a registered
+  /// quota reports usage. Coalesced: reports in a burst share one pass.
+  void _scheduleTrim() {
+    if (_trimScheduled || _closed) return;
+    _trimScheduled = true;
+    _runExclusive(() async {
+      _trimScheduled = false;
+      if (_closed) return;
+      final preEpoch = await _captureIndexSnapshot();
+      final evicted = <BytesCacheKey>[];
+      await _trimCapacity(evicted: evicted);
+      if (evicted.isNotEmpty) await _commitOrRollback(preEpoch);
+    }).catchError((Object error, StackTrace stackTrace) {
+      BytesDiagnostics.current.report(
+        BytesLogEvent(
+          level: BytesLogLevel.error,
+          message: 'bytes store: eviction pass after a usage report: $error',
+          op: BytesLogOp.quotaTrim,
+          stackTrace: stackTrace,
+        ),
+      );
+    });
   }
 
   Future<void> _releaseLease(BytesCacheKey key) async {
@@ -1125,6 +1254,7 @@ final class IndexedBytesCache implements IBytesStore {
     _pendingAccess.clear();
     _leases.clear();
     _orphanedLeases.clear();
+    _registered.clear();
   });
 
   /// Registers as a reader on [_exclusiveTail], then runs [action] without
@@ -1270,8 +1400,9 @@ final class IndexedBytesCache implements IBytesStore {
   ///
   /// First each quota over its own limits gives back its least recently used
   /// rows. Then, while the store is over its [retention] budget, the quota
-  /// furthest over its share gives back one row at a time. Leased rows are
-  /// never candidates; when only leased rows remain the store stays over
+  /// furthest over its share gives back one row at a time. A registered quota
+  /// gives back by asking its owner for the bytes still needed. Leased rows
+  /// are never candidates; when only leased rows remain the store stays over
   /// budget until a lease is released.
   ///
   /// The plan is built from one listing of the index, so a pass costs
@@ -1279,66 +1410,74 @@ final class IndexedBytesCache implements IBytesStore {
   Future<int> _trimCapacity({List<BytesCacheKey>? evicted}) async {
     final limits = retention.limits;
     final usage = <String, _QuotaUsage>{};
+    _QuotaUsage usageOf(String name) => usage.putIfAbsent(
+      name,
+      () => _QuotaUsage(_quotas[name] ?? BytesQuota(name)),
+    );
     var totalBytes = 0;
     var totalEntries = 0;
     for (final record in await _index.values()) {
-      usage
-          .putIfAbsent(
-            record.quota,
-            () =>
-                _QuotaUsage(_quotas[record.quota] ?? BytesQuota(record.quota)),
-          )
-          .count(record, isCandidate: !_leases.containsKey(record.key));
+      usageOf(
+        record.quota,
+      ).count(record, isCandidate: !_leases.containsKey(record.key));
       totalBytes += record.byteLength;
       totalEntries++;
+    }
+    for (final registered in _registered.values) {
+      usageOf(registered.quota.name).registered = registered;
+      totalBytes += registered.usedBytes;
     }
     for (final quota in usage.values) {
       quota.candidates.sort((a, b) => _lastUse(a).compareTo(_lastUse(b)));
     }
 
     final victims = <BytesRecord>[];
-    void take(_QuotaUsage quota) {
-      final victim = quota.takeOldest();
-      totalBytes -= victim.byteLength;
-      totalEntries--;
-      victims.add(victim);
+    Future<void> take(_QuotaUsage quota, {required int bytesNeeded}) async {
+      if (quota.hasRows) {
+        final victim = quota.takeOldest();
+        totalBytes -= victim.byteLength;
+        totalEntries--;
+        victims.add(victim);
+        return;
+      }
+      final freed = await _askOwner(quota, bytesNeeded);
+      totalBytes -= freed;
     }
 
     for (final quota in usage.values) {
       while (quota.isOverOwnLimits && quota.hasCandidates) {
-        take(quota);
+        await take(quota, bytesNeeded: quota.bytesOverOwnLimit);
       }
     }
 
-    bool overBudget() =>
-        switch (limits.maxBytes) {
-          final max? => totalBytes > max,
-          null => false,
-        } ||
-        switch (limits.maxEntries) {
-          final max? => totalEntries > max,
-          null => false,
-        };
+    int bytesOverBudget() => switch (limits.maxBytes) {
+      final max? => totalBytes - max,
+      null => 0,
+    };
+    bool entriesOverBudget() => switch (limits.maxEntries) {
+      final max? => totalEntries > max,
+      null => false,
+    };
 
-    while (overBudget()) {
+    while (bytesOverBudget() > 0 || entriesOverBudget()) {
+      // Owners free bytes, not rows: they only help a byte overrun.
+      final ownersHelp = bytesOverBudget() > 0;
       final shareOf = limits.maxBytes ?? totalBytes;
       _QuotaUsage? pick;
       for (final quota in usage.values) {
-        if (!quota.hasCandidates) continue;
+        if (!(quota.hasRows || (ownersHelp && quota.canAskOwner))) continue;
         if (pick == null) {
           pick = quota;
           continue;
         }
         final pressure = quota.pressure(shareOf);
         final best = pick.pressure(shareOf);
-        if (pressure > best ||
-            (pressure == best &&
-                _lastUse(quota.oldest).isBefore(_lastUse(pick.oldest)))) {
+        if (pressure > best || (pressure == best && _olderFirst(quota, pick))) {
           pick = quota;
         }
       }
       if (pick == null) break;
-      take(pick);
+      await take(pick, bytesNeeded: bytesOverBudget());
     }
 
     var freed = 0;
@@ -1349,6 +1488,38 @@ final class IndexedBytesCache implements IBytesStore {
     }
     return freed;
   }
+
+  /// Tie-break between equally pressed quotas: an owner's files (no last-use
+  /// known here) go first, else the older least recently used row.
+  bool _olderFirst(_QuotaUsage quota, _QuotaUsage than) =>
+      switch ((quota.hasRows, than.hasRows)) {
+        (false, _) => true,
+        (true, false) => false,
+        (true, true) => _lastUse(quota.oldest).isBefore(_lastUse(than.oldest)),
+      };
+
+  /// Asks [quota]'s owner for [bytes]; an owner that throws or frees nothing
+  /// is not asked again in this pass.
+  Future<int> _askOwner(_QuotaUsage quota, int bytes) async {
+    final registered = quota.registered!;
+    var freed = 0;
+    try {
+      freed = await registered.evict(bytes);
+    } on Object catch (error, stackTrace) {
+      BytesDiagnostics.current.report(
+        BytesLogEvent(
+          level: BytesLogLevel.error,
+          message:
+              'bytes store: quota ${registered.quota.name} failed to evict: '
+              '$error',
+          op: BytesLogOp.quotaEvict,
+          stackTrace: stackTrace,
+        ),
+      );
+    }
+    quota.ownerFreed(freed);
+    return freed;
+  }
 }
 
 /// One quota's usage and eviction candidates while a trim pass plans.
@@ -1356,28 +1527,41 @@ final class _QuotaUsage {
   _QuotaUsage(this.quota);
 
   final BytesQuota quota;
-  int bytes = 0;
+  int _rowBytes = 0;
   int entries = 0;
+
+  /// Owner of files counted against this quota, when one registered.
+  RegisteredQuota? registered;
+  var _ownerSpent = false;
 
   /// Unleased rows, least recently used first once sorted.
   final List<BytesRecord> candidates = [];
   var _next = 0;
 
+  int get bytes => _rowBytes + (registered?.usedBytes ?? 0);
+
   void count(BytesRecord record, {required bool isCandidate}) {
-    bytes += record.byteLength;
+    _rowBytes += record.byteLength;
     entries++;
     if (isCandidate) candidates.add(record);
   }
 
-  bool get hasCandidates => _next < candidates.length;
+  bool get hasRows => _next < candidates.length;
+
+  bool get canAskOwner =>
+      registered != null && !_ownerSpent && registered!.usedBytes > 0;
+
+  bool get hasCandidates => hasRows || canAskOwner;
 
   BytesRecord get oldest => candidates[_next];
 
+  int get bytesOverOwnLimit => switch (quota.maxBytes) {
+    final max? => bytes - max,
+    null => 0,
+  };
+
   bool get isOverOwnLimits =>
-      switch (quota.maxBytes) {
-        final max? => bytes > max,
-        null => false,
-      } ||
+      bytesOverOwnLimit > 0 ||
       switch (quota.maxEntries) {
         final max? => entries > max,
         null => false,
@@ -1390,9 +1574,14 @@ final class _QuotaUsage {
 
   BytesRecord takeOldest() {
     final victim = candidates[_next++];
-    bytes -= victim.byteLength;
+    _rowBytes -= victim.byteLength;
     entries--;
     return victim;
+  }
+
+  /// [RegisteredQuota.evict] already took [freed] off the owner's usage.
+  void ownerFreed(int freed) {
+    if (freed <= 0) _ownerSpent = true;
   }
 }
 
@@ -1475,6 +1664,25 @@ final class MemoryBytesCache implements IBytesStore {
   /// Always null: a memory store keeps no files.
   @override
   Future<FileLease?> leaseFile(BytesCacheKey key) async => null;
+
+  final Set<String> _registered = {};
+
+  /// Accepts the registration but never asks the owner: a memory store keeps
+  /// no disk budget for another owner's files to count against.
+  @override
+  RegisteredQuota registerQuota(
+    BytesQuota quota, {
+    required QuotaEvictor onEvict,
+  }) {
+    if (!_registered.add(quota.name)) {
+      throw StateError('Quota ${quota.name} is already registered');
+    }
+    return RegisteredQuota(
+      quota: quota,
+      onEvict: onEvict,
+      onUnregister: () => _registered.remove(quota.name),
+    );
+  }
 
   @override
   bool contains(BytesCacheKey key) => switch (_entries[key]) {

@@ -90,6 +90,12 @@ final class BytesCache$VM implements IBytesStore {
   Future<FileLease?> leaseFile(BytesCacheKey key) => _inner.leaseFile(key);
 
   @override
+  RegisteredQuota registerQuota(
+    BytesQuota quota, {
+    required QuotaEvictor onEvict,
+  }) => _inner.registerQuota(quota, onEvict: onEvict);
+
+  @override
   Future<void> write(
     BytesCacheKey key,
     Uint8List bytes, {

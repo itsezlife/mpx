@@ -98,6 +98,15 @@ pressure the quota furthest over its share gives back first. Rows carry the
 quota name.
 _Avoid_: one LRU across every kind of media; a separate store per kind
 
+**RegisteredQuota**:
+A `BytesQuota` over files another owner keeps (`IBytesStore.registerQuota`).
+The owner reports usage; the store counts it in the budget and, when that
+quota must give back space, calls the owner's `QuotaEvictor` with the bytes
+needed. The store never lists or deletes those files. A report over budget
+starts an eviction pass without waiting for a write.
+_Avoid_: scanning or deleting another owner's folder; moving frame or glyph
+formats into the bytes store
+
 **BytesOrigin** (`network` / `cache`):
 Paint-relevant provenance of a resolved body. `cache` means the body was
 served without downloading a new network body (fresh store hit, revalidated

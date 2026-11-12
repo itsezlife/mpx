@@ -21,6 +21,7 @@ import 'storage/blob_store_vm_test.dart' as blob_store_vm_test;
 import 'storage/web_store_test.dart' as web_store_test;
 import 'store/file_lease_test.dart' as file_lease_test;
 import 'store/quotas_test.dart' as quotas_test;
+import 'store/registered_quotas_test.dart' as registered_quotas_test;
 import 'store/store_contract_test.dart' as store_contract_test;
 
 /// Single aggregate entrypoint for VM unit + integration suites.
@@ -48,4 +49,5 @@ void main() => group('Unit', () {
   store_contract_test.main();
   file_lease_test.main();
   quotas_test.main();
+  registered_quotas_test.main();
 });

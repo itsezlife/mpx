@@ -343,6 +343,15 @@ final class MiddlewareBytesCache implements IBytesStore {
     _ => null,
   };
 
+  @override
+  RegisteredQuota registerQuota(
+    BytesQuota quota, {
+    required QuotaEvictor onEvict,
+  }) => switch (inner) {
+    final IBytesStore store => store.registerQuota(quota, onEvict: onEvict),
+    _ => RegisteredQuota(quota: quota, onEvict: onEvict),
+  };
+
   /// Writes [bytes] under [key] as [CacheOperation$Write].
   @override
   Future<void> write(

@@ -17,6 +17,10 @@
   share one store budget: a full quota evicts only within itself, and under
   total pressure the quota furthest over its share gives back first. Writes
   and `BytesRequest` take a `quota`; the index keeps it per row.
+- `IBytesStore.registerQuota` counts files another owner keeps (a frame
+  cache, glyph pages) against the store budget. The owner reports its usage
+  and frees bytes when asked through its callback; the store never touches
+  those files.
 - **Behaviour change:** retention age counts from last use, not from the
   write, so a body used daily never expires. `BytesRetention.standard` is now
   30 days since last use, 10 000 entries and 1 GiB.

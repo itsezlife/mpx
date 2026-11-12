@@ -118,7 +118,16 @@ One eviction pass plans from one listing of the index: each quota over its own
 limits gives back its least recently used rows; then, while the store is over
 its budget, the quota with the highest bytes-used / `maxBytes` gives back one
 row at a time. Leased rows are never candidates. A quota the store was not
-configured with brings its own limits on write. Hosts may pass `compound`, `maxAge`,
+configured with brings its own limits on write.
+
+A registered quota (`registerQuota(quota, onEvict:)`) adds an owner's reported
+bytes to its quota and to the total. When that quota must give back space the
+store calls `onEvict(bytesNeeded)` inside the exclusive domain and takes the
+returned count off its usage; an owner that frees nothing (or throws, reported
+as `quota_evict`) is not asked again in that pass. A usage report schedules
+one coalesced eviction pass. The store never lists, reads or deletes the
+owner's files; orphan reclaim only touches top-level files, so an owner folder
+inside the store directory is safe. Hosts may pass `compound`, `maxAge`,
 `maxEntries`, `maxBytes`, or `unlimited`. When set, `maxEntries` and
 `maxBytes` must be **positive** (asserted on the retention constructors);
 non-positive caps are nonsense policy.

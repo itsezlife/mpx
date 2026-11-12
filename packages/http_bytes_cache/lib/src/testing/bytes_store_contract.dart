@@ -63,6 +63,28 @@ void runBytesStoreContract(String name, BytesStoreFactory create) {
       });
     });
 
+    group('registerQuota', () {
+      const frames = BytesQuota('contract_frames', maxBytes: 10);
+
+      test('refuses a second registration of one name', () async {
+        final store = await open();
+        store.registerQuota(frames, onEvict: (_) async => 0);
+        expect(
+          () => store.registerQuota(frames, onEvict: (_) async => 0),
+          throwsStateError,
+        );
+      });
+
+      test('allows the name again after unregister', () async {
+        final store = await open();
+        store.registerQuota(frames, onEvict: (_) async => 0).unregister();
+        final again = store.registerQuota(frames, onEvict: (_) async => 0)
+          ..reportUsage(4);
+        expect(again.usedBytes, 4);
+        expect(again.isRegistered, isTrue);
+      });
+    });
+
     group('leaseFile', () {
       test('is null for a key never written', () async {
         final store = await open();

@@ -124,6 +124,14 @@ extension type const BytesLogOp(String value) implements String {
   /// (stale without validators, or 412 fallback). Cold misses stay quiet.
   /// Debug only when diagnostics are audible.
   static const resolveUnconditional = BytesLogOp('resolve_unconditional');
+
+  /// A registered quota's eviction callback threw. The store counts it as
+  /// freeing nothing and moves on to other quotas.
+  static const quotaEvict = BytesLogOp('quota_evict');
+
+  /// A trim the store ran on its own (after a registered quota's usage
+  /// report) failed.
+  static const quotaTrim = BytesLogOp('quota_trim');
 }
 
 /// Soft-path report from the bytes resolve ladder (failures and audible resolve
