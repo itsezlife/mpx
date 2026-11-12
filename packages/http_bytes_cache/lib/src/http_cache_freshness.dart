@@ -1,11 +1,11 @@
+import 'package:http_bytes_cache/src/bytes_cache.dart';
 import 'package:http_parser/http_parser.dart' show parseHttpDate;
-import 'package:image_bytes_cache/src/image_bytes_cache.dart';
 import 'package:meta/meta.dart';
 
-/// Engine freshness rules for one [ImageHttpCacheMeta] row.
+/// Engine freshness rules for one [HttpCacheMeta] row.
 ///
-/// [ImageBytesResolver] calls this before deciding whether a cache hit can
-/// skip the network. [ImageBytesRetention] still owns durable eviction. This
+/// [BytesResolver] calls this before deciding whether a cache hit can
+/// skip the network. [BytesRetention] still owns durable eviction. This
 /// type only answers "fresh enough to skip GET?" and builds / merges meta from
 /// response headers.
 ///
@@ -17,7 +17,7 @@ import 'package:meta/meta.dart';
 /// ## When `Cache-Control` or `Expires` is present
 ///
 /// - `max-age` / `Expires`: compare lifetime to current age (`Age`, `Date`,
-///   [ImageHttpCacheMeta.lastValidatedAt], and [writtenAt] when known).
+///   [HttpCacheMeta.lastValidatedAt], and [writtenAt] when known).
 /// - `no-cache` / `must-revalidate`: always stale.
 /// - `immutable`: always fresh until retention.
 /// - `Expires` alone (no `Date` / `lastValidatedAt`): treat as an absolute
@@ -26,21 +26,21 @@ import 'package:meta/meta.dart';
 ///   defaults above.
 ///
 /// Age math follows RFC 9111 in simplified form.
-abstract final class ImageHttpCacheFreshness {
+abstract final class HttpCacheFreshness {
   /// Whether [meta] is still fresh at [now].
   ///
   /// Null or empty [meta] is fresh (pre-ETag row: retain until retention).
   ///
   /// [writtenAt] is the store's durable write time. The ladder passes it when
-  /// [ImageHttpCacheMeta.lastValidatedAt] and [ImageHttpCacheMeta.date] are
+  /// [HttpCacheMeta.lastValidatedAt] and [HttpCacheMeta.date] are
   /// missing so current age still has a response-time anchor.
   static bool isFresh(
-    ImageHttpCacheMeta? meta, {
+    HttpCacheMeta? meta, {
     required DateTime now,
     DateTime? writtenAt,
   }) {
     switch (meta) {
-      case null || ImageHttpCacheMeta(isEmpty: true):
+      case null || HttpCacheMeta(isEmpty: true):
         return true;
       case final m:
         final hasValidators = _hasValidators(m);
@@ -76,21 +76,21 @@ abstract final class ImageHttpCacheFreshness {
   ///
   /// The ladder uses this to choose conditional GET vs unconditional GET on a
   /// stale hit.
-  static bool hasValidators(ImageHttpCacheMeta? meta) => switch (meta) {
+  static bool hasValidators(HttpCacheMeta? meta) => switch (meta) {
     final m? => _hasValidators(m),
     null => false,
   };
 
   /// Builds meta from GET / 304 response [headers].
   ///
-  /// Sets [ImageHttpCacheMeta.lastValidatedAt] to [validatedAt]. Missing or
+  /// Sets [HttpCacheMeta.lastValidatedAt] to [validatedAt]. Missing or
   /// unparseable fields stay null.
   ///
   /// Returns null when the response carries no validators and no freshness
   /// fields. [lastValidatedAt] alone is not stored. A null return on a 200
   /// write clears prior meta for that key (the old ETag belonged to the old
   /// body).
-  static ImageHttpCacheMeta? fromResponseHeaders(
+  static HttpCacheMeta? fromResponseHeaders(
     Map<String, String> headers, {
     required DateTime validatedAt,
   }) {
@@ -112,7 +112,7 @@ abstract final class ImageHttpCacheFreshness {
       return null;
     }
 
-    return ImageHttpCacheMeta(
+    return HttpCacheMeta(
       etag: etag,
       lastModified: lastModified,
       date: date,
@@ -126,16 +126,16 @@ abstract final class ImageHttpCacheFreshness {
   /// Meta after a 304 Not Modified.
   ///
   /// Keeps prior validators when the 304 omits them. Always sets
-  /// [ImageHttpCacheMeta.lastValidatedAt] to [validatedAt]. Overlays
+  /// [HttpCacheMeta.lastValidatedAt] to [validatedAt]. Overlays
   /// freshness headers the 304 does send (`Cache-Control`, `Expires`, …).
-  static ImageHttpCacheMeta afterNotModified(
-    ImageHttpCacheMeta? previous, {
+  static HttpCacheMeta afterNotModified(
+    HttpCacheMeta? previous, {
     required Map<String, String> headers,
     required DateTime validatedAt,
   }) {
     final from304 = fromResponseHeaders(headers, validatedAt: validatedAt);
-    final prior = previous ?? const ImageHttpCacheMeta();
-    return ImageHttpCacheMeta(
+    final prior = previous ?? const HttpCacheMeta();
+    return HttpCacheMeta(
       etag: from304?.etag ?? prior.etag,
       lastModified: from304?.lastModified ?? prior.lastModified,
       date: from304?.date ?? prior.date,
@@ -146,19 +146,19 @@ abstract final class ImageHttpCacheFreshness {
     );
   }
 
-  static bool _hasValidators(ImageHttpCacheMeta meta) => switch (meta) {
-    ImageHttpCacheMeta(etag: final e?) when e.trim().isNotEmpty => true,
-    ImageHttpCacheMeta(lastModified: final lm?) when lm.trim().isNotEmpty => true,
+  static bool _hasValidators(HttpCacheMeta meta) => switch (meta) {
+    HttpCacheMeta(etag: final e?) when e.trim().isNotEmpty => true,
+    HttpCacheMeta(lastModified: final lm?) when lm.trim().isNotEmpty => true,
     _ => false,
   };
 
   static bool _usableLifetimeMissing(
-    ImageHttpCacheMeta meta,
+    HttpCacheMeta meta,
     _CacheControlDirectives directives,
   ) => directives.maxAge == null && meta.expires == null;
 
   static Duration _freshnessLifetime(
-    ImageHttpCacheMeta meta,
+    HttpCacheMeta meta,
     _CacheControlDirectives directives, {
     required DateTime now,
     DateTime? writtenAt,
@@ -176,7 +176,7 @@ abstract final class ImageHttpCacheFreshness {
 
   /// RFC 9111 current_age, simplified.
   static Duration _currentAge(
-    ImageHttpCacheMeta meta, {
+    HttpCacheMeta meta, {
     required DateTime now,
     DateTime? writtenAt,
   }) {

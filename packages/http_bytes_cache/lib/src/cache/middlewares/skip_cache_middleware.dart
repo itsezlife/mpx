@@ -1,4 +1,4 @@
-import 'package:image_bytes_cache/src/cache/cache_middleware.dart';
+import 'package:http_bytes_cache/src/cache/cache_middleware.dart';
 import 'package:meta/meta.dart';
 
 /// {@template skip_cache_middleware}
@@ -10,14 +10,14 @@ import 'package:meta/meta.dart';
 /// bytes for this dispatch, not disable the store. Does not disable HTTP; the
 /// ladder still fetches.
 ///
-/// Seed via [MiddlewareImageBytesCache.execute] with a shared [CacheContext].
-/// [ImageBytesRequest.skipCache] does this through [ImageBytesResolver].
-/// Public [IImageBytesCache.read] / [IImageBytesCache.write] on the wrapper use
+/// Seed via [MiddlewareBytesCache.execute] with a shared [CacheContext].
+/// [BytesRequest.skipCache] does this through [BytesResolver].
+/// Public [IBytesCache.read] / [IBytesCache.write] on the wrapper use
 /// an empty context, so they only skip when [shouldSkip] decides without the
 /// flag.
 ///
 /// ```dart
-/// final cache = MiddlewareImageBytesCache(
+/// final cache = MiddlewareBytesCache(
 ///   inner: store,
 ///   middlewares: <CacheMiddleware>[const SkipCacheMiddleware()],
 /// );

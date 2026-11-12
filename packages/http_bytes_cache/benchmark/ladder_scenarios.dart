@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:image_bytes_cache/image_bytes_cache.dart';
+import 'package:http_bytes_cache/http_bytes_cache.dart';
 
 import 'payloads.dart';
 import 'scenarios.dart';
@@ -11,9 +11,9 @@ import 'sink.dart';
 
 /// Resolve-ladder microbench rows (fake HTTP, no public internet).
 ///
-/// Each [StoreScenario.prepare] owns a local [MemoryImageBytesCache] and
-/// [HttpBytesClient] — never [ImageBytesCache.shared] /
-/// [ImageBytesResolver.shared] / [HttpBytesClient.shared]. The compare test
+/// Each [StoreScenario.prepare] owns a local [MemoryBytesCache] and
+/// [HttpBytesClient] — never [BytesCache.shared] /
+/// [BytesResolver.shared] / [HttpBytesClient.shared]. The compare test
 /// entry resets process-wide shareds around the suite so a leaked configure
 /// from another harness cannot poison rows.
 List<StoreScenario> ladderScenarios() {
@@ -29,7 +29,7 @@ const _burstFanOut = 8;
 const _gridKeys = 8;
 const _gridMaxConcurrent = 2;
 
-/// Optional RSS lane around fill-to-[ImageBytesRetention.standard] capacity
+/// Optional RSS lane around fill-to-[BytesRetention.standard] capacity
 /// and prune. Not timed for us/op; printed separately. See [runMemoryLane].
 ///
 /// Caveats (document in tables/docs): [ProcessInfo.currentRss] is process-wide
@@ -38,24 +38,24 @@ const _gridMaxConcurrent = 2;
 /// only. Not a baseline key and not a CI gate.
 Future<MemoryLaneReport> runMemoryLane() async {
   final payload = payloadOf(smallBytes);
-  final maxEntries = ImageBytesRetention.standard.limits.maxEntries!;
-  final maxAge = ImageBytesRetention.standard.limits.maxAge!;
+  final maxEntries = BytesRetention.standard.limits.maxEntries!;
+  final maxAge = BytesRetention.standard.limits.maxAge!;
   // Injectable clock so prune can drop the filled set after we advance past
   // standard maxAge (a same-instant prune at exact capacity frees nothing).
   var now = DateTime.utc(2024, 1, 1);
-  final cache = MemoryImageBytesCache(
-    retention: ImageBytesRetention.standard,
+  final cache = MemoryBytesCache(
+    retention: BytesRetention.standard,
     clock: () => now,
   );
 
   final beforeFillRss = ProcessInfo.currentRss;
   for (var i = 0; i < maxEntries; i++) {
-    await cache.write(ImageCacheKey('fill_$i'), payload);
+    await cache.write(BytesCacheKey('fill_$i'), payload);
   }
   // Touch every key so soft-LRU and warm-read paths are exercised before prune.
   var warmSink = 0;
   for (var i = 0; i < maxEntries; i++) {
-    warmSink ^= sinkBytes(await cache.read(ImageCacheKey('fill_$i')));
+    warmSink ^= sinkBytes(await cache.read(BytesCacheKey('fill_$i')));
   }
   final afterFillRss = ProcessInfo.currentRss;
 
@@ -100,16 +100,16 @@ final class MemoryLaneReport {
   /// RSS after fill + many-key warm reads.
   final int afterFillRss;
 
-  /// RSS after [IImageBytesCache.prune].
+  /// RSS after [IBytesCache.prune].
   final int afterPruneRss;
 
-  /// Keys written (standard [ImageBytesRetention] maxEntries).
+  /// Keys written (standard [BytesRetention] maxEntries).
   final int filledEntries;
 
   /// Body size per key.
   final int payloadBytes;
 
-  /// [ImageBytesPruneReport.freedBytes] from the timed prune.
+  /// [BytesPruneReport.freedBytes] from the timed prune.
   final int pruneFreedBytes;
 
   /// Evicted key count from prune.
@@ -122,8 +122,8 @@ StoreScenario _missThenHit(String name, Uint8List payload) => StoreScenario(
   prepare: () async {
     final harness = _openLadder(payload: payload);
     const url = 'https://bench.invalid/miss-hit.svg';
-    final key = ImageCacheKey.fromUrl(url);
-    const request = ImageBytesRequest(url: url);
+    final key = BytesCacheKey.fromUrl(url);
+    const request = BytesRequest(url: url);
     return PreparedScenario(
       op: () async {
         // Each iteration starts cold so miss→write-through→hit stays honest
@@ -150,8 +150,8 @@ StoreScenario _sameUrlBurst(String name, Uint8List payload) => StoreScenario(
       responseDelay: const Duration(milliseconds: 1),
     );
     const url = 'https://bench.invalid/burst.svg';
-    final key = ImageCacheKey.fromUrl(url);
-    const request = ImageBytesRequest(url: url);
+    final key = BytesCacheKey.fromUrl(url);
+    const request = BytesRequest(url: url);
     return PreparedScenario(
       op: () async {
         await harness.cache.evict(key);
@@ -181,8 +181,8 @@ StoreScenario _distinctKeyGrid(String name, Uint8List payload) => StoreScenario(
     return PreparedScenario(
       op: () async {
         final g = generation++;
-        final requests = <ImageBytesRequest>[
-          for (var i = 0; i < _gridKeys; i++) ImageBytesRequest(url: 'https://bench.invalid/grid/$g/$i.svg'),
+        final requests = <BytesRequest>[
+          for (var i = 0; i < _gridKeys; i++) BytesRequest(url: 'https://bench.invalid/grid/$g/$i.svg'),
         ];
         final results = await Future.wait(
           requests.map(harness.resolver.resolve),
@@ -199,8 +199,8 @@ StoreScenario _distinctKeyGrid(String name, Uint8List payload) => StoreScenario(
 );
 
 ({
-  IImageBytesCache cache,
-  ImageBytesResolver resolver,
+  IBytesCache cache,
+  BytesResolver resolver,
   HttpBytesClient client,
   int Function() fetchCount,
   Future<void> Function() dispose,
@@ -222,8 +222,8 @@ _openLadder({
     client: httpClient,
     maxConcurrent: maxConcurrent,
   );
-  final cache = MemoryImageBytesCache(retention: ImageBytesRetention.standard);
-  final resolver = ImageBytesResolver(cache: cache, client: client);
+  final cache = MemoryBytesCache(retention: BytesRetention.standard);
+  final resolver = BytesResolver(cache: cache, client: client);
   return (
     cache: cache,
     resolver: resolver,
@@ -237,7 +237,7 @@ _openLadder({
 }
 
 /// Waits until fire-and-forget write-through has landed a non-empty body.
-Future<void> _awaitWriteThrough(IImageBytesCache cache, ImageCacheKey key) async {
+Future<void> _awaitWriteThrough(IBytesCache cache, BytesCacheKey key) async {
   for (var i = 0; i < 2000; i++) {
     final bytes = await cache.read(key);
     if (bytes != null && bytes.isNotEmpty) return;

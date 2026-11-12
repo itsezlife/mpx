@@ -1,30 +1,30 @@
-import 'package:image_bytes_cache/src/image_bytes_cache.dart';
-import 'package:image_bytes_cache/src/image_http_cache_freshness.dart';
+import 'package:http_bytes_cache/src/bytes_cache.dart';
+import 'package:http_bytes_cache/src/http_cache_freshness.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('ImageHttpCacheFreshness.isFresh', () {
+  group('HttpCacheFreshness.isFresh', () {
     final now = DateTime.utc(2024, 6, 1, 12);
 
     test('null / empty meta is fresh (pre-ETag retain until retention)', () {
-      expect(ImageHttpCacheFreshness.isFresh(null, now: now), isTrue);
+      expect(HttpCacheFreshness.isFresh(null, now: now), isTrue);
       expect(
-        ImageHttpCacheFreshness.isFresh(const ImageHttpCacheMeta(), now: now),
+        HttpCacheFreshness.isFresh(const HttpCacheMeta(), now: now),
         isTrue,
       );
     });
 
     test('validators without Cache-Control / Expires are stale', () {
       expect(
-        ImageHttpCacheFreshness.isFresh(
-          const ImageHttpCacheMeta(etag: '"v1"'),
+        HttpCacheFreshness.isFresh(
+          const HttpCacheMeta(etag: '"v1"'),
           now: now,
         ),
         isFalse,
       );
       expect(
-        ImageHttpCacheFreshness.isFresh(
-          const ImageHttpCacheMeta(lastModified: 'Wed, 21 Oct 2015 07:28:00 GMT'),
+        HttpCacheFreshness.isFresh(
+          const HttpCacheMeta(lastModified: 'Wed, 21 Oct 2015 07:28:00 GMT'),
           now: now,
         ),
         isFalse,
@@ -32,70 +32,70 @@ void main() {
     });
 
     test('max-age still within lifetime is fresh', () {
-      final meta = ImageHttpCacheMeta(
+      final meta = HttpCacheMeta(
         etag: '"v1"',
         cacheControl: 'max-age=3600',
         lastValidatedAt: now.subtract(const Duration(minutes: 10)),
       );
-      expect(ImageHttpCacheFreshness.isFresh(meta, now: now), isTrue);
+      expect(HttpCacheFreshness.isFresh(meta, now: now), isTrue);
     });
 
     test('max-age past lifetime is stale', () {
-      final meta = ImageHttpCacheMeta(
+      final meta = HttpCacheMeta(
         etag: '"v1"',
         cacheControl: 'max-age=60',
         lastValidatedAt: now.subtract(const Duration(minutes: 5)),
       );
-      expect(ImageHttpCacheFreshness.isFresh(meta, now: now), isFalse);
+      expect(HttpCacheFreshness.isFresh(meta, now: now), isFalse);
     });
 
     test('Age header counts toward current age', () {
-      final meta = ImageHttpCacheMeta(
+      final meta = HttpCacheMeta(
         etag: '"v1"',
         cacheControl: 'max-age=120',
         age: const Duration(seconds: 100),
         lastValidatedAt: now,
       );
-      expect(ImageHttpCacheFreshness.isFresh(meta, now: now), isTrue);
+      expect(HttpCacheFreshness.isFresh(meta, now: now), isTrue);
 
-      final stale = ImageHttpCacheMeta(
+      final stale = HttpCacheMeta(
         etag: '"v1"',
         cacheControl: 'max-age=120',
         age: const Duration(seconds: 150),
         lastValidatedAt: now,
       );
-      expect(ImageHttpCacheFreshness.isFresh(stale, now: now), isFalse);
+      expect(HttpCacheFreshness.isFresh(stale, now: now), isFalse);
     });
 
     test('Expires in the future is fresh; past is stale', () {
-      final fresh = ImageHttpCacheMeta(
+      final fresh = HttpCacheMeta(
         etag: '"v1"',
         expires: now.add(const Duration(hours: 1)),
         date: now.subtract(const Duration(minutes: 1)),
         lastValidatedAt: now.subtract(const Duration(minutes: 1)),
       );
-      expect(ImageHttpCacheFreshness.isFresh(fresh, now: now), isTrue);
+      expect(HttpCacheFreshness.isFresh(fresh, now: now), isTrue);
 
-      final stale = ImageHttpCacheMeta(
+      final stale = HttpCacheMeta(
         etag: '"v1"',
         expires: now.subtract(const Duration(minutes: 1)),
         date: now.subtract(const Duration(hours: 1)),
         lastValidatedAt: now.subtract(const Duration(hours: 1)),
       );
-      expect(ImageHttpCacheFreshness.isFresh(stale, now: now), isFalse);
+      expect(HttpCacheFreshness.isFresh(stale, now: now), isFalse);
     });
 
     test('Expires-only meta uses absolute wall time', () {
       expect(
-        ImageHttpCacheFreshness.isFresh(
-          ImageHttpCacheMeta(expires: now.add(const Duration(hours: 1))),
+        HttpCacheFreshness.isFresh(
+          HttpCacheMeta(expires: now.add(const Duration(hours: 1))),
           now: now,
         ),
         isTrue,
       );
       expect(
-        ImageHttpCacheFreshness.isFresh(
-          ImageHttpCacheMeta(expires: now.subtract(const Duration(minutes: 1))),
+        HttpCacheFreshness.isFresh(
+          HttpCacheMeta(expires: now.subtract(const Duration(minutes: 1))),
           now: now,
         ),
         isFalse,
@@ -104,15 +104,15 @@ void main() {
 
     test('no-cache and must-revalidate are always stale', () {
       expect(
-        ImageHttpCacheFreshness.isFresh(
-          const ImageHttpCacheMeta(etag: '"v1"', cacheControl: 'no-cache'),
+        HttpCacheFreshness.isFresh(
+          const HttpCacheMeta(etag: '"v1"', cacheControl: 'no-cache'),
           now: now,
         ),
         isFalse,
       );
       expect(
-        ImageHttpCacheFreshness.isFresh(
-          const ImageHttpCacheMeta(etag: '"v1"', cacheControl: 'max-age=3600, must-revalidate'),
+        HttpCacheFreshness.isFresh(
+          const HttpCacheMeta(etag: '"v1"', cacheControl: 'max-age=3600, must-revalidate'),
           now: now,
         ),
         isFalse,
@@ -121,8 +121,8 @@ void main() {
 
     test('immutable is fresh even with validators', () {
       expect(
-        ImageHttpCacheFreshness.isFresh(
-          ImageHttpCacheMeta(
+        HttpCacheFreshness.isFresh(
+          HttpCacheMeta(
             etag: '"static"',
             cacheControl: 'public, max-age=0, immutable',
             lastValidatedAt: now.subtract(const Duration(days: 30)),
@@ -134,10 +134,10 @@ void main() {
     });
   });
 
-  group('ImageHttpCacheFreshness.fromResponseHeaders', () {
+  group('HttpCacheFreshness.fromResponseHeaders', () {
     test('captures validators and freshness fields', () {
       final validatedAt = DateTime.utc(2024, 6, 1, 12);
-      final meta = ImageHttpCacheFreshness.fromResponseHeaders(
+      final meta = HttpCacheFreshness.fromResponseHeaders(
         {
           'ETag': '"abc"',
           'Last-Modified': 'Wed, 21 Oct 2015 07:28:00 GMT',
@@ -158,7 +158,7 @@ void main() {
 
     test('empty headers yield null', () {
       expect(
-        ImageHttpCacheFreshness.fromResponseHeaders(
+        HttpCacheFreshness.fromResponseHeaders(
           const {},
           validatedAt: DateTime.utc(2024, 1, 1),
         ),
@@ -167,14 +167,14 @@ void main() {
     });
   });
 
-  group('ImageHttpCacheFreshness.afterNotModified', () {
+  group('HttpCacheFreshness.afterNotModified', () {
     test('keeps prior etag when 304 omits it and bumps lastValidatedAt', () {
-      const prior = ImageHttpCacheMeta(
+      const prior = HttpCacheMeta(
         etag: '"old"',
         cacheControl: 'max-age=60',
       );
       final validatedAt = DateTime.utc(2024, 6, 2);
-      final next = ImageHttpCacheFreshness.afterNotModified(
+      final next = HttpCacheFreshness.afterNotModified(
         prior,
         headers: const {'cache-control': 'max-age=120'},
         validatedAt: validatedAt,

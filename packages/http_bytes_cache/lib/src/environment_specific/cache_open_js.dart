@@ -1,35 +1,35 @@
 import 'dart:typed_data';
 
-import 'package:image_bytes_cache/src/environment_specific/blob_store_routed_js.dart';
-import 'package:image_bytes_cache/src/environment_specific/index_cache_js.dart';
-import 'package:image_bytes_cache/src/image_bytes_cache.dart';
+import 'package:http_bytes_cache/src/bytes_cache.dart';
+import 'package:http_bytes_cache/src/environment_specific/blob_store_routed_js.dart';
+import 'package:http_bytes_cache/src/environment_specific/index_cache_js.dart';
 
 /// Conditional-import hook: Cache API index + Cache/OPFS blobs by size.
 ///
-/// [ImageBytesCache.open] forwards here on web. [directory] exists only so the
+/// [BytesCache.open] forwards here on web. [directory] exists only so the
 /// signature matches the VM stub; it is ignored. Browser storage already owns
 /// durability; there is no IsolateController on this path. Orphan reclaim is
-/// wired into [IndexedImageBytesCache] so it shares the exclusive mutate
-/// domain. Hard storage failures throw so [ImageBytesCache.open] can degrade
+/// wired into [IndexedBytesCache] so it shares the exclusive mutate
+/// domain. Hard storage failures throw so [BytesCache.open] can degrade
 /// to memory with a diagnostic.
 ///
 /// On any failure after Cache/OPFS handles exist, this function closes those
 /// partial resources before rethrowing so degrade / `throwOnOpenFailure` paths
 /// cannot leak quota-holding handles.
-Future<IImageBytesCache> $openImageBytesCache({
+Future<IBytesCache> $openBytesCache({
   String? directory,
-  ImageBytesRetention retention = ImageBytesRetention.standard,
+  BytesRetention retention = BytesRetention.standard,
   DateTime Function()? clock,
 }) async {
-  ImageBytesBlobStore$Routed$JS? blobs;
-  ImageBytesIndex$Cache$JS? index;
-  ImageBytesCache$JS? opened;
+  BytesBlobStore$Routed$JS? blobs;
+  BytesIndex$Cache$JS? index;
+  BytesCache$JS? opened;
   try {
-    blobs = await ImageBytesBlobStore$Routed$JS.open();
-    index = await ImageBytesIndex$Cache$JS.open(onWipe: blobs.wipeAll);
+    blobs = await BytesBlobStore$Routed$JS.open();
+    index = await BytesIndex$Cache$JS.open(onWipe: blobs.wipeAll);
 
-    opened = ImageBytesCache$JS(
-      inner: IndexedImageBytesCache(
+    opened = BytesCache$JS(
+      inner: IndexedBytesCache(
         index: index,
         blobs: blobs,
         retention: retention,
@@ -52,40 +52,40 @@ Future<IImageBytesCache> $openImageBytesCache({
   }
 }
 
-/// Closes Cache / OPFS handles around [IndexedImageBytesCache].
+/// Closes Cache / OPFS handles around [IndexedBytesCache].
 ///
 /// Reclaim stays on the inner brain’s exclusive gate. This wrapper does not
 /// reclaim outside that domain.
-final class ImageBytesCache$JS implements IImageBytesCache {
-  ImageBytesCache$JS({
-    required IndexedImageBytesCache inner,
-    required ImageBytesIndex$Cache$JS index,
-    required ImageBytesBlobStore$Routed$JS blobs,
+final class BytesCache$JS implements IBytesCache {
+  BytesCache$JS({
+    required IndexedBytesCache inner,
+    required BytesIndex$Cache$JS index,
+    required BytesBlobStore$Routed$JS blobs,
   }) : _inner = inner,
        _index = index,
        _blobs = blobs;
 
-  final IndexedImageBytesCache _inner;
-  final ImageBytesIndex$Cache$JS _index;
-  final ImageBytesBlobStore$Routed$JS _blobs;
+  final IndexedBytesCache _inner;
+  final BytesIndex$Cache$JS _index;
+  final BytesBlobStore$Routed$JS _blobs;
 
   Future<void> reclaimOrphans() => _inner.reclaimOrphans();
 
   @override
-  Future<Uint8List?> read(ImageCacheKey key) => _inner.read(key);
+  Future<Uint8List?> read(BytesCacheKey key) => _inner.read(key);
 
   @override
   Future<void> write(
-    ImageCacheKey key,
+    BytesCacheKey key,
     Uint8List bytes, {
-    ImageHttpCacheMeta? httpCacheMeta,
+    HttpCacheMeta? httpCacheMeta,
   }) => _inner.write(key, bytes, httpCacheMeta: httpCacheMeta);
 
   @override
-  Future<void> evict(ImageCacheKey key) => _inner.evict(key);
+  Future<void> evict(BytesCacheKey key) => _inner.evict(key);
 
   @override
-  Future<ImageBytesPruneReport> prune() => _inner.prune();
+  Future<BytesPruneReport> prune() => _inner.prune();
 
   @override
   Future<void> close() async {

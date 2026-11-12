@@ -1,4 +1,4 @@
-// Integration coverage for ImageBytesCache.open on web (Cache API + OPFS).
+// Integration coverage for BytesCache.open on web (Cache API + OPFS).
 //
 // Run with:
 // dart test -p chrome test/open/open_web_test.dart
@@ -10,20 +10,20 @@ library;
 import 'dart:js_interop';
 import 'dart:typed_data';
 
-import 'package:image_bytes_cache/src/environment_specific/blob_store_routed_js.dart';
-import 'package:image_bytes_cache/src/image_bytes_cache.dart';
-import 'package:image_bytes_cache/src/image_bytes_web_keys.dart';
+import 'package:http_bytes_cache/src/bytes_cache.dart';
+import 'package:http_bytes_cache/src/bytes_web_keys.dart';
+import 'package:http_bytes_cache/src/environment_specific/blob_store_routed_js.dart';
 import 'package:test/test.dart';
 import 'package:web/web.dart' as web;
 
 Future<void> _wipeDurableWebStorage() async {
-  await web.window.caches.delete(ImageBytesWebKeys.indexCacheName).toDart;
-  await web.window.caches.delete(ImageBytesWebKeys.blobsCacheName).toDart;
+  await web.window.caches.delete(BytesWebKeys.indexCacheName).toDart;
+  await web.window.caches.delete(BytesWebKeys.blobsCacheName).toDart;
   final root = await web.window.navigator.storage.getDirectory().toDart;
   try {
     await root
         .removeEntry(
-          ImageBytesWebKeys.opfsBlobsDirectoryName,
+          BytesWebKeys.opfsBlobsDirectoryName,
           web.FileSystemRemoveOptions(recursive: true),
         )
         .toDart;
@@ -32,16 +32,16 @@ Future<void> _wipeDurableWebStorage() async {
   }
 }
 
-Future<bool> _cacheHas(ImageCacheKey key) async {
-  final blobs = await web.window.caches.open(ImageBytesWebKeys.blobsCacheName).toDart;
-  final match = await blobs.match(ImageBytesWebKeys.blobUrl(key).toJS).toDart;
+Future<bool> _cacheHas(BytesCacheKey key) async {
+  final blobs = await web.window.caches.open(BytesWebKeys.blobsCacheName).toDart;
+  final match = await blobs.match(BytesWebKeys.blobUrl(key).toJS).toDart;
   return match != null;
 }
 
-Future<bool> _opfsHas(ImageCacheKey key) async {
+Future<bool> _opfsHas(BytesCacheKey key) async {
   final root = await web.window.navigator.storage.getDirectory().toDart;
   try {
-    final dir = await root.getDirectoryHandle(ImageBytesWebKeys.opfsBlobsDirectoryName).toDart;
+    final dir = await root.getDirectoryHandle(BytesWebKeys.opfsBlobsDirectoryName).toDart;
     await dir.getFileHandle(key.value).toDart;
     return true;
   } on Object {
@@ -60,14 +60,14 @@ Uint8List _filled(int length, int fill) {
 void main() {
   tearDown(_wipeDurableWebStorage);
 
-  group('ImageBytesCache.open (web)', () {
+  group('BytesCache.open (web)', () {
     test('directory argument is ignored and small payload round-trips via Cache API', () async {
-      const key = ImageCacheKey('small_svg');
+      const key = BytesCacheKey('small_svg');
       final bytes = Uint8List.fromList([1, 2, 3, 4]);
 
-      final first = await ImageBytesCache.open(
+      final first = await BytesCache.open(
         directory: '/ignored/on/web',
-        retention: const ImageBytesRetention.unlimited(),
+        retention: const BytesRetention.unlimited(),
       );
       await first.write(key, bytes);
       await first.close();
@@ -75,8 +75,8 @@ void main() {
       expect(await _cacheHas(key), isTrue);
       expect(await _opfsHas(key), isFalse);
 
-      final second = await ImageBytesCache.open(
-        retention: const ImageBytesRetention.unlimited(),
+      final second = await BytesCache.open(
+        retention: const BytesRetention.unlimited(),
       );
       addTearDown(second.close);
 
@@ -84,11 +84,11 @@ void main() {
     });
 
     test('payload at or above threshold round-trips via OPFS', () async {
-      const key = ImageCacheKey('large_raster');
-      final bytes = _filled(ImageBytesBlobStore$Routed$JS.opfsByteThreshold, 7);
+      const key = BytesCacheKey('large_raster');
+      final bytes = _filled(BytesBlobStore$Routed$JS.opfsByteThreshold, 7);
 
-      final first = await ImageBytesCache.open(
-        retention: const ImageBytesRetention.unlimited(),
+      final first = await BytesCache.open(
+        retention: const BytesRetention.unlimited(),
       );
       await first.write(key, bytes);
       await first.close();
@@ -96,8 +96,8 @@ void main() {
       expect(await _opfsHas(key), isTrue);
       expect(await _cacheHas(key), isFalse);
 
-      final second = await ImageBytesCache.open(
-        retention: const ImageBytesRetention.unlimited(),
+      final second = await BytesCache.open(
+        retention: const BytesRetention.unlimited(),
       );
       addTearDown(second.close);
 
@@ -108,12 +108,12 @@ void main() {
       // Without a size hint, Cache-then-OPFS would return this poison twin.
       // Index meta already knows the body is ≥ threshold, so the hot path must
       // skip Cache and return the OPFS payload.
-      const key = ImageCacheKey('large_with_poison_cache');
-      final large = _filled(ImageBytesBlobStore$Routed$JS.opfsByteThreshold, 11);
+      const key = BytesCacheKey('large_with_poison_cache');
+      final large = _filled(BytesBlobStore$Routed$JS.opfsByteThreshold, 11);
       final poison = Uint8List.fromList([1, 2, 3]);
 
-      final cache = await ImageBytesCache.open(
-        retention: const ImageBytesRetention.unlimited(),
+      final cache = await BytesCache.open(
+        retention: const BytesRetention.unlimited(),
       );
       addTearDown(cache.close);
 
@@ -121,10 +121,10 @@ void main() {
       expect(await _opfsHas(key), isTrue);
       expect(await _cacheHas(key), isFalse);
 
-      final blobs = await web.window.caches.open(ImageBytesWebKeys.blobsCacheName).toDart;
+      final blobs = await web.window.caches.open(BytesWebKeys.blobsCacheName).toDart;
       await blobs
           .put(
-            ImageBytesWebKeys.blobUrl(key).toJS,
+            BytesWebKeys.blobUrl(key).toJS,
             web.Response(poison.toJS),
           )
           .toDart;
@@ -134,12 +134,12 @@ void main() {
     });
 
     test('rewrite across threshold moves the body between backends', () async {
-      const key = ImageCacheKey('resize');
+      const key = BytesCacheKey('resize');
       final small = Uint8List.fromList([9, 8, 7]);
-      final large = _filled(ImageBytesBlobStore$Routed$JS.opfsByteThreshold, 3);
+      final large = _filled(BytesBlobStore$Routed$JS.opfsByteThreshold, 3);
 
-      final cache = await ImageBytesCache.open(
-        retention: const ImageBytesRetention.unlimited(),
+      final cache = await BytesCache.open(
+        retention: const BytesRetention.unlimited(),
       );
       addTearDown(cache.close);
 
@@ -159,21 +159,21 @@ void main() {
     });
 
     test('orphan Cache blob without index is reclaimed on open', () async {
-      final blobs = await web.window.caches.open(ImageBytesWebKeys.blobsCacheName).toDart;
+      final blobs = await web.window.caches.open(BytesWebKeys.blobsCacheName).toDart;
       await blobs
           .put(
-            ImageBytesWebKeys.blobUrl(const ImageCacheKey('orphan')).toJS,
+            BytesWebKeys.blobUrl(const BytesCacheKey('orphan')).toJS,
             web.Response(Uint8List.fromList([1, 2, 3]).toJS),
           )
           .toDart;
 
-      final cache = await ImageBytesCache.open(
-        retention: const ImageBytesRetention.unlimited(),
+      final cache = await BytesCache.open(
+        retention: const BytesRetention.unlimited(),
       );
       addTearDown(cache.close);
 
-      expect(await cache.read(const ImageCacheKey('orphan')), isNull);
-      final leftover = await blobs.match(ImageBytesWebKeys.blobUrl(const ImageCacheKey('orphan')).toJS).toDart;
+      expect(await cache.read(const BytesCacheKey('orphan')), isNull);
+      final leftover = await blobs.match(BytesWebKeys.blobUrl(const BytesCacheKey('orphan')).toJS).toDart;
       expect(leftover, isNull);
     });
 
@@ -181,7 +181,7 @@ void main() {
       final root = await web.window.navigator.storage.getDirectory().toDart;
       final dir = await root
           .getDirectoryHandle(
-            ImageBytesWebKeys.opfsBlobsDirectoryName,
+            BytesWebKeys.opfsBlobsDirectoryName,
             web.FileSystemGetDirectoryOptions(create: true),
           )
           .toDart;
@@ -195,48 +195,48 @@ void main() {
       await writable.write(Uint8List.fromList([5, 5, 5]).toJS).toDart;
       await writable.close().toDart;
 
-      final cache = await ImageBytesCache.open(
-        retention: const ImageBytesRetention.unlimited(),
+      final cache = await BytesCache.open(
+        retention: const BytesRetention.unlimited(),
       );
       addTearDown(cache.close);
 
-      expect(await cache.read(const ImageCacheKey('opfs_orphan')), isNull);
-      expect(await _opfsHas(const ImageCacheKey('opfs_orphan')), isFalse);
+      expect(await cache.read(const BytesCacheKey('opfs_orphan')), isNull);
+      expect(await _opfsHas(const BytesCacheKey('opfs_orphan')), isFalse);
     });
 
     test('orphan blob without index is reclaimed on prune', () async {
-      final cache = await ImageBytesCache.open(
-        retention: const ImageBytesRetention.unlimited(),
+      final cache = await BytesCache.open(
+        retention: const BytesRetention.unlimited(),
       );
       addTearDown(cache.close);
 
-      await cache.write(const ImageCacheKey('kept'), Uint8List.fromList([4]));
+      await cache.write(const BytesCacheKey('kept'), Uint8List.fromList([4]));
 
-      final blobs = await web.window.caches.open(ImageBytesWebKeys.blobsCacheName).toDart;
+      final blobs = await web.window.caches.open(BytesWebKeys.blobsCacheName).toDart;
       await blobs
           .put(
-            ImageBytesWebKeys.blobUrl(const ImageCacheKey('stray')).toJS,
+            BytesWebKeys.blobUrl(const BytesCacheKey('stray')).toJS,
             web.Response(Uint8List.fromList([5, 6]).toJS),
           )
           .toDart;
 
       await cache.prune();
 
-      expect(await cache.read(const ImageCacheKey('kept')), Uint8List.fromList([4]));
-      final leftover = await blobs.match(ImageBytesWebKeys.blobUrl(const ImageCacheKey('stray')).toJS).toDart;
+      expect(await cache.read(const BytesCacheKey('kept')), Uint8List.fromList([4]));
+      final leftover = await blobs.match(BytesWebKeys.blobUrl(const BytesCacheKey('stray')).toJS).toDart;
       expect(leftover, isNull);
     });
 
     test('close is idempotent and rejects later ops', () async {
-      final cache = await ImageBytesCache.open(
-        retention: const ImageBytesRetention.unlimited(),
+      final cache = await BytesCache.open(
+        retention: const BytesRetention.unlimited(),
       );
-      await cache.write(const ImageCacheKey('a'), Uint8List.fromList([1]));
+      await cache.write(const BytesCacheKey('a'), Uint8List.fromList([1]));
       await cache.close();
       await cache.close();
 
       await expectLater(
-        cache.read(const ImageCacheKey('a')),
+        cache.read(const BytesCacheKey('a')),
         throwsA(isA<StateError>()),
       );
     });

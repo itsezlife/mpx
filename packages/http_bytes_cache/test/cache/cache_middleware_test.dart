@@ -1,14 +1,14 @@
 import 'dart:typed_data';
 
-import 'package:image_bytes_cache/image_bytes_cache.dart';
+import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('MiddlewareImageBytesCache', () {
+  group('MiddlewareBytesCache', () {
     test('forwards write then read through an empty chain to Memory', () async {
-      final inner = MemoryImageBytesCache();
-      final cache = MiddlewareImageBytesCache(inner: inner);
-      const key = ImageCacheKey('logo');
+      final inner = MemoryBytesCache();
+      final cache = MiddlewareBytesCache(inner: inner);
+      const key = BytesCacheKey('logo');
       final bytes = Uint8List.fromList([1, 2, 3]);
 
       await cache.write(key, bytes);
@@ -18,8 +18,8 @@ void main() {
     });
 
     test('public read unwraps a rich hit to Uint8List?', () async {
-      final inner = MemoryImageBytesCache();
-      final cache = MiddlewareImageBytesCache(
+      final inner = MemoryBytesCache();
+      final cache = MiddlewareBytesCache(
         inner: inner,
         middlewares: <CacheMiddleware>[
           (innerHandler) => (operation, context) async {
@@ -30,7 +30,7 @@ void main() {
                   bytes: hit.bytes,
                   writtenAt: hit.writtenAt,
                   accessedAt: hit.accessedAt,
-                  httpCacheMeta: const ImageHttpCacheMeta(etag: '"abc"'),
+                  httpCacheMeta: const HttpCacheMeta(etag: '"abc"'),
                 ),
               ),
               _ => result,
@@ -38,13 +38,13 @@ void main() {
           },
         ],
       );
-      const key = ImageCacheKey('logo');
+      const key = BytesCacheKey('logo');
       final bytes = Uint8List.fromList([9]);
       await cache.write(key, bytes);
 
       expect(await cache.read(key), bytes);
 
-      final rich = await cache.execute(const CacheOperation$Read(ImageCacheKey('logo')));
+      final rich = await cache.execute(const CacheOperation$Read(BytesCacheKey('logo')));
       expect(
         rich,
         isA<CacheOperationResult$Read>().having(
@@ -56,11 +56,11 @@ void main() {
     });
 
     test('Memory round-trips HTTP cache meta through execute; public read stays bytes', () async {
-      final inner = MemoryImageBytesCache();
-      final cache = MiddlewareImageBytesCache(inner: inner);
-      const key = ImageCacheKey('logo');
+      final inner = MemoryBytesCache();
+      final cache = MiddlewareBytesCache(inner: inner);
+      const key = BytesCacheKey('logo');
       final bytes = Uint8List.fromList([1, 2, 3]);
-      const meta = ImageHttpCacheMeta(
+      const meta = HttpCacheMeta(
         etag: '"v1"',
         cacheControl: 'max-age=60',
       );
@@ -82,11 +82,11 @@ void main() {
     });
 
     test('forwards evict, prune, and close to the inner store', () async {
-      final inner = MemoryImageBytesCache(
-        retention: const ImageBytesRetention.maxAge(Duration(hours: 1)),
+      final inner = MemoryBytesCache(
+        retention: const BytesRetention.maxAge(Duration(hours: 1)),
       );
-      final cache = MiddlewareImageBytesCache(inner: inner);
-      const key = ImageCacheKey('logo');
+      final cache = MiddlewareBytesCache(inner: inner);
+      const key = BytesCacheKey('logo');
       await cache.write(key, Uint8List.fromList([1]));
 
       await cache.evict(key);
@@ -112,11 +112,11 @@ void main() {
         };
       };
 
-      final cache = MiddlewareImageBytesCache(
-        inner: MemoryImageBytesCache(),
+      final cache = MiddlewareBytesCache(
+        inner: MemoryBytesCache(),
         middlewares: <CacheMiddleware>[named('outer'), named('inner')],
       );
-      await cache.write(const ImageCacheKey('k'), Uint8List.fromList([1]));
+      await cache.write(const BytesCacheKey('k'), Uint8List.fromList([1]));
 
       expect(order, <String>[
         'outer:before',
@@ -136,20 +136,20 @@ void main() {
         CacheOperation$Close() => 'close',
       };
 
-      expect(kind(const CacheOperation$Read(ImageCacheKey('k'))), 'read');
+      expect(kind(const CacheOperation$Read(BytesCacheKey('k'))), 'read');
       expect(
-        kind(CacheOperation$Write(const ImageCacheKey('k'), Uint8List(0))),
+        kind(CacheOperation$Write(const BytesCacheKey('k'), Uint8List(0))),
         'write',
       );
-      expect(kind(const CacheOperation$Evict(ImageCacheKey('k'))), 'evict');
+      expect(kind(const CacheOperation$Evict(BytesCacheKey('k'))), 'evict');
       expect(kind(const CacheOperation$Prune()), 'prune');
       expect(kind(const CacheOperation$Close()), 'close');
     });
 
     test('execute passes CacheContext through the chain', () async {
       Object? seen;
-      final cache = MiddlewareImageBytesCache(
-        inner: MemoryImageBytesCache(),
+      final cache = MiddlewareBytesCache(
+        inner: MemoryBytesCache(),
         middlewares: <CacheMiddleware>[
           (innerHandler) => (operation, context) async {
             seen = context['probe'];
@@ -160,7 +160,7 @@ void main() {
       final context = CacheContext.empty()..['probe'] = true;
 
       await cache.execute(
-        const CacheOperation$Read(ImageCacheKey('missing')),
+        const CacheOperation$Read(BytesCacheKey('missing')),
         context,
       );
 

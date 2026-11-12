@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
-import 'package:image_bytes_cache/src/http/http_bytes_client.dart';
-import 'package:image_bytes_cache/src/util/byte_count_format.dart';
+import 'package:http_bytes_cache/src/http/http_bytes_client.dart';
+import 'package:http_bytes_cache/src/util/byte_count_format.dart';
 import 'package:meta/meta.dart';
 
 /// {@template http_bytes_logger_middleware_developer}

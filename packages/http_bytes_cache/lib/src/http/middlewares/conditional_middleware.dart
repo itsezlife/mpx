@@ -1,4 +1,4 @@
-import 'package:image_bytes_cache/src/http/http_bytes_client.dart';
+import 'package:http_bytes_cache/src/http/http_bytes_client.dart';
 import 'package:meta/meta.dart';
 
 /// {@template http_bytes_conditional}
@@ -11,7 +11,7 @@ import 'package:meta/meta.dart';
 ///
 /// Place **after** [HttpBytesBearerMiddleware] (auth on the wire) and
 /// **before** coalesce (innermost request-mutating layer). Conditional headers
-/// are excluded from [ImageCacheKey] / coalesce identity, so local validators
+/// are excluded from [BytesCacheKey] / coalesce identity, so local validators
 /// do not fragment shared flights. Recommended full stack (outermost first):
 /// ```dart
 /// HttpBytesClient(

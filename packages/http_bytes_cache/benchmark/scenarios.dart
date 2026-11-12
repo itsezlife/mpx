@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:image_bytes_cache/image_bytes_cache.dart';
+import 'package:http_bytes_cache/http_bytes_cache.dart';
 
 import 'payloads.dart';
 import 'sink.dart';
@@ -44,17 +44,17 @@ final class PreparedScenario {
   final Future<void> Function() dispose;
 }
 
-/// How a scenario obtains an [IImageBytesCache] for the timed body.
+/// How a scenario obtains an [IBytesCache] for the timed body.
 typedef _OpenCache =
-    Future<({IImageBytesCache cache, Future<void> Function() dispose})> Function({
-      required ImageBytesRetention retention,
+    Future<({IBytesCache cache, Future<void> Function() dispose})> Function({
+      required BytesRetention retention,
     });
 
-/// Named [IImageBytesCache] scenarios (Memory + durable VM).
+/// Named [IBytesCache] scenarios (Memory + durable VM).
 ///
 /// Isolation: each [StoreScenario.prepare] owns its temp durable directory and
 /// closes the cache in [PreparedScenario.dispose]. Scenarios do not share
-/// [ImageBytesCache.shared].
+/// [BytesCache.shared].
 List<StoreScenario> storeScenarios() {
   final small = payloadOf(smallBytes);
   final large = payloadOf(largeBytes);
@@ -82,18 +82,18 @@ const _writeEpochKeys = 8;
 const _pruneSeedKeys = 24;
 const _pruneMaxEntries = 8;
 
-Future<({IImageBytesCache cache, Future<void> Function() dispose})> _openMemory({
-  required ImageBytesRetention retention,
+Future<({IBytesCache cache, Future<void> Function() dispose})> _openMemory({
+  required BytesRetention retention,
 }) async {
-  final cache = MemoryImageBytesCache(retention: retention);
+  final cache = MemoryBytesCache(retention: retention);
   return (cache: cache, dispose: cache.close);
 }
 
-Future<({IImageBytesCache cache, Future<void> Function() dispose})> _openDurable({
-  required ImageBytesRetention retention,
+Future<({IBytesCache cache, Future<void> Function() dispose})> _openDurable({
+  required BytesRetention retention,
 }) async {
   final dir = _tempDir();
-  final cache = await ImageBytesCache.open(
+  final cache = await BytesCache.open(
     directory: dir.path,
     retention: retention,
     throwOnOpenFailure: true,
@@ -105,8 +105,8 @@ StoreScenario _warmHit(String name, Uint8List payload, _OpenCache open) => Store
   name: name,
   bytes: payload.length,
   prepare: () async {
-    final opened = await open(retention: ImageBytesRetention.standard);
-    const key = ImageCacheKey('warm');
+    final opened = await open(retention: BytesRetention.standard);
+    const key = BytesCacheKey('warm');
     await opened.cache.write(key, payload);
     return PreparedScenario(
       op: () async {
@@ -122,9 +122,9 @@ StoreScenario _concurrentReads(String name, Uint8List payload, _OpenCache open) 
   name: name,
   bytes: payload.length,
   prepare: () async {
-    final opened = await open(retention: ImageBytesRetention.standard);
-    final keys = <ImageCacheKey>[
-      for (var i = 0; i < _concurrentFanOut; i++) ImageCacheKey('c$i'),
+    final opened = await open(retention: BytesRetention.standard);
+    final keys = <BytesCacheKey>[
+      for (var i = 0; i < _concurrentFanOut; i++) BytesCacheKey('c$i'),
     ];
     for (final key in keys) {
       await opened.cache.write(key, payload);
@@ -150,10 +150,10 @@ StoreScenario _writeEpoch(String name, Uint8List payload, _OpenCache open) => St
   bytes: payload.length,
   prepare: () async {
     final opened = await open(
-      retention: const ImageBytesRetention.maxEntries(_writeEpochKeys),
+      retention: const BytesRetention.maxEntries(_writeEpochKeys),
     );
-    final keys = <ImageCacheKey>[
-      for (var i = 0; i < _writeEpochKeys; i++) ImageCacheKey('w$i'),
+    final keys = <BytesCacheKey>[
+      for (var i = 0; i < _writeEpochKeys; i++) BytesCacheKey('w$i'),
     ];
     for (final key in keys) {
       await opened.cache.write(key, payload);
@@ -164,7 +164,7 @@ StoreScenario _writeEpoch(String name, Uint8List payload, _OpenCache open) => St
         for (final key in keys) {
           await opened.cache.read(key);
         }
-        final overflowKey = ImageCacheKey('overflow_$overflow');
+        final overflowKey = BytesCacheKey('overflow_$overflow');
         overflow++;
         await opened.cache.write(overflowKey, payload);
         return payload.length ^ overflow;
@@ -178,8 +178,8 @@ StoreScenario _evict(String name, Uint8List payload, _OpenCache open) => StoreSc
   name: name,
   bytes: payload.length,
   prepare: () async {
-    final opened = await open(retention: ImageBytesRetention.standard);
-    const key = ImageCacheKey('evict');
+    final opened = await open(retention: BytesRetention.standard);
+    const key = BytesCacheKey('evict');
     return PreparedScenario(
       op: () async {
         await opened.cache.write(key, payload);
@@ -196,12 +196,12 @@ StoreScenario _prune(String name, Uint8List payload, _OpenCache open) => StoreSc
   bytes: payload.length,
   prepare: () async {
     final opened = await open(
-      retention: const ImageBytesRetention.maxEntries(_pruneMaxEntries),
+      retention: const BytesRetention.maxEntries(_pruneMaxEntries),
     );
     return PreparedScenario(
       op: () async {
         for (var i = 0; i < _pruneSeedKeys; i++) {
-          await opened.cache.write(ImageCacheKey('p$i'), payload);
+          await opened.cache.write(BytesCacheKey('p$i'), payload);
         }
         final report = await opened.cache.prune();
         return report.freedBytes ^ report.evictedKeys.length;
@@ -218,19 +218,19 @@ StoreScenario _durableColdRoundTrip(String name, Uint8List payload) => StoreScen
   bytes: payload.length,
   prepare: () async {
     final dir = _tempDir();
-    const key = ImageCacheKey('cold');
-    final seed = await ImageBytesCache.open(
+    const key = BytesCacheKey('cold');
+    final seed = await BytesCache.open(
       directory: dir.path,
-      retention: ImageBytesRetention.standard,
+      retention: BytesRetention.standard,
       throwOnOpenFailure: true,
     );
     await seed.write(key, payload);
     await seed.close();
     return PreparedScenario(
       op: () async {
-        final cache = await ImageBytesCache.open(
+        final cache = await BytesCache.open(
           directory: dir.path,
-          retention: ImageBytesRetention.standard,
+          retention: BytesRetention.standard,
           throwOnOpenFailure: true,
         );
         try {
@@ -249,9 +249,9 @@ StoreScenario _durableColdRoundTrip(String name, Uint8List payload) => StoreScen
   },
 );
 
-Directory _tempDir() => Directory.systemTemp.createTempSync('image_bytes_cache_bench_');
+Directory _tempDir() => Directory.systemTemp.createTempSync('http_bytes_cache_bench_');
 
-Future<void> _disposeDurable(IImageBytesCache cache, Directory dir) async {
+Future<void> _disposeDurable(IBytesCache cache, Directory dir) async {
   await cache.close();
   if (dir.existsSync()) {
     dir.deleteSync(recursive: true);

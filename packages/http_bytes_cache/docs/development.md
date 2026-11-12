@@ -1,12 +1,10 @@
 # Development
 
-Commands, test seams, layout, and conventions for package `image_bytes_cache`
-(`0.4.0`). SDK `>=3.11.0`.
+Commands, test seams, layout, and conventions for package `http_bytes_cache`.
+SDK `^3.11.0`.
 
-Layout: this package sits beside sibling `image_bytes_cache_flutter` under
-`packages/` in this repository. Core stays bytes-only; paint widgets and
-UI/profile benches live in the flutter package (and flutter-side
-`benchmark_compare`), not here.
+Layout: this package sits under `packages/` of the mpx workspace. It stays
+bytes-only; decoders, paint widgets and UI/profile benches live elsewhere.
 
 ## Commands
 
@@ -21,8 +19,8 @@ dart test test/unit_test.dart
 # Analyzer (standalone analysis_options; infos/warnings should stay clean)
 dart analyze lib test
 
-# Format, page_width 120 (analysis_options), not 80
-dart format lib test
+# Format at 80 columns (the repo gate)
+dart format --line-length 80 lib test
 ```
 
 `test/unit_test.dart` imports each suite's `main()` inside `group('Unit', …)`.
@@ -49,28 +47,28 @@ on this path).
 
 | Seam | What to cover |
 | --- | --- |
-| `IImageBytesCache` / `IndexedImageBytesCache` | Hit/miss, soft LRU, TTL, capacity (entries + bytes), concurrent read vs exclusive mutate integrity, orphan healing, close; commit throw rolls RAM back (no optimistic hit) |
-| `MiddlewareImageBytesCache` | Forwards read/write/evict/prune/close through middleware over `MemoryImageBytesCache`; public read unwraps rich hits; no reclaim op; outermost-first fold |
+| `IBytesCache` / `IndexedBytesCache` | Hit/miss, soft LRU, TTL, capacity (entries + bytes), concurrent read vs exclusive mutate integrity, orphan healing, close; commit throw rolls RAM back (no optimistic hit) |
+| `MiddlewareBytesCache` | Forwards read/write/evict/prune/close through middleware over `MemoryBytesCache`; public read unwraps rich hits; no reclaim op; outermost-first fold |
 | Skip-cache / Cache Logger | Context/`shouldSkip` forces read miss + write no-op; logger observes hit/miss/evict/prune without altering bytes or reclaim |
-| `ImageBytesCache.open` (VM) | Real temp directory round-trip, batch commit after close/reopen, orphan reclaim, degraded open |
-| `ImageBytesCache.open` (web / Chrome) | Size routing, reopen, reclaim on Cache and OPFS |
-| `ImageBytesBlobStore$File$VM` | Worker death fails pending RPC (timeout-bounded); respawn after death; exclusive gate not stuck |
-| `ImageBytesResolver` | Hit skips network; empty cache misses; write-through failure (incl. index commit throw) still returns bytes; throwing `onEvent` is not unhandled; `cacheKey` overrides durable + coalesce; override + Authorization debug diagnostic; `skipCache` end-to-end with Skip-cache middleware; freshness ladder (fresh / conditional 304 / 200 / 412); `resolve_revalidated` on 304; `resolve_unconditional` when held stale bytes full-fetch; stale-on-`$Network`/`$Timeout`/exhausted `$Server` returns cached bytes + `resolve_stale_used`; no stale on `$Cancelled`/`$Authentication`/404/empty; typed `HttpBytesException` from send |
+| `BytesCache.open` (VM) | Real temp directory round-trip, batch commit after close/reopen, orphan reclaim, degraded open |
+| `BytesCache.open` (web / Chrome) | Size routing, reopen, reclaim on Cache and OPFS |
+| `BytesBlobStore$File$VM` | Worker death fails pending RPC (timeout-bounded); respawn after death; exclusive gate not stuck |
+| `BytesResolver` | Hit skips network; empty cache misses; write-through failure (incl. index commit throw) still returns bytes; throwing `onEvent` is not unhandled; `cacheKey` overrides durable + coalesce; override + Authorization debug diagnostic; `skipCache` end-to-end with Skip-cache middleware; freshness ladder (fresh / conditional 304 / 200 / 412); `resolve_revalidated` on 304; `resolve_unconditional` when held stale bytes full-fetch; stale-on-`$Network`/`$Timeout`/exhausted `$Server` returns cached bytes + `resolve_stale_used`; no stale on `$Cancelled`/`$Authentication`/404/empty; typed `HttpBytesException` from send |
 | `HttpBytesClient` | Coalesce, pool, non-2xx, 304 success (empty/ignored body), empty body on non-304, timeout (+ abort when client honors), close, configure / resetShared; `identityOverride` coalesce |
-| `ImageCacheKey` | Canonical headers; conditional headers excluded; distinct URLs with same basename |
+| `BytesCacheKey` | Canonical headers; conditional headers excluded; distinct URLs with same basename |
 
-Prefer fakes for `IImageBytesIndex` / `IImageBytesBlobStore` when testing the
+Prefer fakes for `IBytesIndex` / `IBytesBlobStore` when testing the
 brain. Use real open for durability integration.
 
 ## Package layout
 
 ```text
 lib/
-  image_bytes_cache.dart          # public barrel
+  http_bytes_cache.dart           # public barrel
   src/
-    image_bytes_cache.dart        # brain + facade + Memory/NoOp
-    image_bytes_resolver.dart
-    cache/                        # cache middleware grammar + MiddlewareImageBytesCache
+    bytes_cache.dart              # brain + facade + Memory/NoOp
+    bytes_resolver.dart
+    cache/                        # cache middleware grammar + MiddlewareBytesCache
       cache_middleware.dart
       middlewares/
         skip_cache_middleware.dart
@@ -84,9 +82,10 @@ lib/
         conditional_middleware.dart
         logger_middleware.dart
       retry_backoff.dart
-    image_bytes_diagnostics.dart
-    image_bytes_index_document.dart
-    image_bytes_web_keys.dart
+    bytes_diagnostics.dart
+    bytes_index_document.dart
+    bytes_web_keys.dart
+    http_cache_freshness.dart
     isolate_controller.dart       # VM worker lifecycle (not exported)
     environment_specific/
       cache_open.dart     # conditional stub
@@ -110,26 +109,24 @@ package on `dart.library.html`.
 
 ## Conventions
 
-- Grow storage and ladder code in this package, not in host UI util trees and
-  not in `image_bytes_cache_flutter`.
+- Grow storage and ladder code in this package, not in host UI util trees.
 - Conditional imports for platform IO; no `if (kIsWeb)` inside shared brain
   files.
-- Index document encode/decode only through `ImageBytesIndexDocumentCodec`.
-- Orphan reclaim only under `IndexedImageBytesCache`’s exclusive domain.
+- Index document encode/decode only through `BytesIndexDocumentCodec`.
+- Orphan reclaim only under `IndexedBytesCache`’s exclusive domain.
 - Public members keep contract-grade `///` docs (see existing types).
 - Core `lib/` must not import `package:flutter` or `package:shared`.
-- Do not add Flutter widgets or profile-feed harnesses here —
-  those belong in `image_bytes_cache_flutter` / flutter-side compare.
+- Do not add Flutter widgets or profile-feed harnesses here.
 
 ## Benchmarks
 
 Package-local microbenches live under `benchmark/`. Two latency suites share
 one runner / baseline file:
 
-1. **Store** (`scenarios.dart`) — `IImageBytesCache` (Memory and durable VM
+1. **Store** (`scenarios.dart`) — `IBytesCache` (Memory and durable VM
    open): warm hit, cold durable round-trip, concurrent reads, write epoch,
    prune/evict, small vs ≥64 KiB bodies.
-2. **Resolve ladder** (`ladder_scenarios.dart`) — `ImageBytesResolver` over
+2. **Resolve ladder** (`ladder_scenarios.dart`) — `BytesResolver` over
    in-process `MockClient` HTTP (no public internet): miss → write-through →
    warm hit, same-URL burst coalesce, distinct-key grid under the HTTP pool
    cap. Scenario bodies use local cache/client/resolver only (never
@@ -138,7 +135,7 @@ one runner / baseline file:
    poison the suite.
 
 Optional **memory lane** (`MEMORY_LANE=true`): RSS via
-`ProcessInfo.currentRss` before fill-to-`ImageBytesRetention.standard`
+`ProcessInfo.currentRss` before fill-to-`BytesRetention.standard`
 capacity, after fill + many-key warm reads, and after prune (clock advanced
 past standard `maxAge` so prune actually drops the filled set). Process-wide
 and OS/GC noisy — use before/after deltas on one machine; not a baseline key
@@ -164,6 +161,4 @@ Relative deltas on one machine are the PR signal; absolute microseconds are
 not portable. Unit tests remain correctness-only.
 
 Head-to-head competitor tables, real-device profile feeds, and scroll-pressure
-matrices are **not** package-local. They live under
-[`image_bytes_cache_flutter/benchmark_compare/`](../../image_bytes_cache_flutter/benchmark_compare/).
-See that package’s [`AGENTS.md`](../../image_bytes_cache_flutter/AGENTS.md).
+matrices are **not** package-local.

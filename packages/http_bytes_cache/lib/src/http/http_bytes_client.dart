@@ -3,13 +3,13 @@ import 'dart:typed_data';
 
 import 'package:cancel_token/cancel_token.dart';
 import 'package:http/http.dart' as http;
-import 'package:image_bytes_cache/src/http/middlewares/timeout_middleware.dart';
-import 'package:image_bytes_cache/src/image_bytes_cache.dart';
+import 'package:http_bytes_cache/src/bytes_cache.dart';
+import 'package:http_bytes_cache/src/http/middlewares/timeout_middleware.dart';
 import 'package:meta/meta.dart';
 import 'package:pool/pool.dart';
 
 /// Observes cumulative HTTP body bytes while a network GET consolidates.
-typedef ImageBytesProgressCallback = void Function(int cumulative, int? total);
+typedef BytesProgressCallback = void Function(int cumulative, int? total);
 
 /// A function that takes an [HttpBytesRequest] and returns an [HttpBytesResponse].
 /// [context] is shared across middleware for this send.
@@ -112,9 +112,9 @@ extension type HttpBytesContext(Map<String, Object?> _map) implements Map<String
   /// (`If-Modified-Since`).
   static const lastModifiedKey = 'last-modified';
 
-  /// Explicit coalesce identity ([ImageCacheKey]). When set, post-middleware
+  /// Explicit coalesce identity ([BytesCacheKey]). When set, post-middleware
   /// URL + headers are ignored for the in-flight key; headers still go on the
-  /// wire. [ImageBytesResolver] sets this from [ImageBytesRequest.cacheKey].
+  /// wire. [BytesResolver] sets this from [BytesRequest.cacheKey].
   static const identityOverrideKey = 'identity-override';
 
   /// Shared flight [CancelToken] for this send (AbortableRequest abort + Timeout).
@@ -144,11 +144,11 @@ extension type HttpBytesContext(Map<String, Object?> _map) implements Map<String
   set receiveTimeout(Object? value) => _set(receiveTimeoutKey, value);
 
   /// Progress sink while the response body is read.
-  ImageBytesProgressCallback? get onBytesProgress => switch (_map[onBytesProgressKey]) {
-    final ImageBytesProgressCallback cb => cb,
+  BytesProgressCallback? get onBytesProgress => switch (_map[onBytesProgressKey]) {
+    final BytesProgressCallback cb => cb,
     _ => null,
   };
-  set onBytesProgress(ImageBytesProgressCallback? value) => _set(onBytesProgressKey, value);
+  set onBytesProgress(BytesProgressCallback? value) => _set(onBytesProgressKey, value);
 
   /// Success predicate; default is 2xx or 304 Not Modified.
   bool Function(int statusCode)? get validateStatus => switch (_map[validateStatusKey]) {
@@ -174,7 +174,7 @@ extension type HttpBytesContext(Map<String, Object?> _map) implements Map<String
 
   /// Stored `ETag` for conditional GET. Non-empty → `If-None-Match` on the wire
   /// when [HttpBytesConditionalMiddleware] is in the stack. Not part of coalesce
-  /// identity ([ImageCacheKey.canonicalHeaders] strips conditionals).
+  /// identity ([BytesCacheKey.canonicalHeaders] strips conditionals).
   String? get etag => switch (_map[etagKey]) {
     final String s when s.trim().isNotEmpty => s,
     _ => null,
@@ -192,14 +192,14 @@ extension type HttpBytesContext(Map<String, Object?> _map) implements Map<String
 
   /// Explicit coalesce identity. When set, wins over post-middleware URL +
   /// headers for the in-flight key. Durable ladder keys use the same value via
-  /// [ImageBytesRequest.cacheKey]. Representation headers still hit the wire.
+  /// [BytesRequest.cacheKey]. Representation headers still hit the wire.
   /// Minting one override across different `Authorization` values is your
   /// responsibility.
-  ImageCacheKey? get identityOverride => switch (_map[identityOverrideKey]) {
-    final ImageCacheKey k => k,
+  BytesCacheKey? get identityOverride => switch (_map[identityOverrideKey]) {
+    final BytesCacheKey k => k,
     _ => null,
   };
-  set identityOverride(ImageCacheKey? value) => _set(identityOverrideKey, value);
+  set identityOverride(BytesCacheKey? value) => _set(identityOverrideKey, value);
 
   void _set(String key, Object? value) {
     if (value == null) {
@@ -336,7 +336,7 @@ final class HttpBytesResponse {
 /// in-flight coalescing.
 ///
 /// Concurrent callers that share the same **post-middleware** coalesce identity
-/// join one in-flight GET. Identity is `ImageCacheKey` from the request URL +
+/// join one in-flight GET. Identity is `BytesCacheKey` from the request URL +
 /// headers after request-mutating middleware (e.g. Bearer) runs, unless
 /// [HttpBytesContext.identityOverride] is set (resolver `cacheKey`). Then the
 /// override wins for coalesce. Conditional request headers (`If-None-Match` /
@@ -411,7 +411,7 @@ final class HttpBytesClient {
   static void _$ensureResetSharedCleanup() {
     if (_$resetSharedCleanupInstalled) return;
     _$resetSharedCleanupInstalled = true;
-    ImageBytesCache.addAfterResetShared(resetShared);
+    BytesCache.addAfterResetShared(resetShared);
   }
 
   late final http.Client _client;
@@ -439,7 +439,7 @@ final class HttpBytesClient {
     HttpBytesRequest request, {
     Map<String, Object?>? context,
     CancelToken? cancelToken,
-    ImageBytesProgressCallback? onBytesProgress,
+    BytesProgressCallback? onBytesProgress,
   }) => _sendUnstreamed(
     url: request.url,
     headers: request.headers,
@@ -455,7 +455,7 @@ final class HttpBytesClient {
   Future<Uint8List> getBytes(
     Uri url, {
     Map<String, String>? headers,
-    ImageBytesProgressCallback? onBytesProgress,
+    BytesProgressCallback? onBytesProgress,
     CancelToken? cancelToken,
     Map<String, Object?>? context,
   }) async {
@@ -481,7 +481,7 @@ final class HttpBytesClient {
     Map<String, String>? headers,
     Map<String, Object?>? context,
     CancelToken? cancelToken,
-    ImageBytesProgressCallback? onBytesProgress,
+    BytesProgressCallback? onBytesProgress,
   }) async {
     if (_closed) {
       throw const HttpBytesException$Internal(
@@ -583,10 +583,10 @@ final class HttpBytesClient {
 
       // Explicit override (resolver cacheKey) wins for coalesce; otherwise
       // fingerprint post-middleware URL + headers (Bearer Auth participates;
-      // conditionals are stripped inside ImageCacheKey.canonicalHeaders).
+      // conditionals are stripped inside BytesCacheKey.canonicalHeaders).
       final key =
           context.identityOverride?.value ??
-          ImageCacheKey.fromUrl(
+          BytesCacheKey.fromUrl(
             request.url.toString(),
             headers: request.headers,
           ).value;
@@ -934,7 +934,7 @@ HttpBytesHandler _createClientSend(
   return httpHandler;
 }
 
-/// Default success predicate for image GETs: 2xx, or 304 Not Modified.
+/// Default success predicate for GETs: 2xx, or 304 Not Modified.
 ///
 /// 304 is a first-class revalidation success (headers present; body optional
 /// and ignored). Without it, conditional GETs would surface as `$Request` and
@@ -949,7 +949,7 @@ bool _defaultValidateStatus(int statusCode) => (statusCode >= 200 && statusCode 
 /// Transport failures with no HTTP response are [HttpBytesException$Network]
 /// from the send catch, not here.
 ///
-/// Image GETs do not parse an error body (payloads are drained); [data] still
+/// Byte GETs do not parse an error body (payloads are drained); [data] still
 /// carries `url`, `headers`, and `retry-after` when present on 429/503.
 HttpBytesException _statusToException(
   int statusCode,

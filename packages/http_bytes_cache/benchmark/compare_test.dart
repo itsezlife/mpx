@@ -2,7 +2,7 @@
 // treat @visibleForTesting shared resets as in-test use.
 // ignore_for_file: invalid_use_of_visible_for_testing_member
 
-import 'package:image_bytes_cache/image_bytes_cache.dart';
+import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:test/test.dart';
 
 import 'compare.dart';
@@ -23,19 +23,19 @@ import 'compare.dart';
 /// ```
 void main() {
   setUp(() async {
-    await ImageBytesCache.resetShared();
+    await BytesCache.resetShared();
     HttpBytesClient.debugShared = null;
-    ImageBytesResolver.debugShared = null;
+    BytesResolver.debugShared = null;
   });
 
   tearDown(() async {
-    await ImageBytesCache.resetShared();
+    await BytesCache.resetShared();
     HttpBytesClient.debugShared = null;
-    ImageBytesResolver.debugShared = null;
+    BytesResolver.debugShared = null;
   });
 
   test(
-    'image_bytes_cache store + ladder microbench',
+    'http_bytes_cache store + ladder microbench',
     () async {
       await runCompare();
     },

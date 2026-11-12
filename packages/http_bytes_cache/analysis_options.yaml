@@ -5,7 +5,7 @@
 # that surface; Flutter widget rules and dart_code_metrics (DCM plugin) are
 # intentionally absent — no Flutter SDK and no DCM dep here.
 #
-# Formatter page_width is 120 (host consumers use the same width).
+# Formatter page_width is 80, the width the repo gates check.
 
 formatter:
   page_width: 120

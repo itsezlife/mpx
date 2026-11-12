@@ -3,14 +3,14 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:image_bytes_cache/src/image_bytes_cache.dart';
-import 'package:image_bytes_cache/src/isolate_controller.dart';
+import 'package:http_bytes_cache/src/bytes_cache.dart';
+import 'package:http_bytes_cache/src/isolate_controller.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 
-/// VM payload half of [IndexedImageBytesCache]: one file per [ImageCacheKey].
+/// VM payload half of [IndexedBytesCache]: one file per [BytesCacheKey].
 ///
-/// Retention and timestamps stay on [ImageBytesIndex$File$VM]. This type owns the
+/// Retention and timestamps stay on [BytesIndex$File$VM]. This type owns the
 /// files under [directory] and the isolate that touches them.
 ///
 /// Without a long-lived [IsolateController], each small payload write would pay
@@ -28,12 +28,13 @@ import 'package:path/path.dart' as p;
 /// RPC futures complete with [StateError] instead of hanging, the dead
 /// controller is dropped, and a later op may respawn. [close] still fails
 /// pending with a closed [StateError] and refuses further RPCs.
-final class ImageBytesBlobStore$File$VM implements IImageBytesBlobStore {
+final class BytesBlobStore$File$VM implements IBytesBlobStore {
   /// Roots the store at [directory]. The directory is created on
   /// [ensureDirectory] / first write, not in this constructor.
-  ImageBytesBlobStore$File$VM({required this.directory});
+  BytesBlobStore$File$VM({required this.directory});
 
   /// Metadata filename in [directory]. Not a blob key; reclaim/wipe skip it.
+  /// Keeps its pre-rename spelling so stores already on disk still open.
   static const String indexFileName = 'image_bytes_index.json';
 
   /// Payloads at or above this size use [TransferableTypedData] on write RPC.
@@ -43,7 +44,7 @@ final class ImageBytesBlobStore$File$VM implements IImageBytesBlobStore {
   /// on send matters for large payloads.
   static const int transferByteThreshold = 64 * 1024;
 
-  /// Cache root shared with [ImageBytesIndex$File$VM].
+  /// Cache root shared with [BytesIndex$File$VM].
   final String directory;
 
   IsolateController<_BlobIoRequest, _BlobIoResponse>? _controller;
@@ -71,16 +72,16 @@ final class ImageBytesBlobStore$File$VM implements IImageBytesBlobStore {
     _onWorkerGone();
   }
 
-  String _pathFor(ImageCacheKey key) => p.join(directory, key.value);
+  String _pathFor(BytesCacheKey key) => p.join(directory, key.value);
 
   @override
-  Future<Uint8List?> read(ImageCacheKey key, {int? knownByteLength}) => readPath(_pathFor(key));
+  Future<Uint8List?> read(BytesCacheKey key, {int? knownByteLength}) => readPath(_pathFor(key));
 
   @override
-  Future<void> write(ImageCacheKey key, Uint8List bytes) => writePathAtomic(_pathFor(key), bytes);
+  Future<void> write(BytesCacheKey key, Uint8List bytes) => writePathAtomic(_pathFor(key), bytes);
 
   @override
-  Future<void> delete(ImageCacheKey key) => deletePath(_pathFor(key));
+  Future<void> delete(BytesCacheKey key) => deletePath(_pathFor(key));
 
   /// Creates [directory] (and parents) on the worker.
   Future<void> ensureDirectory() async {
@@ -175,7 +176,7 @@ final class ImageBytesBlobStore$File$VM implements IImageBytesBlobStore {
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
-    _failPending(StateError(r'ImageBytesBlobStore$File$VM is closed'));
+    _failPending(StateError(r'BytesBlobStore$File$VM is closed'));
     await _subscription?.cancel();
     _subscription = null;
     if (_controller != null) {
@@ -188,7 +189,7 @@ final class ImageBytesBlobStore$File$VM implements IImageBytesBlobStore {
 
   Future<_BlobIoResponse> _rpc(_BlobIoRequest template) async {
     if (_closed) {
-      throw StateError(r'ImageBytesBlobStore$File$VM is closed');
+      throw StateError(r'BytesBlobStore$File$VM is closed');
     }
     final controller = await _ensureSpawned();
     final id = _nextId++;
@@ -200,7 +201,7 @@ final class ImageBytesBlobStore$File$VM implements IImageBytesBlobStore {
     if (!identical(_controller, controller)) {
       _pending.remove(id);
       if (_closed) {
-        throw StateError(r'ImageBytesBlobStore$File$VM is closed');
+        throw StateError(r'BytesBlobStore$File$VM is closed');
       }
       return _rpc(template);
     }
@@ -226,7 +227,7 @@ final class ImageBytesBlobStore$File$VM implements IImageBytesBlobStore {
       return switch (_controller) {
         final controller? => controller,
         null => throw StateError(
-          r'ImageBytesBlobStore$File$VM failed to spawn worker',
+          r'BytesBlobStore$File$VM failed to spawn worker',
         ),
       };
     }
@@ -289,10 +290,10 @@ final class ImageBytesBlobStore$File$VM implements IImageBytesBlobStore {
 
     _failPending(
       switch (error) {
-        null => StateError(r'ImageBytesBlobStore$File$VM worker died'),
+        null => StateError(r'BytesBlobStore$File$VM worker died'),
         final StateError e => e,
         final Object e => StateError(
-          'ImageBytesBlobStore\$File\$VM worker died: $e',
+          'BytesBlobStore\$File\$VM worker died: $e',
         ),
       },
       stackTrace,
@@ -330,7 +331,7 @@ typedef _BlobIoResponse = ({
   String? error,
 });
 
-/// Isolate entry for [ImageBytesBlobStore$File$VM].
+/// Isolate entry for [BytesBlobStore$File$VM].
 ///
 /// Sync `dart:io` here is intentional: the UI isolate must not hitch on FS,
 /// and `avoid_slow_async_io` prefers sync once work is already off-thread.
@@ -420,7 +421,7 @@ void _deleteIfExists(String path) {
 
 void _reclaimOrphans(String directory, Set<String> indexedKeys) {
   _forEachTopLevelFile(directory, (file, name) {
-    if (name == ImageBytesBlobStore$File$VM.indexFileName) return;
+    if (name == BytesBlobStore$File$VM.indexFileName) return;
     if (name.endsWith('.tmp') || !indexedKeys.contains(name)) {
       try {
         file.deleteSync();
@@ -433,7 +434,7 @@ void _reclaimOrphans(String directory, Set<String> indexedKeys) {
 
 void _wipePayloads(String directory) {
   _forEachTopLevelFile(directory, (file, name) {
-    if (name == ImageBytesBlobStore$File$VM.indexFileName) return;
+    if (name == BytesBlobStore$File$VM.indexFileName) return;
     try {
       file.deleteSync();
     } on FileSystemException {

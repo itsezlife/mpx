@@ -96,7 +96,7 @@ Future<void> _printMemoryLane() async {
   );
   print(
     'fill: ${report.filledEntries} × ${report.payloadBytes} B under '
-    'ImageBytesRetention.standard',
+    'BytesRetention.standard',
   );
   print('phase                         RSS bytes      delta vs prior');
   print('----------------------------  -------------  ----------------');

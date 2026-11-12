@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
-import 'package:image_bytes_cache/src/http/http_bytes_client.dart';
-import 'package:image_bytes_cache/src/http/retry_backoff.dart';
+import 'package:http_bytes_cache/src/http/http_bytes_client.dart';
+import 'package:http_bytes_cache/src/http/retry_backoff.dart';
 import 'package:meta/meta.dart';
 
 /// HTTP methods safe to retry automatically.
@@ -37,7 +37,7 @@ Duration? _retryAfter(Object error) {
 }
 
 /// {@template http_bytes_retry}
-/// Transient-retry layer for image HTTP GETs: retries idempotent requests with
+/// Transient-retry layer for HTTP GETs: retries idempotent requests with
 /// full-jitter exponential backoff ([HttpBytesRetryBackoff]), honoring `Retry-After`
 /// and a total time budget.
 ///

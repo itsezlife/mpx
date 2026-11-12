@@ -1,29 +1,29 @@
 import 'dart:typed_data';
 
-import 'package:image_bytes_cache/src/image_bytes_cache.dart';
+import 'package:http_bytes_cache/src/bytes_cache.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('IndexedImageBytesCache', () {
+  group('IndexedBytesCache', () {
     late _FakeIndex index;
     late _FakeBlobs blobs;
-    late IndexedImageBytesCache cache;
+    late IndexedBytesCache cache;
     late DateTime now;
 
     setUp(() {
       now = DateTime.utc(2024, 1, 1, 12);
       index = _FakeIndex();
       blobs = _FakeBlobs();
-      cache = IndexedImageBytesCache(
+      cache = IndexedBytesCache(
         index: index,
         blobs: blobs,
-        retention: const ImageBytesRetention.unlimited(),
+        retention: const BytesRetention.unlimited(),
         clock: () => now,
       );
     });
 
     test('write then read returns the same bytes', () async {
-      const key = ImageCacheKey('logo');
+      const key = BytesCacheKey('logo');
       final bytes = Uint8List.fromList([1, 2, 3, 4]);
 
       await cache.write(key, bytes);
@@ -34,7 +34,7 @@ void main() {
     });
 
     test('hot-path blob read forwards index byteLength as knownByteLength', () async {
-      const key = ImageCacheKey('sized');
+      const key = BytesCacheKey('sized');
       final bytes = Uint8List.fromList([9, 8, 7, 6]);
 
       await cache.write(key, bytes);
@@ -45,14 +45,14 @@ void main() {
     });
 
     test('empty write is not retained as capacity waste', () async {
-      cache = IndexedImageBytesCache(
+      cache = IndexedBytesCache(
         index: index,
         blobs: blobs,
-        retention: const ImageBytesRetention.maxEntries(1),
+        retention: const BytesRetention.maxEntries(1),
         clock: () => now,
       );
-      const emptyKey = ImageCacheKey('empty');
-      const keepKey = ImageCacheKey('keep');
+      const emptyKey = BytesCacheKey('empty');
+      const keepKey = BytesCacheKey('keep');
 
       await cache.write(emptyKey, Uint8List(0));
       expect(await cache.read(emptyKey), isNull);
@@ -64,7 +64,7 @@ void main() {
     });
 
     test('empty write evicts a previously stored payload for the same key', () async {
-      const key = ImageCacheKey('logo');
+      const key = BytesCacheKey('logo');
       await cache.write(key, Uint8List.fromList([1, 2]));
 
       await cache.write(key, Uint8List(0));
@@ -75,10 +75,10 @@ void main() {
     });
 
     test('read of sticky empty payload misses and scrubs the entry', () async {
-      const key = ImageCacheKey('sticky');
+      const key = BytesCacheKey('sticky');
       // Simulate a legacy empty durable row that predates empty-write rejection.
       blobs.store[key.value] = Uint8List(0);
-      index.records[key.value] = ImageBytesRecord(
+      index.records[key.value] = BytesRecord(
         key: key,
         writtenAt: now,
         accessedAt: now,
@@ -91,7 +91,7 @@ void main() {
     });
 
     test('read does not persist access to the index (soft LRU)', () async {
-      const key = ImageCacheKey('logo');
+      const key = BytesCacheKey('logo');
       await cache.write(key, Uint8List.fromList([1]));
       final putsBefore = index.putCount;
       final commitsBefore = index.commitCount;
@@ -105,22 +105,22 @@ void main() {
     });
 
     test('soft-LRU flush + capacity trim in one write commits meta once', () async {
-      cache = IndexedImageBytesCache(
+      cache = IndexedBytesCache(
         index: index,
         blobs: blobs,
-        retention: const ImageBytesRetention.maxEntries(2),
+        retention: const BytesRetention.maxEntries(2),
         clock: () => now,
       );
 
-      await cache.write(const ImageCacheKey('a'), Uint8List.fromList([1]));
+      await cache.write(const BytesCacheKey('a'), Uint8List.fromList([1]));
       now = now.add(const Duration(seconds: 1));
-      await cache.write(const ImageCacheKey('b'), Uint8List.fromList([2]));
+      await cache.write(const BytesCacheKey('b'), Uint8List.fromList([2]));
       now = now.add(const Duration(seconds: 1));
-      await cache.read(const ImageCacheKey('a'));
+      await cache.read(const BytesCacheKey('a'));
       now = now.add(const Duration(seconds: 1));
       final commitsBefore = index.commitCount;
 
-      await cache.write(const ImageCacheKey('c'), Uint8List.fromList([3]));
+      await cache.write(const BytesCacheKey('c'), Uint8List.fromList([3]));
 
       // Flush touches a, put c, delete b: many RAM puts/deletes, one durable commit.
       expect(index.commitCount, commitsBefore + 1);
@@ -137,12 +137,12 @@ void main() {
         inFlight--;
       };
 
-      await cache.write(const ImageCacheKey('a'), Uint8List.fromList([1]));
-      await cache.write(const ImageCacheKey('b'), Uint8List.fromList([2]));
+      await cache.write(const BytesCacheKey('a'), Uint8List.fromList([1]));
+      await cache.write(const BytesCacheKey('b'), Uint8List.fromList([2]));
 
       final results = await (
-        cache.read(const ImageCacheKey('a')),
-        cache.read(const ImageCacheKey('b')),
+        cache.read(const BytesCacheKey('a')),
+        cache.read(const BytesCacheKey('b')),
       ).wait;
 
       expect(results.$1, Uint8List.fromList([1]));
@@ -151,13 +151,13 @@ void main() {
     });
 
     test('TTL cleanup re-checks under exclusive so a racing write survives', () async {
-      cache = IndexedImageBytesCache(
+      cache = IndexedBytesCache(
         index: index,
         blobs: blobs,
-        retention: const ImageBytesRetention.maxAge(Duration(hours: 1)),
+        retention: const BytesRetention.maxAge(Duration(hours: 1)),
         clock: () => now,
       );
-      const key = ImageCacheKey('race-ttl');
+      const key = BytesCacheKey('race-ttl');
       await cache.write(key, Uint8List.fromList([1]));
       now = now.add(const Duration(hours: 2));
       index.opDelay = const Duration(milliseconds: 10);
@@ -177,20 +177,20 @@ void main() {
     });
 
     test('reclaim and write cannot tear an index/blob pair', () async {
-      const orphanKey = ImageCacheKey('orphan-blob');
+      const orphanKey = BytesCacheKey('orphan-blob');
       blobs.store[orphanKey.value] = Uint8List.fromList([7]);
       blobs.opDelay = const Duration(milliseconds: 20);
       index.opDelay = const Duration(milliseconds: 20);
 
-      cache = IndexedImageBytesCache(
+      cache = IndexedBytesCache(
         index: index,
         blobs: blobs,
-        retention: const ImageBytesRetention.unlimited(),
+        retention: const BytesRetention.unlimited(),
         clock: () => now,
         reclaimOrphans: blobs.reclaimOrphans,
       );
 
-      const liveKey = ImageCacheKey('live');
+      const liveKey = BytesCacheKey('live');
       final liveBytes = Uint8List.fromList([1, 2, 3]);
 
       await (
@@ -205,34 +205,34 @@ void main() {
     });
 
     test('write flushes pending access before capacity trim', () async {
-      cache = IndexedImageBytesCache(
+      cache = IndexedBytesCache(
         index: index,
         blobs: blobs,
-        retention: const ImageBytesRetention.maxEntries(2),
+        retention: const BytesRetention.maxEntries(2),
         clock: () => now,
       );
 
-      await cache.write(const ImageCacheKey('a'), Uint8List.fromList([1]));
+      await cache.write(const BytesCacheKey('a'), Uint8List.fromList([1]));
       now = now.add(const Duration(seconds: 1));
-      await cache.write(const ImageCacheKey('b'), Uint8List.fromList([2]));
+      await cache.write(const BytesCacheKey('b'), Uint8List.fromList([2]));
       now = now.add(const Duration(seconds: 1));
-      await cache.read(const ImageCacheKey('a'));
+      await cache.read(const BytesCacheKey('a'));
       now = now.add(const Duration(seconds: 1));
-      await cache.write(const ImageCacheKey('c'), Uint8List.fromList([3]));
+      await cache.write(const BytesCacheKey('c'), Uint8List.fromList([3]));
 
-      expect(await cache.read(const ImageCacheKey('a')), Uint8List.fromList([1]));
-      expect(await cache.read(const ImageCacheKey('b')), isNull);
-      expect(await cache.read(const ImageCacheKey('c')), Uint8List.fromList([3]));
+      expect(await cache.read(const BytesCacheKey('a')), Uint8List.fromList([1]));
+      expect(await cache.read(const BytesCacheKey('b')), isNull);
+      expect(await cache.read(const BytesCacheKey('c')), Uint8List.fromList([3]));
     });
 
     test('TTL: read after maxAge returns null and deletes both stores', () async {
-      cache = IndexedImageBytesCache(
+      cache = IndexedBytesCache(
         index: index,
         blobs: blobs,
-        retention: const ImageBytesRetention.maxAge(Duration(hours: 1)),
+        retention: const BytesRetention.maxAge(Duration(hours: 1)),
         clock: () => now,
       );
-      const key = ImageCacheKey('logo');
+      const key = BytesCacheKey('logo');
       await cache.write(key, Uint8List.fromList([1]));
       now = now.add(const Duration(hours: 2));
 
@@ -242,28 +242,28 @@ void main() {
     });
 
     test('prune removes expired entries', () async {
-      cache = IndexedImageBytesCache(
+      cache = IndexedBytesCache(
         index: index,
         blobs: blobs,
-        retention: const ImageBytesRetention.maxAge(Duration(days: 1)),
+        retention: const BytesRetention.maxAge(Duration(days: 1)),
         clock: () => now,
       );
-      await cache.write(const ImageCacheKey('old'), Uint8List.fromList([1]));
+      await cache.write(const BytesCacheKey('old'), Uint8List.fromList([1]));
       now = now.add(const Duration(days: 2));
-      await cache.write(const ImageCacheKey('fresh'), Uint8List.fromList([2]));
+      await cache.write(const BytesCacheKey('fresh'), Uint8List.fromList([2]));
 
       final report = await cache.prune();
 
-      expect(report.evictedKeys, [const ImageCacheKey('old')]);
-      expect(await cache.read(const ImageCacheKey('old')), isNull);
+      expect(report.evictedKeys, [const BytesCacheKey('old')]);
+      expect(await cache.read(const BytesCacheKey('old')), isNull);
       expect(
-        await cache.read(const ImageCacheKey('fresh')),
+        await cache.read(const BytesCacheKey('fresh')),
         Uint8List.fromList([2]),
       );
     });
 
     test('evict removes index and blob', () async {
-      const key = ImageCacheKey('logo');
+      const key = BytesCacheKey('logo');
       await cache.write(key, Uint8List.fromList([1]));
 
       await cache.evict(key);
@@ -274,9 +274,9 @@ void main() {
     });
 
     test('orphan index without blob is cleaned on read', () async {
-      const key = ImageCacheKey('orphan');
+      const key = BytesCacheKey('orphan');
       await index.put(
-        ImageBytesRecord(
+        BytesRecord(
           key: key,
           writtenAt: now,
           accessedAt: now,
@@ -289,30 +289,30 @@ void main() {
     });
 
     test('maxBytes: write evicts LRU after soft-access flush', () async {
-      cache = IndexedImageBytesCache(
+      cache = IndexedBytesCache(
         index: index,
         blobs: blobs,
-        retention: const ImageBytesRetention.maxBytes(5),
+        retention: const BytesRetention.maxBytes(5),
         clock: () => now,
       );
 
-      await cache.write(const ImageCacheKey('a'), Uint8List.fromList([1, 2]));
+      await cache.write(const BytesCacheKey('a'), Uint8List.fromList([1, 2]));
       now = now.add(const Duration(seconds: 1));
-      await cache.write(const ImageCacheKey('b'), Uint8List.fromList([3, 4]));
+      await cache.write(const BytesCacheKey('b'), Uint8List.fromList([3, 4]));
       now = now.add(const Duration(seconds: 1));
-      await cache.read(const ImageCacheKey('a'));
+      await cache.read(const BytesCacheKey('a'));
       now = now.add(const Duration(seconds: 1));
-      await cache.write(const ImageCacheKey('c'), Uint8List.fromList([5, 6]));
+      await cache.write(const BytesCacheKey('c'), Uint8List.fromList([5, 6]));
 
-      expect(await cache.read(const ImageCacheKey('a')), Uint8List.fromList([1, 2]));
-      expect(await cache.read(const ImageCacheKey('b')), isNull);
-      expect(await cache.read(const ImageCacheKey('c')), Uint8List.fromList([5, 6]));
+      expect(await cache.read(const BytesCacheKey('a')), Uint8List.fromList([1, 2]));
+      expect(await cache.read(const BytesCacheKey('b')), isNull);
+      expect(await cache.read(const BytesCacheKey('c')), Uint8List.fromList([5, 6]));
     });
 
     test('concurrent mutate leaves index and blob pairs intact', () async {
       index.opDelay = const Duration(milliseconds: 5);
       blobs.opDelay = const Duration(milliseconds: 5);
-      const key = ImageCacheKey('race');
+      const key = BytesCacheKey('race');
       final bytes = Uint8List.fromList([9, 9, 9]);
 
       await Future.wait([
@@ -332,28 +332,28 @@ void main() {
     });
 
     test('close is idempotent and rejects later operations', () async {
-      await cache.write(const ImageCacheKey('logo'), Uint8List.fromList([1]));
+      await cache.write(const BytesCacheKey('logo'), Uint8List.fromList([1]));
       await cache.close();
       await cache.close();
 
       await expectLater(
-        cache.read(const ImageCacheKey('logo')),
+        cache.read(const BytesCacheKey('logo')),
         throwsA(isA<StateError>()),
       );
       await expectLater(
-        cache.write(const ImageCacheKey('logo'), Uint8List.fromList([2])),
+        cache.write(const BytesCacheKey('logo'), Uint8List.fromList([2])),
         throwsA(isA<StateError>()),
       );
       await expectLater(
-        cache.evict(const ImageCacheKey('logo')),
+        cache.evict(const BytesCacheKey('logo')),
         throwsA(isA<StateError>()),
       );
       await expectLater(cache.prune(), throwsA(isA<StateError>()));
     });
 
     test('commit failure rolls RAM back — no optimistic durable hit', () async {
-      const priorKey = ImageCacheKey('prior');
-      const failedKey = ImageCacheKey('failed');
+      const priorKey = BytesCacheKey('prior');
+      const failedKey = BytesCacheKey('failed');
       final priorBytes = Uint8List.fromList([1, 1]);
       final failedBytes = Uint8List.fromList([2, 2, 2]);
 
@@ -371,7 +371,7 @@ void main() {
     });
 
     test('commit failure on evict restores the index row', () async {
-      const key = ImageCacheKey('keep');
+      const key = BytesCacheKey('keep');
       final bytes = Uint8List.fromList([7]);
       await cache.write(key, bytes);
       index.commitError = StateError('durable index commit failed');
@@ -386,8 +386,8 @@ void main() {
   });
 }
 
-final class _FakeIndex implements IImageBytesIndex {
-  final Map<String, ImageBytesRecord> records = {};
+final class _FakeIndex implements IBytesIndex {
+  final Map<String, BytesRecord> records = {};
   int putCount = 0;
   int commitCount = 0;
   Duration opDelay = Duration.zero;
@@ -400,26 +400,26 @@ final class _FakeIndex implements IImageBytesIndex {
   }
 
   @override
-  Future<ImageBytesRecord?> get(ImageCacheKey key) async {
+  Future<BytesRecord?> get(BytesCacheKey key) async {
     await _delay();
     return records[key.value];
   }
 
   @override
-  Future<void> put(ImageBytesRecord record) async {
+  Future<void> put(BytesRecord record) async {
     await _delay();
     putCount++;
     records[record.key.value] = record;
   }
 
   @override
-  Future<void> delete(ImageCacheKey key) async {
+  Future<void> delete(BytesCacheKey key) async {
     await _delay();
     records.remove(key.value);
   }
 
   @override
-  Future<Iterable<ImageBytesRecord>> values() async {
+  Future<Iterable<BytesRecord>> values() async {
     await _delay();
     return records.values;
   }
@@ -435,7 +435,7 @@ final class _FakeIndex implements IImageBytesIndex {
   }
 }
 
-final class _FakeBlobs implements IImageBytesBlobStore {
+final class _FakeBlobs implements IBytesBlobStore {
   final Map<String, Uint8List> store = {};
   Duration opDelay = Duration.zero;
   Future<void> Function()? readHook;
@@ -450,7 +450,7 @@ final class _FakeBlobs implements IImageBytesBlobStore {
   }
 
   @override
-  Future<Uint8List?> read(ImageCacheKey key, {int? knownByteLength}) async {
+  Future<Uint8List?> read(BytesCacheKey key, {int? knownByteLength}) async {
     lastKnownByteLength = knownByteLength;
     await readHook?.call();
     await _delay();
@@ -458,13 +458,13 @@ final class _FakeBlobs implements IImageBytesBlobStore {
   }
 
   @override
-  Future<void> write(ImageCacheKey key, Uint8List bytes) async {
+  Future<void> write(BytesCacheKey key, Uint8List bytes) async {
     await _delay();
     store[key.value] = bytes;
   }
 
   @override
-  Future<void> delete(ImageCacheKey key) async {
+  Future<void> delete(BytesCacheKey key) async {
     await _delay();
     store.remove(key.value);
   }

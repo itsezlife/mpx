@@ -1,17 +1,17 @@
 import 'dart:typed_data';
 
-import 'package:image_bytes_cache/image_bytes_cache.dart';
+import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:test/test.dart';
 
 void main() {
   group('SkipCacheMiddleware', () {
     test('seeded skip makes read miss without touching stored bytes', () async {
-      final inner = MemoryImageBytesCache();
-      const key = ImageCacheKey('logo');
+      final inner = MemoryBytesCache();
+      const key = BytesCacheKey('logo');
       final bytes = Uint8List.fromList([1, 2, 3]);
       await inner.write(key, bytes);
 
-      final cache = MiddlewareImageBytesCache(
+      final cache = MiddlewareBytesCache(
         inner: inner,
         middlewares: <CacheMiddleware>[const SkipCacheMiddleware()],
       );
@@ -24,9 +24,9 @@ void main() {
     });
 
     test('seeded skip makes write a no-op', () async {
-      final inner = MemoryImageBytesCache();
-      const key = ImageCacheKey('logo');
-      final cache = MiddlewareImageBytesCache(
+      final inner = MemoryBytesCache();
+      const key = BytesCacheKey('logo');
+      final cache = MiddlewareBytesCache(
         inner: inner,
         middlewares: <CacheMiddleware>[const SkipCacheMiddleware()],
       );
@@ -41,10 +41,10 @@ void main() {
     });
 
     test('without skip, read and write reach the inner store', () async {
-      final inner = MemoryImageBytesCache();
-      const key = ImageCacheKey('logo');
+      final inner = MemoryBytesCache();
+      const key = BytesCacheKey('logo');
       final bytes = Uint8List.fromList([4, 5]);
-      final cache = MiddlewareImageBytesCache(
+      final cache = MiddlewareBytesCache(
         inner: inner,
         middlewares: <CacheMiddleware>[const SkipCacheMiddleware()],
       );
@@ -56,11 +56,11 @@ void main() {
     });
 
     test('shouldSkip predicate skips without a context flag', () async {
-      final inner = MemoryImageBytesCache();
-      const key = ImageCacheKey('secret');
+      final inner = MemoryBytesCache();
+      const key = BytesCacheKey('secret');
       await inner.write(key, Uint8List.fromList([1]));
 
-      final cache = MiddlewareImageBytesCache(
+      final cache = MiddlewareBytesCache(
         inner: inner,
         middlewares: <CacheMiddleware>[
           SkipCacheMiddleware(

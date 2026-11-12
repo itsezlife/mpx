@@ -4,9 +4,9 @@ import 'dart:typed_data';
 import 'package:cancel_token/cancel_token.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:image_bytes_cache/src/http/http_bytes_client.dart';
-import 'package:image_bytes_cache/src/http/middlewares/timeout_middleware.dart';
-import 'package:image_bytes_cache/src/image_bytes_cache.dart';
+import 'package:http_bytes_cache/src/bytes_cache.dart';
+import 'package:http_bytes_cache/src/http/http_bytes_client.dart';
+import 'package:http_bytes_cache/src/http/middlewares/timeout_middleware.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -389,7 +389,7 @@ void main() {
       addTearDown(client.close);
 
       final url = Uri.parse('https://cdn.example.com/override.svg');
-      const override = ImageCacheKey('host_identity');
+      const override = BytesCacheKey('host_identity');
       final a = client.getBytes(
         url,
         headers: const {'Authorization': 'Bearer a'},
@@ -776,7 +776,7 @@ void main() {
       );
     });
 
-    test('ImageBytesCache.resetShared also clears the configured client', () async {
+    test('BytesCache.resetShared also clears the configured client', () async {
       final client = HttpBytesClient(
         client: MockClient(
           (_) async => http.Response.bytes(Uint8List.fromList([1]), 200),
@@ -784,7 +784,7 @@ void main() {
       );
       await HttpBytesClient.configure(client);
 
-      await ImageBytesCache.resetShared();
+      await BytesCache.resetShared();
       expect(
         () => client.getBytes(Uri.parse('https://cdn.example.com/closed.svg')),
         throwsA(isA<HttpBytesException$Internal>()),

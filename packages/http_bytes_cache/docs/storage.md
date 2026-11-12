@@ -1,30 +1,30 @@
 # Storage
 
-How `IndexedImageBytesCache` keeps meta fast and payloads durable. Platform
+How `IndexedBytesCache` keeps meta fast and payloads durable. Platform
 adapters implement the ports; the brain owns concurrency and retention.
 
 ## Doctrine
 
 After open, **meta lives in a RAM mirror**. Pure reads do not hit durable meta
 IO and do not run exclusive against each other. Durable meta persists with
-**one commit per exclusive mutate epoch**. Image bodies live on platform blob
+**one commit per exclusive mutate epoch**. Payload bodies live on platform blob
 stores (files on VM; Cache API and OPFS on web), never in Hive and never as
 SQLite BLOB columns queried on the hot path.
 
-Live SQL on every cache read is refused. Hive boxes for image payloads are
+Live SQL on every cache read is refused. Hive boxes for payloads are
 refused.
 
 ## Ports
 
-### `IImageBytesIndex`
+### `IBytesIndex`
 
-Records per `ImageCacheKey`: `writtenAt`, `accessedAt`, `byteLength`, and
+Records per `BytesCacheKey`: `writtenAt`, `accessedAt`, `byteLength`, and
 optional HTTP cache meta (`etag`, `lastModified`, `date`, `expires`,
 `cacheControl`, `age`, `lastValidatedAt`). Those validators are not part of
 key identity. `get` / `put` / `delete` / `values` mutate the RAM mirror.
 `commit` writes the durable document once. Memory fakes may no-op `commit`.
 
-### `IImageBytesBlobStore`
+### `IBytesBlobStore`
 
 Bytes only. No timestamps. The brain pairs index rows with blobs and deletes
 both on evict / TTL / trim.
@@ -34,7 +34,7 @@ loading every payload.
 
 ## Concurrent reads vs exclusive mutate
 
-`IndexedImageBytesCache` uses language primitives only (shared/exclusive gate).
+`IndexedBytesCache` uses language primitives only (shared/exclusive gate).
 No Mutex package.
 
 **Shared (concurrent):** pure `read` hits and soft misses. Soft LRU writes into
@@ -84,10 +84,10 @@ IO.
 
 ## Retention
 
-Sealed `ImageBytesRetention`. TTL is checked on `read`. Capacity is trimmed on
+Sealed `BytesRetention`. TTL is checked on `read`. Capacity is trimmed on
 `write` and `prune`. There is no background eviction timer.
 
-`ImageBytesRetention.standard` (default for `open`):
+`BytesRetention.standard` (default for `open`):
 
 | Limit        | Value   |
 | ------------ | ------- |
@@ -120,18 +120,18 @@ Remote bytes are disposable: corrupt recovery prefers wipe over crash loops.
 
 ## Index document
 
-`ImageBytesIndexDocumentCodec` owns the wire shape for VM file and web meta
+`BytesIndexDocumentCodec` owns the wire shape for VM file and web meta
 Cache:
 
 ```text
 {"v":1,"e":{"<key>":{"w":ms,"a":ms,"n":byteLength,"h"?:{"et","lm","d","x","cc","ag","lv"}}}}
 ```
 
-Optional `h` is HTTP validators and freshness (`ImageHttpCacheMeta`). A missing
+Optional `h` is HTTP validators and freshness (`HttpCacheMeta`). A missing
 `h`, or missing keys inside it, decodes as null meta. Existing caches that
 never wrote `h` keep working. Empty meta is omitted on encode. Version stays
 `1` while the schema stays backward-compatible. Freshness decisions use
-`ImageHttpCacheFreshness`; durable eviction still uses `ImageBytesRetention`
+`HttpCacheFreshness`; durable eviction still uses `BytesRetention`
 only. Do not treat retention TTL as Cache-Control `max-age`.
 
 Unknown version or bad structure throws `FormatException`. Open paths delete
@@ -144,7 +144,7 @@ encode and decode through the codec (fused UTF-8 JSON converters), not peel
 | Half  | Implementation                                                        |
 | ----- | --------------------------------------------------------------------- |
 | Index | Versioned JSON file; RAM mirror; `commit` via the blob isolate worker |
-| Blobs | One file per `ImageCacheKey.value` under the open directory           |
+| Blobs | One file per `BytesCacheKey.value` under the open directory           |
 
 IO runs on a long-lived in-package `IsolateController` worker
 (`lib/src/isolate_controller.dart`). Sync `dart:io` stays off the UI
@@ -152,13 +152,13 @@ isolate. Writes use temp then rename so a crash mid-write cannot leave a
 truncated final path that `read` would treat as a hit.
 
 When the worker dies (watchdog threshold, handler `#exit`, or an explicit
-kill), `ImageBytesBlobStore$File$VM` fails in-flight RPC futures with
+kill), `BytesBlobStore$File$VM` fails in-flight RPC futures with
 `StateError`, drops the dead controller, and allows a later op to respawn.
 That fail-fast path keeps the exclusive mutate gate from stalling forever on
 a hung blob future. Store `close` still fails pending with a closed
 `StateError` and refuses further RPCs.
 
-Bodies at or above `ImageBytesBlobStore$File$VM.transferByteThreshold`
+Bodies at or above `BytesBlobStore$File$VM.transferByteThreshold`
 (64 KiB) cross the isolate boundary as `TransferableTypedData`. Smaller bodies
 stay plain `Uint8List` (transferable setup would cost more than it saves).
 No per-write `compute`.
@@ -170,11 +170,11 @@ No per-write `compute`.
 
 | Half                     | Implementation                                                   |
 | ------------------------ | ---------------------------------------------------------------- |
-| Index                    | One Cache API JSON document (`ImageBytesWebKeys.indexCacheName`) |
+| Index                    | One Cache API JSON document (`BytesWebKeys.indexCacheName`) |
 | Blobs under 64 KiB       | Cache API Responses with synthetic `.invalid` URLs               |
 | Blobs at or above 64 KiB | OPFS files under `opfsBlobsDirectoryName`                        |
 
-`ImageBytesBlobStore$Routed$JS.opfsByteThreshold` is 64 KiB, matching the VM
+`BytesBlobStore$Routed$JS.opfsByteThreshold` is 64 KiB, matching the VM
 transferable cut so small and large bodies share one documented size policy.
 Writes route by length and delete the key from the other backend so a
 resize across the threshold cannot leave a stale twin. Reads use the RAM index
@@ -183,21 +183,21 @@ go straight to OPFS (no Cache match tax); otherwise they check Cache then OPFS.
 
 Synthetic keys use host `image-bytes.invalid` so payload entries never share
 identity with real network fetches and never invite accidental Cache `add()`
-network hits. OPFS filenames are `ImageCacheKey.value` (already filename-safe).
+network hits. OPFS filenames are `BytesCacheKey.value` (already filename-safe).
 No `IsolateController` on web.
 
-API parity with VM means the same `IImageBytesCache` contract. Cost asymmetry
+API parity with VM means the same `IBytesCache` contract. Cost asymmetry
 is expected: web is not a second copy of the isolate worker model.
 
 ## Memory and NoOp
 
-`MemoryImageBytesCache` is an in-process map for tests and degraded open.
+`MemoryBytesCache` is an in-process map for tests and degraded open.
 Access times update on every read (cheap in memory). Optional
-`ImageHttpCacheMeta` sits on the same entry as the bytes, so `readRich` and
+`HttpCacheMeta` sits on the same entry as the bytes, so `readRich` and
 middleware `execute` can return it. `close` is a no-op; the instance stays
 usable so tearDown can call `close` uniformly.
 
-`NoOpImageBytesCache` always misses and discards writes. It is the default
+`NoOpBytesCache` always misses and discards writes. It is the default
 `shared()` until bootstrap configures a real store. `close` is a no-op.
 
 Neither is a durable platform backend.

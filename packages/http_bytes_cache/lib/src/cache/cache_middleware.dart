@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:image_bytes_cache/src/image_bytes_cache.dart';
+import 'package:http_bytes_cache/src/bytes_cache.dart';
 import 'package:meta/meta.dart';
 
 // --- Handler / middleware grammar ---
@@ -64,12 +64,12 @@ extension type CacheMiddlewareWrapper._(CacheMiddleware _fn) {
   CacheHandler call(CacheHandler innerHandler) => _fn(innerHandler);
 }
 
-/// Mutable bag of typed slots for one [MiddlewareImageBytesCache.execute].
+/// Mutable bag of typed slots for one [MiddlewareBytesCache.execute].
 ///
-/// Public [IImageBytesCache] methods on the wrapper start from
+/// Public [IBytesCache] methods on the wrapper start from
 /// [CacheContext.empty]. Seed [skipCache] (or other policy keys) via
-/// [MiddlewareImageBytesCache.execute]. [ImageBytesResolver] does this when
-/// [ImageBytesRequest.skipCache] is true.
+/// [MiddlewareBytesCache.execute]. [BytesResolver] does this when
+/// [BytesRequest.skipCache] is true.
 extension type CacheContext(Map<String, Object?> _map) implements Map<String, Object?> {
   /// Fresh map for a new dispatch.
   factory CacheContext.empty() => CacheContext(<String, Object?>{});
@@ -98,7 +98,7 @@ extension type CacheContext(Map<String, Object?> _map) implements Map<String, Ob
 /// Variants: read, write, evict, prune, close.
 ///
 /// There is no reclaim variant on purpose. Orphan reclaim lives only on
-/// [IndexedImageBytesCache] under its exclusive mutate gate. If middleware
+/// [IndexedBytesCache] under its exclusive mutate gate. If middleware
 /// could call reclaim, it could delete a blob while a write still held the
 /// gate open.
 sealed class CacheOperation {
@@ -111,26 +111,26 @@ final class CacheOperation$Read extends CacheOperation {
   const CacheOperation$Read(this.key);
 
   /// Entry identity.
-  final ImageCacheKey key;
+  final BytesCacheKey key;
 }
 
 /// Write [bytes] under [key].
 ///
 /// Empty [bytes] still means eviction at the store, same as
-/// [IImageBytesCache.write]. Pass [httpCacheMeta] to keep validators with the
+/// [IBytesCache.write]. Pass [httpCacheMeta] to keep validators with the
 /// body. Null clears prior meta for [key] on stores that keep it.
 final class CacheOperation$Write extends CacheOperation {
   /// Creates a write of [bytes] under [key].
   const CacheOperation$Write(this.key, this.bytes, {this.httpCacheMeta});
 
   /// Entry identity.
-  final ImageCacheKey key;
+  final BytesCacheKey key;
 
   /// Payload. Empty lists evict [key] instead of retaining a zero-length row.
   final Uint8List bytes;
 
   /// HTTP validators / freshness to store with [bytes], or null to clear them.
-  final ImageHttpCacheMeta? httpCacheMeta;
+  final HttpCacheMeta? httpCacheMeta;
 }
 
 /// Delete [key] if present.
@@ -139,7 +139,7 @@ final class CacheOperation$Evict extends CacheOperation {
   const CacheOperation$Evict(this.key);
 
   /// Entry identity.
-  final ImageCacheKey key;
+  final BytesCacheKey key;
 }
 
 /// Run TTL and capacity eviction on the store.
@@ -159,7 +159,7 @@ final class CacheOperation$Close extends CacheOperation {
 /// Outcome of one [CacheOperation].
 ///
 /// Middleware that returns the wrong variant for an op makes
-/// [MiddlewareImageBytesCache] throw [StateError] on the public method that
+/// [MiddlewareBytesCache] throw [StateError] on the public method that
 /// expected a match.
 sealed class CacheOperationResult {
   const CacheOperationResult();
@@ -192,7 +192,7 @@ final class CacheOperationResult$Prune extends CacheOperationResult {
   const CacheOperationResult$Prune(this.report);
 
   /// Keys and byte count the inner store dropped.
-  final ImageBytesPruneReport report;
+  final BytesPruneReport report;
 }
 
 /// [CacheOperation$Close] completed.
@@ -205,8 +205,8 @@ final class CacheOperationResult$Close extends CacheOperationResult {
 
 /// What a cache read returns inside the middleware chain.
 ///
-/// [MiddlewareImageBytesCache.read] still unwraps to [Uint8List]?: it takes
-/// [bytes] and drops the rest. Use [MiddlewareImageBytesCache.execute] with
+/// [MiddlewareBytesCache.read] still unwraps to [Uint8List]?: it takes
+/// [bytes] and drops the rest. Use [MiddlewareBytesCache.execute] with
 /// [CacheOperation$Read] when you need timestamps or [httpCacheMeta].
 @immutable
 final class CacheReadHit {
@@ -228,13 +228,13 @@ final class CacheReadHit {
   final DateTime? accessedAt;
 
   /// Validators / freshness. Null when the store had none for this key.
-  final ImageHttpCacheMeta? httpCacheMeta;
+  final HttpCacheMeta? httpCacheMeta;
 }
 
 // --- Wrapper store ---
 
-/// {@template middleware_image_bytes_cache}
-/// [IImageBytesCache] that runs every call through a [CacheMiddleware] chain
+/// {@template middleware_bytes_cache}
+/// [IBytesCache] that runs every call through a [CacheMiddleware] chain
 /// and then into [inner].
 ///
 /// Fold order: [middlewares] is outermost first. With an empty list,
@@ -244,16 +244,16 @@ final class CacheReadHit {
 /// unwrapped to its bytes; a null hit is a miss. Call [execute] when you need
 /// the sealed result or a shared [CacheContext].
 ///
-/// Reclaim is not a [CacheOperation]. If [inner] is [IndexedImageBytesCache],
+/// Reclaim is not a [CacheOperation]. If [inner] is [IndexedBytesCache],
 /// reclaim stays behind that type's exclusive gate. This wrapper never
 /// invents a reclaim path.
 ///
 /// Wrong result variant for an op throws [StateError]. A write result on a
 /// read is middleware breaking the grammar, not a store miss.
 /// {@endtemplate}
-final class MiddlewareImageBytesCache implements IImageBytesCache {
-  /// {@macro middleware_image_bytes_cache}
-  MiddlewareImageBytesCache({
+final class MiddlewareBytesCache implements IBytesCache {
+  /// {@macro middleware_bytes_cache}
+  MiddlewareBytesCache({
     required this.inner,
     Iterable<CacheMiddleware>? middlewares,
   }) : middlewares = List<CacheMiddleware>.unmodifiable(
@@ -263,8 +263,8 @@ final class MiddlewareImageBytesCache implements IImageBytesCache {
     _handler = pipeline(_terminal(inner));
   }
 
-  /// Store at the end of the chain. Tests usually pass [MemoryImageBytesCache].
-  final IImageBytesCache inner;
+  /// Store at the end of the chain. Tests usually pass [MemoryBytesCache].
+  final IBytesCache inner;
 
   /// Outermost first. Immutable after construction.
   final List<CacheMiddleware> middlewares;
@@ -285,7 +285,7 @@ final class MiddlewareImageBytesCache implements IImageBytesCache {
   /// Drops [CacheReadHit] meta. Call [execute] with [CacheOperation$Read] for
   /// timestamps or [CacheReadHit.httpCacheMeta].
   @override
-  Future<Uint8List?> read(ImageCacheKey key) async {
+  Future<Uint8List?> read(BytesCacheKey key) async {
     final result = await execute(CacheOperation$Read(key));
     return switch (result) {
       CacheOperationResult$Read(:final hit?) => hit.bytes,
@@ -300,9 +300,9 @@ final class MiddlewareImageBytesCache implements IImageBytesCache {
   /// Writes [bytes] under [key] as [CacheOperation$Write].
   @override
   Future<void> write(
-    ImageCacheKey key,
+    BytesCacheKey key,
     Uint8List bytes, {
-    ImageHttpCacheMeta? httpCacheMeta,
+    HttpCacheMeta? httpCacheMeta,
   }) async {
     final result = await execute(
       CacheOperation$Write(key, bytes, httpCacheMeta: httpCacheMeta),
@@ -320,7 +320,7 @@ final class MiddlewareImageBytesCache implements IImageBytesCache {
 
   /// Deletes [key] as [CacheOperation$Evict].
   @override
-  Future<void> evict(ImageCacheKey key) async {
+  Future<void> evict(BytesCacheKey key) async {
     final result = await execute(CacheOperation$Evict(key));
     switch (result) {
       case CacheOperationResult$Evict():
@@ -335,7 +335,7 @@ final class MiddlewareImageBytesCache implements IImageBytesCache {
 
   /// Prunes via [CacheOperation$Prune] and returns the store's report.
   @override
-  Future<ImageBytesPruneReport> prune() async {
+  Future<BytesPruneReport> prune() async {
     final result = await execute(const CacheOperation$Prune());
     return switch (result) {
       CacheOperationResult$Prune(:final report) => report,
@@ -361,13 +361,13 @@ final class MiddlewareImageBytesCache implements IImageBytesCache {
     }
   }
 
-  static CacheHandler _terminal(IImageBytesCache store) => (operation, _) async {
+  static CacheHandler _terminal(IBytesCache store) => (operation, _) async {
     // Reclaim is unreachable here. It is not a CacheOperation.
     switch (operation) {
       case CacheOperation$Read(:final key):
         return CacheOperationResult$Read(
           switch (store) {
-            final IImageBytesRichCache rich => switch (await rich.readRich(key)) {
+            final IBytesRichCache rich => switch (await rich.readRich(key)) {
               final hit? => CacheReadHit(
                 bytes: hit.bytes,
                 writtenAt: hit.writtenAt,

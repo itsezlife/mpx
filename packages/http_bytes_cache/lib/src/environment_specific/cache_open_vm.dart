@@ -1,25 +1,25 @@
 import 'dart:typed_data';
 
-import 'package:image_bytes_cache/src/environment_specific/blob_store_file_vm.dart';
-import 'package:image_bytes_cache/src/environment_specific/index_file_vm.dart';
-import 'package:image_bytes_cache/src/image_bytes_cache.dart';
+import 'package:http_bytes_cache/src/bytes_cache.dart';
+import 'package:http_bytes_cache/src/environment_specific/blob_store_file_vm.dart';
+import 'package:http_bytes_cache/src/environment_specific/index_file_vm.dart';
 
-/// VM hook behind [ImageBytesCache.open].
+/// VM hook behind [BytesCache.open].
 ///
-/// Wires [ImageBytesIndex$File$VM] + [ImageBytesBlobStore$File$VM] into
-/// [IndexedImageBytesCache] with orphan reclaim inside the brain’s exclusive
+/// Wires [BytesIndex$File$VM] + [BytesBlobStore$File$VM] into
+/// [IndexedBytesCache] with orphan reclaim inside the brain’s exclusive
 /// domain, reclaims once at open, and closes the isolate worker with the cache.
-/// Call [ImageBytesCache.open] from app code, not this symbol. [directory] is
+/// Call [BytesCache.open] from app code, not this symbol. [directory] is
 /// required. Degraded open (Memory + diagnostic) is handled by
-/// [ImageBytesCache.open], not here.
+/// [BytesCache.open], not here.
 ///
 /// On any failure after a blob store (and its isolate worker) exists, this
 /// function closes those partial resources before rethrowing so
-/// [ImageBytesCache.open] degrade / `throwOnOpenFailure` paths cannot leak
+/// [BytesCache.open] degrade / `throwOnOpenFailure` paths cannot leak
 /// workers. Missing [directory] still throws [ArgumentError] before any spawn.
-Future<IImageBytesCache> $openImageBytesCache({
+Future<IBytesCache> $openBytesCache({
   String? directory,
-  ImageBytesRetention retention = ImageBytesRetention.standard,
+  BytesRetention retention = BytesRetention.standard,
   DateTime Function()? clock,
 }) async {
   final root = switch (directory) {
@@ -27,19 +27,19 @@ Future<IImageBytesCache> $openImageBytesCache({
     _ => throw ArgumentError.value(directory, 'directory', 'required on VM'),
   };
 
-  ImageBytesBlobStore$File$VM? blobs;
-  ImageBytesCache$VM? opened;
+  BytesBlobStore$File$VM? blobs;
+  BytesCache$VM? opened;
   try {
-    blobs = ImageBytesBlobStore$File$VM(directory: root);
+    blobs = BytesBlobStore$File$VM(directory: root);
     await blobs.ensureDirectory();
-    final index = await ImageBytesIndex$File$VM.open(
+    final index = await BytesIndex$File$VM.open(
       directory: root,
       io: blobs,
       onWipe: blobs.wipeAll,
     );
 
-    opened = ImageBytesCache$VM(
-      inner: IndexedImageBytesCache(
+    opened = BytesCache$VM(
+      inner: IndexedBytesCache(
         index: index,
         blobs: blobs,
         retention: retention,
@@ -59,37 +59,37 @@ Future<IImageBytesCache> $openImageBytesCache({
   }
 }
 
-/// Closes the isolate worker around [IndexedImageBytesCache].
+/// Closes the isolate worker around [IndexedBytesCache].
 ///
 /// Orphan reclaim on open/prune stays on the inner brain’s exclusive
 /// gate. This wrapper does not reclaim outside that domain.
-final class ImageBytesCache$VM implements IImageBytesCache {
-  ImageBytesCache$VM({
-    required IndexedImageBytesCache inner,
-    required ImageBytesBlobStore$File$VM blobs,
+final class BytesCache$VM implements IBytesCache {
+  BytesCache$VM({
+    required IndexedBytesCache inner,
+    required BytesBlobStore$File$VM blobs,
   }) : _inner = inner,
        _blobs = blobs;
 
-  final IndexedImageBytesCache _inner;
-  final ImageBytesBlobStore$File$VM _blobs;
+  final IndexedBytesCache _inner;
+  final BytesBlobStore$File$VM _blobs;
 
   Future<void> reclaimOrphans() => _inner.reclaimOrphans();
 
   @override
-  Future<Uint8List?> read(ImageCacheKey key) => _inner.read(key);
+  Future<Uint8List?> read(BytesCacheKey key) => _inner.read(key);
 
   @override
   Future<void> write(
-    ImageCacheKey key,
+    BytesCacheKey key,
     Uint8List bytes, {
-    ImageHttpCacheMeta? httpCacheMeta,
+    HttpCacheMeta? httpCacheMeta,
   }) => _inner.write(key, bytes, httpCacheMeta: httpCacheMeta);
 
   @override
-  Future<void> evict(ImageCacheKey key) => _inner.evict(key);
+  Future<void> evict(BytesCacheKey key) => _inner.evict(key);
 
   @override
-  Future<ImageBytesPruneReport> prune() => _inner.prune();
+  Future<BytesPruneReport> prune() => _inner.prune();
 
   @override
   Future<void> close() async {

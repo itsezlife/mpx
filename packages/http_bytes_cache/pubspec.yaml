@@ -1,16 +1,16 @@
-name: image_bytes_cache
+name: http_bytes_cache
 description: >-
-  Durable remote image bytes — RAM meta, platform blob stores, resolve ladder.
-version: 0.4.1
+  A durable cache for HTTP response bytes, with an HTTP client, middlewares and
+  a disk store, in pure Dart.
+version: 0.1.0
+homepage: https://github.com/itsezlife/mpx
+repository: https://github.com/itsezlife/mpx/tree/main/packages/http_bytes_cache
+issue_tracker: https://github.com/itsezlife/mpx/issues
 publish_to: none
-
-homepage: https://github.com/itsezlife/image_bytes_cache
-repository: https://github.com/itsezlife/image_bytes_cache
-issue_tracker: https://github.com/itsezlife/image_bytes_cache/issues
+resolution: workspace
 
 topics:
   - cache
-  - image
   - http
   - bytes
   - offline
@@ -24,7 +24,7 @@ platforms:
   windows:
 
 environment:
-  sdk: ">=3.11.0"
+  sdk: ^3.11.0
 
 dependencies:
   cancel_token: ^0.1.1

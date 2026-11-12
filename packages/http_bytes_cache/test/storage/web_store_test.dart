@@ -1,23 +1,23 @@
 import 'dart:convert';
 
-import 'package:image_bytes_cache/src/image_bytes_cache.dart';
-import 'package:image_bytes_cache/src/image_bytes_index_document.dart';
-import 'package:image_bytes_cache/src/image_bytes_web_keys.dart';
+import 'package:http_bytes_cache/src/bytes_cache.dart';
+import 'package:http_bytes_cache/src/bytes_index_document.dart';
+import 'package:http_bytes_cache/src/bytes_web_keys.dart';
 import 'package:test/test.dart';
 
 /// Builds UTF-8 JSON bytes without the domain index codec (fixtures only).
 List<int> _jsonObjectBytes(Object? value) => const JsonEncoder().fuse(const Utf8Encoder()).convert(value);
 
 void main() {
-  group('ImageBytesIndexDocumentCodec', () {
-    const codec = ImageBytesIndexDocumentCodec();
+  group('BytesIndexDocumentCodec', () {
+    const codec = BytesIndexDocumentCodec();
 
     test('round-trips records', () {
       final written = DateTime.utc(2024, 1, 2, 3, 4, 5);
       final accessed = DateTime.utc(2024, 1, 2, 3, 5, 0);
       final input = {
-        'logo': ImageBytesRecord(
-          key: const ImageCacheKey('logo'),
+        'logo': BytesRecord(
+          key: const BytesCacheKey('logo'),
           writtenAt: written,
           accessedAt: accessed,
           byteLength: 12,
@@ -40,7 +40,7 @@ void main() {
       final date = DateTime.utc(2024, 1, 2, 3, 0);
       final expires = DateTime.utc(2024, 1, 3);
       final lastValidated = DateTime.utc(2024, 1, 2, 3, 6);
-      final meta = ImageHttpCacheMeta(
+      final meta = HttpCacheMeta(
         etag: '"abc"',
         lastModified: 'Wed, 21 Oct 2015 07:28:00 GMT',
         date: date,
@@ -50,8 +50,8 @@ void main() {
         lastValidatedAt: lastValidated,
       );
       final input = {
-        'logo': ImageBytesRecord(
-          key: const ImageCacheKey('logo'),
+        'logo': BytesRecord(
+          key: const BytesCacheKey('logo'),
           writtenAt: written,
           accessedAt: accessed,
           byteLength: 12,
@@ -130,37 +130,37 @@ void main() {
     });
   });
 
-  group('ImageBytesWebKeys', () {
+  group('BytesWebKeys', () {
     test('blobUrl encodes key and round-trips via keyValueFromBlobUrl', () {
-      const key = ImageCacheKey('host_logo_abcdef123456');
-      final url = ImageBytesWebKeys.blobUrl(key);
+      const key = BytesCacheKey('host_logo_abcdef123456');
+      final url = BytesWebKeys.blobUrl(key);
       expect(url, startsWith('https://image-bytes.invalid/v1/blob/'));
-      expect(ImageBytesWebKeys.keyValueFromBlobUrl(url), key.value);
+      expect(BytesWebKeys.keyValueFromBlobUrl(url), key.value);
     });
 
     test('keyValueFromBlobUrl ignores foreign URLs', () {
       expect(
-        ImageBytesWebKeys.keyValueFromBlobUrl('https://cdn.example/logo.png'),
+        BytesWebKeys.keyValueFromBlobUrl('https://cdn.example/logo.png'),
         isNull,
       );
       expect(
-        ImageBytesWebKeys.keyValueFromBlobUrl(ImageBytesWebKeys.indexDocumentUrl),
+        BytesWebKeys.keyValueFromBlobUrl(BytesWebKeys.indexDocumentUrl),
         isNull,
       );
     });
 
     test('cache names stay distinct so meta scan never loads payloads', () {
       expect(
-        ImageBytesWebKeys.indexCacheName,
-        isNot(ImageBytesWebKeys.blobsCacheName),
+        BytesWebKeys.indexCacheName,
+        isNot(BytesWebKeys.blobsCacheName),
       );
     });
 
     test('OPFS directory name is stable and distinct from the index Cache', () {
-      expect(ImageBytesWebKeys.opfsBlobsDirectoryName, 'image_bytes_blobs_v1');
+      expect(BytesWebKeys.opfsBlobsDirectoryName, 'image_bytes_blobs_v1');
       expect(
-        ImageBytesWebKeys.opfsBlobsDirectoryName,
-        isNot(ImageBytesWebKeys.indexCacheName),
+        BytesWebKeys.opfsBlobsDirectoryName,
+        isNot(BytesWebKeys.indexCacheName),
       );
     });
   });

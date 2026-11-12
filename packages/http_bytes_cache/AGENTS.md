@@ -1,12 +1,13 @@
 # AGENTS.md
 
-High-signal orientation for LLMs/agents working in **`image_bytes_cache`**
-(pure-Dart core in this repo under `packages/image_bytes_cache/`).
-Read this first, every time. Deep detail lives in [`docs/`](docs/), linked per
-section. Glossary: [`CONTEXT.md`](CONTEXT.md).
+Orientation for agents working in **`http_bytes_cache`**, the pure-Dart bytes
+cache of mpx (`packages/http_bytes_cache/`). The repo-level
+[`AGENTS.md`](../../AGENTS.md) and [ADR 0002](../../docs/adr/0002-bytes-cache.md)
+come first; this file adds the package's own rules. Deep detail lives in
+[`docs/`](docs/). Glossary: [`CONTEXT.md`](CONTEXT.md).
 
-`image_bytes_cache` is a durable remote **image bytes** engine: identity key →
-RAM meta mirror → platform blob stores, plus a resolve ladder (cache → network
+`http_bytes_cache` is a durable remote **bytes** engine: identity key → RAM
+meta mirror → platform blob stores, plus a resolve ladder (cache → network
 coalesce → write-through).
 
 ## Commands (run before you claim done)
@@ -14,8 +15,8 @@ coalesce → write-through).
 ```shell
 # Tests — test/unit_test.dart is the single aggregate entrypoint for VM suites.
 dart test test/unit_test.dart
-dart analyze lib test
-dart format lib test   # page_width 120
+dart analyze --fatal-infos
+dart format --line-length 80 lib test
 
 # Web smoke (Chrome) — CI merge gate; run locally when touching web blob / open:
 dart test -p chrome test/open/open_web_test.dart
@@ -33,50 +34,51 @@ More: [`docs/development.md`](docs/development.md).
 
 | Path | What | Doc |
 | --- | --- | --- |
-| `image_bytes_cache.dart` | `ImageCacheKey`, retention, ports, `IndexedImageBytesCache`, Memory/NoOp, `ImageHttpCacheMeta` / rich hit, `ImageBytesCache` open/configure | [architecture](docs/architecture.md), [storage](docs/storage.md) |
-| `cache/cache_middleware.dart` | Sealed `CacheOperation` / result, `CacheMiddleware` fold, `MiddlewareImageBytesCache`, rich `CacheReadHit` | [resolve-ladder](docs/resolve-ladder.md) |
+| `bytes_cache.dart` | `BytesCacheKey`, retention, ports, `IndexedBytesCache`, Memory/NoOp, `HttpCacheMeta` / rich hit, `BytesCache` open/configure | [architecture](docs/architecture.md), [storage](docs/storage.md) |
+| `cache/cache_middleware.dart` | Sealed `CacheOperation` / result, `CacheMiddleware` fold, `MiddlewareBytesCache`, rich `CacheReadHit` | [resolve-ladder](docs/resolve-ladder.md) |
 | `cache/middlewares/` | Opt-in Skip-cache + Cache `Logger$Developer` | [resolve-ladder](docs/resolve-ladder.md) |
-| `image_bytes_resolver.dart` | Ladder: freshness → conditional/unconditional GET → write-through | [resolve-ladder](docs/resolve-ladder.md) |
-| `image_http_cache_freshness.dart` | Freshness policy + response-meta helpers | [resolve-ladder](docs/resolve-ladder.md) |
+| `bytes_resolver.dart` | Ladder: freshness → conditional/unconditional GET → write-through | [resolve-ladder](docs/resolve-ladder.md) |
+| `http_cache_freshness.dart` | Freshness policy + response-meta helpers | [resolve-ladder](docs/resolve-ladder.md) |
 | `http/http_bytes_client.dart` | HTTP GET types, middleware chain, client | [resolve-ladder](docs/resolve-ladder.md) |
 | `http/middlewares/` | HTTP middlewares (`Timeout`, opt-in `Retry`, `Bearer`, `Conditional`, `Logger$Developer`) | [resolve-ladder](docs/resolve-ladder.md) |
-| `image_bytes_diagnostics.dart` | Soft-path policy (`silent` / `developer` / `onEvent`); ops include revalidated / stale-used / unconditional | [resolve-ladder](docs/resolve-ladder.md) |
-| `image_bytes_index_document.dart` | Versioned index JSON codec (`v:1`, additive HTTP `h` meta) | [storage](docs/storage.md) |
-| `image_bytes_web_keys.dart` | Synthetic `.invalid` Cache URLs + OPFS dir names | [storage](docs/storage.md) |
+| `bytes_diagnostics.dart` | Soft-path policy (`silent` / `developer` / `onEvent`); ops include revalidated / stale-used / unconditional | [resolve-ladder](docs/resolve-ladder.md) |
+| `bytes_index_document.dart` | Versioned index JSON codec (`v:1`, additive HTTP `h` meta) | [storage](docs/storage.md) |
+| `bytes_web_keys.dart` | Synthetic `.invalid` Cache URLs + OPFS dir names | [storage](docs/storage.md) |
 | `isolate_controller.dart` | Long-lived isolate spawn/add/stream/close (VM blob IO) | [storage](docs/storage.md) |
 | `environment_specific/cache_open*.dart` | Conditional `open` (VM files / web Cache+OPFS) | [storage](docs/storage.md) |
 | `environment_specific/*_vm.dart` | File index + isolate blob worker | [storage](docs/storage.md) |
 | `environment_specific/*_js.dart` | Cache API index; Cache/OPFS blobs by 64 KiB cut | [storage](docs/storage.md) |
 
-Public API is the barrel `lib/image_bytes_cache.dart`. See
+Public API is the barrel `lib/http_bytes_cache.dart`. See
 [`docs/architecture.md`](docs/architecture.md).
 
 ## Hard rules (do not violate)
 
 1. **Storage grows here**, not in host UI util trees. Widgets depend on
-   `IImageBytesResolver` / `IImageBytesCache` only.
-2. **No Hive** on this path. No image bodies in SQLite BLOB columns. No live
+   `IBytesResolver` / `IBytesCache` only.
+2. **No Hive** on this path. No payload bodies in SQLite BLOB columns. No live
    SQL `SELECT` on the resolve hot path.
 3. **RAM meta after open.** Pure `read` must not durable-commit and must not
-   serialize against other pure reads. Mutate epochs call `IImageBytesIndex.commit`
+   serialize against other pure reads. Mutate epochs call `IBytesIndex.commit`
    **once**.
 4. **Orphan reclaim only under the exclusive mutate gate** (wired into
-   `IndexedImageBytesCache`). Wrappers must not reclaim outside it.
+   `IndexedBytesCache`). Wrappers must not reclaim outside it.
 5. **Conditional imports** via `dart.library.js_interop` for web vs VM. Do not
    select this package’s platform stubs with `dart.library.html`.
-6. **Index wire format** only through `ImageBytesIndexDocumentCodec`. Wipe on
+6. **Index wire format** only through `BytesIndexDocumentCodec`. Wipe on
    unsupported version / corrupt decode (remote bytes are disposable).
 7. **One VM test entrypoint:** a new `test/**/foo_test.dart` (except Chrome-only
    open) must be wired into `test/unit_test.dart` (import + `main()` inside
    `group('Unit', …)`) or the default suite run skips it.
 8. **Pure Dart core:** no Flutter SDK / `flutter_test`, no `package:shared`,
    no `lints_tool`. No `package:flutter` or `package:shared` imports in
-   `lib/`. Paint widgets and Flutter adapters belong in
-   [`image_bytes_cache_flutter`](../image_bytes_cache_flutter/), not here.
-   Store / ladder microbenches stay in this package; head-to-head compare and
-   scroll-profile harnesses go under
-   [`../image_bytes_cache_flutter/benchmark_compare/`](../image_bytes_cache_flutter/benchmark_compare/),
-   never under core. Competitor deps must not land on this pubspec.
+   `lib/`, and no dependency on `mpx_core` (ADR 0001). Paint widgets and
+   Flutter adapters do not belong here. Store / ladder microbenches stay in
+   this package; head-to-head compare and scroll-profile harnesses never do.
+   Competitor deps must not land on this pubspec.
+9. **Storage names are frozen.** VM index file, web Cache names, OPFS
+   directory and the synthetic `image-bytes.invalid` host keep their
+   pre-rename spelling; changing them orphans stores already on disk.
 
 ## Load-bearing invariants (don't break silently)
 
@@ -97,10 +99,10 @@ Public API is the barrel `lib/image_bytes_cache.dart`. See
   bytes on `$Network` / `$Timeout` / exhausted `$Server` only — never on
   `$Cancelled` / `$Authentication` / definitive `$Request` or empty/missing
   cache.
-- **Open:** hard storage failure degrades to `MemoryImageBytesCache` unless
+- **Open:** hard storage failure degrades to `MemoryBytesCache` unless
   `throwOnOpenFailure`; partial VM worker / web handles are closed before
   degrade or rethrow. Missing VM `directory` still throws. `configure`
-  closes the previous shared instance before assign. `ImageBytesResolver.shared`
+  closes the previous shared instance before assign. `BytesResolver.shared`
   re-reads process-wide cache/client on each resolve (no one-shot snapshot).
   `resetShared` also clears resolver and client shared wiring.
 - **Retention:** TTL on read; capacity on write/prune; no background timer.
@@ -110,10 +112,10 @@ Public API is the barrel `lib/image_bytes_cache.dart`. See
 ## Gotchas quick-reference
 
 - Header key casing and map order must not change identity or coalesce keys
-  (`ImageCacheKey.canonicalHeaders`). Conditional request headers
+  (`BytesCacheKey.canonicalHeaders`). Conditional request headers
   (`If-None-Match` / `If-Modified-Since` / equivalents) are excluded from
   identity; `Authorization` and other representation headers still participate.
-- Coalesce and durable identity use `ImageCacheKey` (length-prefixed fingerprint
+- Coalesce and durable identity use `BytesCacheKey` (length-prefixed fingerprint
   material; no `url|headers` join). Relative vs absolute `Uri.base` equivalents
   share one key. Explicit `cacheKey` is full identity for durable and coalesce
   (`HttpBytesContext.identityOverride`; headers on wire only). In-flight
@@ -121,11 +123,11 @@ Public API is the barrel `lib/image_bytes_cache.dart`. See
   conditionals do not) unless identity override is set. Opt-in
   [HttpBytesConditionalMiddleware] seeds `If-None-Match` / `If-Modified-Since`
   from `HttpBytesContext.etag` / `lastModified`. Place after Bearer, before
-  coalesce. `ImageBytesRequest.skipCache` sets cache Skip-cache via
+  coalesce. `BytesRequest.skipCache` sets cache Skip-cache via
   `CacheContext` when the store is a middleware wrapper.
 - Distinct URLs that share a basename must not collide on disk (fingerprint).
 - VM store under app **cache** root, not documents. Web ignores `directory`.
-- `MemoryImageBytesCache` / `NoOpImageBytesCache` stay usable after `close`;
+- `MemoryBytesCache` / `NoOpBytesCache` stay usable after `close`;
   Indexed and durable wrappers throw after close.
 - Web payload Cache keys are synthetic `https://image-bytes.invalid/...`, not
   the real fetch URL.
@@ -141,12 +143,10 @@ Public API is the barrel `lib/image_bytes_cache.dart`. See
 
 ## The docs
 
-- [`docs/architecture.md`](docs/architecture.md): layers, data flow, public API, engine vs flutter adapters.
+- [`docs/architecture.md`](docs/architecture.md): layers, data flow, public API, engine vs consumers.
 - [`docs/storage.md`](docs/storage.md): brain concurrency, retention, VM/web backends, index wipe.
 - [`docs/resolve-ladder.md`](docs/resolve-ladder.md): key, resolver, client, diagnostics, open/configure.
 - [`docs/development.md`](docs/development.md): commands, seams, layout, store + ladder microbenches.
 - [`CONTEXT.md`](CONTEXT.md): ubiquitous language glossary.
 - [`CHANGELOG.md`](CHANGELOG.md): version history (`version:` in pubspec must match a `##` heading).
 - [`benchmark/`](benchmark/): package-local store + ladder compare harness (`compare.dart`).
-- Sibling paint package: [`../image_bytes_cache_flutter/`](../image_bytes_cache_flutter/)
-  (`AGENTS.md`, `CONTEXT.md`).

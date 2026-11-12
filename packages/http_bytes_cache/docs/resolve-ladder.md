@@ -3,15 +3,15 @@
 How hosts turn a URL into bytes without opening files, Cache API, or sockets
 from paint code.
 
-## Identity: `ImageCacheKey`
+## Identity: `BytesCacheKey`
 
 Filename-safe string: host + safe basename + short fingerprint of the
 **canonical URL** and headers.
 
-`ImageCacheKey.fromUrl` resolves the input with `Uri.base.resolve` before
+`BytesCacheKey.fromUrl` resolves the input with `Uri.base.resolve` before
 host/basename extraction and hashing, so a relative path and its absolute form
 against the same base share one key — the same URI form
-`ImageBytesResolver` uses for GET. Header keys are lowercased, last-wins on
+`BytesResolver` uses for GET. Header keys are lowercased, last-wins on
 case duplicates, then sorted before hashing (`canonicalHeaders`). Conditional
 request headers (`If-None-Match`, `If-Modified-Since`, `If-Match`,
 `If-Unmodified-Since`, `If-Range`) are **excluded** from that material so local
@@ -21,14 +21,14 @@ bytes are length-prefixed URL + canonical headers (not a `url|headers` string
 join), so a `|` inside the URL or a header value cannot forge another
 `(url, headers)` pair.
 
-`HttpBytesClient` in-flight coalesce uses `ImageCacheKey.fromUrl(…).value`
+`HttpBytesClient` in-flight coalesce uses `BytesCacheKey.fromUrl(…).value`
 after request-mutating middleware runs, so Bearer-injected `Authorization`
 participates in the coalesce key (different tokens do not share a flight).
 Unless `HttpBytesContext.identityOverride` is set (resolver `cacheKey`), in
 which case the override wins for coalesce and durable identity together.
 Without an override, durable identity still follows request headers /
 `cacheKey`. Hosts that vary auth across users should put those headers on
-`ImageBytesRequest` or mint distinct `cacheKey`s. Header casing / map order
+`BytesRequest` or mint distinct `cacheKey`s. Header casing / map order
 still cannot split one logical download, and delimiter collisions cannot merge
 two.
 
@@ -42,10 +42,10 @@ fingerprinting. Do not fold conditional request headers into identity.
 
 ## Request and resolve
 
-`ImageBytesRequest` carries `url`, optional `headers`, optional `cacheKey`,
+`BytesRequest` carries `url`, optional `headers`, optional `cacheKey`,
 optional `skipCache`, optional `onBytesProgress`, and optional `cancelToken`.
 
-When `cacheKey` is null, the resolver builds one with `ImageCacheKey.fromUrl`
+When `cacheKey` is null, the resolver builds one with `BytesCacheKey.fromUrl`
 (canonical URL + headers). When set, that value is the full durable and HTTP
 coalesce identity. Headers still go on the GET but are not folded into the key
 (copied to `HttpBytesContext.identityOverride`). If you vary `Authorization`
@@ -55,7 +55,7 @@ across tenants shares one slot. When override is set and request headers include
 level (Bearer-injected tokens are not checked at resolve time).
 
 `skipCache: true` sets `CacheContext.skipCache` on durable read/write. That only
-takes effect on a `MiddlewareImageBytesCache` whose chain includes
+takes effect on a `MiddlewareBytesCache` whose chain includes
 `SkipCacheMiddleware` (or host middleware that reads the flag). Plain stores
 ignore it. Skip forces a miss and write no-op; HTTP still runs.
 
@@ -63,7 +63,7 @@ ignore it. Skip forces a miss and write no-op; HTTP still runs.
 honest HTTP body progress. The ladder forwards it to `HttpBytesClient` on a
 network miss only. A durable non-empty cache hit returns bytes without invoking
 the sink. Do not invent mid-download percents from silence. Resolve remains a
-single completed body (`Future<Uint8List>` or rich `ImageBytesResolveResult`);
+single completed body (`Future<Uint8List>` or rich `BytesResolveResult`);
 there is no public streaming resolve API. The sink does not participate in
 identity or coalesce.
 
@@ -73,14 +73,14 @@ coalesced GET keeps running for the callers still waiting; cancelling the last
 one aborts the request. A durable fresh hit returns without consulting it. Not
 part of identity or coalesce.
 
-`ImageBytesResolver` order:
+`BytesResolver` order:
 
 1. Rich cache read (via `execute` with skip context when `skipCache` is set on a
    middleware store; otherwise `readRich` / public `read`). Empty bytes count as
    a miss.
-2. Fresh hit returns bytes immediately with `ImageBytesOrigin.cache`. No
-   network, no progress events. Freshness is `ImageHttpCacheFreshness`,
-   separate from `ImageBytesRetention` eviction.
+2. Fresh hit returns bytes immediately with `BytesOrigin.cache`. No
+   network, no progress events. Freshness is `HttpCacheFreshness`,
+   separate from `BytesRetention` eviction.
 3. Stale hit with validators (`etag` / `lastModified`) issues a conditional GET.
    Seeds `HttpBytesContext.etag` / `lastModified` for
    `HttpBytesConditionalMiddleware`. Without that middleware on the client,
@@ -90,23 +90,23 @@ part of identity or coalesce.
    with identity override from `cacheKey` and `onBytesProgress` when present.
    When the ladder already held non-empty stale bytes, audible diagnostics emit
    `resolve_unconditional` at debug. Cold misses stay quiet.
-5. 304 returns cached bytes with `ImageBytesOrigin.cache` and soft-refreshes
+5. 304 returns cached bytes with `BytesOrigin.cache` and soft-refreshes
    meta (`lastValidatedAt` plus any freshness headers on the 304). Bytes are
    not replaced. Audible diagnostics emit `resolve_revalidated` at debug.
-6. 200 returns new bytes with `ImageBytesOrigin.network` and soft write-through
+6. 200 returns new bytes with `BytesOrigin.network` and soft write-through
    of bytes plus response-derived HTTP meta.
 7. 412 after a conditional GET: one unconditional GET, then same as 200 or fail
    (also emits `resolve_unconditional` when cached bytes were held).
 8. `$Network` / `$Timeout` / `$Server` after a non-empty cache hit: return those
-   bytes with `ImageBytesOrigin.cache` and emit `resolve_stale_used` when
+   bytes with `BytesOrigin.cache` and emit `resolve_stale_used` when
    diagnostics are audible. Cancel, auth failures, 404-class `$Request`, and
    empty or missing cache still throw.
 9. Other typed `HttpBytesException` failures propagate. Write-through failures
-   report through `ImageBytesDiagnostics` and do not fail `resolve`. A throwing
+   report through `BytesDiagnostics` and do not fail `resolve`. A throwing
    host `onEvent` is swallowed inside `report`.
 
 Bytes-only `resolve` returns the body. Additive `resolveRich` returns the same
-body plus binary `ImageBytesOrigin` (`cache` | `network`) for paint policy.
+body plus binary `BytesOrigin` (`cache` | `network`) for paint policy.
 Ladder `resolve_*` diagnostics stay the detailed channel; origin does not mirror
 every log op.
 Default freshness when `Cache-Control` / `Expires` are absent: validators
@@ -118,7 +118,7 @@ row. When those headers are present, honor `max-age` / `Expires` (with `Age` /
 is the engine default.
 
 Inject cache and client in tests. Production paint usually uses
-`ImageBytesResolver.shared()`, which re-reads `ImageBytesCache.shared()` and
+`BytesResolver.shared()`, which re-reads `BytesCache.shared()` and
 `HttpBytesClient.shared()` (or `debugShared` overrides) on every `resolve`. It
 does not snapshot them at first call, so configure after an early paint still
 enables durable caching, and configure replacement / `resetShared` cannot leave
@@ -130,16 +130,16 @@ Hosts that want conditional headers on the wire should include
 
 ## Cache middleware
 
-`MiddlewareImageBytesCache` implements `IImageBytesCache` and runs every call
+`MiddlewareBytesCache` implements `IBytesCache` and runs every call
 through a `CacheMiddleware` chain into an inner store. Sealed `CacheOperation` /
 `CacheOperationResult` cover read, write, evict, prune, and close. There is no
-reclaim op. Orphan reclaim stays on `IndexedImageBytesCache` under its exclusive
+reclaim op. Orphan reclaim stays on `IndexedBytesCache` under its exclusive
 gate.
 
 A chain read yields `CacheReadHit`: bytes, optional retention timestamps, and
-optional `ImageHttpCacheMeta`. Public `read` unwraps to `Uint8List?`. Call
+optional `HttpCacheMeta`. Public `read` unwraps to `Uint8List?`. Call
 `execute` for the full hit or a shared `CacheContext`. Stores that implement
-`IImageBytesRichCache` fill timestamps and HTTP meta on the terminal read;
+`IBytesRichCache` fill timestamps and HTTP meta on the terminal read;
 `write` accepts optional `httpCacheMeta` the same way.
 
 Opt-in product middlewares (list outermost first):
@@ -150,7 +150,7 @@ Opt-in product middlewares (list outermost first):
 | [SkipCacheMiddleware] | When `CacheContext.skipCache` (or `shouldSkip`) is true: read returns miss, write is a no-op; evict/prune/close still forward |
 
 Seed `CacheContext.skipCache` through `execute`.
-`ImageBytesRequest.skipCache` does this via the resolver. Public `read` /
+`BytesRequest.skipCache` does this via the resolver. Public `read` /
 `write` on the wrapper use an empty context, so they only skip when
 `shouldSkip` decides without the flag.
 
@@ -165,7 +165,7 @@ GET bodies only. Callers own disk cache and decode.
 
 Middleware list order is outermost first (first entry wraps the rest). Coalesce
 runs inside the middleware chain (after request-mutating middleware, before
-`Client.send`). Identity is `ImageCacheKey` from the post-middleware URL +
+`Client.send`). Identity is `BytesCacheKey` from the post-middleware URL +
 headers (Bearer-injected `Authorization` participates; conditional request
 headers do not), unless `HttpBytesContext.identityOverride` is set. Then that
 key wins. Concurrent calls that share that identity share one in-flight GET;
@@ -229,9 +229,9 @@ in-flight work may still finish or fail. If the client created its own
 
 ## Diagnostics
 
-`ImageBytesDiagnostics` does not change resolve or wipe behavior. It only
+`BytesDiagnostics` does not change resolve or wipe behavior. It only
 controls whether soft failures are audible. Default is `silent`. Process-wide
-`ImageBytesDiagnostics.current` is set by `ImageBytesCache.open` /
+`BytesDiagnostics.current` is set by `BytesCache.open` /
 `configure`.
 
 | Policy | Effect |
@@ -240,7 +240,7 @@ controls whether soft failures are audible. Default is `silent`. Process-wide
 | `developer` | `developer.log` name `image_bytes` |
 | `onEvent` | Host callback (logger, Crashlytics, …). Must not throw; throws are swallowed inside `report` so soft-failure paths cannot escalate to unhandled async errors |
 
-Ops on `ImageBytesLogEvent`:
+Ops on `BytesLogEvent`:
 
 | Op | When |
 | --- | --- |
@@ -257,7 +257,7 @@ The package does not depend on a product logger. Hosts bridge
 
 ## Open, configure, shared
 
-`ImageBytesCache.open` selects the environment-specific durable composition
+`BytesCache.open` selects the environment-specific durable composition
 (`dart.library.js_interop` web vs VM stub).
 
 | Concern | Contract |
@@ -265,26 +265,26 @@ The package does not depend on a product logger. Hosts bridge
 | VM `directory` | Required; prefer app cache root, not documents |
 | Web `directory` | Ignored |
 | `diagnostics` | Installed on `current` before open so wipe can report |
-| Hard open failure | Degrades to `MemoryImageBytesCache` + `open_degraded` unless `throwOnOpenFailure`; platform open closes any partial VM worker / web handles before that surface |
+| Hard open failure | Degrades to `MemoryBytesCache` + `open_degraded` unless `throwOnOpenFailure`; platform open closes any partial VM worker / web handles before that surface |
 | Missing VM directory | Still throws `ArgumentError` (host wiring bug); no degrade and no worker spawn |
 
 `configure(cache)` closes any previous non-identical shared instance **before**
 assign so workers and Cache handles do not leak across reconfigure.
-`shared()` returns `NoOpImageBytesCache` until configure (or `debugShared`).
+`shared()` returns `NoOpBytesCache` until configure (or `debugShared`).
 `resetShared` (tests) closes, clears configure and debug overrides, resets
-diagnostics to silent, and clears `ImageBytesResolver` / `HttpBytesClient`
+diagnostics to silent, and clears `BytesResolver` / `HttpBytesClient`
 shared wiring via registered hooks.
 
 `HttpBytesClient.configure(client)` mirrors the same close-then-assign rule
 for the process-wide HTTP client (pool + owned client). Hosts that want
 Cronet / Cupertino / a shared `IOClient` bootstrap once here; paint widgets
-that default to `ImageBytesResolver.shared()` pick it up without threading a
+that default to `BytesResolver.shared()` pick it up without threading a
 client. `HttpBytesClient.shared()` returns `debugShared`, else the
 configured instance, else a lazily constructed default.
 
 Bootstrap order: open (with diagnostics) → configure cache → optionally
-configure client → paint via `ImageBytesResolver.shared()` (typically from
-`image_bytes_cache_flutter` widgets or an injected resolver). Calling shared
+configure client → paint via `BytesResolver.shared()` (typically from
+a fetch adapter or an injected resolver). Calling shared
 resolve **before** configure is safe: later configure is visible on the next
 resolve. Resolver and client shared factories stay thin; do not invent a
 fourth process-wide global for the same ladder.

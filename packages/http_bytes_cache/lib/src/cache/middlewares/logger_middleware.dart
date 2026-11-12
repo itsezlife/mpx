@@ -1,7 +1,7 @@
 import 'dart:developer' as developer;
 
-import 'package:image_bytes_cache/src/cache/cache_middleware.dart';
-import 'package:image_bytes_cache/src/util/byte_count_format.dart';
+import 'package:http_bytes_cache/src/cache/cache_middleware.dart';
+import 'package:http_bytes_cache/src/util/byte_count_format.dart';
 import 'package:meta/meta.dart';
 
 /// {@template cache_logger_middleware_developer}
@@ -15,7 +15,7 @@ import 'package:meta/meta.dart';
 /// inner chain (including [SkipCacheMiddleware] when stacked inside).
 ///
 /// ```dart
-/// MiddlewareImageBytesCache(
+/// MiddlewareBytesCache(
 ///   inner: store,
 ///   middlewares: <CacheMiddleware>[
 ///     const CacheLoggerMiddleware$Developer(), // outermost

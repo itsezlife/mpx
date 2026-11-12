@@ -2,39 +2,39 @@ import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
-import 'package:image_bytes_cache/src/image_bytes_cache.dart';
-import 'package:image_bytes_cache/src/image_bytes_web_keys.dart';
+import 'package:http_bytes_cache/src/bytes_cache.dart';
+import 'package:http_bytes_cache/src/bytes_web_keys.dart';
 import 'package:web/web.dart' as web;
 
-/// Web OPFS payload half: one file per [ImageCacheKey] under a package directory.
+/// Web OPFS payload half: one file per [BytesCacheKey] under a package directory.
 ///
 /// Used for large bodies routed by the composite web blob store (Cache API stays
-/// for smaller payloads). File names are [ImageCacheKey.value] (already
+/// for smaller payloads). File names are [BytesCacheKey.value] (already
 /// filename-safe). Writes use [web.FileSystemFileHandle.createWritable], which
 /// replaces the visible file only when the stream closes. A crash mid-write
 /// does not leave a truncated hit. [reclaimOrphans] walks directory keys via
 /// the async iterator (missing from package:web bindings). [close] drops the
 /// directory handle.
-final class ImageBytesBlobStore$Opfs$JS implements IImageBytesBlobStore {
-  ImageBytesBlobStore$Opfs$JS._(this._directory);
+final class BytesBlobStore$Opfs$JS implements IBytesBlobStore {
+  BytesBlobStore$Opfs$JS._(this._directory);
 
   web.FileSystemDirectoryHandle? _directory;
   var _closed = false;
 
-  /// Opens (or creates) [ImageBytesWebKeys.opfsBlobsDirectoryName] under OPFS root.
-  static Future<ImageBytesBlobStore$Opfs$JS> open() async {
+  /// Opens (or creates) [BytesWebKeys.opfsBlobsDirectoryName] under OPFS root.
+  static Future<BytesBlobStore$Opfs$JS> open() async {
     final root = await web.window.navigator.storage.getDirectory().toDart;
     final directory = await root
         .getDirectoryHandle(
-          ImageBytesWebKeys.opfsBlobsDirectoryName,
+          BytesWebKeys.opfsBlobsDirectoryName,
           web.FileSystemGetDirectoryOptions(create: true),
         )
         .toDart;
-    return ImageBytesBlobStore$Opfs$JS._(directory);
+    return BytesBlobStore$Opfs$JS._(directory);
   }
 
   @override
-  Future<Uint8List?> read(ImageCacheKey key, {int? knownByteLength}) async {
+  Future<Uint8List?> read(BytesCacheKey key, {int? knownByteLength}) async {
     final directory = _ensureOpen();
     try {
       final handle = await directory.getFileHandle(key.value).toDart;
@@ -48,7 +48,7 @@ final class ImageBytesBlobStore$Opfs$JS implements IImageBytesBlobStore {
   }
 
   @override
-  Future<void> write(ImageCacheKey key, Uint8List bytes) async {
+  Future<void> write(BytesCacheKey key, Uint8List bytes) async {
     final directory = _ensureOpen();
     final handle = await directory
         .getFileHandle(
@@ -62,7 +62,7 @@ final class ImageBytesBlobStore$Opfs$JS implements IImageBytesBlobStore {
   }
 
   @override
-  Future<void> delete(ImageCacheKey key) async {
+  Future<void> delete(BytesCacheKey key) async {
     final directory = _ensureOpen();
     try {
       await directory.removeEntry(key.value).toDart;
@@ -105,11 +105,11 @@ final class ImageBytesBlobStore$Opfs$JS implements IImageBytesBlobStore {
 
   web.FileSystemDirectoryHandle _ensureOpen() {
     if (_closed) {
-      throw StateError(r'ImageBytesBlobStore$Opfs$JS is closed');
+      throw StateError(r'BytesBlobStore$Opfs$JS is closed');
     }
     return switch (_directory) {
       final directory? => directory,
-      null => throw StateError(r'ImageBytesBlobStore$Opfs$JS is closed'),
+      null => throw StateError(r'BytesBlobStore$Opfs$JS is closed'),
     };
   }
 }

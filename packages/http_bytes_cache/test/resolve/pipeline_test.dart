@@ -4,12 +4,12 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:image_bytes_cache/image_bytes_cache.dart';
+import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:test/test.dart';
 
 /// End-to-end coverage for the real [HttpBytesClient] + middleware pipeline
 /// (Retry → Timeout → http) over a [MockClient], mirroring api_client's
-/// `http_pipeline_test.dart` for the image-GET surface.
+/// `http_pipeline_test.dart` for the bytes GET surface.
 void main() {
   const fastBackoff = HttpBytesRetryBackoff(
     maxRetries: 2,

@@ -1,53 +1,53 @@
 import 'dart:convert';
 
-import 'package:image_bytes_cache/src/image_bytes_cache.dart';
+import 'package:http_bytes_cache/src/bytes_cache.dart';
 
 /// Records ↔ UTF-8 JSON bytes for the durable index document.
 ///
 /// Shape: `{"v":1,"e":{"<key>":{"w":ms,"a":ms,"n":byteLength,"h"?:{…}}}}`.
-/// Optional `h` is [ImageHttpCacheMeta] on the wire (`et`, `lm`, `d`, `x`,
+/// Optional `h` is [HttpCacheMeta] on the wire (`et`, `lm`, `d`, `x`,
 /// `cc`, `ag`, `lv`). Missing `h`, or missing keys inside it, decode as null
 /// meta. Old documents stay valid. Unknown [version] or a broken structure
 /// throws [FormatException] so open can wipe.
-final class ImageBytesIndexDocumentCodec extends Codec<Map<String, ImageBytesRecord>, List<int>> {
+final class BytesIndexDocumentCodec extends Codec<Map<String, BytesRecord>, List<int>> {
   /// Shared codec instance for durable index adapters.
-  const ImageBytesIndexDocumentCodec();
+  const BytesIndexDocumentCodec();
 
   /// Wire version for the durable index document (VM file and web meta cache).
   static const int version = 1;
 
-  static const _jsonCodec = _ImageBytesIndexDocumentJsonCodec();
+  static const _jsonCodec = _BytesIndexDocumentJsonCodec();
 
   static const _utf8Codec = Utf8Codec();
   static const _jsonEncoder = JsonEncoder();
   static const _jsonDecoder = JsonDecoder();
 
   @override
-  Converter<Map<String, ImageBytesRecord>, List<int>> get encoder =>
+  Converter<Map<String, BytesRecord>, List<int>> get encoder =>
       _jsonCodec.encoder.fuse(_jsonEncoder).fuse(_utf8Codec.encoder);
 
   @override
-  Converter<List<int>, Map<String, ImageBytesRecord>> get decoder =>
+  Converter<List<int>, Map<String, BytesRecord>> get decoder =>
       _utf8Codec.decoder.fuse(_jsonDecoder).fuse(_jsonCodec.decoder);
 }
 
 /// Records ↔ JSON-compatible object (internal half of the bytes codec).
-final class _ImageBytesIndexDocumentJsonCodec extends Codec<Map<String, ImageBytesRecord>, Object?> {
-  const _ImageBytesIndexDocumentJsonCodec();
+final class _BytesIndexDocumentJsonCodec extends Codec<Map<String, BytesRecord>, Object?> {
+  const _BytesIndexDocumentJsonCodec();
 
   @override
-  Converter<Map<String, ImageBytesRecord>, Object?> get encoder => const _ImageBytesIndexDocumentEncoder();
+  Converter<Map<String, BytesRecord>, Object?> get encoder => const _BytesIndexDocumentEncoder();
 
   @override
-  Converter<Object?, Map<String, ImageBytesRecord>> get decoder => const _ImageBytesIndexDocumentDecoder();
+  Converter<Object?, Map<String, BytesRecord>> get decoder => const _BytesIndexDocumentDecoder();
 }
 
-final class _ImageBytesIndexDocumentEncoder extends Converter<Map<String, ImageBytesRecord>, Object?> {
-  const _ImageBytesIndexDocumentEncoder();
+final class _BytesIndexDocumentEncoder extends Converter<Map<String, BytesRecord>, Object?> {
+  const _BytesIndexDocumentEncoder();
 
   @override
-  Object? convert(Map<String, ImageBytesRecord> input) => {
-    'v': ImageBytesIndexDocumentCodec.version,
+  Object? convert(Map<String, BytesRecord> input) => {
+    'v': BytesIndexDocumentCodec.version,
     'e': {
       for (final MapEntry(:key, :value) in input.entries)
         key: {
@@ -59,7 +59,7 @@ final class _ImageBytesIndexDocumentEncoder extends Converter<Map<String, ImageB
     },
   };
 
-  static Map<String, Object> _encodeHttpMeta(ImageHttpCacheMeta meta) => {
+  static Map<String, Object> _encodeHttpMeta(HttpCacheMeta meta) => {
     'et': ?meta.etag,
     'lm': ?meta.lastModified,
     'd': ?meta.date?.toUtc().millisecondsSinceEpoch,
@@ -70,24 +70,24 @@ final class _ImageBytesIndexDocumentEncoder extends Converter<Map<String, ImageB
   };
 }
 
-final class _ImageBytesIndexDocumentDecoder extends Converter<Object?, Map<String, ImageBytesRecord>> {
-  const _ImageBytesIndexDocumentDecoder();
+final class _BytesIndexDocumentDecoder extends Converter<Object?, Map<String, BytesRecord>> {
+  const _BytesIndexDocumentDecoder();
 
   @override
-  Map<String, ImageBytesRecord> convert(Object? input) => switch (input) {
+  Map<String, BytesRecord> convert(Object? input) => switch (input) {
     {
       'v': final Object? version,
       'e': final Map entries,
     }
-        when version == ImageBytesIndexDocumentCodec.version =>
+        when version == BytesIndexDocumentCodec.version =>
       {
         for (final MapEntry(:key, :value) in entries.entries)
           key.toString(): _recordFromEntry(
-            ImageCacheKey(key.toString()),
+            BytesCacheKey(key.toString()),
             value,
           ),
       },
-    {'v': final Object? version} when version != ImageBytesIndexDocumentCodec.version => throw FormatException(
+    {'v': final Object? version} when version != BytesIndexDocumentCodec.version => throw FormatException(
       'image bytes index: unsupported version $version',
     ),
     _ => throw const FormatException(
@@ -95,14 +95,14 @@ final class _ImageBytesIndexDocumentDecoder extends Converter<Object?, Map<Strin
     ),
   };
 
-  static ImageBytesRecord _recordFromEntry(ImageCacheKey key, Object? raw) => switch (raw) {
+  static BytesRecord _recordFromEntry(BytesCacheKey key, Object? raw) => switch (raw) {
     {
           'w': final int writtenAtMs,
           'a': final int accessedAtMs,
           'n': final int byteLength,
         } &&
         final Map map =>
-      ImageBytesRecord(
+      BytesRecord(
         key: key,
         writtenAt: DateTime.fromMillisecondsSinceEpoch(
           writtenAtMs,
@@ -122,13 +122,13 @@ final class _ImageBytesIndexDocumentDecoder extends Converter<Object?, Map<Strin
 
   /// Missing or null `h` becomes null meta. Wrong `h` type or field types throw
   /// [FormatException] so open can wipe instead of keeping half-parsed validators.
-  static ImageHttpCacheMeta? _httpMetaFrom(Object? raw) => switch (raw) {
+  static HttpCacheMeta? _httpMetaFrom(Object? raw) => switch (raw) {
     null => null,
     final Map map => _httpMetaFromMap(map),
     _ => throw const FormatException('image bytes index: invalid HTTP cache meta'),
   };
 
-  static ImageHttpCacheMeta? _httpMetaFromMap(Map map) {
+  static HttpCacheMeta? _httpMetaFromMap(Map map) {
     final etag = switch (map['et']) {
       null => null,
       final String s => s,
@@ -152,7 +152,7 @@ final class _ImageBytesIndexDocumentDecoder extends Converter<Object?, Map<Strin
       _ => throw const FormatException('image bytes index: invalid age'),
     };
     final lastValidatedAt = _optionalUtcMs(map['lv'], 'lastValidatedAt');
-    final meta = ImageHttpCacheMeta(
+    final meta = HttpCacheMeta(
       etag: etag,
       lastModified: lastModified,
       date: date,

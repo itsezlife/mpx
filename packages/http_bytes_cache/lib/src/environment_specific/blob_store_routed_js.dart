@@ -1,14 +1,14 @@
 import 'dart:typed_data';
 
-import 'package:image_bytes_cache/src/environment_specific/blob_store_cache_js.dart';
-import 'package:image_bytes_cache/src/environment_specific/blob_store_opfs_js.dart';
-import 'package:image_bytes_cache/src/image_bytes_cache.dart';
+import 'package:http_bytes_cache/src/bytes_cache.dart';
+import 'package:http_bytes_cache/src/environment_specific/blob_store_cache_js.dart';
+import 'package:http_bytes_cache/src/environment_specific/blob_store_opfs_js.dart';
 
-/// Web payload half of [IndexedImageBytesCache]: Cache API + OPFS by size.
+/// Web payload half of [IndexedBytesCache]: Cache API + OPFS by size.
 ///
 /// Bodies below [opfsByteThreshold] use Cache API Responses with synthetic
-/// `.invalid` URLs ([ImageBytesBlobStore$Cache$JS]). Bodies at or above the
-/// threshold use OPFS files ([ImageBytesBlobStore$Opfs$JS]) so large payloads
+/// `.invalid` URLs ([BytesBlobStore$Cache$JS]). Bodies at or above the
+/// threshold use OPFS files ([BytesBlobStore$Opfs$JS]) so large payloads
 /// avoid Cache API structured-clone cost. Meta stays on the separate Cache
 /// index document; prune / LRU never scan payload bytes to decide eviction.
 ///
@@ -19,10 +19,10 @@ import 'package:image_bytes_cache/src/image_bytes_cache.dart';
 /// otherwise it checks Cache then OPFS. [reclaimOrphans] / [wipeAll] cover both
 /// backends under the brain's exclusive domain. No IsolateController on this
 /// path.
-final class ImageBytesBlobStore$Routed$JS implements IImageBytesBlobStore {
-  ImageBytesBlobStore$Routed$JS._({
-    required ImageBytesBlobStore$Cache$JS cache,
-    required ImageBytesBlobStore$Opfs$JS opfs,
+final class BytesBlobStore$Routed$JS implements IBytesBlobStore {
+  BytesBlobStore$Routed$JS._({
+    required BytesBlobStore$Cache$JS cache,
+    required BytesBlobStore$Opfs$JS opfs,
   }) : _cache = cache,
        _opfs = opfs;
 
@@ -33,16 +33,16 @@ final class ImageBytesBlobStore$Routed$JS implements IImageBytesBlobStore {
   /// avoids OPFS open/write ceremony for typical small assets.
   static const int opfsByteThreshold = 64 * 1024;
 
-  final ImageBytesBlobStore$Cache$JS _cache;
-  final ImageBytesBlobStore$Opfs$JS _opfs;
+  final BytesBlobStore$Cache$JS _cache;
+  final BytesBlobStore$Opfs$JS _opfs;
   var _closed = false;
 
   /// Opens Cache API and OPFS payload backends.
-  static Future<ImageBytesBlobStore$Routed$JS> open() async {
-    final cache = await ImageBytesBlobStore$Cache$JS.open();
+  static Future<BytesBlobStore$Routed$JS> open() async {
+    final cache = await BytesBlobStore$Cache$JS.open();
     try {
-      final opfs = await ImageBytesBlobStore$Opfs$JS.open();
-      return ImageBytesBlobStore$Routed$JS._(cache: cache, opfs: opfs);
+      final opfs = await BytesBlobStore$Opfs$JS.open();
+      return BytesBlobStore$Routed$JS._(cache: cache, opfs: opfs);
     } on Object {
       await cache.close();
       rethrow;
@@ -50,7 +50,7 @@ final class ImageBytesBlobStore$Routed$JS implements IImageBytesBlobStore {
   }
 
   @override
-  Future<Uint8List?> read(ImageCacheKey key, {int? knownByteLength}) async {
+  Future<Uint8List?> read(BytesCacheKey key, {int? knownByteLength}) async {
     _ensureOpen();
     // Index meta already implies OPFS: a Cache match would only burn a miss (or
     // worse, return a stale twin left by a partial write). Skip Cache.
@@ -63,7 +63,7 @@ final class ImageBytesBlobStore$Routed$JS implements IImageBytesBlobStore {
   }
 
   @override
-  Future<void> write(ImageCacheKey key, Uint8List bytes) async {
+  Future<void> write(BytesCacheKey key, Uint8List bytes) async {
     _ensureOpen();
     // Clear the other backend first so unhinted [read] (Cache-then-OPFS) cannot
     // return a stale twin if the second half of the write fails after a
@@ -78,7 +78,7 @@ final class ImageBytesBlobStore$Routed$JS implements IImageBytesBlobStore {
   }
 
   @override
-  Future<void> delete(ImageCacheKey key) async {
+  Future<void> delete(BytesCacheKey key) async {
     _ensureOpen();
     await (_cache.delete(key), _opfs.delete(key)).wait;
   }
@@ -107,7 +107,7 @@ final class ImageBytesBlobStore$Routed$JS implements IImageBytesBlobStore {
 
   void _ensureOpen() {
     if (_closed) {
-      throw StateError(r'ImageBytesBlobStore$Routed$JS is closed');
+      throw StateError(r'BytesBlobStore$Routed$JS is closed');
     }
   }
 }

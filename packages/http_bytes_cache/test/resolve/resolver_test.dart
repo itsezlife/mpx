@@ -4,18 +4,18 @@ import 'dart:typed_data';
 import 'package:cancel_token/cancel_token.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:image_bytes_cache/src/cache/cache_middleware.dart';
-import 'package:image_bytes_cache/src/cache/middlewares/skip_cache_middleware.dart';
-import 'package:image_bytes_cache/src/http/http_bytes_client.dart';
-import 'package:image_bytes_cache/src/http/middlewares/conditional_middleware.dart';
-import 'package:image_bytes_cache/src/http/middlewares/timeout_middleware.dart';
-import 'package:image_bytes_cache/src/image_bytes_cache.dart';
-import 'package:image_bytes_cache/src/image_bytes_diagnostics.dart';
-import 'package:image_bytes_cache/src/image_bytes_resolver.dart';
+import 'package:http_bytes_cache/src/bytes_cache.dart';
+import 'package:http_bytes_cache/src/bytes_diagnostics.dart';
+import 'package:http_bytes_cache/src/bytes_resolver.dart';
+import 'package:http_bytes_cache/src/cache/cache_middleware.dart';
+import 'package:http_bytes_cache/src/cache/middlewares/skip_cache_middleware.dart';
+import 'package:http_bytes_cache/src/http/http_bytes_client.dart';
+import 'package:http_bytes_cache/src/http/middlewares/conditional_middleware.dart';
+import 'package:http_bytes_cache/src/http/middlewares/timeout_middleware.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('ImageBytesResolver.resolve', () {
+  group('BytesResolver.resolve', () {
     test('network miss fetches once and write-through to cache', () async {
       var hits = 0;
       final body = Uint8List.fromList([7, 8, 9]);
@@ -27,17 +27,17 @@ void main() {
       );
       addTearDown(client.close);
 
-      final cache = MemoryImageBytesCache();
-      final resolver = ImageBytesResolver(cache: cache, client: client);
+      final cache = MemoryBytesCache();
+      final resolver = BytesResolver(cache: cache, client: client);
 
       final bytes = await resolver.resolve(
-        const ImageBytesRequest(url: 'https://cdn.example.com/a.svg'),
+        const BytesRequest(url: 'https://cdn.example.com/a.svg'),
       );
 
       expect(bytes, body);
       expect(hits, 1);
       expect(
-        await cache.read(ImageCacheKey.fromUrl('https://cdn.example.com/a.svg')),
+        await cache.read(BytesCacheKey.fromUrl('https://cdn.example.com/a.svg')),
         body,
       );
     });
@@ -52,13 +52,13 @@ void main() {
       );
       addTearDown(client.close);
 
-      final cache = MemoryImageBytesCache();
+      final cache = MemoryBytesCache();
       const url = 'https://cdn.example.com/cached.svg';
-      final key = ImageCacheKey.fromUrl(url);
+      final key = BytesCacheKey.fromUrl(url);
       await cache.write(key, Uint8List.fromList([4, 5, 6]));
 
-      final resolver = ImageBytesResolver(cache: cache, client: client);
-      final bytes = await resolver.resolve(const ImageBytesRequest(url: url));
+      final resolver = BytesResolver(cache: cache, client: client);
+      final bytes = await resolver.resolve(const BytesRequest(url: url));
 
       expect(bytes, Uint8List.fromList([4, 5, 6]));
       expect(hits, 0);
@@ -77,13 +77,13 @@ void main() {
       );
       addTearDown(client.close);
 
-      final resolver = ImageBytesResolver(
-        cache: MemoryImageBytesCache(),
+      final resolver = BytesResolver(
+        cache: MemoryBytesCache(),
         client: client,
       );
 
       final bytes = await resolver.resolve(
-        ImageBytesRequest(
+        BytesRequest(
           url: 'https://cdn.example.com/progress.svg',
           onBytesProgress: (cumulative, total) => reports.add((cumulative, total)),
         ),
@@ -104,13 +104,13 @@ void main() {
       );
       addTearDown(client.close);
 
-      final cache = MemoryImageBytesCache();
+      final cache = MemoryBytesCache();
       const url = 'https://cdn.example.com/warm.svg';
-      await cache.write(ImageCacheKey.fromUrl(url), Uint8List.fromList([9, 9]));
+      await cache.write(BytesCacheKey.fromUrl(url), Uint8List.fromList([9, 9]));
 
-      final resolver = ImageBytesResolver(cache: cache, client: client);
+      final resolver = BytesResolver(cache: cache, client: client);
       final bytes = await resolver.resolve(
-        ImageBytesRequest(
+        BytesRequest(
           url: url,
           onBytesProgress: (cumulative, total) => reports.add((cumulative, total)),
         ),
@@ -132,11 +132,11 @@ void main() {
       );
       addTearDown(client.close);
 
-      final cache = _StickyEmptyImageBytesCache();
+      final cache = _StickyEmptyBytesCache();
       const url = 'https://cdn.example.com/empty-cached.svg';
-      final resolver = ImageBytesResolver(cache: cache, client: client);
+      final resolver = BytesResolver(cache: cache, client: client);
 
-      expect(await resolver.resolve(const ImageBytesRequest(url: url)), body);
+      expect(await resolver.resolve(const BytesRequest(url: url)), body);
       expect(hits, 1);
     });
 
@@ -147,22 +147,22 @@ void main() {
       );
       addTearDown(client.close);
 
-      final events = <ImageBytesLogEvent>[];
-      final resolver = ImageBytesResolver(
-        cache: const _ThrowingWriteImageBytesCache(),
+      final events = <BytesLogEvent>[];
+      final resolver = BytesResolver(
+        cache: const _ThrowingWriteBytesCache(),
         client: client,
-        diagnostics: ImageBytesDiagnostics.onEvent(events.add),
+        diagnostics: BytesDiagnostics.onEvent(events.add),
       );
 
       final bytes = await resolver.resolve(
-        const ImageBytesRequest(url: 'https://cdn.example.com/fail-write.svg'),
+        const BytesRequest(url: 'https://cdn.example.com/fail-write.svg'),
       );
       await Future<void>.delayed(Duration.zero);
 
       expect(bytes, body);
       expect(events, hasLength(1));
-      expect(events.single.op, ImageBytesLogOp.writeThrough);
-      expect(events.single.level, ImageBytesLogLevel.error);
+      expect(events.single.op, BytesLogOp.writeThrough);
+      expect(events.single.level, BytesLogLevel.error);
       expect(events.single.message, contains('write-through failed'));
     });
 
@@ -175,27 +175,27 @@ void main() {
 
       final index = _CommitFailingIndex();
       final blobs = _MapBlobStore();
-      final cache = IndexedImageBytesCache(
+      final cache = IndexedBytesCache(
         index: index,
         blobs: blobs,
-        retention: const ImageBytesRetention.unlimited(),
+        retention: const BytesRetention.unlimited(),
       );
-      final events = <ImageBytesLogEvent>[];
-      final resolver = ImageBytesResolver(
+      final events = <BytesLogEvent>[];
+      final resolver = BytesResolver(
         cache: cache,
         client: client,
-        diagnostics: ImageBytesDiagnostics.onEvent(events.add),
+        diagnostics: BytesDiagnostics.onEvent(events.add),
       );
       const url = 'https://cdn.example.com/commit-fail.svg';
 
-      final bytes = await resolver.resolve(const ImageBytesRequest(url: url));
+      final bytes = await resolver.resolve(const BytesRequest(url: url));
       await Future<void>.delayed(Duration.zero);
 
       expect(bytes, body);
       expect(events, hasLength(1));
-      expect(events.single.op, ImageBytesLogOp.writeThrough);
+      expect(events.single.op, BytesLogOp.writeThrough);
       // No optimistic RAM hit after the failed commit.
-      expect(await cache.read(ImageCacheKey.fromUrl(url)), isNull);
+      expect(await cache.read(BytesCacheKey.fromUrl(url)), isNull);
     });
 
     test('throwing onEvent during write-through catch is not an unhandled async error', () async {
@@ -208,17 +208,17 @@ void main() {
       final errors = <Object>[];
       await runZonedGuarded(
         () async {
-          final resolver = ImageBytesResolver(
-            cache: const _ThrowingWriteImageBytesCache(),
+          final resolver = BytesResolver(
+            cache: const _ThrowingWriteBytesCache(),
             client: client,
-            diagnostics: ImageBytesDiagnostics.onEvent((_) {
+            diagnostics: BytesDiagnostics.onEvent((_) {
               throw StateError('host diagnostics blew up');
             }),
           );
 
           expect(
             await resolver.resolve(
-              const ImageBytesRequest(url: 'https://cdn.example.com/diag-throw.svg'),
+              const BytesRequest(url: 'https://cdn.example.com/diag-throw.svg'),
             ),
             body,
           );
@@ -243,19 +243,19 @@ void main() {
       );
       addTearDown(client.close);
 
-      final events = <ImageBytesLogEvent>[];
-      ImageBytesDiagnostics.current = ImageBytesDiagnostics.onEvent(events.add);
-      addTearDown(ImageBytesCache.resetShared);
+      final events = <BytesLogEvent>[];
+      BytesDiagnostics.current = BytesDiagnostics.onEvent(events.add);
+      addTearDown(BytesCache.resetShared);
 
-      final resolver = ImageBytesResolver(
-        cache: const _ThrowingWriteImageBytesCache(),
+      final resolver = BytesResolver(
+        cache: const _ThrowingWriteBytesCache(),
         client: client,
-        diagnostics: const ImageBytesDiagnostics.silent(),
+        diagnostics: const BytesDiagnostics.silent(),
       );
 
       expect(
         await resolver.resolve(
-          const ImageBytesRequest(url: 'https://cdn.example.com/silent.svg'),
+          const BytesRequest(url: 'https://cdn.example.com/silent.svg'),
         ),
         body,
       );
@@ -274,19 +274,19 @@ void main() {
       );
       addTearDown(client.close);
 
-      final cache = MemoryImageBytesCache();
-      final resolver = ImageBytesResolver(cache: cache, client: client);
+      final cache = MemoryBytesCache();
+      final resolver = BytesResolver(cache: cache, client: client);
 
       const relative = 'icons/shared.svg';
       final absolute = Uri.base.resolve(relative).toString();
 
-      expect(await resolver.resolve(const ImageBytesRequest(url: relative)), body);
+      expect(await resolver.resolve(const BytesRequest(url: relative)), body);
       await Future<void>.delayed(Duration.zero);
 
-      expect(await resolver.resolve(ImageBytesRequest(url: absolute)), body);
+      expect(await resolver.resolve(BytesRequest(url: absolute)), body);
       expect(hits, 1);
-      expect(await cache.read(ImageCacheKey.fromUrl(relative)), body);
-      expect(await cache.read(ImageCacheKey.fromUrl(absolute)), body);
+      expect(await cache.read(BytesCacheKey.fromUrl(relative)), body);
+      expect(await cache.read(BytesCacheKey.fromUrl(absolute)), body);
     });
 
     test('explicit cacheKey is full identity — headers do not change the key', () async {
@@ -301,12 +301,12 @@ void main() {
       );
       addTearDown(client.close);
 
-      final cache = MemoryImageBytesCache();
-      final resolver = ImageBytesResolver(cache: cache, client: client);
-      const key = ImageCacheKey('host_override_key');
+      final cache = MemoryBytesCache();
+      final resolver = BytesResolver(cache: cache, client: client);
+      const key = BytesCacheKey('host_override_key');
 
       await resolver.resolve(
-        const ImageBytesRequest(
+        const BytesRequest(
           url: 'https://cdn.example.com/a.svg',
           headers: {'Authorization': 'Bearer a'},
           cacheKey: key,
@@ -320,7 +320,7 @@ void main() {
       // durable slot is the explicit key — a warm hit must not key on headers.
       expect(
         await resolver.resolve(
-          const ImageBytesRequest(
+          const BytesRequest(
             url: 'https://cdn.example.com/a.svg',
             headers: {'Authorization': 'Bearer b'},
             cacheKey: key,
@@ -344,22 +344,22 @@ void main() {
       );
       addTearDown(client.close);
 
-      final resolver = ImageBytesResolver(
-        cache: MemoryImageBytesCache(),
+      final resolver = BytesResolver(
+        cache: MemoryBytesCache(),
         client: client,
       );
-      const key = ImageCacheKey('host_override_key');
+      const key = BytesCacheKey('host_override_key');
       const url = 'https://cdn.example.com/a.svg';
 
       final a = resolver.resolve(
-        const ImageBytesRequest(
+        const BytesRequest(
           url: url,
           headers: {'Authorization': 'Bearer a'},
           cacheKey: key,
         ),
       );
       final b = resolver.resolve(
-        const ImageBytesRequest(
+        const BytesRequest(
           url: url,
           headers: {'Authorization': 'Bearer b'},
           cacheKey: key,
@@ -381,38 +381,38 @@ void main() {
       );
       addTearDown(client.close);
 
-      final events = <ImageBytesLogEvent>[];
-      final resolver = ImageBytesResolver(
-        cache: MemoryImageBytesCache(),
+      final events = <BytesLogEvent>[];
+      final resolver = BytesResolver(
+        cache: MemoryBytesCache(),
         client: client,
-        diagnostics: ImageBytesDiagnostics.onEvent(events.add),
+        diagnostics: BytesDiagnostics.onEvent(events.add),
       );
 
       await resolver.resolve(
-        const ImageBytesRequest(
+        const BytesRequest(
           url: 'https://cdn.example.com/diag.svg',
           headers: {'Authorization': 'Bearer x'},
-          cacheKey: ImageCacheKey('override'),
+          cacheKey: BytesCacheKey('override'),
         ),
       );
 
       expect(
         events,
         contains(
-          isA<ImageBytesLogEvent>()
-              .having((e) => e.op, 'op', ImageBytesLogOp.cacheKeyAuthorization)
-              .having((e) => e.level, 'level', ImageBytesLogLevel.debug),
+          isA<BytesLogEvent>()
+              .having((e) => e.op, 'op', BytesLogOp.cacheKeyAuthorization)
+              .having((e) => e.level, 'level', BytesLogLevel.debug),
         ),
       );
     });
 
     test('skipCache seeds SkipCacheMiddleware — miss and no write-through', () async {
-      final inner = MemoryImageBytesCache();
+      final inner = MemoryBytesCache();
       const url = 'https://cdn.example.com/skip.svg';
-      final key = ImageCacheKey.fromUrl(url);
+      final key = BytesCacheKey.fromUrl(url);
       await inner.write(key, Uint8List.fromList([1, 2, 3]));
 
-      final cache = MiddlewareImageBytesCache(
+      final cache = MiddlewareBytesCache(
         inner: inner,
         middlewares: <CacheMiddleware>[const SkipCacheMiddleware()],
       );
@@ -425,9 +425,9 @@ void main() {
       );
       addTearDown(client.close);
 
-      final resolver = ImageBytesResolver(cache: cache, client: client);
+      final resolver = BytesResolver(cache: cache, client: client);
       final bytes = await resolver.resolve(
-        const ImageBytesRequest(url: url, skipCache: true),
+        const BytesRequest(url: url, skipCache: true),
       );
       await Future<void>.delayed(Duration.zero);
 
@@ -442,14 +442,14 @@ void main() {
       );
       addTearDown(client.close);
 
-      final resolver = ImageBytesResolver(
-        cache: MemoryImageBytesCache(),
+      final resolver = BytesResolver(
+        cache: MemoryBytesCache(),
         client: client,
       );
 
       await expectLater(
         resolver.resolve(
-          const ImageBytesRequest(url: 'https://cdn.example.com/missing.svg'),
+          const BytesRequest(url: 'https://cdn.example.com/missing.svg'),
         ),
         throwsA(
           isA<HttpBytesException$Request>().having(
@@ -462,7 +462,7 @@ void main() {
     });
   });
 
-  group('ImageBytesRequest.cancelToken', () {
+  group('BytesRequest.cancelToken', () {
     const url = 'https://cdn.example.com/cancel.png';
     final body = Uint8List.fromList([1, 2, 3]);
 
@@ -491,10 +491,10 @@ void main() {
 
     test(r'cancel aborts the network GET and fails with $Cancelled', () async {
       final (:client, release: _, :aborts) = holdingClient();
-      final resolver = ImageBytesResolver(cache: MemoryImageBytesCache(), client: client);
+      final resolver = BytesResolver(cache: MemoryBytesCache(), client: client);
       final token = CancelToken();
 
-      final resolved = resolver.resolve(ImageBytesRequest(url: url, cancelToken: token));
+      final resolved = resolver.resolve(BytesRequest(url: url, cancelToken: token));
       await pumpEventQueue();
       token.cancel();
 
@@ -505,11 +505,11 @@ void main() {
 
     test('cancel of one coalesced caller leaves the shared GET running', () async {
       final (:client, :release, :aborts) = holdingClient();
-      final resolver = ImageBytesResolver(cache: MemoryImageBytesCache(), client: client);
+      final resolver = BytesResolver(cache: MemoryBytesCache(), client: client);
       final token = CancelToken();
 
-      final cancelled = resolver.resolve(ImageBytesRequest(url: url, cancelToken: token));
-      final kept = resolver.resolve(const ImageBytesRequest(url: url));
+      final cancelled = resolver.resolve(BytesRequest(url: url, cancelToken: token));
+      final kept = resolver.resolve(const BytesRequest(url: url));
       await pumpEventQueue();
       token.cancel();
       await expectLater(cancelled, throwsA(isA<HttpBytesException$Cancelled>()));
@@ -520,7 +520,7 @@ void main() {
     });
   });
 
-  group('ImageBytesResolver freshness + revalidation', () {
+  group('BytesResolver freshness + revalidation', () {
     HttpBytesClient revalidatingClient(MockClientHandler handler) {
       final client = HttpBytesClient(
         client: MockClient(handler),
@@ -536,21 +536,21 @@ void main() {
     test('fresh max-age hit skips network', () async {
       var hits = 0;
       final now = DateTime.utc(2024, 6, 1, 12);
-      final cache = MemoryImageBytesCache(clock: () => now);
+      final cache = MemoryBytesCache(clock: () => now);
       const url = 'https://cdn.example.com/fresh.svg';
-      final key = ImageCacheKey.fromUrl(url);
+      final key = BytesCacheKey.fromUrl(url);
       final body = Uint8List.fromList([1, 2, 3]);
       await cache.write(
         key,
         body,
-        httpCacheMeta: ImageHttpCacheMeta(
+        httpCacheMeta: HttpCacheMeta(
           etag: '"v1"',
           cacheControl: 'max-age=3600',
           lastValidatedAt: now.subtract(const Duration(minutes: 5)),
         ),
       );
 
-      final resolver = ImageBytesResolver(
+      final resolver = BytesResolver(
         cache: cache,
         client: revalidatingClient((_) async {
           hits++;
@@ -559,23 +559,23 @@ void main() {
         clock: () => now,
       );
 
-      expect(await resolver.resolve(const ImageBytesRequest(url: url)), body);
+      expect(await resolver.resolve(const BytesRequest(url: url)), body);
       expect(hits, 0);
     });
 
     test('stale with ETag issues conditional GET; 304 reuses bytes and refreshes meta', () async {
       var hits = 0;
       http.BaseRequest? seen;
-      final events = <ImageBytesLogEvent>[];
+      final events = <BytesLogEvent>[];
       final now = DateTime.utc(2024, 6, 1, 12);
-      final cache = MemoryImageBytesCache(clock: () => now);
+      final cache = MemoryBytesCache(clock: () => now);
       const url = 'https://cdn.example.com/revalidate.svg';
-      final key = ImageCacheKey.fromUrl(url);
+      final key = BytesCacheKey.fromUrl(url);
       final body = Uint8List.fromList([4, 5, 6]);
       await cache.write(
         key,
         body,
-        httpCacheMeta: const ImageHttpCacheMeta(
+        httpCacheMeta: const HttpCacheMeta(
           etag: '"v1"',
           cacheControl: 'max-age=60',
         ),
@@ -584,14 +584,14 @@ void main() {
       await cache.write(
         key,
         body,
-        httpCacheMeta: ImageHttpCacheMeta(
+        httpCacheMeta: HttpCacheMeta(
           etag: '"v1"',
           cacheControl: 'max-age=60',
           lastValidatedAt: now.subtract(const Duration(minutes: 5)),
         ),
       );
 
-      final resolver = ImageBytesResolver(
+      final resolver = BytesResolver(
         cache: cache,
         client: revalidatingClient((request) async {
           hits++;
@@ -602,16 +602,16 @@ void main() {
             headers: {'etag': '"v1"', 'cache-control': 'max-age=120'},
           );
         }),
-        diagnostics: ImageBytesDiagnostics.onEvent(events.add),
+        diagnostics: BytesDiagnostics.onEvent(events.add),
         clock: () => now,
       );
 
-      expect(await resolver.resolve(const ImageBytesRequest(url: url)), body);
+      expect(await resolver.resolve(const BytesRequest(url: url)), body);
       expect(hits, 1);
       expect(seen!.headers['if-none-match'], '"v1"');
       expect(events, hasLength(1));
-      expect(events.single.op, ImageBytesLogOp.resolveRevalidated);
-      expect(events.single.level, ImageBytesLogLevel.debug);
+      expect(events.single.op, BytesLogOp.resolveRevalidated);
+      expect(events.single.level, BytesLogLevel.debug);
       await Future<void>.delayed(Duration.zero);
 
       final rich = await cache.readRich(key);
@@ -624,20 +624,20 @@ void main() {
     test('stale with ETag on 200 replaces bytes and write-through meta', () async {
       var hits = 0;
       final now = DateTime.utc(2024, 6, 1, 12);
-      final cache = MemoryImageBytesCache(clock: () => now);
+      final cache = MemoryBytesCache(clock: () => now);
       const url = 'https://cdn.example.com/replace.svg';
-      final key = ImageCacheKey.fromUrl(url);
+      final key = BytesCacheKey.fromUrl(url);
       await cache.write(
         key,
         Uint8List.fromList([1]),
-        httpCacheMeta: ImageHttpCacheMeta(
+        httpCacheMeta: HttpCacheMeta(
           etag: '"old"',
           lastValidatedAt: now.subtract(const Duration(days: 1)),
         ),
       );
       final next = Uint8List.fromList([2, 2]);
 
-      final resolver = ImageBytesResolver(
+      final resolver = BytesResolver(
         cache: cache,
         client: revalidatingClient((request) async {
           hits++;
@@ -651,7 +651,7 @@ void main() {
         clock: () => now,
       );
 
-      expect(await resolver.resolve(const ImageBytesRequest(url: url)), next);
+      expect(await resolver.resolve(const BytesRequest(url: url)), next);
       expect(hits, 1);
       await Future<void>.delayed(Duration.zero);
 
@@ -663,15 +663,15 @@ void main() {
 
     test('stale without validators / miss uses unconditional GET', () async {
       final seen = <String?>[];
-      final events = <ImageBytesLogEvent>[];
+      final events = <BytesLogEvent>[];
       final now = DateTime.utc(2024, 6, 1, 12);
-      final cache = MemoryImageBytesCache(clock: () => now);
+      final cache = MemoryBytesCache(clock: () => now);
       const staleUrl = 'https://cdn.example.com/no-validators.svg';
-      final staleKey = ImageCacheKey.fromUrl(staleUrl);
+      final staleKey = BytesCacheKey.fromUrl(staleUrl);
       await cache.write(
         staleKey,
         Uint8List.fromList([1]),
-        httpCacheMeta: ImageHttpCacheMeta(
+        httpCacheMeta: HttpCacheMeta(
           cacheControl: 'max-age=1',
           lastValidatedAt: now.subtract(const Duration(hours: 1)),
         ),
@@ -685,25 +685,25 @@ void main() {
           headers: {'etag': '"v1"', 'cache-control': 'max-age=60'},
         );
       });
-      final resolver = ImageBytesResolver(
+      final resolver = BytesResolver(
         cache: cache,
         client: client,
-        diagnostics: ImageBytesDiagnostics.onEvent(events.add),
+        diagnostics: BytesDiagnostics.onEvent(events.add),
         clock: () => now,
       );
 
       expect(
-        await resolver.resolve(const ImageBytesRequest(url: staleUrl)),
+        await resolver.resolve(const BytesRequest(url: staleUrl)),
         Uint8List.fromList([9]),
       );
       expect(events, hasLength(1));
-      expect(events.single.op, ImageBytesLogOp.resolveUnconditional);
-      expect(events.single.level, ImageBytesLogLevel.debug);
+      expect(events.single.op, BytesLogOp.resolveUnconditional);
+      expect(events.single.level, BytesLogLevel.debug);
       events.clear();
 
       expect(
         await resolver.resolve(
-          const ImageBytesRequest(url: 'https://cdn.example.com/miss.svg'),
+          const BytesRequest(url: 'https://cdn.example.com/miss.svg'),
         ),
         Uint8List.fromList([9]),
       );
@@ -713,7 +713,7 @@ void main() {
       expect(seen, [null, null]);
       await Future<void>.delayed(Duration.zero);
       expect(
-        (await cache.readRich(ImageCacheKey.fromUrl('https://cdn.example.com/miss.svg')))?.httpCacheMeta?.etag,
+        (await cache.readRich(BytesCacheKey.fromUrl('https://cdn.example.com/miss.svg')))?.httpCacheMeta?.etag,
         '"v1"',
       );
     });
@@ -721,17 +721,17 @@ void main() {
     test('validators without Cache-Control revalidate on every use', () async {
       var hits = 0;
       final now = DateTime.utc(2024, 6, 1, 12);
-      final cache = MemoryImageBytesCache(clock: () => now);
+      final cache = MemoryBytesCache(clock: () => now);
       const url = 'https://cdn.example.com/etag-only.svg';
-      final key = ImageCacheKey.fromUrl(url);
+      final key = BytesCacheKey.fromUrl(url);
       final body = Uint8List.fromList([7]);
       await cache.write(
         key,
         body,
-        httpCacheMeta: const ImageHttpCacheMeta(etag: '"always"'),
+        httpCacheMeta: const HttpCacheMeta(etag: '"always"'),
       );
 
-      final resolver = ImageBytesResolver(
+      final resolver = BytesResolver(
         cache: cache,
         client: revalidatingClient((request) async {
           hits++;
@@ -741,7 +741,7 @@ void main() {
         clock: () => now,
       );
 
-      expect(await resolver.resolve(const ImageBytesRequest(url: url)), body);
+      expect(await resolver.resolve(const BytesRequest(url: url)), body);
       expect(hits, 1);
     });
 
@@ -750,20 +750,20 @@ void main() {
       http.BaseRequest? seen;
       final now = DateTime.utc(2024, 6, 1, 12);
       const lastModified = 'Wed, 21 Oct 2015 07:28:00 GMT';
-      final cache = MemoryImageBytesCache(clock: () => now);
+      final cache = MemoryBytesCache(clock: () => now);
       const url = 'https://cdn.example.com/last-mod.svg';
-      final key = ImageCacheKey.fromUrl(url);
+      final key = BytesCacheKey.fromUrl(url);
       final body = Uint8List.fromList([2, 2]);
       await cache.write(
         key,
         body,
-        httpCacheMeta: ImageHttpCacheMeta(
+        httpCacheMeta: HttpCacheMeta(
           lastModified: lastModified,
           lastValidatedAt: now.subtract(const Duration(days: 1)),
         ),
       );
 
-      final resolver = ImageBytesResolver(
+      final resolver = BytesResolver(
         cache: cache,
         client: revalidatingClient((request) async {
           hits++;
@@ -773,7 +773,7 @@ void main() {
         clock: () => now,
       );
 
-      expect(await resolver.resolve(const ImageBytesRequest(url: url)), body);
+      expect(await resolver.resolve(const BytesRequest(url: url)), body);
       expect(hits, 1);
       expect(seen!.headers['if-modified-since'], lastModified);
       expect(seen!.headers.containsKey('if-none-match'), isFalse);
@@ -782,20 +782,20 @@ void main() {
     test('immutable keeps network quiet until retention', () async {
       var hits = 0;
       final now = DateTime.utc(2024, 6, 1, 12);
-      final cache = MemoryImageBytesCache(clock: () => now);
+      final cache = MemoryBytesCache(clock: () => now);
       const url = 'https://cdn.example.com/immutable.svg';
       final body = Uint8List.fromList([8, 8]);
       await cache.write(
-        ImageCacheKey.fromUrl(url),
+        BytesCacheKey.fromUrl(url),
         body,
-        httpCacheMeta: ImageHttpCacheMeta(
+        httpCacheMeta: HttpCacheMeta(
           etag: '"static"',
           cacheControl: 'public, max-age=0, immutable',
           lastValidatedAt: now.subtract(const Duration(days: 40)),
         ),
       );
 
-      final resolver = ImageBytesResolver(
+      final resolver = BytesResolver(
         cache: cache,
         client: revalidatingClient((_) async {
           hits++;
@@ -804,28 +804,28 @@ void main() {
         clock: () => now,
       );
 
-      expect(await resolver.resolve(const ImageBytesRequest(url: url)), body);
+      expect(await resolver.resolve(const BytesRequest(url: url)), body);
       expect(hits, 0);
     });
 
     test('412 precondition failure falls back to one unconditional GET', () async {
       var hits = 0;
-      final events = <ImageBytesLogEvent>[];
+      final events = <BytesLogEvent>[];
       final now = DateTime.utc(2024, 6, 1, 12);
-      final cache = MemoryImageBytesCache(clock: () => now);
+      final cache = MemoryBytesCache(clock: () => now);
       const url = 'https://cdn.example.com/precondition.svg';
-      final key = ImageCacheKey.fromUrl(url);
+      final key = BytesCacheKey.fromUrl(url);
       await cache.write(
         key,
         Uint8List.fromList([1]),
-        httpCacheMeta: ImageHttpCacheMeta(
+        httpCacheMeta: HttpCacheMeta(
           etag: '"stale"',
           lastValidatedAt: now.subtract(const Duration(days: 1)),
         ),
       );
       final next = Uint8List.fromList([3, 3, 3]);
 
-      final resolver = ImageBytesResolver(
+      final resolver = BytesResolver(
         cache: cache,
         client: revalidatingClient((request) async {
           hits++;
@@ -838,34 +838,34 @@ void main() {
             headers: {'etag': '"ok"', 'cache-control': 'max-age=10'},
           );
         }),
-        diagnostics: ImageBytesDiagnostics.onEvent(events.add),
+        diagnostics: BytesDiagnostics.onEvent(events.add),
         clock: () => now,
       );
 
-      expect(await resolver.resolve(const ImageBytesRequest(url: url)), next);
+      expect(await resolver.resolve(const BytesRequest(url: url)), next);
       expect(hits, 2);
       expect(events, hasLength(1));
-      expect(events.single.op, ImageBytesLogOp.resolveUnconditional);
-      expect(events.single.level, ImageBytesLogLevel.debug);
+      expect(events.single.op, BytesLogOp.resolveUnconditional);
+      expect(events.single.level, BytesLogLevel.debug);
       expect(events.single.message, isNot(contains('without a conditional path')));
       await Future<void>.delayed(Duration.zero);
       expect((await cache.readRich(key))?.httpCacheMeta?.etag, '"ok"');
     });
   });
 
-  group('ImageBytesResolver stale-on-network-error', () {
+  group('BytesResolver stale-on-network-error', () {
     const url = 'https://cdn.example.com/stale-fallback.svg';
     final body = Uint8List.fromList([4, 4, 4]);
     final now = DateTime.utc(2024, 6, 1, 12);
 
-    Future<MemoryImageBytesCache> seededCache({ImageHttpCacheMeta? meta}) async {
-      final cache = MemoryImageBytesCache(clock: () => now);
+    Future<MemoryBytesCache> seededCache({HttpCacheMeta? meta}) async {
+      final cache = MemoryBytesCache(clock: () => now);
       await cache.write(
-        ImageCacheKey.fromUrl(url),
+        BytesCacheKey.fromUrl(url),
         body,
         httpCacheMeta:
             meta ??
-            ImageHttpCacheMeta(
+            HttpCacheMeta(
               etag: '"v1"',
               lastValidatedAt: now.subtract(const Duration(days: 1)),
             ),
@@ -898,9 +898,9 @@ void main() {
     }
 
     test(r'non-empty cache + $Network returns cached bytes and reports stale_used', () async {
-      final events = <ImageBytesLogEvent>[];
+      final events = <BytesLogEvent>[];
       final cache = await seededCache();
-      final resolver = ImageBytesResolver(
+      final resolver = BytesResolver(
         cache: cache,
         client: clientThrowing(
           const HttpBytesException$Network(
@@ -909,20 +909,20 @@ void main() {
             statusCode: 0,
           ),
         ),
-        diagnostics: ImageBytesDiagnostics.onEvent(events.add),
+        diagnostics: BytesDiagnostics.onEvent(events.add),
         clock: () => now,
       );
 
-      expect(await resolver.resolve(const ImageBytesRequest(url: url)), body);
+      expect(await resolver.resolve(const BytesRequest(url: url)), body);
       expect(events, hasLength(1));
-      expect(events.single.op, ImageBytesLogOp.resolveStaleUsed);
-      expect(events.single.level, ImageBytesLogLevel.warning);
+      expect(events.single.op, BytesLogOp.resolveStaleUsed);
+      expect(events.single.level, BytesLogLevel.warning);
       expect(events.single.message, contains('stale'));
     });
 
     test(r'non-empty cache + $Timeout returns cached bytes', () async {
       final cache = await seededCache();
-      final resolver = ImageBytesResolver(
+      final resolver = BytesResolver(
         cache: cache,
         client: clientThrowing(
           const HttpBytesException$Timeout(
@@ -935,58 +935,58 @@ void main() {
         clock: () => now,
       );
 
-      expect(await resolver.resolve(const ImageBytesRequest(url: url)), body);
+      expect(await resolver.resolve(const BytesRequest(url: url)), body);
     });
 
     test(r'exhausted $Server with cached bytes returns cached bytes', () async {
       final cache = await seededCache();
-      final resolver = ImageBytesResolver(
+      final resolver = BytesResolver(
         cache: cache,
         client: clientWithHandler((_) async => http.Response('boom', 503)),
         clock: () => now,
       );
 
-      expect(await resolver.resolve(const ImageBytesRequest(url: url)), body);
+      expect(await resolver.resolve(const BytesRequest(url: url)), body);
     });
 
     test(r'$Cancelled with cached bytes propagates failure', () async {
       final cache = await seededCache();
-      final resolver = ImageBytesResolver(
+      final resolver = BytesResolver(
         cache: cache,
         client: clientThrowing(const HttpBytesException$Cancelled()),
         clock: () => now,
       );
 
       await expectLater(
-        resolver.resolve(const ImageBytesRequest(url: url)),
+        resolver.resolve(const BytesRequest(url: url)),
         throwsA(isA<HttpBytesException$Cancelled>()),
       );
     });
 
     test(r'$Authentication with cached bytes propagates failure', () async {
       final cache = await seededCache();
-      final resolver = ImageBytesResolver(
+      final resolver = BytesResolver(
         cache: cache,
         client: clientWithHandler((_) async => http.Response('nope', 401)),
         clock: () => now,
       );
 
       await expectLater(
-        resolver.resolve(const ImageBytesRequest(url: url)),
+        resolver.resolve(const BytesRequest(url: url)),
         throwsA(isA<HttpBytesException$Authentication>()),
       );
     });
 
     test('definitive 404 with cached bytes propagates failure', () async {
       final cache = await seededCache();
-      final resolver = ImageBytesResolver(
+      final resolver = BytesResolver(
         cache: cache,
         client: clientWithHandler((_) async => http.Response('gone', 404)),
         clock: () => now,
       );
 
       await expectLater(
-        resolver.resolve(const ImageBytesRequest(url: url)),
+        resolver.resolve(const BytesRequest(url: url)),
         throwsA(
           isA<HttpBytesException$Request>().having((e) => e.statusCode, 'statusCode', 404),
         ),
@@ -994,8 +994,8 @@ void main() {
     });
 
     test(r'missing cache + $Network propagates failure', () async {
-      final resolver = ImageBytesResolver(
-        cache: MemoryImageBytesCache(clock: () => now),
+      final resolver = BytesResolver(
+        cache: MemoryBytesCache(clock: () => now),
         client: clientThrowing(
           const HttpBytesException$Network(
             code: 'network_error',
@@ -1007,14 +1007,14 @@ void main() {
       );
 
       await expectLater(
-        resolver.resolve(const ImageBytesRequest(url: url)),
+        resolver.resolve(const BytesRequest(url: url)),
         throwsA(isA<HttpBytesException$Network>()),
       );
     });
 
     test(r'empty cached payload + $Network propagates failure', () async {
-      final resolver = ImageBytesResolver(
-        cache: _StickyEmptyImageBytesCache(),
+      final resolver = BytesResolver(
+        cache: _StickyEmptyBytesCache(),
         client: clientThrowing(
           const HttpBytesException$Network(
             code: 'network_error',
@@ -1026,20 +1026,20 @@ void main() {
       );
 
       await expectLater(
-        resolver.resolve(const ImageBytesRequest(url: url)),
+        resolver.resolve(const BytesRequest(url: url)),
         throwsA(isA<HttpBytesException$Network>()),
       );
     });
 
     test('silent diagnostics emits nothing when stale is used', () async {
-      final events = <ImageBytesLogEvent>[];
-      ImageBytesDiagnostics.current = ImageBytesDiagnostics.onEvent(events.add);
+      final events = <BytesLogEvent>[];
+      BytesDiagnostics.current = BytesDiagnostics.onEvent(events.add);
       addTearDown(() {
-        ImageBytesDiagnostics.current = const ImageBytesDiagnostics.silent();
+        BytesDiagnostics.current = const BytesDiagnostics.silent();
       });
 
       final cache = await seededCache();
-      final resolver = ImageBytesResolver(
+      final resolver = BytesResolver(
         cache: cache,
         client: clientThrowing(
           const HttpBytesException$Network(
@@ -1048,22 +1048,22 @@ void main() {
             statusCode: 0,
           ),
         ),
-        diagnostics: const ImageBytesDiagnostics.silent(),
+        diagnostics: const BytesDiagnostics.silent(),
         clock: () => now,
       );
 
-      expect(await resolver.resolve(const ImageBytesRequest(url: url)), body);
+      expect(await resolver.resolve(const BytesRequest(url: url)), body);
       expect(events, isEmpty);
     });
 
     test(r'stale without validators + $Network still returns cached bytes', () async {
       final cache = await seededCache(
-        meta: ImageHttpCacheMeta(
+        meta: HttpCacheMeta(
           cacheControl: 'max-age=1',
           lastValidatedAt: now.subtract(const Duration(hours: 1)),
         ),
       );
-      final resolver = ImageBytesResolver(
+      final resolver = BytesResolver(
         cache: cache,
         client: clientThrowing(
           const HttpBytesException$Network(
@@ -1075,15 +1075,15 @@ void main() {
         clock: () => now,
       );
 
-      expect(await resolver.resolve(const ImageBytesRequest(url: url)), body);
+      expect(await resolver.resolve(const BytesRequest(url: url)), body);
     });
   });
 
-  group('ImageBytesResolver.shared live wiring', () {
+  group('BytesResolver.shared live wiring', () {
     tearDown(() async {
-      await ImageBytesCache.resetShared();
+      await BytesCache.resetShared();
       HttpBytesClient.debugShared = null;
-      ImageBytesResolver.debugShared = null;
+      BytesResolver.debugShared = null;
     });
 
     test('resolve after prior shared call then configure hits the configured store', () async {
@@ -1093,21 +1093,21 @@ void main() {
       );
 
       // Bootstrap race: paint may call shared() before configure.
-      final sharedBeforeConfigure = ImageBytesResolver.shared();
+      final sharedBeforeConfigure = BytesResolver.shared();
       await sharedBeforeConfigure.resolve(
-        const ImageBytesRequest(url: 'https://cdn.example.com/pre-configure.svg'),
+        const BytesRequest(url: 'https://cdn.example.com/pre-configure.svg'),
       );
 
-      final store = MemoryImageBytesCache();
-      await ImageBytesCache.configure(store);
+      final store = MemoryBytesCache();
+      await BytesCache.configure(store);
 
-      await ImageBytesResolver.shared().resolve(
-        const ImageBytesRequest(url: 'https://cdn.example.com/after-configure.svg'),
+      await BytesResolver.shared().resolve(
+        const BytesRequest(url: 'https://cdn.example.com/after-configure.svg'),
       );
       await Future<void>.delayed(Duration.zero);
 
       expect(
-        await store.read(ImageCacheKey.fromUrl('https://cdn.example.com/after-configure.svg')),
+        await store.read(BytesCacheKey.fromUrl('https://cdn.example.com/after-configure.svg')),
         body,
         reason: 'shared resolve must use the configured store, not a snapped NoOp',
       );
@@ -1119,25 +1119,25 @@ void main() {
         client: MockClient((_) async => http.Response.bytes(body, 200)),
       );
 
-      final first = _CloseRejectingImageBytesCache();
-      await ImageBytesCache.configure(first);
-      await ImageBytesResolver.shared().resolve(
-        const ImageBytesRequest(url: 'https://cdn.example.com/first.svg'),
+      final first = _CloseRejectingBytesCache();
+      await BytesCache.configure(first);
+      await BytesResolver.shared().resolve(
+        const BytesRequest(url: 'https://cdn.example.com/first.svg'),
       );
       await Future<void>.delayed(Duration.zero);
 
-      final second = MemoryImageBytesCache();
-      await ImageBytesCache.configure(second);
+      final second = MemoryBytesCache();
+      await BytesCache.configure(second);
       expect(first.closed, isTrue, reason: 'configure must close the previous store');
 
       // Would throw if shared resolve still held the closed previous cache.
-      await ImageBytesResolver.shared().resolve(
-        const ImageBytesRequest(url: 'https://cdn.example.com/second.svg'),
+      await BytesResolver.shared().resolve(
+        const BytesRequest(url: 'https://cdn.example.com/second.svg'),
       );
       await Future<void>.delayed(Duration.zero);
 
       expect(
-        await second.read(ImageCacheKey.fromUrl('https://cdn.example.com/second.svg')),
+        await second.read(BytesCacheKey.fromUrl('https://cdn.example.com/second.svg')),
         body,
       );
     });
@@ -1148,13 +1148,13 @@ void main() {
         client: MockClient((_) async => http.Response.bytes(body, 200)),
       );
 
-      final first = MemoryImageBytesCache();
-      await ImageBytesCache.configure(first);
-      await ImageBytesResolver.shared().resolve(
-        const ImageBytesRequest(url: 'https://cdn.example.com/before-reset.svg'),
+      final first = MemoryBytesCache();
+      await BytesCache.configure(first);
+      await BytesResolver.shared().resolve(
+        const BytesRequest(url: 'https://cdn.example.com/before-reset.svg'),
       );
 
-      await ImageBytesCache.resetShared();
+      await BytesCache.resetShared();
 
       // resetShared clears client debugShared too; re-install a mock for the
       // post-reset resolve (no public internet in this suite).
@@ -1162,37 +1162,37 @@ void main() {
         client: MockClient((_) async => http.Response.bytes(body, 200)),
       );
 
-      final second = MemoryImageBytesCache();
-      await ImageBytesCache.configure(second);
-      await ImageBytesResolver.shared().resolve(
-        const ImageBytesRequest(url: 'https://cdn.example.com/after-reset.svg'),
+      final second = MemoryBytesCache();
+      await BytesCache.configure(second);
+      await BytesResolver.shared().resolve(
+        const BytesRequest(url: 'https://cdn.example.com/after-reset.svg'),
       );
       await Future<void>.delayed(Duration.zero);
 
       expect(
-        await second.read(ImageCacheKey.fromUrl('https://cdn.example.com/after-reset.svg')),
+        await second.read(BytesCacheKey.fromUrl('https://cdn.example.com/after-reset.svg')),
         body,
       );
     });
 
     test('HttpBytesClient.configure is visible to shared resolve without injecting a resolver', () async {
       final body = Uint8List.fromList([4, 5, 6]);
-      await ImageBytesCache.configure(MemoryImageBytesCache());
+      await BytesCache.configure(MemoryBytesCache());
       await HttpBytesClient.configure(
         HttpBytesClient(
           client: MockClient((_) async => http.Response.bytes(body, 200)),
         ),
       );
 
-      final bytes = await ImageBytesResolver.shared().resolve(
-        const ImageBytesRequest(url: 'https://cdn.example.com/configured-client.svg'),
+      final bytes = await BytesResolver.shared().resolve(
+        const BytesRequest(url: 'https://cdn.example.com/configured-client.svg'),
       );
 
       expect(bytes, body);
     });
   });
 
-  group('ImageBytesResolver.resolveRich origin', () {
+  group('BytesResolver.resolveRich origin', () {
     HttpBytesClient revalidatingClient(MockClientHandler handler) {
       final client = HttpBytesClient(
         client: MockClient(handler),
@@ -1212,14 +1212,14 @@ void main() {
       );
       addTearDown(client.close);
 
-      final resolver = ImageBytesResolver(
-        cache: MemoryImageBytesCache(),
+      final resolver = BytesResolver(
+        cache: MemoryBytesCache(),
         client: client,
       );
-      const request = ImageBytesRequest(url: 'https://cdn.example.com/origin-miss.svg');
+      const request = BytesRequest(url: 'https://cdn.example.com/origin-miss.svg');
 
       final rich = await resolver.resolveRich(request);
-      expect(rich.origin, ImageBytesOrigin.network);
+      expect(rich.origin, BytesOrigin.network);
       expect(rich.bytes, body);
       expect(await resolver.resolve(request), body);
     });
@@ -1234,16 +1234,16 @@ void main() {
       );
       addTearDown(client.close);
 
-      final cache = MemoryImageBytesCache();
+      final cache = MemoryBytesCache();
       const url = 'https://cdn.example.com/origin-fresh.svg';
       final body = Uint8List.fromList([4, 5, 6]);
-      await cache.write(ImageCacheKey.fromUrl(url), body);
+      await cache.write(BytesCacheKey.fromUrl(url), body);
 
-      final resolver = ImageBytesResolver(cache: cache, client: client);
-      const request = ImageBytesRequest(url: url);
+      final resolver = BytesResolver(cache: cache, client: client);
+      const request = BytesRequest(url: url);
 
       final rich = await resolver.resolveRich(request);
-      expect(rich.origin, ImageBytesOrigin.cache);
+      expect(rich.origin, BytesOrigin.cache);
       expect(rich.bytes, body);
       expect(hits, 0);
       expect(await resolver.resolve(request), body);
@@ -1251,21 +1251,21 @@ void main() {
 
     test('304 revalidated reuse reports cache', () async {
       final now = DateTime.utc(2024, 6, 1, 12);
-      final cache = MemoryImageBytesCache(clock: () => now);
+      final cache = MemoryBytesCache(clock: () => now);
       const url = 'https://cdn.example.com/origin-304.svg';
-      final key = ImageCacheKey.fromUrl(url);
+      final key = BytesCacheKey.fromUrl(url);
       final body = Uint8List.fromList([4, 5, 6]);
       await cache.write(
         key,
         body,
-        httpCacheMeta: ImageHttpCacheMeta(
+        httpCacheMeta: HttpCacheMeta(
           etag: '"v1"',
           cacheControl: 'max-age=60',
           lastValidatedAt: now.subtract(const Duration(minutes: 5)),
         ),
       );
 
-      final resolver = ImageBytesResolver(
+      final resolver = BytesResolver(
         cache: cache,
         client: revalidatingClient(
           (_) async => http.Response.bytes(
@@ -1277,21 +1277,21 @@ void main() {
         clock: () => now,
       );
 
-      final rich = await resolver.resolveRich(const ImageBytesRequest(url: url));
-      expect(rich.origin, ImageBytesOrigin.cache);
+      final rich = await resolver.resolveRich(const BytesRequest(url: url));
+      expect(rich.origin, BytesOrigin.cache);
       expect(rich.bytes, body);
-      expect(await resolver.resolve(const ImageBytesRequest(url: url)), body);
+      expect(await resolver.resolve(const BytesRequest(url: url)), body);
     });
 
     test('stale-served soft failure reports cache', () async {
       const url = 'https://cdn.example.com/origin-stale.svg';
       final body = Uint8List.fromList([4, 4, 4]);
       final now = DateTime.utc(2024, 6, 1, 12);
-      final cache = MemoryImageBytesCache(clock: () => now);
+      final cache = MemoryBytesCache(clock: () => now);
       await cache.write(
-        ImageCacheKey.fromUrl(url),
+        BytesCacheKey.fromUrl(url),
         body,
-        httpCacheMeta: ImageHttpCacheMeta(
+        httpCacheMeta: HttpCacheMeta(
           etag: '"v1"',
           lastValidatedAt: now.subtract(const Duration(days: 1)),
         ),
@@ -1310,34 +1310,34 @@ void main() {
       );
       addTearDown(client.close);
 
-      final resolver = ImageBytesResolver(
+      final resolver = BytesResolver(
         cache: cache,
         client: client,
         clock: () => now,
       );
 
-      final rich = await resolver.resolveRich(const ImageBytesRequest(url: url));
-      expect(rich.origin, ImageBytesOrigin.cache);
+      final rich = await resolver.resolveRich(const BytesRequest(url: url));
+      expect(rich.origin, BytesOrigin.cache);
       expect(rich.bytes, body);
-      expect(await resolver.resolve(const ImageBytesRequest(url: url)), body);
+      expect(await resolver.resolve(const BytesRequest(url: url)), body);
     });
 
     test('downloaded body after stale (200 replace) reports network', () async {
       final now = DateTime.utc(2024, 6, 1, 12);
-      final cache = MemoryImageBytesCache(clock: () => now);
+      final cache = MemoryBytesCache(clock: () => now);
       const url = 'https://cdn.example.com/origin-replace.svg';
-      final key = ImageCacheKey.fromUrl(url);
+      final key = BytesCacheKey.fromUrl(url);
       await cache.write(
         key,
         Uint8List.fromList([1]),
-        httpCacheMeta: ImageHttpCacheMeta(
+        httpCacheMeta: HttpCacheMeta(
           etag: '"old"',
           lastValidatedAt: now.subtract(const Duration(days: 1)),
         ),
       );
       final next = Uint8List.fromList([2, 2]);
 
-      final resolver = ImageBytesResolver(
+      final resolver = BytesResolver(
         cache: cache,
         client: revalidatingClient(
           (request) async {
@@ -1348,66 +1348,66 @@ void main() {
         clock: () => now,
       );
 
-      final rich = await resolver.resolveRich(const ImageBytesRequest(url: url));
-      expect(rich.origin, ImageBytesOrigin.network);
+      final rich = await resolver.resolveRich(const BytesRequest(url: url));
+      expect(rich.origin, BytesOrigin.network);
       expect(rich.bytes, next);
-      expect(await resolver.resolve(const ImageBytesRequest(url: url)), next);
+      expect(await resolver.resolve(const BytesRequest(url: url)), next);
     });
   });
 }
 
 /// Always "hits" with an empty payload (legacy sticky empty durable row).
-final class _StickyEmptyImageBytesCache implements IImageBytesCache {
+final class _StickyEmptyBytesCache implements IBytesCache {
   @override
-  Future<Uint8List?> read(ImageCacheKey key) async => Uint8List(0);
+  Future<Uint8List?> read(BytesCacheKey key) async => Uint8List(0);
 
   @override
   Future<void> write(
-    ImageCacheKey key,
+    BytesCacheKey key,
     Uint8List bytes, {
-    ImageHttpCacheMeta? httpCacheMeta,
+    HttpCacheMeta? httpCacheMeta,
   }) async {}
 
   @override
-  Future<void> evict(ImageCacheKey key) async {}
+  Future<void> evict(BytesCacheKey key) async {}
 
   @override
-  Future<ImageBytesPruneReport> prune() async => const ImageBytesPruneReport(evictedKeys: [], freedBytes: 0);
+  Future<BytesPruneReport> prune() async => const BytesPruneReport(evictedKeys: [], freedBytes: 0);
 
   @override
   Future<void> close() async {}
 }
 
 /// Always misses; [write] always throws (simulates durable store failure).
-final class _ThrowingWriteImageBytesCache implements IImageBytesCache {
-  const _ThrowingWriteImageBytesCache();
+final class _ThrowingWriteBytesCache implements IBytesCache {
+  const _ThrowingWriteBytesCache();
 
   @override
-  Future<Uint8List?> read(ImageCacheKey key) async => null;
+  Future<Uint8List?> read(BytesCacheKey key) async => null;
 
   @override
   Future<void> write(
-    ImageCacheKey key,
+    BytesCacheKey key,
     Uint8List bytes, {
-    ImageHttpCacheMeta? httpCacheMeta,
+    HttpCacheMeta? httpCacheMeta,
   }) async {
     throw StateError('simulated durable write failure');
   }
 
   @override
-  Future<void> evict(ImageCacheKey key) async {}
+  Future<void> evict(BytesCacheKey key) async {}
 
   @override
-  Future<ImageBytesPruneReport> prune() async => const ImageBytesPruneReport(evictedKeys: [], freedBytes: 0);
+  Future<BytesPruneReport> prune() async => const BytesPruneReport(evictedKeys: [], freedBytes: 0);
 
   @override
   Future<void> close() async {}
 }
 
 /// Durable-like store: ops throw after [close] (Memory/NoOp stay usable).
-final class _CloseRejectingImageBytesCache implements IImageBytesCache {
+final class _CloseRejectingBytesCache implements IBytesCache {
   bool closed = false;
-  final Map<ImageCacheKey, Uint8List> _entries = {};
+  final Map<BytesCacheKey, Uint8List> _entries = {};
 
   void _ensureOpen() {
     if (closed) {
@@ -1416,31 +1416,31 @@ final class _CloseRejectingImageBytesCache implements IImageBytesCache {
   }
 
   @override
-  Future<Uint8List?> read(ImageCacheKey key) async {
+  Future<Uint8List?> read(BytesCacheKey key) async {
     _ensureOpen();
     return _entries[key];
   }
 
   @override
   Future<void> write(
-    ImageCacheKey key,
+    BytesCacheKey key,
     Uint8List bytes, {
-    ImageHttpCacheMeta? httpCacheMeta,
+    HttpCacheMeta? httpCacheMeta,
   }) async {
     _ensureOpen();
     _entries[key] = bytes;
   }
 
   @override
-  Future<void> evict(ImageCacheKey key) async {
+  Future<void> evict(BytesCacheKey key) async {
     _ensureOpen();
     _entries.remove(key);
   }
 
   @override
-  Future<ImageBytesPruneReport> prune() async {
+  Future<BytesPruneReport> prune() async {
     _ensureOpen();
-    return const ImageBytesPruneReport(evictedKeys: [], freedBytes: 0);
+    return const BytesPruneReport(evictedKeys: [], freedBytes: 0);
   }
 
   @override
@@ -1450,24 +1450,24 @@ final class _CloseRejectingImageBytesCache implements IImageBytesCache {
 }
 
 /// RAM index whose [commit] always throws (simulates durable meta failure).
-final class _CommitFailingIndex implements IImageBytesIndex {
-  final Map<String, ImageBytesRecord> records = {};
+final class _CommitFailingIndex implements IBytesIndex {
+  final Map<String, BytesRecord> records = {};
 
   @override
-  Future<ImageBytesRecord?> get(ImageCacheKey key) async => records[key.value];
+  Future<BytesRecord?> get(BytesCacheKey key) async => records[key.value];
 
   @override
-  Future<void> put(ImageBytesRecord record) async {
+  Future<void> put(BytesRecord record) async {
     records[record.key.value] = record;
   }
 
   @override
-  Future<void> delete(ImageCacheKey key) async {
+  Future<void> delete(BytesCacheKey key) async {
     records.remove(key.value);
   }
 
   @override
-  Future<Iterable<ImageBytesRecord>> values() async => records.values;
+  Future<Iterable<BytesRecord>> values() async => records.values;
 
   @override
   Future<void> commit() async {
@@ -1475,19 +1475,19 @@ final class _CommitFailingIndex implements IImageBytesIndex {
   }
 }
 
-final class _MapBlobStore implements IImageBytesBlobStore {
+final class _MapBlobStore implements IBytesBlobStore {
   final Map<String, Uint8List> store = {};
 
   @override
-  Future<Uint8List?> read(ImageCacheKey key, {int? knownByteLength}) async => store[key.value];
+  Future<Uint8List?> read(BytesCacheKey key, {int? knownByteLength}) async => store[key.value];
 
   @override
-  Future<void> write(ImageCacheKey key, Uint8List bytes) async {
+  Future<void> write(BytesCacheKey key, Uint8List bytes) async {
     store[key.value] = bytes;
   }
 
   @override
-  Future<void> delete(ImageCacheKey key) async {
+  Future<void> delete(BytesCacheKey key) async {
     store.remove(key.value);
   }
 }

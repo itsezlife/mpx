@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:image_bytes_cache/src/environment_specific/blob_store_file_vm.dart';
-import 'package:image_bytes_cache/src/environment_specific/index_file_vm.dart';
-import 'package:image_bytes_cache/src/image_bytes_cache.dart';
+import 'package:http_bytes_cache/src/bytes_cache.dart';
+import 'package:http_bytes_cache/src/environment_specific/blob_store_file_vm.dart';
+import 'package:http_bytes_cache/src/environment_specific/index_file_vm.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -11,7 +11,7 @@ void main() {
   late Directory tempDir;
 
   setUp(() {
-    tempDir = Directory.systemTemp.createTempSync('image_bytes_blob_vm_');
+    tempDir = Directory.systemTemp.createTempSync('http_bytes_cache_blob_vm_');
   });
 
   tearDown(() {
@@ -20,9 +20,9 @@ void main() {
     }
   });
 
-  group(r'ImageBytesBlobStore$File$VM isolate death', () {
+  group(r'BytesBlobStore$File$VM isolate death', () {
     test('pending RPC fails when the worker is killed (no hang)', () async {
-      final store = ImageBytesBlobStore$File$VM(directory: tempDir.path);
+      final store = BytesBlobStore$File$VM(directory: tempDir.path);
       addTearDown(store.close);
       await store.ensureDirectory();
 
@@ -43,7 +43,7 @@ void main() {
     });
 
     test('after worker death, a later op respawns and succeeds', () async {
-      final store = ImageBytesBlobStore$File$VM(directory: tempDir.path);
+      final store = BytesBlobStore$File$VM(directory: tempDir.path);
       addTearDown(store.close);
       await store.ensureDirectory();
 
@@ -67,23 +67,23 @@ void main() {
     });
 
     test('dead worker mid-read does not stall the exclusive mutate gate', () async {
-      final blobs = ImageBytesBlobStore$File$VM(directory: tempDir.path);
+      final blobs = BytesBlobStore$File$VM(directory: tempDir.path);
       addTearDown(blobs.close);
       await blobs.ensureDirectory();
-      final index = await ImageBytesIndex$File$VM.open(
+      final index = await BytesIndex$File$VM.open(
         directory: tempDir.path,
         io: blobs,
         onWipe: blobs.wipeAll,
       );
-      final cache = IndexedImageBytesCache(
+      final cache = IndexedBytesCache(
         index: index,
         blobs: blobs,
-        retention: const ImageBytesRetention.unlimited(),
+        retention: const BytesRetention.unlimited(),
       );
       addTearDown(cache.close);
 
-      const hungKey = ImageCacheKey('hung');
-      const okKey = ImageCacheKey('ok');
+      const hungKey = BytesCacheKey('hung');
+      const okKey = BytesCacheKey('ok');
       final payload = Uint8List.fromList([1, 2, 3]);
       await cache.write(hungKey, payload);
 

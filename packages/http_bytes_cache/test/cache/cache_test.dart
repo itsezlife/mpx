@@ -1,13 +1,13 @@
 import 'dart:typed_data';
 
-import 'package:image_bytes_cache/src/image_bytes_cache.dart';
+import 'package:http_bytes_cache/src/bytes_cache.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('MemoryImageBytesCache', () {
+  group('MemoryBytesCache', () {
     test('write then read returns the same bytes', () async {
-      final cache = MemoryImageBytesCache();
-      const key = ImageCacheKey('logo');
+      final cache = MemoryBytesCache();
+      const key = BytesCacheKey('logo');
       final bytes = Uint8List.fromList([1, 2, 3]);
 
       await cache.write(key, bytes);
@@ -16,18 +16,18 @@ void main() {
     });
 
     test('read miss returns null', () async {
-      final cache = MemoryImageBytesCache();
+      final cache = MemoryBytesCache();
 
-      expect(await cache.read(const ImageCacheKey('missing')), isNull);
+      expect(await cache.read(const BytesCacheKey('missing')), isNull);
     });
 
     test('TTL: read after maxAge returns null and evicts', () async {
       var now = DateTime.utc(2024, 1, 1, 12);
-      final cache = MemoryImageBytesCache(
-        retention: const ImageBytesRetention.maxAge(Duration(hours: 1)),
+      final cache = MemoryBytesCache(
+        retention: const BytesRetention.maxAge(Duration(hours: 1)),
         clock: () => now,
       );
-      const key = ImageCacheKey('logo');
+      const key = BytesCacheKey('logo');
       await cache.write(key, Uint8List.fromList([1]));
 
       now = now.add(const Duration(hours: 2));
@@ -38,11 +38,11 @@ void main() {
 
     test('TTL: read within maxAge still hits', () async {
       var now = DateTime.utc(2024, 1, 1, 12);
-      final cache = MemoryImageBytesCache(
-        retention: const ImageBytesRetention.maxAge(Duration(hours: 1)),
+      final cache = MemoryBytesCache(
+        retention: const BytesRetention.maxAge(Duration(hours: 1)),
         clock: () => now,
       );
-      const key = ImageCacheKey('logo');
+      const key = BytesCacheKey('logo');
       final bytes = Uint8List.fromList([9]);
       await cache.write(key, bytes);
 
@@ -53,45 +53,45 @@ void main() {
 
     test('maxEntries: write evicts oldest accessed', () async {
       var now = DateTime.utc(2024, 1, 1);
-      final cache = MemoryImageBytesCache(
-        retention: const ImageBytesRetention.maxEntries(2),
+      final cache = MemoryBytesCache(
+        retention: const BytesRetention.maxEntries(2),
         clock: () => now,
       );
 
-      await cache.write(const ImageCacheKey('a'), Uint8List.fromList([1]));
+      await cache.write(const BytesCacheKey('a'), Uint8List.fromList([1]));
       now = now.add(const Duration(seconds: 1));
-      await cache.write(const ImageCacheKey('b'), Uint8List.fromList([2]));
+      await cache.write(const BytesCacheKey('b'), Uint8List.fromList([2]));
       now = now.add(const Duration(seconds: 1));
       // Touch a so b becomes oldest.
-      await cache.read(const ImageCacheKey('a'));
+      await cache.read(const BytesCacheKey('a'));
       now = now.add(const Duration(seconds: 1));
-      await cache.write(const ImageCacheKey('c'), Uint8List.fromList([3]));
+      await cache.write(const BytesCacheKey('c'), Uint8List.fromList([3]));
 
-      expect(await cache.read(const ImageCacheKey('a')), Uint8List.fromList([1]));
-      expect(await cache.read(const ImageCacheKey('b')), isNull);
-      expect(await cache.read(const ImageCacheKey('c')), Uint8List.fromList([3]));
+      expect(await cache.read(const BytesCacheKey('a')), Uint8List.fromList([1]));
+      expect(await cache.read(const BytesCacheKey('b')), isNull);
+      expect(await cache.read(const BytesCacheKey('c')), Uint8List.fromList([3]));
     });
 
     test('prune removes expired and reports keys', () async {
       var now = DateTime.utc(2024, 6, 1);
-      final cache = MemoryImageBytesCache(
-        retention: const ImageBytesRetention.maxAge(Duration(days: 1)),
+      final cache = MemoryBytesCache(
+        retention: const BytesRetention.maxAge(Duration(days: 1)),
         clock: () => now,
       );
-      await cache.write(const ImageCacheKey('old'), Uint8List.fromList([1]));
+      await cache.write(const BytesCacheKey('old'), Uint8List.fromList([1]));
       now = now.add(const Duration(days: 2));
-      await cache.write(const ImageCacheKey('fresh'), Uint8List.fromList([2]));
+      await cache.write(const BytesCacheKey('fresh'), Uint8List.fromList([2]));
 
       final report = await cache.prune();
 
-      expect(report.evictedKeys, [const ImageCacheKey('old')]);
-      expect(await cache.read(const ImageCacheKey('old')), isNull);
-      expect(await cache.read(const ImageCacheKey('fresh')), Uint8List.fromList([2]));
+      expect(report.evictedKeys, [const BytesCacheKey('old')]);
+      expect(await cache.read(const BytesCacheKey('old')), isNull);
+      expect(await cache.read(const BytesCacheKey('fresh')), Uint8List.fromList([2]));
     });
 
     test('evict removes a single key', () async {
-      final cache = MemoryImageBytesCache();
-      const key = ImageCacheKey('logo');
+      final cache = MemoryBytesCache();
+      const key = BytesCacheKey('logo');
       await cache.write(key, Uint8List.fromList([1]));
 
       await cache.evict(key);
@@ -100,11 +100,11 @@ void main() {
     });
 
     test('empty write is not retained as capacity waste', () async {
-      final cache = MemoryImageBytesCache(
-        retention: const ImageBytesRetention.maxEntries(1),
+      final cache = MemoryBytesCache(
+        retention: const BytesRetention.maxEntries(1),
       );
-      const emptyKey = ImageCacheKey('empty');
-      const keepKey = ImageCacheKey('keep');
+      const emptyKey = BytesCacheKey('empty');
+      const keepKey = BytesCacheKey('keep');
 
       await cache.write(emptyKey, Uint8List(0));
       expect(await cache.read(emptyKey), isNull);
@@ -114,8 +114,8 @@ void main() {
     });
 
     test('empty write evicts a previously stored payload for the same key', () async {
-      final cache = MemoryImageBytesCache();
-      const key = ImageCacheKey('logo');
+      final cache = MemoryBytesCache();
+      const key = BytesCacheKey('logo');
       await cache.write(key, Uint8List.fromList([1, 2]));
 
       await cache.write(key, Uint8List(0));
@@ -124,24 +124,24 @@ void main() {
     });
   });
 
-  group('NoOpImageBytesCache', () {
+  group('NoOpBytesCache', () {
     test('read always returns null and write succeeds', () async {
-      const cache = NoOpImageBytesCache();
-      const key = ImageCacheKey('logo');
+      const cache = NoOpBytesCache();
+      const key = BytesCacheKey('logo');
 
       await cache.write(key, Uint8List.fromList([1]));
 
       expect(await cache.read(key), isNull);
       expect(
         await cache.prune(),
-        const ImageBytesPruneReport(evictedKeys: [], freedBytes: 0),
+        const BytesPruneReport(evictedKeys: [], freedBytes: 0),
       );
     });
   });
 
-  group('ImageCacheKey.fromUrl', () {
+  group('BytesCacheKey.fromUrl', () {
     test('produces safe key with host path and hash', () {
-      final key = ImageCacheKey.fromUrl(
+      final key = BytesCacheKey.fromUrl(
         'https://cdn.example.com/icons/logo.svg',
       );
       expect(key.value, contains('cdn_example_com'));
@@ -151,7 +151,7 @@ void main() {
     });
 
     test('strips path traversal and reserved characters', () {
-      final key = ImageCacheKey.fromUrl(
+      final key = BytesCacheKey.fromUrl(
         'https://cdn.example.com/../../etc/passwd?x=1',
       );
       expect(key.value, isNot(contains('..')));
@@ -159,17 +159,17 @@ void main() {
     });
 
     test('different query strings yield different keys', () {
-      final a = ImageCacheKey.fromUrl('https://x.test/a.svg?v=1');
-      final b = ImageCacheKey.fromUrl('https://x.test/a.svg?v=2');
+      final a = BytesCacheKey.fromUrl('https://x.test/a.svg?v=1');
+      final b = BytesCacheKey.fromUrl('https://x.test/a.svg?v=2');
       expect(a, isNot(equals(b)));
     });
 
     test('different headers yield different keys', () {
-      final a = ImageCacheKey.fromUrl(
+      final a = BytesCacheKey.fromUrl(
         'https://x.test/a.svg',
         headers: const {'Authorization': 'a'},
       );
-      final b = ImageCacheKey.fromUrl(
+      final b = BytesCacheKey.fromUrl(
         'https://x.test/a.svg',
         headers: const {'Authorization': 'b'},
       );
@@ -177,8 +177,8 @@ void main() {
     });
 
     test('conditional request headers do not change identity', () {
-      final plain = ImageCacheKey.fromUrl('https://x.test/a.svg');
-      final withValidators = ImageCacheKey.fromUrl(
+      final plain = BytesCacheKey.fromUrl('https://x.test/a.svg');
+      final withValidators = BytesCacheKey.fromUrl(
         'https://x.test/a.svg',
         headers: const {
           'If-None-Match': '"v1"',
@@ -188,25 +188,25 @@ void main() {
           'If-Range': '"v1"',
         },
       );
-      final mixedCase = ImageCacheKey.fromUrl(
+      final mixedCase = BytesCacheKey.fromUrl(
         'https://x.test/a.svg',
         headers: const {'if-none-match': '"other"'},
       );
       expect(withValidators, equals(plain));
       expect(mixedCase, equals(plain));
       expect(
-        ImageCacheKey.canonicalHeaders(const {'If-None-Match': '"v1"', 'Authorization': 't'}),
-        equals(ImageCacheKey.canonicalHeaders(const {'Authorization': 't'})),
+        BytesCacheKey.canonicalHeaders(const {'If-None-Match': '"v1"', 'Authorization': 't'}),
+        equals(BytesCacheKey.canonicalHeaders(const {'Authorization': 't'})),
       );
       // Authorization still participates; only conditionals are stripped.
       expect(
-        ImageCacheKey.fromUrl(
+        BytesCacheKey.fromUrl(
           'https://x.test/a.svg',
           headers: const {'Authorization': 'a', 'If-None-Match': '"v1"'},
         ),
         isNot(
           equals(
-            ImageCacheKey.fromUrl(
+            BytesCacheKey.fromUrl(
               'https://x.test/a.svg',
               headers: const {'Authorization': 'b', 'If-None-Match': '"v1"'},
             ),
@@ -216,11 +216,11 @@ void main() {
     });
 
     test('header key casing does not change identity', () {
-      final a = ImageCacheKey.fromUrl(
+      final a = BytesCacheKey.fromUrl(
         'https://x.test/a.svg',
         headers: const {'Authorization': 'token'},
       );
-      final b = ImageCacheKey.fromUrl(
+      final b = BytesCacheKey.fromUrl(
         'https://x.test/a.svg',
         headers: const {'authorization': 'token'},
       );
@@ -228,11 +228,11 @@ void main() {
     });
 
     test('header key order does not change identity', () {
-      final a = ImageCacheKey.fromUrl(
+      final a = BytesCacheKey.fromUrl(
         'https://x.test/a.svg',
         headers: const {'a': '1', 'b': '2'},
       );
-      final b = ImageCacheKey.fromUrl(
+      final b = BytesCacheKey.fromUrl(
         'https://x.test/a.svg',
         headers: const {'b': '2', 'a': '1'},
       );
@@ -240,15 +240,15 @@ void main() {
     });
 
     test('same basename under different paths yields different keys', () {
-      final a = ImageCacheKey.fromUrl('https://x.test/foo/logo.svg');
-      final b = ImageCacheKey.fromUrl('https://x.test/bar/logo.svg');
+      final a = BytesCacheKey.fromUrl('https://x.test/foo/logo.svg');
+      final b = BytesCacheKey.fromUrl('https://x.test/bar/logo.svg');
       expect(a, isNot(equals(b)));
     });
 
     test('long basename stays within length cap and remains distinct', () {
       final longName = '${'a' * 200}.svg';
-      final a = ImageCacheKey.fromUrl('https://cdn.example.com/icons/$longName');
-      final b = ImageCacheKey.fromUrl('https://cdn.example.com/other/$longName');
+      final a = BytesCacheKey.fromUrl('https://cdn.example.com/icons/$longName');
+      final b = BytesCacheKey.fromUrl('https://cdn.example.com/other/$longName');
       expect(a.value.length, lessThanOrEqualTo(180));
       expect(b.value.length, lessThanOrEqualTo(180));
       expect(a, isNot(equals(b)));
@@ -257,14 +257,14 @@ void main() {
     test('relative and absolute Uri.base equivalents share one key', () {
       const relative = 'icons/logo.svg';
       final absolute = Uri.base.resolve(relative).toString();
-      expect(ImageCacheKey.fromUrl(relative), equals(ImageCacheKey.fromUrl(absolute)));
+      expect(BytesCacheKey.fromUrl(relative), equals(BytesCacheKey.fromUrl(absolute)));
     });
 
     test('URL containing |… without headers differs from clean URL plus those headers', () {
-      final poisoned = ImageCacheKey.fromUrl(
+      final poisoned = BytesCacheKey.fromUrl(
         'https://cdn.example.com/a.svg|authorization=Bearer x',
       );
-      final clean = ImageCacheKey.fromUrl(
+      final clean = BytesCacheKey.fromUrl(
         'https://cdn.example.com/a.svg',
         headers: const {'Authorization': 'Bearer x'},
       );
@@ -272,11 +272,11 @@ void main() {
     });
 
     test('pipe inside a header value cannot forge another URL+headers fingerprint', () {
-      final withPipeInValue = ImageCacheKey.fromUrl(
+      final withPipeInValue = BytesCacheKey.fromUrl(
         'https://cdn.example.com/a.svg',
         headers: const {'authorization': 'Bearer x|foo=bar'},
       );
-      final withPipeInUrl = ImageCacheKey.fromUrl(
+      final withPipeInUrl = BytesCacheKey.fromUrl(
         'https://cdn.example.com/a.svg|authorization=Bearer x',
         headers: const {'foo': 'bar'},
       );
@@ -290,126 +290,126 @@ void main() {
     });
   });
 
-  group('ImageBytesRetention.standard', () {
+  group('BytesRetention.standard', () {
     test('includes maxAge, maxEntries, and maxBytes', () {
-      final limits = ImageBytesRetention.standard.limits;
+      final limits = BytesRetention.standard.limits;
       expect(limits.maxAge, const Duration(days: 14));
       expect(limits.maxEntries, 500);
       expect(limits.maxBytes, 50 * 1024 * 1024);
     });
   });
 
-  group('ImageBytesRetention capacity invariants', () {
+  group('BytesRetention capacity invariants', () {
     test('rejects non-positive maxEntries', () {
       expect(
-        () => ImageBytesRetention.maxEntries(0),
+        () => BytesRetention.maxEntries(0),
         throwsA(isA<AssertionError>()),
       );
       expect(
-        () => ImageBytesRetention.maxEntries(-1),
+        () => BytesRetention.maxEntries(-1),
         throwsA(isA<AssertionError>()),
       );
       expect(
-        () => ImageBytesRetention.compound(maxEntries: 0),
+        () => BytesRetention.compound(maxEntries: 0),
         throwsA(isA<AssertionError>()),
       );
     });
 
     test('rejects non-positive maxBytes', () {
       expect(
-        () => ImageBytesRetention.maxBytes(0),
+        () => BytesRetention.maxBytes(0),
         throwsA(isA<AssertionError>()),
       );
       expect(
-        () => ImageBytesRetention.maxBytes(-1),
+        () => BytesRetention.maxBytes(-1),
         throwsA(isA<AssertionError>()),
       );
       expect(
-        () => ImageBytesRetention.compound(maxBytes: 0),
+        () => BytesRetention.compound(maxBytes: 0),
         throwsA(isA<AssertionError>()),
       );
     });
   });
 
   group('close', () {
-    test('MemoryImageBytesCache close is idempotent', () async {
-      final cache = MemoryImageBytesCache();
+    test('MemoryBytesCache close is idempotent', () async {
+      final cache = MemoryBytesCache();
       await cache.close();
       await cache.close();
-      await cache.write(const ImageCacheKey('logo'), Uint8List.fromList([1]));
+      await cache.write(const BytesCacheKey('logo'), Uint8List.fromList([1]));
       expect(
-        await cache.read(const ImageCacheKey('logo')),
+        await cache.read(const BytesCacheKey('logo')),
         Uint8List.fromList([1]),
       );
     });
 
-    test('NoOpImageBytesCache close is idempotent', () async {
-      const cache = NoOpImageBytesCache();
+    test('NoOpBytesCache close is idempotent', () async {
+      const cache = NoOpBytesCache();
       await cache.close();
       await cache.close();
-      expect(await cache.read(const ImageCacheKey('logo')), isNull);
+      expect(await cache.read(const BytesCacheKey('logo')), isNull);
     });
   });
 
-  group('ImageBytesCache.configure', () {
+  group('BytesCache.configure', () {
     tearDown(() async {
-      await ImageBytesCache.resetShared();
+      await BytesCache.resetShared();
     });
 
     test('closes the previous shared instance before replace', () async {
       final first = _ClosableProbeCache();
       final second = _ClosableProbeCache();
 
-      await ImageBytesCache.configure(first);
-      expect(identical(ImageBytesCache.shared(), first), isTrue);
+      await BytesCache.configure(first);
+      expect(identical(BytesCache.shared(), first), isTrue);
 
       first.onClose = () {
         expect(
-          identical(ImageBytesCache.shared(), first),
+          identical(BytesCache.shared(), first),
           isTrue,
           reason: 'previous must still be shared until close finishes',
         );
       };
 
-      await ImageBytesCache.configure(second);
-      expect(identical(ImageBytesCache.shared(), second), isTrue);
+      await BytesCache.configure(second);
+      expect(identical(BytesCache.shared(), second), isTrue);
       expect(first.closeCount, 1);
       expect(second.closeCount, 0);
     });
 
     test('resetShared closes then clears', () async {
       final probe = _ClosableProbeCache();
-      await ImageBytesCache.configure(probe);
+      await BytesCache.configure(probe);
       probe.onClose = () {
         expect(
-          identical(ImageBytesCache.shared(), probe),
+          identical(BytesCache.shared(), probe),
           isTrue,
           reason: 'shared must stay until close finishes',
         );
       };
 
-      await ImageBytesCache.resetShared();
+      await BytesCache.resetShared();
       expect(probe.closeCount, 1);
-      expect(ImageBytesCache.shared(), isA<NoOpImageBytesCache>());
+      expect(BytesCache.shared(), isA<NoOpBytesCache>());
     });
   });
 }
 
-final class _ClosableProbeCache implements IImageBytesCache {
+final class _ClosableProbeCache implements IBytesCache {
   int closeCount = 0;
   void Function()? onClose;
 
   @override
-  Future<Uint8List?> read(ImageCacheKey key) async => null;
+  Future<Uint8List?> read(BytesCacheKey key) async => null;
 
   @override
-  Future<void> write(ImageCacheKey key, Uint8List bytes, {ImageHttpCacheMeta? httpCacheMeta}) async {}
+  Future<void> write(BytesCacheKey key, Uint8List bytes, {HttpCacheMeta? httpCacheMeta}) async {}
 
   @override
-  Future<void> evict(ImageCacheKey key) async {}
+  Future<void> evict(BytesCacheKey key) async {}
 
   @override
-  Future<ImageBytesPruneReport> prune() async => const ImageBytesPruneReport(evictedKeys: [], freedBytes: 0);
+  Future<BytesPruneReport> prune() async => const BytesPruneReport(evictedKeys: [], freedBytes: 0);
 
   @override
   Future<void> close() async {
