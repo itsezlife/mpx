@@ -42,7 +42,7 @@ version and publish overhead without saving any host a dependency.
 | `mpx_player` | Plugin | Player pool, leases, audio owner (ADR 0004); Media3 ExoPlayer and AVPlayer backends reading through the bytes cache's native reader; feed modes, knobs and preload staging (ADR 0005) |
 | `mpx_ui` | Flutter, optional | Fullscreen viewer with its own tokens (ADR 0006); feed list and pager widgets (ADR 0005) |
 | `mpx_capture` | Plugin, optional | Compression and round video; CameraX, Media3 Transformer, MediaCodec and AVFoundation capture code (ADR 0007) |
-| `mpx` | Plugin | Composition root `MpxStack.create(...)` *(working)*; the `ContentFetcher` adapter over `http_bytes_cache`; device signals (network class, power saving, thermal status); the set's README and example app |
+| `mpx` | Plugin | Composition root `MpxStack.create(...)`; the `ContentFetcher` adapter `BytesCacheFetcher` over `http_bytes_cache`; device signals (network class, power saving, thermal status); the set's README and example app |
 
 ### Dependency direction
 
@@ -167,9 +167,16 @@ reasons.
 - This diverges from chat_scroll_view ADR 020's rule that native code sits in
   leaf packages.
 
+## Settled in implementation
+
+- Names: `MpxStack` (composition root) and `BytesCacheFetcher` (fetch
+  adapter). The host names URLs through a `MediaLocator`; heavy decoders come
+  from an `MpxDecoderFactory` built over the stack's clock and textures, so
+  `mpx` keeps no edge to them. The example app depends on the decoders: it
+  shows the set, it is not part of `mpx`.
+
 ## Open in implementation
 
-- Final names for `MpxStack` and the fetch adapter type.
 - Whether `mpx_video_decoder` takes a shorter name.
 
 ## Provenance

@@ -2,4 +2,6 @@
 /// bytes cache, and reads the device signals playback policies weigh.
 library;
 
+export 'src/fetch/bytes_cache_fetcher.dart';
 export 'src/signals/device_signals.dart';
+export 'src/stack/mpx_stack.dart';

@@ -230,10 +230,10 @@ Camera and microphone permissions live only here. Seams: `CompressionPreset`,
 
 The composition root, a plugin.
 
-- `MpxStack.create(...)` *(working)* wires the bytes cache and the core with
+- `MpxStack.create(...)` wires the bytes cache and the core with
   defaults, takes the decoders the host passes in, and returns the assembled
   stack. It depends on no decoder, player, UI or capture package.
-- The fetch adapter: a `ContentFetcher` over `http_bytes_cache` (media key to
+- The fetch adapter `BytesCacheFetcher`: a `ContentFetcher` over `http_bytes_cache` (media key to
   cache key, cancel tokens, transient and permanent error classes, progress).
   Hosts with their own fetcher skip `mpx`. ADR 0002.
 - Device signals (Android, iOS, macOS): network class, power-saving mode and
@@ -448,7 +448,7 @@ chat_scroll_view's scratch area).
 
 ### Composition root
 
-45. **mpx stack.** `MpxStack.create(...)` *(working)* wires the bytes cache
+45. **mpx stack.** `MpxStack.create(...)` wires the bytes cache
     and core with defaults, takes the host's decoders, registers the host's
     quota folders; the set's README with its diagram; the example app.
     After: 6, 13, 17, 33.

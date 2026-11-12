@@ -14,6 +14,8 @@
   staged preloads (`AssetCacheScope.preload`, `AssetPreloadStage`, distance
   order, `FetchRequest.prefix`); `meteredNetwork` and `thermalStress` pause
   layers fed through `PlaybackActivity`, which hold back staged preloads.
+- `AssetFetcherContract` watches the failing fetch before awaiting the
+  served one, so a fetcher that fails it first passes.
 
 ## 0.0.1
 
