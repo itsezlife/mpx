@@ -59,7 +59,10 @@ there and ranged operations throw `UnsupportedError`.
 
 `RangedBytes` fetches into a ranged row: one shared `RangedResource` per key,
 chunked single-range GETs through `HttpBytesClient.stream`, and the "range
-landed" signal (`RangedEvent`) after each write.
+landed" signal (`RangedEvent`) after each write. `fastStart` fetches the
+head (1 MiB by default), walks the top-level MP4 boxes from offset 0 and
+ensures the whole `moov`; when `moov` follows `mdat`, the walk jumps over the
+media data and only the tail is fetched.
 
 ## Concurrent reads vs exclusive mutate
 

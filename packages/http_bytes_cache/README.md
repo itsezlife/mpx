@@ -49,7 +49,8 @@ Future<void> main() async {
 - A synchronous peek: cached, in flight, or absent.
 - Streaming bodies and single-range GETs (`206`, `Content-Range`, `If-Range`).
 - Ranged resources (VM): a sparse file per key with its ranges, fetched in
-  chunks on demand and evicted whole under the video quota.
+  chunks on demand and evicted whole under the video quota. Fast start for
+  progressive MP4: the head, then `moov` wherever it is.
 - Middleware chains for HTTP (timeout, retry, bearer, conditional, logger) and
   for the cache (skip-cache, logger).
 - Stable identity from the canonical URL and headers, or a host-supplied cache

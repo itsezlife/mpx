@@ -58,6 +58,9 @@
   (one shared resource per key) and announce each write (`RangeLanded`). A
   `200` to a range GET drops the spans and keeps the new body; a server
   without `Accept-Ranges` is read sequentially.
+- `RangedResource.fastStart` fetches the head of a progressive MP4, finds
+  `moov` and fetches the tail when `moov` follows the media data, so playback
+  starts before the file is cached. Every open of a key shares one resource.
 - `package:http_bytes_cache/testing.dart`: `runBytesStoreContract`,
   `runRangedBytesStoreContract` and in-memory index and blob fakes.
 

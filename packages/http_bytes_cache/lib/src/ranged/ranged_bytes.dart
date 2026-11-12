@@ -214,6 +214,52 @@ final class RangedResource {
     return bytes;
   }
 
+  /// Prepares the resource to start playing before it is all cached: fetches
+  /// the first [headBytes], then walks the progressive MP4's top-level boxes
+  /// to its `moov` and makes sure all of it is present. When `moov` follows
+  /// the media data, only the tail it sits in is fetched, never the middle.
+  ///
+  /// Returns where `moov` is, or null when the body is not progressive MP4
+  /// (or has no `moov` in its first [maxBoxes] boxes); the head is held
+  /// either way.
+  Future<MoovLocation?> fastStart({
+    int headBytes = 1024 * 1024,
+    int maxBoxes = 64,
+    PriorityToken? priority,
+    CancelToken? cancelToken,
+  }) async {
+    Future<Uint8List> bytesAt(int start, int length) => read(
+      ByteRange(start, start + length),
+      priority: priority,
+      cancelToken: cancelToken,
+    );
+
+    await ensure(
+      ByteRange(0, headBytes),
+      priority: priority,
+      cancelToken: cancelToken,
+    );
+    var offset = 0;
+    for (var i = 0; i < maxBoxes; i++) {
+      final total = totalLength;
+      if (total == null || offset + 8 > total) return null;
+      final header = await bytesAt(offset, offset + 16 <= total ? 16 : 8);
+      final box = _Mp4BoxHeader.parse(header, total - offset);
+      if (box == null) return null;
+      if (box.type == 'moov') {
+        final end = offset + box.size;
+        await ensure(
+          ByteRange(offset, end),
+          priority: priority,
+          cancelToken: cancelToken,
+        );
+        return MoovLocation(offset, end, moovAtEnd: offset >= headBytes);
+      }
+      offset += box.size;
+    }
+    return null;
+  }
+
   /// Gives this handle back; the last one stops fetches and releases the
   /// file for eviction. Idempotent.
   Future<void> close() {
@@ -601,5 +647,61 @@ final class _Fetch {
     final lastModified = headers['last-modified'];
     if (etag == null && lastModified == null) return null;
     return HttpCacheMeta(etag: etag, lastModified: lastModified);
+  }
+}
+
+/// Where a progressive MP4 keeps its `moov` box ([RangedResource.fastStart]).
+@immutable
+final class MoovLocation {
+  /// `moov` spans `[moovStart, moovEnd)`.
+  const MoovLocation(this.moovStart, this.moovEnd, {required this.moovAtEnd});
+
+  /// Offset of the box header.
+  final int moovStart;
+
+  /// One past the box's last byte.
+  final int moovEnd;
+
+  /// Whether `moov` lies past the head, after the media data: playback
+  /// needs the tail before it can start.
+  final bool moovAtEnd;
+}
+
+/// A top-level ISO base media file box header: size (with the 64-bit and
+/// to-the-end forms resolved) and four-character type.
+@immutable
+final class _Mp4BoxHeader {
+  /// A box of [size] bytes, header included.
+  const _Mp4BoxHeader(this.type, this.size);
+
+  /// Four-character type (`ftyp`, `moov`, `mdat`, …).
+  final String type;
+
+  /// Box size in bytes, header included.
+  final int size;
+
+  /// Parses the header at the start of [bytes] (8 bytes, or 16 for a 64-bit
+  /// size); [remaining] is the bytes left in the file from the box, which a
+  /// size of 0 ("to the end") takes. Null when the bytes are not a box
+  /// header: too short, a size smaller than its header or past [remaining],
+  /// or a type that is not four printable characters.
+  static _Mp4BoxHeader? parse(Uint8List bytes, int remaining) {
+    if (bytes.length < 8) return null;
+    final data = ByteData.sublistView(bytes);
+    for (var i = 4; i < 8; i++) {
+      if (bytes[i] < 0x20 || bytes[i] > 0x7e) return null;
+    }
+    final type = String.fromCharCodes(bytes, 4, 8);
+    var size = data.getUint32(0);
+    var header = 8;
+    if (size == 1) {
+      if (bytes.length < 16) return null;
+      size = data.getUint64(8);
+      header = 16;
+    } else if (size == 0) {
+      size = remaining;
+    }
+    if (size < header || size > remaining) return null;
+    return _Mp4BoxHeader(type, size);
   }
 }
