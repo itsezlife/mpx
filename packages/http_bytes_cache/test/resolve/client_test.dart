@@ -342,11 +342,12 @@ void main() {
     });
 
     test(
-      'coalesce identity unchanged when starter supplies onBytesProgress',
+      'coalesce identity unchanged when sharers supply onBytesProgress',
       () async {
         var hits = 0;
         final release = Completer<void>();
         final reports = <(int cumulative, int? total)>[];
+        final joinerReports = <(int cumulative, int? total)>[];
         final client = HttpBytesClient(
           client: _GatedChunkedBodyClient(
             release: release,
@@ -367,7 +368,8 @@ void main() {
         );
         final b = client.getBytes(
           url,
-          onBytesProgress: (_, __) => fail('joiner sink must not run'),
+          onBytesProgress: (cumulative, total) =>
+              joinerReports.add((cumulative, total)),
         );
         release.complete();
 
@@ -375,7 +377,8 @@ void main() {
         expect(results.$1, Uint8List.fromList([1, 2]));
         expect(results.$2, Uint8List.fromList([1, 2]));
         expect(hits, 1);
-        expect(reports, [(2, 2)]);
+        expect(reports, [(0, 2), (2, 2)]);
+        expect(joinerReports, [(0, 2), (2, 2)]);
       },
     );
 
@@ -720,7 +723,7 @@ void main() {
       );
 
       expect(bytes, Uint8List.fromList([1, 2, 3, 4, 5]));
-      expect(reports, [(2, 5), (5, 5)]);
+      expect(reports, [(0, 5), (2, 5), (5, 5)]);
     });
 
     test('reports null total when Content-Length is unknown', () async {
@@ -740,7 +743,7 @@ void main() {
             reports.add((cumulative, total)),
       );
 
-      expect(reports, [(2, null)]);
+      expect(reports, [(0, null), (2, null)]);
     });
 
     test('does not invent progress when onBytesProgress is omitted', () async {

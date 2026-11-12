@@ -62,7 +62,7 @@ ignore it. Skip forces a miss and write no-op; HTTP still runs.
 `onBytesProgress` is an optional sink (`cumulative`, optional `total`) for
 honest HTTP body progress. The ladder forwards it to `HttpBytesClient` on a
 network miss only. A durable non-empty cache hit returns bytes without invoking
-the sink. Do not invent mid-download percents from silence. Resolve remains a
+the sink. A network fetch reports `0` at transfer start. Resolve remains a
 single completed body (`Future<Uint8List>` or rich `BytesResolveResult`);
 there is no public streaming resolve API. The sink does not participate in
 identity or coalesce.
@@ -216,10 +216,11 @@ wire-only (identity exclusion above). Recommended host / revalidation stack
 downloaded size/latency via `developer.log` (`http_bytes`); place outermost to
 include retry time.
 
-When `onBytesProgress` is supplied on the caller that **starts** the in-flight
-GET, the client reports cumulative bytes as the response body is read (`total`
-from Content-Length when present). Without a sink, the body is consolidated
-without inventing chunk events. Coalesced joiners each get their own Future to
+Progress belongs to the in-flight GET, not to the caller that started it. Every
+caller that supplied `onBytesProgress` hears `0` when the response starts, then
+cumulative bytes as the body is read (`total` from Content-Length when present).
+A caller that joins mid-body first hears the last value; a cancelled caller
+stops hearing while the others continue. 304 reports nothing. Coalesced joiners each get their own Future to
 the same buffered response; the progress sink does not change coalesce identity.
 
 After `close`, new `send` / `getBytes` calls throw `HttpBytesException$Internal`;

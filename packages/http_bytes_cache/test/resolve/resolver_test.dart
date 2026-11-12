@@ -93,7 +93,7 @@ void main() {
       );
 
       expect(bytes, Uint8List.fromList([1, 2, 3, 4]));
-      expect(reports, [(3, 4), (4, 4)]);
+      expect(reports, [(0, 4), (3, 4), (4, 4)]);
     });
 
     test(

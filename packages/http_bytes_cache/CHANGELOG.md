@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Download progress reaches every caller sharing one GET, not only the first.
+  A caller that joins mid-body hears the last value at once, and every
+  transfer reports `0` when its response starts. Cache hits stay silent.
+
 ## 0.1.0
 
 - Initial release as `http_bytes_cache`: the image_bytes_cache 0.4.1 engine

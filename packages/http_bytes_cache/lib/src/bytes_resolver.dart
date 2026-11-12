@@ -102,8 +102,9 @@ final class BytesRequest {
   ///
   /// Forwarded to [HttpBytesClient.send] only when the ladder actually
   /// fetches. A durable non-empty fresh cache hit returns bytes without
-  /// invoking this callback. Silence is not "0%"; do not invent mid-download
-  /// percents. Resolve remains a single completed body ([resolve] or
+  /// invoking this callback. A transfer reports `0` when its response starts,
+  /// then cumulative bytes per chunk. Every caller sharing one coalesced GET
+  /// hears it; a caller that joins mid-body first hears the last value. Resolve remains a single completed body ([resolve] or
   /// [resolveRich]); this is not a streaming resolve API. Does not participate
   /// in [BytesCacheKey] identity or in-flight coalesce.
   final BytesProgressCallback? onBytesProgress;

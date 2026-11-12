@@ -151,9 +151,10 @@ revalidation stack (outermost first): Logger → Retry → Timeout → Bearer �
 Conditional. Conditional maps context `etag` / `lastModified` to
 `If-None-Match` / `If-Modified-Since` (after Bearer, before coalesce). Timeout
 after pool slot via `AbortableRequest` (aborts when the client honors it). Pool
-wait for a slot is intentionally unbounded. When a progress sink is supplied,
-reports cumulative bytes as the response body is read (total when the response
-provides it). Process-wide `configure` / `shared` / `resetShared` mirror the
+wait for a slot is intentionally unbounded. Progress belongs to the flight:
+every sharer's sink hears `0` when the response starts, then cumulative bytes
+as the body is read (total when the response provides it); a late joiner first
+hears the last value. Process-wide `configure` / `shared` / `resetShared` mirror the
 cache facade so hosts can inject a custom `http.Client` once at bootstrap.
 _Avoid_: homemade download queues; Mutex for N-way downloads; `url|headers`
 string joins for coalesce; assuming timeout covers pool queue time; treating 304

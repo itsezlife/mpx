@@ -9,6 +9,8 @@ import 'package:meta/meta.dart';
 import 'package:pool/pool.dart';
 
 /// Observes cumulative HTTP body bytes while a network GET consolidates.
+///
+/// [total] is the declared Content-Length, or null when the server sent none.
 typedef BytesProgressCallback = void Function(int cumulative, int? total);
 
 /// A function that takes an [HttpBytesRequest] and returns an [HttpBytesResponse].
@@ -94,7 +96,8 @@ extension type HttpBytesContext(Map<String, Object?> _map)
   /// Receive idle-gap timeout override ([Duration] / `int` ms / [DateTime]).
   static const receiveTimeoutKey = 'receive-timeout';
 
-  /// Progress callback while the response body is read.
+  /// This caller's progress sink. The flight fans body progress out to every
+  /// sharer's sink, starting with a `0` report when the response starts.
   static const onBytesProgressKey = 'on-bytes-progress';
 
   /// Success predicate; default is 2xx or 304 Not Modified.
@@ -148,7 +151,7 @@ extension type HttpBytesContext(Map<String, Object?> _map)
   Object? get receiveTimeout => _map[receiveTimeoutKey];
   set receiveTimeout(Object? value) => _set(receiveTimeoutKey, value);
 
-  /// Progress sink while the response body is read.
+  /// This caller's progress sink (see [onBytesProgressKey]).
   BytesProgressCallback? get onBytesProgress =>
       switch (_map[onBytesProgressKey]) {
         final BytesProgressCallback cb => cb,
@@ -606,7 +609,11 @@ final class HttpBytesClient {
 
       final existing = _inFlight[key];
       if (existing != null) {
-        return existing.addSubscriber(callerToken, request.url);
+        return existing.addSubscriber(
+          callerToken,
+          request.url,
+          onProgress: context.onBytesProgress,
+        );
       }
 
       final flightToken = CancelToken();
@@ -627,7 +634,7 @@ final class HttpBytesClient {
       // Starter: cancel interest only (result comes from streaming → buffer).
       // Do not attach a subscriber Future — that would uncaught-error on
       // completeError while getBytes already rethrows the same failure.
-      flight.trackCaller(callerToken);
+      flight.trackCaller(callerToken, onProgress: context.onBytesProgress);
 
       unawaited(
         flight.done.whenComplete(() {
@@ -666,6 +673,12 @@ const _kInFlight = 'httpBytesInFlight';
 /// Timeout cancels. The starter [trackCaller]s for last-subscriber abort only;
 /// joiners [addSubscriber] and await a Future. Canceling one caller drops that
 /// subscriber; canceling the last cancels [flightToken] so the socket aborts.
+///
+/// Progress belongs to the flight, not to the caller that started it: the body
+/// stream reports into [reportProgress], which fans out to every live
+/// subscriber. A joiner that arrives mid-body first hears the last value, so
+/// its progress does not sit at nothing until the next chunk. A cancelled
+/// subscriber stops hearing; the others keep going.
 final class _HttpBytesInFlight {
   _HttpBytesInFlight({
     required this.flightToken,
@@ -678,13 +691,22 @@ final class _HttpBytesInFlight {
   final Completer<HttpBytesResponse> _flight = Completer<HttpBytesResponse>();
   final Set<_HttpBytesSubscriber> _subscribers = <_HttpBytesSubscriber>{};
 
+  /// Last `(cumulative, total)` reported, replayed to late joiners.
+  (int, int?)? _lastProgress;
+
   /// Completes when the shared GET finishes (success or error), after fan-out.
   Future<void> get done =>
       _flight.future.then<void>((_) {}, onError: (_, _) {});
 
   /// Starter: count toward last-subscriber abort without a result Future.
-  void trackCaller(CancelToken callerToken) {
-    final subscriber = _HttpBytesSubscriber(token: callerToken);
+  void trackCaller(
+    CancelToken callerToken, {
+    BytesProgressCallback? onProgress,
+  }) {
+    final subscriber = _HttpBytesSubscriber(
+      token: callerToken,
+      onProgress: onProgress,
+    );
     _subscribers.add(subscriber);
     unawaited(
       callerToken.whenCancel.then((_) {
@@ -694,13 +716,21 @@ final class _HttpBytesInFlight {
   }
 
   /// Joiner: track cancel + Future of the buffered flight result.
-  Future<HttpBytesResponse> addSubscriber(CancelToken callerToken, Uri url) {
+  Future<HttpBytesResponse> addSubscriber(
+    CancelToken callerToken,
+    Uri url, {
+    BytesProgressCallback? onProgress,
+  }) {
     final completer = Completer<HttpBytesResponse>();
     final subscriber = _HttpBytesSubscriber(
       token: callerToken,
       completer: completer,
+      onProgress: onProgress,
     );
     _subscribers.add(subscriber);
+    if ((onProgress, _lastProgress) case (final sink?, (final c, final t)?)) {
+      sink(c, t);
+    }
 
     // Fan-out flight result to this subscriber if still waiting.
     _flight.future.then(
@@ -731,6 +761,14 @@ final class _HttpBytesInFlight {
     );
 
     return completer.future;
+  }
+
+  /// Fans one body progress report out to every live subscriber.
+  void reportProgress(int cumulative, int? total) {
+    _lastProgress = (cumulative, total);
+    for (final subscriber in List.of(_subscribers)) {
+      subscriber.onProgress?.call(cumulative, total);
+    }
   }
 
   void completeSuccess(HttpBytesResponse response) {
@@ -768,9 +806,13 @@ final class _HttpBytesSubscriber {
   _HttpBytesSubscriber({
     required this.token,
     this.completer,
+    this.onProgress,
   });
 
   final CancelToken token;
+
+  /// This caller's progress sink, if it asked for one.
+  final BytesProgressCallback? onProgress;
 
   /// Non-null for joiners; starters track cancel only.
   final Completer<HttpBytesResponse>? completer;
@@ -914,16 +956,19 @@ HttpBytesHandler _createClientSend(
         // buffer path will force an empty body before fan-out.
         final isNotModified = statusCode == 304;
 
-        // Report download progress as the body is consumed, if a callback was provided.
-        // `total` is the Content-Length, or `null` when the server did not declare one.
-        if (context.onBytesProgress case final onBytesProgress?
+        // Report download progress to the flight, which fans it out to every
+        // sharer. `total` is the Content-Length, or `null` when the server did
+        // not declare one. The 0 report marks the transfer start, so a sharer
+        // can show an empty arc before the first chunk lands.
+        if (context[_kInFlight] case final _HttpBytesInFlight flight
             when !isNotModified) {
           final total = contentLength > 0 ? contentLength : null;
           var received = 0;
+          flight.reportProgress(0, total);
           byteStream = http.ByteStream(
             byteStream.map((chunk) {
               received += chunk.length;
-              onBytesProgress(received, total);
+              flight.reportProgress(received, total);
               return chunk;
             }),
           );

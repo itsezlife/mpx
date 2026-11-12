@@ -468,7 +468,7 @@ void main() {
         onBytesProgress: (received, total) => events.add((received, total)),
       );
       expect(bytes, Uint8List.fromList([1, 2, 3, 4, 5]));
-      expect(events, [(3, 5), (5, 5)]);
+      expect(events, [(0, 5), (3, 5), (5, 5)]);
     });
 
     test('reports null total when Content-Length is unknown', () async {
@@ -488,7 +488,7 @@ void main() {
         Uri.parse('https://cdn.test/x'),
         onBytesProgress: (received, total) => events.add((received, total)),
       );
-      expect(events, [(2, null)]);
+      expect(events, [(0, null), (2, null)]);
     });
   });
 
