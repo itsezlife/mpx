@@ -95,7 +95,7 @@ final class LottieNativeTarget {
     _ => null,
   };
 
-  /// The Rust target triple, or null when ADR 042 ships no library for this
+  /// The Rust target triple, or null when the package ships no library for this
   /// target (Android 32-bit ARM, an iOS target without an SDK, any
   /// combination with no [key]).
   String? get rustTriple => switch (key) {

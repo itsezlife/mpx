@@ -161,7 +161,7 @@ void main() {
         await frame(cells);
         expect(cells.map(leased), everyElement(isTrue));
 
-        // A panel hides its animated cells while a fling runs, and keeps
+        // A grid hides its animated cells while a fling runs, and keeps
         // drawing them.
         for (final binding in cells) {
           binding.visible = false;
@@ -206,7 +206,7 @@ void main() {
       await frame(cells);
       await frame(cells);
 
-      // Hidden: the panel holds every binding, and nothing paints them.
+      // Hidden: the grid holds every binding, and nothing paints them.
       for (final binding in cells) {
         binding
           ..held = true

@@ -38,7 +38,7 @@ Future<ui.Image> _imageFromPixels(Uint8List pixels, int width, int height) {
 ///
 /// The decode ends with `AssetProgress.fail` carrying this, so a host's
 /// diagnostics can tell a file this build cannot play ([VideoRejection.unsupported])
-/// from a damaged one. The leaf keeps its placeholder either way (ADR 020).
+/// from a damaged one. The surface keeps its placeholder either way.
 final class VideoDecodeRejected implements Exception {
   /// Creates the error for a file refused for [reason].
   const VideoDecodeRejected(this.reason);
@@ -50,7 +50,7 @@ final class VideoDecodeRejected implements Exception {
   String toString() => 'The video was rejected: ${reason.name}';
 }
 
-/// The [Decoder] of the video media form: GIFs and WebM / MP4 stickers,
+/// The [Decoder] of the video media form: GIFs and WebM / MP4 clips,
 /// decoded by a [VideoEngine] and played through a [VideoFrameScheduler].
 ///
 /// | Request | Reports |

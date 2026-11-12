@@ -15,7 +15,7 @@ void main() {
       expect(VideoFrameSize.edgeFor(100), 128);
       expect(VideoFrameSize.edgeFor(128), 128);
       expect(VideoFrameSize.edgeFor(129), 256);
-      // A GIF in a chat bubble or a panel row at 3x decodes at 384, not 512.
+      // A GIF in a list item or a grid row at 3x decodes at 384, not 512.
       expect(VideoFrameSize.edgeFor(336), 384);
       expect(VideoFrameSize.edgeFor(385), 512);
     });

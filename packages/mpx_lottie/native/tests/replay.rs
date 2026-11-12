@@ -5,12 +5,12 @@
 //! The corpus is hand-authored or derived from the hand-authored fixture:
 //! prefix truncations, byte mutations, and the TGS (gzip) forms of the same
 //! (valid, truncated at several points, a corrupted header, a gzip bomb at the
-//! inflated cap and one byte past it). ADR 030 asks for a replay that finishes
+//! inflated cap and one byte past it). The testing policy asks for a replay that finishes
 //! in under a minute; [`BUDGET`] holds the whole replay to it.
 //!
 //! The "269 zero bytes" input is a **stand-in**. The policy names a known
 //! 269-byte crashing file, but that file is not available to this repository
-//! (and a corpus sticker is not redistributable), so the closest honest thing
+//! (and a corpus file is not redistributable), so the closest honest thing
 //! is a 269-byte input of zeros: it exercises the same short-input paths and
 //! says nothing about the original's contents.
 mod common;
@@ -18,7 +18,7 @@ use common::*;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-/// The ADR 030 budget for the whole replay.
+/// The policy budget for the whole replay.
 const BUDGET: Duration = Duration::from_secs(60);
 
 /// The cap on inflated output (`MAX_INFLATED_BYTES` in `input.rs`).
@@ -110,7 +110,7 @@ fn hostile_inputs_never_panic_hang_or_leak_a_handle() {
     let took = started.elapsed();
     assert!(
         took < BUDGET,
-        "the replay took {took:?}; ADR 030 allows {BUDGET:?}"
+        "the replay took {took:?}; the policy allows {BUDGET:?}"
     );
 }
 

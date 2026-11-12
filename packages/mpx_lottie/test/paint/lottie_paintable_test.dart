@@ -204,7 +204,7 @@ void main() {
       expect(p.sprite, isNull);
     });
 
-    // Ticket 100: a sibling binding borrows the first frame, never the frame
+    // A sibling binding borrows the first frame, never the frame
     // the loop is at.
     test('lends its first frame as a still, mid-loop too', () async {
       final still = _image(8);

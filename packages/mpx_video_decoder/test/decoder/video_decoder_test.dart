@@ -277,7 +277,7 @@ void main() {
     test(
       'a spec above the largest class plays, decoded at the largest',
       () async {
-        // The content preview on a phone is about 600 px (ticket 128): the
+        // The content preview on a phone is about 600 px: the
         // clip is decoded at 512 and drawn scaled up, and it plays.
         final report = _Report();
         decoder.decode(

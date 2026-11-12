@@ -42,7 +42,7 @@ export function selectWasm(validate, urls) {
 export const MAX_EDGE = 512;
 
 /**
- * Most jobs one `render` request may carry. A page of stickers is a few dozen
+ * Most jobs one `render` request may carry. A page of animations is a few dozen
  * frames; the cap bounds the job table and the scratch a request can make the
  * module reserve (the worst case, 256 frames of 512 x 512, is 256 MiB of
  * module memory, which a real page stays far below and memory never shrinks).
@@ -99,7 +99,7 @@ export const LAYOUT = Object.freeze({
 
 /**
  * Most bytes of idle scratch regions a core keeps for reuse. A batch of
- * sticker-sized frames fits many times over; a burst of large ones is freed
+ * small-item-sized frames fits many times over; a burst of large ones is freed
  * on return instead of pinning module memory (which never shrinks) for good.
  */
 const POOL_LIMIT_BYTES = 16 * 1024 * 1024;

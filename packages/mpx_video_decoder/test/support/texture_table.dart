@@ -85,7 +85,7 @@ final class TextureTable {
     const relative = 'test/support/fake_texture_table.c';
     for (final base in [
       Directory.current.path,
-      '${Directory.current.path}/packages/video_decoder',
+      '${Directory.current.path}/packages/mpx_video_decoder',
     ]) {
       if (File('$base/$relative').existsSync()) return '$base/$relative';
     }

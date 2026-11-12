@@ -109,7 +109,7 @@ void main() {
       },
     );
 
-    // Ticket 148: a lease that comes back shows its kept frame at once and
+    // A lease that comes back shows its kept frame at once and
     // writes the next one, not the kept one again.
     test(
       'a lease that comes back does not write its kept frame again',

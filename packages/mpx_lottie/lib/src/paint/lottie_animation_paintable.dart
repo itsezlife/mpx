@@ -28,7 +28,7 @@ import 'package:mpx_lottie/src/renderer/lottie_source.dart';
 /// asks for the frame) and then draws [sprite] itself, falling back to [paint]
 /// for the still while it is null.
 ///
-/// When the scheduler gave the lease a platform texture (ADR 043), [texture]
+/// When the scheduler gave the lease a platform texture, [texture]
 /// is it once a first frame was posted, and [sprite] is null: a surface that
 /// composites adds a texture layer. A [paint] that no [advancePlayback] of the
 /// same time came before is a surface that only has a canvas: it asks the
@@ -37,7 +37,7 @@ import 'package:mpx_lottie/src/renderer/lottie_source.dart';
 /// ## Playback time
 ///
 /// The frame follows the time the paints add up, not the clock's absolute
-/// time: a pass starts at the first paint that animates, so a sticker that
+/// time: a pass starts at the first paint that animates, so an animation that
 /// appears at minute five does not start at its middle, and a pass that does
 /// not loop has a start to end from. Each paint adds how far the clock moved
 /// since the previous one. The clock's time leaves out its pauses, so a pause
@@ -173,7 +173,7 @@ final class LottieAnimationPaintable extends AssetPaintable {
   // surface, and the cells that come on screen need it. The played time
   // stays, so a cell that comes back goes on from its frame on a new lease,
   // which takes back the texture still showing that frame while the texture
-  // pool keeps it (ticket 144), or the slot that holds it.
+  // pool keeps it, or the slot that holds it.
   @override
   void leftScreen() => _lease?.releaseUnlessPainted();
 

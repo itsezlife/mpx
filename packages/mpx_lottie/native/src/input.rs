@@ -5,7 +5,7 @@ use flate2::read::GzDecoder;
 use std::borrow::Cow;
 use std::io::Read;
 
-/// Cap on the encoded input. A sticker is tens of KiB; this leaves room for
+/// Cap on the encoded input. An animation is tens of KiB; this leaves room for
 /// the largest legitimate file while keeping an upload from pinning memory.
 pub const MAX_ENCODED_BYTES: usize = 4 * 1024 * 1024;
 

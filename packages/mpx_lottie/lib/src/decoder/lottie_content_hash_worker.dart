@@ -17,9 +17,9 @@ typedef LottieHashWorkerSpawner =
 /// One long-lived isolate that hashes Lottie files for the frame cache: the
 /// default `LottieContentHasher` of a `LottieDecoder` on the VM.
 ///
-/// Hashing a sticker file on the calling isolate took 2-10 ms at a time on a
+/// Hashing an animation file on the calling isolate took 2-10 ms at a time on a
 /// phone, between frames, so the hash runs elsewhere. It ran on a short-lived
-/// isolate per decode (`compute`), and a panel that scrolls new stickers in
+/// isolate per decode (`compute`), and a grid that scrolls new animations in
 /// decodes dozens a second: a device trace counted 1,718 isolate spawns in
 /// 62 s, about 0.5 ms of helper-thread work each, allocating in the shared
 /// isolate group and feeding its garbage collector. The worker is spawned at

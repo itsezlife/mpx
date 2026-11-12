@@ -31,7 +31,7 @@ abstract interface class LottieSlotEngine implements LottieEngine {
   /// One status per job, in job order.
   Future<List<LottieRenderStatus>> restore(List<LottieRestoreJob> jobs);
 
-  /// Writes every job into its platform texture (ADR 043, "Writing"), on the
+  /// Writes every job into its platform texture, on the
   /// isolate that owns the binding: locks the texture through [entryPoints],
   /// clears its margins, draws or restores the frame centred at the lock's
   /// stride, swaps red and blue when [format] is not the engine's RGBA, and

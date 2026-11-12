@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 rust-version = "1.88" # slice::as_chunks
-description = "C ABI over tlottie: gunzip, input checks, probe and batch render for Lottie stickers."
+description = "C ABI over tlottie: gunzip, input checks, probe and batch render for Lottie animations."
 
 [lib]
 name = "mpx_lottie"
@@ -17,7 +17,7 @@ tlottie = { git = "https://github.com/dkaraush/tlottie", rev = "92df98dc20" }
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 serde_json = "1"
 # Pure Rust and unsafe-free in these features, and it builds for wasm, so the
-# web wrapper shares the frame codec (ADR 042).
+# web wrapper shares the frame codec.
 lz4_flex = { version = "0.14.0", default-features = false, features = ["safe-encode", "safe-decode"] }
 
 [profile.release]

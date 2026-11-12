@@ -30,12 +30,12 @@ abstract final class VideoFrameAtlas {
   ///
   /// ## Why not the Lottie pool
   ///
-  /// A separate instance, not a shared one, for three reasons ([ADR 042]):
-  /// the budgets are independent (a screen of video must not evict stickers,
+  /// A separate instance, not a shared one, for three reasons:
+  /// the budgets are independent (a screen of video must not evict animations,
   /// nor the reverse); the page bytes are **BGRA** here because the engine
   /// decodes BGRA, and a pool takes one byte order for all its pages; and the
   /// renderer differs (it copies frames decoded ahead, it does not render).
-  /// The pieces are the same `catalog_assets` ones: `FrameSlotAllocator`
+  /// The pieces are the same `mpx_core` ones: `FrameSlotAllocator`
   /// through `FramePool`, `FramePageImages`, `FrameAtlas`.
   ///
   /// [memory] holds the pages (Dart heap by default). [upload] turns a page
@@ -43,8 +43,6 @@ abstract final class VideoFrameAtlas {
   /// stub. [memoryPressure], when given, evicts idle entries each time it
   /// fires. [uploadTrace], when given, wraps each page upload
   /// (`FrameAtlas.uploadTrace`).
-  ///
-  /// [ADR 042]: ../../../../docs/adr/042-native-media-decoding.md
   static FrameAtlas<Object> create({
     int budgetBytes = defaultBudgetBytes,
     List<int> sizeClasses = VideoFrameSize.defaultClasses,

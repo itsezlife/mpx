@@ -1,7 +1,7 @@
 /// The numbers of the playback benchmark and their comparison with a
 /// committed baseline. Report only: nothing here fails a test.
 ///
-/// The same shape as the report `catalog_assets` and `panel_catalog` write
+/// The same shape as the report `mpx_core`'s benchmarks write
 /// (`schema`, `suite`, `metrics` of `kind` and `value`), kept local like their
 /// writers: a test file is not importable across packages, and thirty lines
 /// are not a package. It adds one kind, `milliseconds`, because this suite

@@ -4,7 +4,7 @@ import 'package:meta/meta.dart';
 /// the engine build that rendered it.
 ///
 /// The size is the DISPLAY pixel size, not the size class of a pool cell: two
-/// stickers of one file shown at 96 and at 100 px keep separate frames, since
+/// animations of one file shown at 96 and at 100 px keep separate frames, since
 /// a frame drawn for one is the wrong scale for the other. The engine version
 /// is part of the key so an engine update, which may change pixels, never
 /// serves frames the old engine drew; the old files age out through the disk

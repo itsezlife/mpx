@@ -9,7 +9,7 @@ import 'package:mpx_lottie/testing.dart';
 import 'support/missing_abi_symbol.dart';
 
 /// A hand-authored 100x100, 30 fps, 60 frame animation: one rotating 60x60
-/// square filled with 50% opaque orange. Not a corpus sticker.
+/// square filled with 50% opaque orange. Not a corpus file.
 const _fixture = '''
 {"v":"5.5.2","fr":30,"ip":0,"op":60,"w":100,"h":100,"nm":"fixture","ddd":0,
 "assets":[],

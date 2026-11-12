@@ -20,8 +20,7 @@ import 'package:mpx_lottie/mpx_lottie.dart';
 /// it opens, the chat's viewport shrinks and the sticker leaves the screen;
 /// its texture idles, keeping its frame. The panel's cells fill the budget,
 /// which destroys that idle texture for room. A panel that moves, or sits
-/// under a sheet, holds its cells on screen (ADR 043 *Amendment: leases of a
-/// kept panel*): they keep their textures. A hidden panel shows nothing: its
+/// under a sheet, holds its cells on screen: they keep their textures. A hidden panel shows nothing: its
 /// cells give their textures back keeping their frames, and keep their
 /// leases.
 void main() {

@@ -11,8 +11,7 @@ import 'package:mpx_video_decoder/src/engine/video_engine.dart';
 import 'package:mpx_video_decoder/src/engine/video_texture_engine.dart';
 
 /// A [VideoEngine] that decodes on a pool of long-lived worker isolates, so
-/// opening, demuxing and decoding never take a frame from the UI isolate
-/// (ADR 042 "Workers").
+/// opening, demuxing and decoding never take a frame from the UI isolate.
 ///
 /// Each worker builds its own binding (a binding is single-isolate state),
 /// owns the clips it opened, and answers its requests one at a time in
@@ -86,7 +85,7 @@ final class IsolateVideoEngine implements VideoTextureEngine {
     }
   }
 
-  /// The most workers a pool has; decoding is CPU-bound and a chat list
+  /// The most workers a pool has; decoding is CPU-bound and a list
   /// plays a few clips at a time, so more would only compete with the UI.
   static const int maxWorkers = 4;
 

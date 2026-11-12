@@ -16,7 +16,7 @@ typedef LockedTexture = ({
 /// isolate that calls them, once per isolate and pair of addresses.
 ///
 /// Native only. A decoder writes into a texture through these and never
-/// imports the plugin that made it (ADR 043, "Package").
+/// imports the plugin that made it.
 final class TextureCalls {
   TextureCalls._(FrameTextureEntryPoints points)
     : _lock =

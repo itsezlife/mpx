@@ -1,4 +1,4 @@
-// Diagnostic (ticket 61), not in unit_test.dart. Frames per second one decode
+// Diagnostic, not in unit_test.dart. Frames per second one decode
 // worker sustains through the real binding, per fixture and display edge, and
 // how that scales with parallel workers (isolates, as the engine pool runs).
 //

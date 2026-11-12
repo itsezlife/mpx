@@ -12,7 +12,7 @@ import 'package:mpx_lottie/mpx_lottie.dart';
 import 'package:mpx_lottie/testing.dart';
 
 /// A hand-authored 100x100, 30 fps, 60 frame animation: one rotating 60x60
-/// square filled with 50% opaque orange. Not a corpus sticker.
+/// square filled with 50% opaque orange. Not a corpus file.
 const _fixture = '''
 {"v":"5.5.2","fr":30,"ip":0,"op":60,"w":100,"h":100,"nm":"fixture","ddd":0,
 "assets":[],
@@ -557,7 +557,7 @@ void main() {
       () async {
         // The content preview on a phone: M / 1.8 is about 600 px, above the
         // 512 px class. It is rendered at most 512 px and drawn scaled up;
-        // it still plays (ticket 128).
+        // it still plays.
         final sizes = _SizeRecordingRenderer();
         final big = _Rig(renderer: sizes);
         addTearDown(big.close);

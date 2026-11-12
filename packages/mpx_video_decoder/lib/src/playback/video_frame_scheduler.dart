@@ -14,7 +14,7 @@ typedef VideoSweepTimerFactory =
 
 /// A paintable's claim on a clip's decoded frames and where they are shown,
 /// handed out by a [VideoFrameScheduler]: a slot of the video pool, or a
-/// platform texture of the scheduler's [FrameTexturePool] (ADR 043).
+/// platform texture of the scheduler's [FrameTexturePool].
 ///
 /// [sprite] says where the frame on show is, or null while there is none;
 /// [texture] is the texture once a first frame was posted to it. At most one
@@ -69,7 +69,7 @@ final class VideoFrameLease {
   bool _holding = false;
   bool _kept = false;
   // Whether the lease is kept but its paintable left the screen (a hidden
-  // panel): it gave its texture back keeping its frame, and takes that
+  // grid): it gave its texture back keeping its frame, and takes that
   // texture back at its next want (see `VideoFrameScheduler._park`).
   bool _parked = false;
   // Whether its paintable left the screen and no want came since: the lease
@@ -83,7 +83,7 @@ final class VideoFrameLease {
   /// paints it. Letting go leaves it to the sweep again, from the next one.
   ///
   /// A kept lease whose paintable left the screen ([releaseUnlessPainted]:
-  /// a held surface that shows nothing now, a hidden panel) stays, with its
+  /// a held surface that shows nothing now, a hidden grid) stays, with its
   /// clip where it is, but gives its texture back keeping its frame, and
   /// takes it back at its next want.
   bool get kept => _kept;
@@ -190,7 +190,7 @@ final class VideoFrameLease {
 ///    more goes first, the one served longest ago first: the fairness bound;
 /// 2. then the foreground: the `maxAdvancing ~/ 2` most recently leased
 ///    clips (at least one) that want service, the surface that just came to
-///    the front: a panel opening, a cell scrolling in;
+///    the front: a grid opening, a cell scrolling in;
 /// 3. then the other clips that want service, the one served longest ago
 ///    first: round-robin, so the background keeps moving at more than the
 ///    bound's rate;
@@ -217,11 +217,10 @@ final class VideoFrameLease {
 ///    detached, and the paintable called
 ///    [VideoFrameLease.releaseUnlessPainted]. The lease goes when the frame
 ///    is over unless it was painted in it. A kept one stays (its surface
-///    holds it, but shows nothing of it: a hidden panel) and gives back only
+///    holds it, but shows nothing of it: a hidden grid) and gives back only
 ///    its texture, keeping its frame on it, which it takes back when painted
 ///    again; the surfaces on screen get the budget. Without this a fling
-///    filled the pool with the leases of cells that had flown past (ticket
-///    116).
+///    filled the pool with the leases of cells that had flown past.
 /// 2. An [acquire] found the pool full: the leases on slots that nothing
 ///    painted for [visibleWindow] give theirs up, the least recently painted
 ///    first, until one is free. A kept lease is never taken, nor one painted
@@ -247,7 +246,7 @@ final class VideoFrameLease {
 /// Not while the clock is paused: then nothing is painted, on screen or not.
 /// A sweep then released every clip on screen, and on resume each took a new
 /// lease; past the frames the texture pool and [keptAheadBytes] keep, every
-/// clip started over from its first frame (ticket 151). A sweep while paused
+/// clip started over from its first frame. A sweep while paused
 /// releases nothing and counts every lease as painted.
 ///
 /// ## Coming back
@@ -281,7 +280,7 @@ final class VideoFrameLease {
 ///
 /// ## Textures
 ///
-/// With a [FrameTexturePool] and a [TextureFrameWriter] (ADR 043), a lease
+/// With a [FrameTexturePool] and a [TextureFrameWriter], a lease
 /// takes a texture when one of its size class is idle and a slot otherwise,
 /// exactly as without them. A lease that found none asks the pool to warm
 /// its class after the lease (the pool creates off the frame path, and waits
@@ -352,7 +351,7 @@ final class VideoFrameScheduler {
 
   /// The default of [keptAheadBytes]: about a screen of GIFs on a phone
   /// (a dozen clips of up to 384 px a side, three frames each: 1.7 MiB a
-  /// clip), or of a sticker grid's clips (0.3 MiB a clip at 160 px), as many
+  /// clip), or of a grid's clips (0.3 MiB a clip at 160 px), as many
   /// as the texture pool keeps frames for (`FrameTexturePool.keptFrameBytes`
   /// is 24 MiB too). A screen of clips that leaves and comes back goes on;
   /// clips that leave after it take the memory of the ones that left first,
@@ -365,7 +364,7 @@ final class VideoFrameScheduler {
   /// decodes 1400 to 3700 frames a second (H.264 and VP9, 128 to 512 px), so
   /// two workers carry about 90 clips at 30 fps and decode is not what limits
   /// a screen of clips there; a phone is several times slower. A screen is
-  /// about a dozen clips (a few in the chat, a panel page of GIFs), so 12
+  /// about a dozen clips (a few in a list, a grid page of GIFs), so 12
   /// serves all of them every tick on a desktop and, above it, the slots
   /// rotate instead of freezing the oldest.
   static const int defaultMaxAdvancing = 12;
@@ -847,13 +846,13 @@ final class VideoFrameScheduler {
   }
 
   // A kept lease that left the screen: its surface holds it but shows
-  // nothing of it (a hidden panel, a cell outside a held window). Its frame
+  // nothing of it (a hidden grid, a cell outside a held window). Its frame
   // is on no screen, so its texture goes back to the pool keeping that
   // frame for the lease's key, as a lease that ends does (`_release`): an
   // idle texture, which a warm for a surface on screen may destroy for room.
   // The lease stays, kept, with its player and its slot if it has one; its
   // next want takes the texture back (`_unpark`). Without this a hidden
-  // panel held a texture per clip, and the chat's clips played from pages.
+  // grid held a texture per clip, and the clips on screen played from pages.
   void _park(VideoFrameLease lease) {
     final texture = lease._texture;
     if (texture == null) return;

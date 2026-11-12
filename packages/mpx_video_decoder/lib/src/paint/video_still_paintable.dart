@@ -9,8 +9,8 @@ import 'package:mpx_core/mpx_core.dart';
 /// first frame is drawn from the pool.
 ///
 /// It never animates, so a binding of it costs the clock nothing. The same
-/// idea as the still of `image_decoder` and `lottie_decoder`, which this
-/// package depends on neither of.
+/// idea as the stills of mpx_core's image decoder and of `mpx_lottie`, which
+/// this package does not depend on.
 final class VideoStillPaintable extends AssetPaintable {
   /// Paints [image], which it owns from now on.
   VideoStillPaintable(this._image);

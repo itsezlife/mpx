@@ -46,7 +46,7 @@ enum {
 
 /* Caps. Changing one is an ABI-visible behaviour change. */
 enum {
-  MPX_VIDEO_MAX_INPUT_BYTES = 10 * 1024 * 1024, /* 10 MiB gif/sticker input gate */
+  MPX_VIDEO_MAX_INPUT_BYTES = 10 * 1024 * 1024, /* 10 MiB gif/clip input gate */
   MPX_VIDEO_MAX_SOURCE_EDGE = 3840,             /* per-side cap */
   MPX_VIDEO_MAX_SOURCE_PIXELS = 3840 * 2160,
   MPX_VIDEO_MAX_TARGET_EDGE = 2048,

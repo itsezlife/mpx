@@ -189,9 +189,9 @@ void main() {
     });
   });
 
-  // Ticket 144: a clip that comes back keeps its decoder's position and its
-  // frame, so it shows the frame it left on and goes on from there. Ticket
-  // 148: with the frames it had decoded ahead, so the next frame shows at
+  // A clip that comes back keeps its decoder's position and its
+  // frame, so it shows the frame it left on and goes on from there,
+  // with the frames it had decoded ahead, so the next frame shows at
   // its time, with no hold and no skip.
   group('VideoAnimationPaintable that leaves the screen and comes back', () {
     // 30 fps, 12 frames: the fake's blue is 16 times the frame index.
@@ -305,7 +305,7 @@ void main() {
       expect(after.first, left + 1);
     });
 
-    // Ticket 150: without them the decoder is past the frames after the one
+    // Without them the decoder is past the frames after the one
     // it left on, so going on from it would hold it for their time and then
     // skip them. It starts over instead, from its still.
     test('with no budget for frames decoded ahead it starts over from its '
@@ -488,7 +488,7 @@ void main() {
       expect(first.draws.single.image.width, 16);
     });
 
-    // Ticket 100: a sibling binding borrows the first frame, never the frame
+    // A sibling binding borrows the first frame, never the frame
     // the clip is at.
     test('lends its first frame as a still once frames are drawn', () async {
       final p = paintable();

@@ -141,7 +141,7 @@ void main() {
           if (alpha > 0) opaque++;
         }
       }
-      // A sticker on a transparent ground: both kinds of pixel survive.
+      // A clip on a transparent ground: both kinds of pixel survive.
       expect(transparent, greaterThan(0));
       expect(opaque, greaterThan(0));
       animation.dispose();

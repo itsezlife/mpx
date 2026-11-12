@@ -43,7 +43,7 @@ import 'package:mpx_lottie/src/renderer/lottie_source.dart';
 /// ## Textures
 ///
 /// With a [FrameTextureHost] it is also the [TextureFrameWriter] of the
-/// scheduler (ADR 043): each batch is one engine call that locks the
+/// scheduler: each batch is one engine call that locks the
 /// textures on the render isolate through the host's C entry points, draws
 /// or restores each frame there and posts. The cache works as for slots: a
 /// cached frame is restored into the texture, any other cacheable frame is

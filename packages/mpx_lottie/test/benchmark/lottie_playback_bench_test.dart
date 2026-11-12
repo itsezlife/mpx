@@ -58,7 +58,7 @@ const _measuredTicks = 300;
 const _tickStep = Duration(milliseconds: 16);
 
 /// A hand-authored 100x100, 30 fps, 60 frame animation: one rotating 60x60
-/// square filled with 50% opaque orange. Not a corpus sticker. The same
+/// square filled with 50% opaque orange. Not a corpus file. The same
 /// document as `lottie_frame_renderer_test.dart`, copied because that
 /// constant is private to its file.
 const _fixture = '''

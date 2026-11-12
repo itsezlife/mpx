@@ -1,6 +1,6 @@
 /*
  * A texture host's C entry points over plain memory, for tests: the lock and
- * post of FrameTextureEntryPoints (catalog_assets), plus what a test needs to
+ * post of FrameTextureEntryPoints (mpx_core), plus what a test needs to
  * make textures and look at them. The plugin's real table
  * (packages/frame_texture) is not a dependency of a decoder, so the decoders'
  * tests compile this one instead (test/support/texture_table.dart).

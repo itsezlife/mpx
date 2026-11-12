@@ -8,7 +8,7 @@ import 'package:mpx_core/mpx_core.dart';
 /// until its first frame is rendered.
 ///
 /// It never animates, so a binding of it costs the clock nothing. A copy of
-/// the idea in `image_decoder`, which this package does not depend on.
+/// the idea in mpx_core's image decoder.
 final class LottieStillPaintable extends AssetPaintable {
   /// Paints [image], which it owns from now on.
   LottieStillPaintable(this._image);

@@ -10,7 +10,7 @@ typedef LottieSweepTimerFactory =
 
 /// A paintable's claim on where its frames go, handed out by a
 /// [LottieFrameScheduler]: a [FrameAtlas] slot, or a platform texture of the
-/// scheduler's [FrameTexturePool] (ADR 043).
+/// scheduler's [FrameTexturePool].
 ///
 /// [sprite] says where the frame the slot holds is, or null while there is
 /// none to draw; [texture] is the texture once a first frame was posted to
@@ -76,7 +76,7 @@ final class LottieFrameLease {
   bool _failed = false;
   bool _kept = false;
   // Whether the lease is kept but its paintable left the screen (a hidden
-  // panel): it gave its texture back keeping its frame, and takes that
+  // grid): it gave its texture back keeping its frame, and takes that
   // texture back at its next want (see `LottieFrameScheduler._park`).
   bool _parked = false;
 
@@ -87,7 +87,7 @@ final class LottieFrameLease {
   /// again, from the next one.
   ///
   /// A kept lease whose paintable left the screen ([releaseUnlessPainted]:
-  /// a held surface that shows nothing now, a hidden panel) stays, but gives
+  /// a held surface that shows nothing now, a hidden grid) stays, but gives
   /// its texture back keeping its frame, and takes it back at its next want.
   bool get kept => _kept;
   set kept(bool value) {
@@ -179,11 +179,11 @@ final class LottieFrameLease {
 ///    detached, and the paintable called
 ///    [LottieFrameLease.releaseUnlessPainted]. The lease goes when the frame
 ///    is over unless it was painted in it. A kept one stays (its surface
-///    holds it, but shows nothing of it: a hidden panel) and gives back only
+///    holds it, but shows nothing of it: a hidden grid) and gives back only
 ///    its texture, keeping its frame on it, which it takes back when painted
 ///    again; the surfaces on screen get the budget. Without this a fling
 ///    filled the pool with the leases of cells that had flown past, and the
-///    cells it brought in showed their stills for seconds (ticket 116).
+///    cells it brought in showed their stills for seconds.
 /// 2. An [acquire] found the pool full: the leases on slots that nothing
 ///    painted for [visibleWindow] give theirs up, the least recently painted
 ///    first, until one is free. A kept lease is never taken, nor one painted
@@ -197,7 +197,7 @@ final class LottieFrameLease {
 ///    then nothing is painted, on screen or not, and a sweep then released
 ///    every lease on screen, so on resume each cell took a new one, and
 ///    past the frames the texture pool keeps, every cell showed its still
-///    for three posts and then skipped ahead (ticket 151). A sweep while
+///    for three posts and then skipped ahead. A sweep while
 ///    paused releases nothing and counts every lease as painted, so a lease
 ///    lives at most twice [idleRelease] of playback unpainted.
 ///
@@ -207,7 +207,7 @@ final class LottieFrameLease {
 ///
 /// ## Textures
 ///
-/// With a [FrameTexturePool] and a [TextureFrameWriter] (ADR 043), a lease
+/// With a [FrameTexturePool] and a [TextureFrameWriter], a lease
 /// takes a texture when one of its size class is idle, and a slot otherwise,
 /// exactly as without them: the pool never blocks and never creates on a
 /// lease. A lease that found none asks the pool to warm its class (the pool
@@ -224,7 +224,7 @@ final class LottieFrameLease {
 /// every lease that frame. A frame whose texture could not be locked is
 /// skipped and asked again; [lockFailureLimit] such frames in a row discard
 /// the texture and send the asset back to a page slot for the life of the
-/// scheduler (ADR 043, "Failure").
+/// scheduler.
 ///
 /// One lease per key: the atlas names an entry once in a batch.
 ///
@@ -369,7 +369,7 @@ final class LottieFrameScheduler {
     if (!onCanvas) {
       // The texture this key left showing its frame, while the pool keeps
       // it: shown at once, its queued frames are this animation's own, and
-      // the paintable goes on from that frame (ticket 144).
+      // the paintable goes on from that frame.
       final texture = lease._texture = _textureFor(lease, showing: key);
       final kept = _keptFrames.remove(key);
       if (texture != null && texture.showsFrame) {
@@ -621,13 +621,13 @@ final class LottieFrameScheduler {
   }
 
   // A kept lease that left the screen: its surface holds it but shows
-  // nothing of it (a hidden panel, a cell outside a held window). Its frame
+  // nothing of it (a hidden grid, a cell outside a held window). Its frame
   // is on no screen, so its texture goes back to the pool keeping that frame
   // for the lease's key, as a lease that ends does (`_release`): an idle
   // texture, which a warm for a surface on screen may destroy for room. The
   // lease stays, kept, with its slot if it has one; its next want takes the
-  // texture back (`_unpark`). Without this a hidden panel held a texture per
-  // cell, the budget was spent on them, and a chat sticker that came back
+  // texture back (`_unpark`). Without this a hidden grid held a texture per
+  // cell, the budget was spent on them, and an animation on screen that came back
   // played from a page, uploading it on every frame.
   void _park(LottieFrameLease lease) {
     final texture = lease._texture;
@@ -736,8 +736,8 @@ final class LottieFrameScheduler {
     }
     if (onSlots.isNotEmpty) unawaited(_renderSlots(onSlots));
     // The largest frames go first: a render isolate answers in arrival
-    // order, so this puts the surface in front (a chat sticker) ahead of the
-    // small cells of a panel queued on the same isolate. The sort is stable,
+    // order, so this puts the surface in front (a large item) ahead of the
+    // small cells of a grid queued on the same isolate. The sort is stable,
     // so leases of one size keep their order.
     onTextures
       ..sort((a, b) => (b._width * b._height).compareTo(a._width * a._height))

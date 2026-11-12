@@ -130,7 +130,7 @@ pub unsafe extern "C" fn mpx_lottie_free(handle: *mut MpxLottie) {
     }
 }
 
-/// Largest frame edge a batch accepts. Stickers are drawn at a few hundred
+/// Largest frame edge a batch accepts. Animations are drawn at a few hundred
 /// pixels at most; the cap bounds the scratch buffer a hostile job can force.
 pub const MAX_FRAME_EDGE: u32 = 512;
 

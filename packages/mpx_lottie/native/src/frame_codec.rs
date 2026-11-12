@@ -1,7 +1,7 @@
 //! The frame cache's lz4 codec over regions of page memory.
 //!
-//! It lives in the wrapper, not in Dart, so the web build shares it
-//! (ADR 042). A region is `height` rows of `width * 4` bytes, rows
+//! It lives in the wrapper, not in Dart, so the web build shares it.
+//! A region is `height` rows of `width * 4` bytes, rows
 //! `stride_bytes` apart; it is packed as one lz4 block of the tight pixels.
 
 use crate::guarded;

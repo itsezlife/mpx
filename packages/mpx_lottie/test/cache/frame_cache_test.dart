@@ -309,7 +309,7 @@ void main() {
         ramBudgetBytes: 100,
         clock: clock,
       );
-      // Both are asked for frames every round, as two playing stickers are.
+      // Both are asked for frames every round, as two playing animations are.
       for (var i = 0; i < 5; i += 2) {
         cache
           ..put(_key('first'), i, _bytes(40, 1), frameCount: 5)

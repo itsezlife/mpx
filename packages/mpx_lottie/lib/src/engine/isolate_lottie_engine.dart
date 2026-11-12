@@ -15,7 +15,7 @@ import 'package:mpx_lottie/src/engine/lottie_slot_engine.dart';
 
 /// A [LottieSlotEngine] whose [LottieBinding]s live on long-lived isolates of
 /// their own, a pool of one to [maxWorkers], so parsing and rasterizing never
-/// take a frame from the UI isolate (ADR 042 "Workers").
+/// take a frame from the UI isolate.
 ///
 /// Each isolate creates its own binding (a binding is single-isolate state),
 /// owns the handles it loaded, and answers its requests one at a time in
@@ -23,8 +23,7 @@ import 'package:mpx_lottie/src/engine/lottie_slot_engine.dart';
 /// disposed. A handle is pinned to the isolate that loaded it, which keeps
 /// that order for every request naming it. Isolates render different handles
 /// at the same time, which the wrapper's contract allows (`mpx_lottie.h`:
-/// handles are independent; ADR 042, *Amendment: a pool of render isolates*,
-/// records the evidence).
+/// handles are independent).
 ///
 /// A new animation goes to the isolate holding the fewest handles (the lowest
 /// index on a tie), counted when the load is sent so a burst of loads
@@ -684,7 +683,7 @@ void _renderIsolateMain(_Boot boot) {
   );
 
   // Frames of cache files are read here, where they are decompressed: the UI
-  // isolate sends only where a frame is (ADR 022, frames read from the file).
+  // isolate sends only where a frame is.
   final reader = FrameFileReader();
   final commands = ReceivePort();
   void answer(int id, Object? Function() work) {

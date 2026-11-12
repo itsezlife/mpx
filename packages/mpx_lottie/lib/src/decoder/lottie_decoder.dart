@@ -70,7 +70,7 @@ Future<ui.Image> _imageFromPixels(Uint8List pixels, int width, int height) {
 /// plus the encoded size once, for the parsed model. The handle's real
 /// footprint lives in the native library and is not visible here; the file's
 /// own size is the estimate. Four times it charged
-/// a 160 px cell of a 181 KB sticker 0.8 MiB, so a screen of them was more
+/// a 160 px cell of a 181 KB animation 0.8 MiB, so a screen of them was more
 /// than the animated budget and nothing scrolled out was kept. The frames on
 /// screen live in leased slots and textures, budgeted by their pools.
 ///
@@ -79,9 +79,9 @@ Future<ui.Image> _imageFromPixels(Uint8List pixels, int width, int height) {
 /// A spec whose longer side is over `LottiePixelJob.maxEdge` (512, the
 /// largest size class of the pool) is rendered at the cap and plays: its
 /// frames take a 512 px slot or texture, and the surface draws them scaled up
-/// to its box. A sticker is rendered at most 512 px on a side and drawn at
+/// to its box. An animation is rendered at most 512 px on a side and drawn at
 /// its view's size, the content preview included. Showing the still there
-/// instead (as before ticket 128) froze the preview, which is about 600 px on
+/// instead froze the preview, which is about 600 px on
 /// a phone.
 ///
 /// ## The frame cache
@@ -135,8 +135,8 @@ final class LottieDecoder implements Decoder {
   /// (`LottieContentHashWorker.shared`; on the web, inline): the default
   /// [LottieContentHasher].
   ///
-  /// Hashing a sticker file on the calling isolate took 2-10 ms at a time on
-  /// a phone, between frames: a grid that scrolls new stickers in decodes
+  /// Hashing an animation file on the calling isolate took 2-10 ms at a time on
+  /// a phone, between frames: a grid that scrolls new animations in decodes
   /// several per second, and each hash made the next frame start a vsync
   /// late. A short-lived isolate per hash spawned dozens a second; the worker
   /// is spawned once.

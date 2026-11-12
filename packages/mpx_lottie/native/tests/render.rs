@@ -216,7 +216,7 @@ fn two_handles_on_two_threads_match_serial_output() {
     }
 }
 
-/// The contract a pool of render isolates rests on (ADR 042, *Workers*):
+/// The contract a pool of render isolates rests on:
 /// handles loaded, rendered, compressed and restored on four threads at once,
 /// each its own, give what one thread gives. The wrapper keeps no state
 /// between calls but the handle, and tlottie's process-wide state is

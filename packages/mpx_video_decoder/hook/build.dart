@@ -7,8 +7,8 @@
 /// NDK clang) against the FFmpeg + libvpx prefix built by
 /// `native/recipe/build.sh` for that target (or the one `MPX_VIDEO_FFMPEG_DIR`
 /// names). With no prefix, or on another target, no asset is emitted with a
-/// warning and the probe reports `missingLibrary`; prebuilt delivery is a
-/// later ticket.
+/// warning and the probe reports `missingLibrary`; prebuilt delivery is
+/// not built yet.
 library;
 
 import 'dart:io';
@@ -73,7 +73,7 @@ void main(List<String> args) async {
         'warning: mpx_video_decoder found no FFmpeg build for $target, so no '
         'native video library is bundled. Build it with '
         '${recipeCommandFor(target)}, or set $ffmpegDirVariable to a prefix '
-        'holding include/ and lib/. (Prebuilt delivery is a later ticket.)',
+        'holding include/ and lib/. (Prebuilt delivery is not available yet.)',
       );
       return;
     }

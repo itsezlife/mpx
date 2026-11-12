@@ -7,7 +7,7 @@ import 'package:mpx_video_decoder/src/engine/video_engine.dart';
 import 'package:mpx_video_decoder/src/renderer/video_frame_source.dart';
 
 /// A [VideoEngine] that can also write decoded frames into platform textures
-/// on the isolate that decodes them (ADR 043, "Writing").
+/// on the isolate that decodes them.
 ///
 /// Native only (the lock and post are C calls); the in-process engine and the
 /// worker pool are both one.

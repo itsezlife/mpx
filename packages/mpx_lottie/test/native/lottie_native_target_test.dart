@@ -133,7 +133,7 @@ void main() {
       });
     }
 
-    test('is null where ADR 042 ships no library', () {
+    test('is null where no library ships', () {
       // Android 32-bit ARM is not supported; neither is an iOS target
       // without an SDK, nor an architecture with no key.
       expect(

@@ -22,7 +22,7 @@ import 'package:mpx_video_decoder/src/playback/video_frame_scheduler.dart';
 /// and then draws [sprite] itself, falling back to [paint] for the still while
 /// it is null.
 ///
-/// When the scheduler gave the lease a platform texture (ADR 043), [texture]
+/// When the scheduler gave the lease a platform texture, [texture]
 /// is it once a first frame was posted, and [sprite] is null: a surface that
 /// composites adds a texture layer. A [paint] that no [advancePlayback] of the
 /// same time came before is a surface that only has a canvas: it asks the
@@ -188,7 +188,7 @@ final class VideoAnimationPaintable extends AssetPaintable {
     }
     if (lease == null || lease.isReleased) {
       // A lease that went with the clip leaving the screen is continued:
-      // its frame shows at once and the clip goes on from it (ticket 144).
+      // its frame shows at once and the clip goes on from it.
       lease = _lease = _scheduler.acquire(
         _key,
         _clip,
