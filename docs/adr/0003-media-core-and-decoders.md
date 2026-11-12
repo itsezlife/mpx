@@ -31,7 +31,8 @@ unattached entries. A feed needs more (ADR 0005).
 | Area | Decision |
 | --- | --- |
 | Home | `mpx_core` |
-| Types | `MediaKey`, `MediaDescriptor` *(working)*: the meaning of `ContentKey` / `ContentDescriptor` without the chat variants (Unicode emoji) and the pack reference |
+| Types | `MediaKey` (sealed: `remote(id)`, `external(id)`, `local(uuid)`) and `MediaDescriptor` (key, `MediaKind`, animated, `MediaDimensions`, byte size, duration, `MediaThumbnailRef`): the meaning of `ContentKey` / `ContentDescriptor` without the chat variants (Unicode emoji), the pack reference and the panel facts |
+| Stable form | `MediaKey.encoded`: `<variant>-<id>`, the id percent-escaped as UTF-8 to `A-Z a-z 0-9 . _ ~ -`, so it is a safe file name and bytes-cache key; `parse` / `tryParse` read it back |
 | Local keys | `MediaKey.local(uuid)` names a locally produced file from the start of capture or compression; the bytes cache later aliases the server key to it (ADR 0002, 0007) |
 | Users | The core, the decoders, `mpx_player`, `mpx_capture` |
 | Stays in chat | `ContentKey`, `ContentDescriptor`, rich text, collections, packs, content library; the chat maps `ContentKey` to `MediaKey` where it builds its stack |
@@ -120,8 +121,6 @@ pool and its budget (ADR 0004).
 - The new names for the core's types that still carry product words.
 - Where the default preset table for a non-chat host lives, if any (`mpx`'s
   factory is a candidate).
-- `MediaKey` variants beyond `local(uuid)`; what `MediaDescriptor` keeps of
-  `ContentDescriptor`.
 - Whether the frame-advance floor and staged preload targets are core constants
   or feed knobs passed down.
 - The new names of `catalog_assets`' public barrels (`frame_pool.dart`,

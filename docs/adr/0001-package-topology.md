@@ -36,7 +36,7 @@ version and publish overhead without saving any host a dependency.
 | Package | Kind | Owns |
 | --- | --- | --- |
 | `http_bytes_cache` | Dart + native reader | Whole and ranged resources, one disk store with named quotas, HTTP middlewares, the native reader of ranged resources (ADR 0002) |
-| `mpx_core` | Plugin | `MediaKey`, `MediaDescriptor` *(working)*; asset cache, pipeline, playback clock and pause layers, budgets, visibility, texture seam and the platform texture hosts, placeholders, the engine image decoder (ADR 0003) |
+| `mpx_core` | Plugin | `MediaKey`, `MediaDescriptor`; asset cache, pipeline, playback clock and pause layers, budgets, visibility, texture seam and the platform texture hosts, placeholders, the engine image decoder (ADR 0003) |
 | `mpx_lottie` | Flutter + build hook | Vector animation `Decoder`, frame cache, Rust library over tlottie |
 | `mpx_video_decoder` | Flutter + build hook | Software video `Decoder` for silent loops, FFmpeg + libvpx library, decode-only |
 | `mpx_player` | Plugin | Player pool, leases, audio owner (ADR 0004); Media3 ExoPlayer and AVPlayer backends reading through the bytes cache's native reader; feed modes, knobs and preload staging (ADR 0005) |
@@ -169,8 +169,6 @@ reasons.
 
 ## Open in implementation
 
-- `MediaKey` variants beyond `local(uuid)`, and what `MediaDescriptor` keeps
-  of today's `ContentDescriptor` (the pack reference stays in the chat).
 - Final names for `MpxStack` and the fetch adapter type.
 - Whether `mpx_video_decoder` takes a shorter name.
 

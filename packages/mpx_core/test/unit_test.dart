@@ -6,8 +6,10 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'identity/media_descriptor_test.dart' as media_descriptor_test;
+import 'identity/media_key_test.dart' as media_key_test;
+
 void main() {
-  // The stub has no behaviour yet; this keeps the entrypoint runnable until
-  // the first real test file replaces it.
-  test('package stub loads', () {});
+  group('media_descriptor_test', media_descriptor_test.main);
+  group('media_key_test', media_key_test.main);
 }
