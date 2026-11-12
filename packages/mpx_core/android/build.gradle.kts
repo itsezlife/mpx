@@ -1,5 +1,5 @@
-group = "dev.mpx.core"
-version = "0.0.1"
+group = "dev.chatscrollview.frame_texture"
+version = "0.1.0"
 
 buildscript {
     val kotlinVersion = "2.2.20"
@@ -27,9 +27,14 @@ plugins {
 }
 
 android {
-    namespace = "dev.mpx.core"
+    namespace = "dev.chatscrollview.frame_texture"
 
     compileSdk = 36
+
+    // The pinned Flutter's default NDK (flutter.ndkVersion), which the app
+    // builds with: a plugin may not ask for a higher one than its app. NDK
+    // r28 also aligns to 16 KB pages by default (ADR 042).
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -46,8 +51,15 @@ android {
         }
     }
 
+    // libframe_texture.so: the texture table the render workers lock and
+    // post through, and its JNI side.
+    externalNativeBuild {
+        cmake {
+            path = file("CMakeLists.txt")
+        }
+    }
+
     defaultConfig {
-        // Android API 24 is the set's floor (spec, minimum versions).
         minSdk = 24
     }
 }
