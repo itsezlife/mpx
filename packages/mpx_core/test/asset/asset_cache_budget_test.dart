@@ -52,10 +52,10 @@ void main() {
     });
   });
 
-  // Ticket 100: a kept panel pins the attach windows of its sticker page
+  // A kept grid pins the attach windows of its Lottie page
   // (35 cells of a 181 KB Lottie at 160 px: one still plus the file) and of
-  // its emoji page (64 playing WebP emoji at 99 px: three frames plus the
-  // file); a screen of stickers scrolled out on top of that must stay, with
+  // its image page (64 playing WebP images at 99 px: three frames plus the
+  // file); a screen of cells scrolled out on top of that must stay, with
   // its position, for the scroll back.
   group('the default animated budget', () {
     const sticker = 160 * 160 * 4 + 181000;

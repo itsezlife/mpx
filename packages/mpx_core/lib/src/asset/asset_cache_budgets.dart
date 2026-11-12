@@ -6,8 +6,8 @@ enum AssetTier {
   still,
 
   /// Animations: frame buffers and decoder state, large and slow to make
-  /// again. Budgeted apart so a screenful of stickers cannot push every emoji
-  /// out, and the reverse.
+  /// again. Budgeted apart so a screenful of animations cannot push every
+  /// still out, and the reverse.
   animated,
 }
 
@@ -21,23 +21,20 @@ enum AssetTier {
 /// ## Defaults
 ///
 /// [AssetCacheBudgets.defaults] is 24 MiB of stills and 32 MiB of animations.
-/// The still figure comes from the churn benchmark
-/// (`test/benchmark/asset_cache_churn_bench_test.dart`, tables in the package
-/// README): scrolling down a catalogue and back, 24 MiB keeps all of the last
-/// four screens of 192 px stickers (24 cells a screen, 144 KiB each) and of
-/// 102 px custom emoji (64 cells a screen, 40 KiB each), where 16 MiB already
-/// misses one sticker in twelve and 12 MiB one in three.
+/// The still figure keeps a few screens of a scrolling grid of mid-size
+/// stills: scrolling down and back, 24 MiB keeps all of the last four screens
+/// of 192 px cells (24 a screen, 144 KiB each) and of 102 px cells (64 a
+/// screen, 40 KiB each), where 16 MiB already misses one cell in twelve and
+/// 12 MiB one in three.
 ///
-/// The animated figure follows from a panel that stays mounted while hidden
-/// and keeps its pages: their attach windows stay pinned, about 35 sticker
-/// cells (a 160 px Lottie cell of a 181 KB file counts about 0.28 MiB, so
-/// 10 MiB) and the emoji page's playing custom emoji (64 at 99 px, about
-/// 8 MiB). 32 MiB leaves about two more sticker screens for scrolling back
-/// with their positions. For scale, a 10 MiB animation cache charges an
+/// The animated figure covers a grid that stays mounted while hidden and
+/// keeps its pinned animations, about 35 cells of 160 px Lottie (about
+/// 10 MiB) and 64 playing 99 px images (about 8 MiB), and leaves about two
+/// more screens of animations for scrolling back with their positions. For scale, a 10 MiB animation cache charges an
 /// animation only its two frame buffers and never recycles one a cell still
 /// uses. Pinned bytes come out of the budget first,
 /// so a surface that shows more than a tier's budget leaves nothing for
-/// keep-alive; a host with a different device class sets its own.
+/// keep-alive; a host with another device class or layout sets its own.
 @immutable
 final class AssetCacheBudgets {
   /// Creates budgets of [stillBytes] and [animatedBytes].

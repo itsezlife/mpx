@@ -79,7 +79,7 @@ void main() {
     });
   });
 
-  // Ticket 144: a cell that left the screen comes back to the texture that
+  // A cell that left the screen comes back to the texture that
   // still shows its frame.
   group('kept frames', () {
     test('a texture released showing an asset goes back to it first, at '

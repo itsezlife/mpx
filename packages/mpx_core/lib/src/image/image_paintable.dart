@@ -184,7 +184,7 @@ final class PlayingImagePaintable extends AssetPaintable {
   /// The frame on show lasts the rest of its duration from the next paint:
   /// the time the clock ran while nothing played this image is not counted,
   /// and the time it was up before is. So a surface that stopped playing it
-  /// (a cell scrolled off, a held panel) goes on as if it had not stopped.
+  /// (a cell scrolled off, a held surface) goes on as if it had not stopped.
   @override
   void playbackResumed() {
     if ((_shownSince, _playedAt) case (
@@ -313,7 +313,7 @@ final class PlayingImagePaintable extends AssetPaintable {
           FlutterErrorDetails(
             exception: error,
             stack: stackTrace,
-            library: 'image_decoder',
+            library: 'mpx_core',
             context: ErrorDescription(
               'while decoding the next frame of a playing image',
             ),

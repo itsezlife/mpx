@@ -71,7 +71,7 @@ final class PlaybackActivityPolicy {
   }
 }
 
-/// One claim on the chat being covered, released exactly once.
+/// One claim on the surface being covered, released exactly once.
 ///
 /// Returned by [PlaybackActivity.holdOverlay].
 final class PlaybackOverlayHold {
@@ -184,7 +184,7 @@ final class PlaybackActivity {
   /// Whether [dispose] has run.
   bool get isDisposed => _disposed;
 
-  /// Claims that something covers the chat until the returned hold is
+  /// Claims that something covers the surface until the returned hold is
   /// released: a dialog, a sheet, a full-screen route. While any hold is open
   /// [PlaybackPauseLayer.overlayShown] is set, so two overlays on top of each
   /// other do not clear it when the first closes.

@@ -1,9 +1,9 @@
-// The scroll trace behind the cache benchmarks: a catalogue scrolled down a
+// The scroll trace behind the cache benchmarks: a grid scrolled down a
 // screen at a time and back, counting the attaches on the way back that find
 // their entry still decoded. Counts, not time, so the result is exact.
 //
-// Cell sizes are decoded RGBA at 3x density: a sticker panel cell of 64 dp,
-// a custom emoji of 34 dp (the emoji keyboard size), an animated sticker of
+// Cell sizes are decoded RGBA at 3x density: a grid cell of 64 dp,
+// a small cell of 34 dp, an animated cell of
 // 85 dp whose entry costs two frame buffers, the way a Lottie drawable is
 // counted (width * height * 4 * 2).
 
@@ -12,7 +12,7 @@ import 'package:mpx_core/testing.dart';
 
 const mebibyte = 1024 * 1024;
 
-/// A catalogue the trace scrolls over.
+/// A grid the trace scrolls over.
 final class TraceWorkload {
   const TraceWorkload({
     required this.name,
@@ -74,7 +74,7 @@ final class TraceResult {
   double get hitRate => attachesBack == 0 ? 0 : hitsBack / attachesBack;
 }
 
-/// Scrolls [screens] screens down a catalogue one row at a time, then back up
+/// Scrolls [screens] screens down a grid one row at a time, then back up
 /// the same way, and counts how many attaches on the way back find their entry
 /// already decoded. The entry is made at once when missing, as a memory-only
 /// producer would.

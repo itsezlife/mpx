@@ -1,4 +1,4 @@
-/// Ticket 150: an animated GIF or WebP played by the engine's codec, stopped
+/// An animated GIF or WebP played by the engine's codec, stopped
 /// (its cell scrolled off) and played again, goes on from the frame it left
 /// on, one frame of the clip at a time at the clip's rate: no hold and no
 /// catch-up a few frames later.

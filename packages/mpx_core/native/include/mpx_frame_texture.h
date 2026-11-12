@@ -68,7 +68,7 @@ int32_t ANativeWindow_unlockAndPost(ANativeWindow* window);
 extern "C" {
 #endif
 
-/* ---- The worker's ABI (FrameTextureEntryPoints in catalog_assets) ---- */
+/* ---- The worker's ABI (FrameTextureEntryPoints in mpx_core) ---- */
 
 /* The first byte of texture `id`'s next buffer, with its row stride in bytes
  * written to *row_stride; NULL when the texture cannot be locked at once:

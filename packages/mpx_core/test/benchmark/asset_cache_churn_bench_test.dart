@@ -1,6 +1,6 @@
 // Headless churn micro-benchmark of the asset cache core. It is the
 // measurement behind the default byte budgets (AssetCacheBudgets.defaults) and
-// the playback fps caps (PlaybackPolicy); results are in the package README.
+// the playback fps caps (PlaybackPolicy).
 //
 //   flutter test test/benchmark/asset_cache_churn_bench_test.dart
 //
@@ -80,7 +80,7 @@ void main() {
 
   group('the documented defaults', () {
     test('keep four screens of stills and one screen of animations', () {
-      // Scrolling back four screens of stickers or custom emoji, or the
+      // Scrolling back four screens of large or small stills, or the
       // screen of animations just scrolled past, is the pager keep-alive and
       // scroll-back case the budget exists for. Further back, decoding again
       // is the expected price.

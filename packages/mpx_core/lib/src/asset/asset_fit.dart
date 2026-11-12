@@ -7,14 +7,14 @@ import 'package:mpx_core/src/asset/asset_texture.dart';
 ///
 /// A surface chooses it per attach (`AssetProfile.fit`), because the same
 /// decoded asset is a whole picture in one place and a filling one in another:
-/// a sticker is never cut, a GIF in a grid cell fills the cell.
+/// an item shown whole is never cut, a clip in a grid cell fills the cell.
 enum AssetFit {
   /// The whole content, as large as the rectangle holds, centred; the
   /// rectangle keeps bars on the axis the content does not fill.
   contain,
 
   /// The rectangle is filled; the content is cut on the axis that overflows,
-  /// anchored at the centre. A grid GIF uses it.
+  /// anchored at the centre. A grid clip uses it.
   cover;
 
   /// Which part of a picture of size [source] is drawn into which part of

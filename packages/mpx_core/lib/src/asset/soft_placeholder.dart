@@ -3,15 +3,15 @@ import 'dart:ui';
 import 'package:mpx_core/src/asset/asset_paintable.dart';
 import 'package:mpx_core/src/asset/atlas_sprite.dart';
 
-/// A quiet stand-in for content that has no outline to show yet (a sticker in
-/// a message): a faint rounded square on the shorter side of the rectangle,
+/// A quiet stand-in for content that has no outline to show yet (an item in
+/// a list): a faint rounded square on the shorter side of the rectangle,
 /// in the context's tint (`0xFF73787B` when there is none).
 ///
 /// The fill's alpha is 25 of 255, a tenth of the placeholder colour's alpha,
-/// truncated. The outline comes with the sticker's metadata, which this package
+/// truncated. The outline comes with the item's metadata, which this package
 /// never sees, so the shape is a rounded square. [cornerFraction] is this
 /// package's own choice, not a traced measure. A sweeping highlight is left
-/// out: a message body does not repaint on its own, and a placeholder that
+/// out: a list item does not repaint on its own, and a placeholder that
 /// needs frames from nobody is the one that costs nothing.
 ///
 /// Synchronous, shared, never disposed; no sprite and no animation. An

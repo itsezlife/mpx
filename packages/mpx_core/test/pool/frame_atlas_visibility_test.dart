@@ -1,4 +1,4 @@
-/// When a frame becomes visible (ticket 56): a handle shows a frame only once
+/// When a frame becomes visible: a handle shows a frame only once
 /// the upload that holds its pixels has completed, and an entry nobody holds
 /// does not show the frame it stopped on.
 library;

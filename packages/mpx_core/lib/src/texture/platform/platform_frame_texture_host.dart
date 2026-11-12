@@ -137,7 +137,7 @@ final class PlatformFrameTextureHost implements FrameTextureHost {
       FlutterErrorDetails(
         exception: error,
         stack: stackTrace,
-        library: 'frame_texture',
+        library: 'mpx_core',
         context: ErrorDescription(context),
       ),
     );

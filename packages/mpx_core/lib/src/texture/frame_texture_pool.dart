@@ -152,7 +152,7 @@ final class FrameTexturePool {
   /// The default of [budgetBytes]: the dynamic pages' default.
   static const int defaultBudgetBytes = 48 * 1024 * 1024;
 
-  /// The default of [idleLimit]: about a screen of a sticker grid, so leaving
+  /// The default of [idleLimit]: about a screen of an animated grid, so leaving
   /// a screen and coming back finds its textures.
   static const int defaultIdleLimit = 24;
 
@@ -161,7 +161,7 @@ final class FrameTexturePool {
   static const Duration defaultReuseDelay = Duration(milliseconds: 150);
 
   /// The default of [keptFrameBytes]: half the default budget, about a
-  /// screen of a sticker grid on Android (24 cells of 256 px textures of four
+  /// screen of an animated grid on Android (24 cells of 256 px textures of four
   /// buffers, 1 MiB each), as many as [defaultIdleLimit]. Scrolling back a
   /// screen brings back the cells that left it while as many leave the other
   /// edge. Leased textures still come first: a warm for cells on screen
@@ -413,7 +413,7 @@ final class FrameTexturePool {
           FlutterErrorDetails(
             exception: error,
             stack: stackTrace,
-            library: 'catalog_assets',
+            library: 'mpx_core',
             context: ErrorDescription('while creating a frame texture'),
           ),
         );
@@ -437,7 +437,7 @@ final class FrameTexturePool {
   // classes, released longest ago first, as far as that makes it fit. An idle
   // texture is on no screen; a warm is for a lease that waits on a page slot,
   // uploading a frame page on every tick. Without this, textures warmed for a
-  // surface that is gone (a chat's stickers, a page left) hold the budget
+  // surface that is gone (a list's animations, a page left) hold the budget
   // while the surface on screen plays from pages. Nothing is destroyed when
   // even every idle texture of the other classes would not make it fit.
   bool _makeRoom(int cost, int sizeClass) {

@@ -76,8 +76,8 @@ final class AssetProfile {
   ///
   /// For a surface that draws assets small (a cell of a content grid), where
   /// 60 fps is not visibly smoother and each frame costs a render and a post
-  /// per asset: a grid of 25 playing stickers posts 1500 frames a second at
-  /// full rate. Stickers drawn at up to 90 dp are limited the same way (every
+  /// per asset: a grid of 25 playing animations posts 1500 frames a second at
+  /// full rate. Animations drawn at up to 90 dp are limited the same way (every
   /// second frame). Unlike the fps cap of the
   /// playback policy, which only spaces a binding's repaints, this changes
   /// the frames asked for, so a surface that repaints every frame for other

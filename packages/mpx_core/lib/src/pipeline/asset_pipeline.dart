@@ -98,12 +98,6 @@ final class AssetPipelineError implements Exception {
 /// media form and a decode failure are permanent. A failed thumbnail is
 /// ignored: the content may still arrive.
 ///
-/// ## Not the glyph path
-///
-/// Unicode glyphs bind to baked sprites through the scope's glyph source and
-/// never reach the pipeline, so its caps and queues never delay them; the
-/// baker is paced by frames on the root isolate, not by this queue.
-///
 /// Single-threaded on the UI isolate, like the scope.
 final class AssetPipeline implements AssetProducer {
   /// Creates a pipeline over [fetcher] and [decoders].

@@ -47,8 +47,7 @@ typedef FramePageUploadTrace =
 ///
 /// A page image lives exactly as long as its page: [release] ends both, and an
 /// allocator gives a page back when its last slot goes. There is no retention
-/// timer here, unlike the baked glyph pages: a glyph page is expensive to bake
-/// and cheap to hold, while a frame page is rewritten every tick, so keeping an
+/// timer here: a frame page is rewritten every tick, so keeping an
 /// image whose slots are gone would only hold memory for frames nobody draws.
 /// Memory pressure needs no hook of its own either: the pool evicts its idle
 /// entries, that empties pages, and the pages come back through [release].
@@ -191,7 +190,7 @@ final class FramePageImages {
     // The engine copies a page on this isolate the moment its upload starts.
     // Started together, a flush of several pages was one block of copies
     // between two frames, long enough to start the next frame a vsync late
-    // while a grid of stickers played. Each page after the first starts in
+    // while a grid of animations played. Each page after the first starts in
     // an event-loop turn of its own, so a frame due meanwhile runs between
     // two copies; the uploads still run side by side.
     // A page released while it waited for its turn has no bytes to upload.

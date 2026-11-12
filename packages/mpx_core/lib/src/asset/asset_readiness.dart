@@ -7,8 +7,7 @@ enum AssetStage {
   /// Nothing is known to draw yet; the binding paints the scope's placeholder.
   none,
 
-  /// A cheap stand-in is available (a thumbnail, or for a glyph its circle
-  /// until the glyph is baked).
+  /// A cheap stand-in is available (a thumbnail).
   placeholder,
 
   /// The first frame, as a plain still, is available.

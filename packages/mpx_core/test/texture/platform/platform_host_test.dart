@@ -59,7 +59,7 @@ void main() {
     answer = (_) async => throw PlatformException(code: 'boom');
 
     expect(await host().create(64, 64), isNull);
-    expect(reported.single.library, 'frame_texture');
+    expect(reported.single.library, 'mpx_core');
   });
 
   test('a lock carries the size asked and the host format', () async {

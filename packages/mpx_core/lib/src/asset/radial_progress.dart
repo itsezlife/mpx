@@ -17,7 +17,7 @@ import 'package:flutter/animation.dart';
 ///
 /// | Measure | Value |
 /// | ------- | ----- |
-/// | disc radius | the caller's: 12 in a panel cell |
+/// | disc radius | the caller's: 12 in a grid cell |
 /// | arc radius | disc radius less [arcInset] |
 /// | stroke | [strokeWidth], [thinStrokeWidth] below 0.7 of [referenceDiameter] |
 /// | start | [initialDegrees] (112) for a new indicator |
@@ -27,7 +27,7 @@ import 'package:flutter/animation.dart';
 /// | a lower fraction | shown at once |
 ///
 /// The indicator of a loading grid cell is a bare arc, without the cross of a
-/// message's cancel button.
+/// cancel button.
 ///
 /// ## What it leaves out
 ///

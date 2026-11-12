@@ -65,7 +65,7 @@ void main() {
     }
   }
 
-  // The panel's GIF cell: a 24 dp box, so radius 12.
+  // A grid's media cell: a 24 dp box, so radius 12.
   group('the panel size, radius 12', () {
     test('a translucent black disc and a bare arc inside it', () {
       final canvas = paint(RadialProgress());

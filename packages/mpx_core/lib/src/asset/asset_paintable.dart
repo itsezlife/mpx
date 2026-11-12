@@ -72,14 +72,14 @@ final class AssetPaintContext {
 /// reached, behind one method.
 ///
 /// The adapter that made it chooses the representation (a decoded image or
-/// frame, a vector composition, a baked glyph sprite); a surface neither knows
+/// frame, a vector composition, an atlas sprite); a surface neither knows
 /// nor cares. A paintable never schedules timers: its frame follows
 /// [AssetPaintContext.time].
 ///
 /// ## Sprite capability
 ///
 /// A paintable may expose [sprite], an atlas page handle plus a source
-/// rectangle. A surface that batches (the catalogue viewport draws every
+/// rectangle. A surface that batches (a grid viewport draws every
 /// sprite of one page in a single atlas draw) uses it instead of [paint]; a
 /// paintable without a sprite paints itself, and [paint] always works whether
 /// or not there is one. A paintable whose sprite exists only once it has
@@ -153,8 +153,7 @@ abstract class AssetPaintable {
   /// animated paintable per pass, then reads [sprite]; a surface that calls
   /// [paint] instead needs no call, because [paint] does the same. Calling both
   /// in one pass is harmless: the same [AssetPaintContext.time] adds no time
-  /// played. Does nothing by default, which is right for a still and for a
-  /// baked glyph.
+  /// played. Does nothing by default, which is right for a still.
   void advancePlayback(AssetPaintContext context) {}
 
   /// The platform texture that holds the current frame, or null when this
@@ -196,7 +195,7 @@ abstract class AssetPaintable {
   ///
   /// The shared clock keeps running for other surfaces meanwhile, so a
   /// paintable that adds up the time between paints would add the whole stop
-  /// at its next paint and jump ahead by it: a sticker panel shut for 300 ms
+  /// at its next paint and jump ahead by it: a surface hidden for 300 ms
   /// came back 20 frames on. One that keeps its playback takes the next paint
   /// as the start of its timing instead, and goes on from the frame it is at
   /// ("freeze and continue"). Does nothing by default, which is right for a

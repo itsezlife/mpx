@@ -17,7 +17,7 @@ import 'package:mpx_core/src/widget/asset_cache_provider.dart';
 /// when it leaves the tree.
 ///
 /// It is the widget for a surface that draws one piece of content outside the
-/// catalogue viewport (a composer field, a message, a header). Stages, the
+/// grid viewport (a text field, a list item, a header). Stages, the
 /// budget, the shared playback clock and the host's pause layers all come
 /// from the binding; the view only repaints when the binding says something
 /// changed, and never rebuilds for it.
@@ -46,7 +46,7 @@ import 'package:mpx_core/src/widget/asset_cache_provider.dart';
 /// animation and lets go of what it leased for the screen (a texture, a frame
 /// slot). A view that [holdsWhileTickersOff] is held instead while the
 /// [TickerMode] is off: it keeps showing its frame, not playing, and keeps
-/// what it leased, as the catalogue's cells do, so a panel kept mounted
+/// what it leased, as a grid's cells do, so a surface kept mounted
 /// while hidden shows the same frames, from the first one, when it is back.
 /// An animated preset gets its own repaint boundary, because every frame
 /// repaints it.
@@ -66,7 +66,7 @@ import 'package:mpx_core/src/widget/asset_cache_provider.dart';
 /// paints the scope's placeholder, which every surface of the scope shares
 /// whatever its content is. A view given its own [placeholder] paints that
 /// instead, as `ContentEmbed.placeholder` does: the surface knows what its
-/// content is (a sticker, a pack's cover) and the colour its stand-in takes
+/// content is (an item, a collection's cover) and the colour its stand-in takes
 /// from the theme around it, the scope knows neither. A thumbnail is the
 /// binding's to paint.
 ///
@@ -125,7 +125,7 @@ class ContentView extends StatefulWidget {
   /// view first saw it. The view asks for a frame
   /// after each one it paints the indicator in, and stops when the first
   /// frame exists, the download ends or a [TickerMode] above it is off. A
-  /// grid GIF cell uses 12.
+  /// grid media cell uses 12.
   final double? loadingRadius;
 
   /// What the view paints before the content has a stage, and fades out
@@ -144,7 +144,7 @@ class ContentView extends StatefulWidget {
   /// Whether a disabled [TickerMode] above holds the view rather than hiding
   /// it: it keeps its frame on screen and what it leased for it. For a
   /// surface whose tickers stop while it is still the one to come back (a
-  /// panel that moves or is kept mounted while hidden).
+  /// surface that moves or is kept mounted while hidden).
   final bool holdsWhileTickersOff;
 
   @override

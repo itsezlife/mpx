@@ -2,8 +2,7 @@ import 'dart:ui';
 
 import 'package:meta/meta.dart';
 
-/// A baked glyph or a rendered animation frame ready to draw: the page image it
-/// sits on and the rectangle of its pixels on that page.
+/// A rendered animation frame ready to draw: the page image it sits on and the rectangle of its pixels on that page.
 ///
 /// This is the optional sprite capability of an `AssetPaintable`. A surface
 /// that finds one draws the rectangle of [page] instead of painting the asset
@@ -35,6 +34,6 @@ final class AtlasSprite {
   /// The page pixels.
   final Image page;
 
-  /// Where the glyph is on [page], in page pixels.
+  /// Where the frame is on [page], in page pixels.
   final Rect source;
 }

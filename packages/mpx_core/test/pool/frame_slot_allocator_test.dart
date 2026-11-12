@@ -180,7 +180,7 @@ void main() {
   });
 
   group('page size by class', () {
-    // Twice the class edge: at most four cells a page, so a playing sticker
+    // Twice the class edge: at most four cells a page, so a playing animation
     // uploads at most four times what changed.
     FrameSlotAllocator bySize({int budgetBytes = 48 * 1024 * 1024}) =>
         FrameSlotAllocator(pageSideFor: (c) => 2 * c, budgetBytes: budgetBytes);

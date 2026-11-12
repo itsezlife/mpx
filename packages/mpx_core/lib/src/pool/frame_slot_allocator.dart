@@ -65,7 +65,7 @@ final class FrameSlot {
 /// the 512 px class up). A page reaches the
 /// GPU whole, so a page much larger than the cells that change makes every
 /// tick upload bytes nobody asked for: with one page for every class, one
-/// playing 128 px sticker uploaded 64 times what changed. The budget is
+/// playing 128 px animation uploaded 64 times what changed. The budget is
 /// therefore **bytes**, not a page count: a page opens when its bytes still
 /// fit in [budgetBytes], and a small page costs little of it.
 ///

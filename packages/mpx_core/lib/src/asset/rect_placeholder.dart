@@ -3,15 +3,14 @@ import 'dart:ui';
 import 'package:mpx_core/src/asset/asset_paintable.dart';
 import 'package:mpx_core/src/asset/atlas_sprite.dart';
 
-/// The default stand-in of media (a GIF, a clip, a picture) that has nothing to
+/// The default stand-in of media (an animation, a clip, a picture) that has nothing to
 /// show yet: the whole rectangle in one quiet colour.
 ///
 /// No shape is drawn for media: a grid cell that waits for its image shows the
 /// flat colour `0xFFEDF3F7` across the full cell, with no radius of its own,
 /// and the loader sits over it. A corner radius belongs to the surface: a binding clips what
 /// it paints to `AssetProfile.cornerRadius`, so the rectangle follows the
-/// cell's corners with no radius here. The circle is the stand-in of a glyph
-/// (`CirclePlaceholder`), which has a box and no edges.
+/// cell's corners with no radius here.
 ///
 /// The colour is the context's tint, drawn as given (a host passes one of its
 /// quiet theme tokens); without one it is [fallbackColor]. Synchronous,

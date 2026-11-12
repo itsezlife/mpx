@@ -113,7 +113,7 @@ typedef FrameBatch<K extends Object> = ({
 /// The dynamic frame pages of animated assets: slots, the renderer that fills
 /// them, and the images that make them drawable.
 ///
-/// Joins the pieces under one owner, as `GlyphAtlas` does for baked glyphs:
+/// Joins the pieces under one owner:
 /// a [FramePool] decides who has a slot, a [FrameRenderer] writes frames into
 /// the [FramePageMemory], [FramePageImages] uploads the pages that changed,
 /// and a [FrameHandle] exposes the result as an `AtlasSprite`. A page whose
@@ -222,13 +222,13 @@ final class FrameAtlas<K extends Object> {
   /// at most four cells; from [oneCellFrom] up, the class edge, one cell.
   ///
   /// A page is uploaded whole, so its size is what one changed frame costs on
-  /// the GPU path. The playback benchmark measured one 128 px sticker
+  /// the GPU path. The playback benchmark measured one 128 px animation
   /// uploading a 4 MiB page every tick, 64 times the bytes that changed; with
-  /// this the same sticker uploads 256 KiB, and a few stickers of one class
+  /// this the same animation uploads 256 KiB, and a few animations of one class
   /// share a page. A page of one cell would upload least but opens a page (and
-  /// an image) per sticker; four is the compromise for the small classes.
+  /// an image) per animation; four is the compromise for the small classes.
   ///
-  /// A 512 px frame is a chat's lone sticker or a content preview, a few on
+  /// A 512 px frame is a list's lone large item or a content preview, a few on
   /// screen, and plays from a page only when the texture pool has none for
   /// it. On a page of four it uploaded the page's top half, 2 MiB, on every
   /// frame; on a page of its own it uploads 1 MiB.
@@ -238,7 +238,7 @@ final class FrameAtlas<K extends Object> {
   /// The smallest class whose default page holds one cell ([pageSideFor]).
   static const int oneCellFrom = 512;
 
-  /// Default byte budget of the pages, apart from the glyph pages' own.
+  /// Default byte budget of the pages.
   static const int defaultBudgetBytes = 48 * 1024 * 1024;
 
   /// Default cell edges: the display sizes animated assets come in, capped at

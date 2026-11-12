@@ -6,7 +6,7 @@ enum AssetDecodeMode {
   original,
 
   /// Only the alpha is kept and the surface tints it at paint time, so a
-  /// text-coloured emoji is one cache entry however many colours it is drawn
+  /// text-coloured icon is one cache entry however many colours it is drawn
   /// in. It is a decode choice, hence part of the entry identity.
   template,
 }

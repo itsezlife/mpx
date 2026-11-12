@@ -19,8 +19,7 @@ import 'package:mpx_core/src/identity/media_key.dart';
 /// ## What a binding pins
 ///
 /// The entry it attached to stays in the cache, whatever the budget, until
-/// the last binding on it detaches; a glyph binding also holds the atlas page
-/// its glyph is on. Both are counts owned by the binding, taken at attach and
+/// the last binding on it detaches. It is a count owned by the binding, taken at attach and
 /// given back exactly once at [detach], so evicting, clearing or replacing
 /// anything in the scope never changes them.
 ///
@@ -47,8 +46,6 @@ abstract interface class AssetBinding implements Listenable {
   /// content is further, this is that entry's stage, never final (see
   /// [paintable]).
   ///
-  /// For a glyph on a platform that bakes this asks the atlas for its sprite,
-  /// which may queue a page to be loaded again, so it is not a pure read.
   AssetReadiness get readiness;
 
   /// The best paintable available now, never null: before anything is
@@ -71,7 +68,7 @@ abstract interface class AssetBinding implements Listenable {
   /// final stage. A failed or cancelled attempt keeps it, since the content is
   /// still missing; the next attempt starts without it and the last binding
   /// leaving forgets it. Content the producer served from a cache, a memory
-  /// hit, a glyph and a detached binding read null, so a surface that draws a
+  /// hit and a detached binding read null, so a surface that draws a
   /// download indicator draws none for them. A change is signalled to the
   /// listeners. It is the entry's own download: a sibling's stage this binding
   /// borrows does not bring its download along.

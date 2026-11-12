@@ -27,8 +27,8 @@ abstract interface class PlaybackTarget {
 /// stands still; the first frame after it advances [now] by one display frame
 /// (the last frame-to-frame step seen), not by the length of the pause. So
 /// every animation freezes and continues from where it stopped, whatever the
-/// pause's length: a panel sliding in for 300 ms used to show as a 300 ms jump
-/// in every sticker, because a paintable can only drop a step it recognises
+/// pause's length: a sheet sliding in for 300 ms used to show as a 300 ms jump
+/// in every animation, because a paintable can only drop a step it recognises
 /// as a pause by its size (`resumeGap`), and a short pause looks like a slow
 /// frame.
 ///
@@ -36,7 +36,7 @@ abstract interface class PlaybackTarget {
 ///
 /// The host sets and clears named [PlaybackPauseLayer]s (a route moving, a
 /// fast scroll, low power, a hidden surface, a window without focus, an
-/// overlay over the chat). Playback stops while any layer the [policy] pauses
+/// overlay over the surface). Playback stops while any layer the [policy] pauses
 /// on is set, whatever the bindings' own wishes. A `PlaybackActivity` drives
 /// the ones that follow the app and the platform, so a host does not call
 /// [setPaused] for them by hand.

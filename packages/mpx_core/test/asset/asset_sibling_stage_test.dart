@@ -5,7 +5,7 @@ import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
 
 const _gif = MediaKey.remote('gif-1');
-// The panel cell's decode and the chat's: the same content at two sizes.
+// A grid cell's decode and a list item's: the same content at two sizes.
 const _cell = AssetSpec(pixelWidth: 300, pixelHeight: 200);
 const _chat = AssetSpec(pixelWidth: 480, pixelHeight: 480);
 const _profile = AssetProfile();

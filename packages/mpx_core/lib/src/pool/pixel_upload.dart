@@ -8,7 +8,7 @@ import 'dart:ui' as ui;
 /// The synchronous form copies the bytes and returns the image at once; the
 /// engine finishes the upload off the UI isolate, on the raster thread. On a
 /// phone it cut the UI time of a page upload to about a third, and the
-/// hitches of a scrolled sticker grid by about 40%. Only Impeller implements
+/// hitches of a scrolled animated grid by about 40%. Only Impeller implements
 /// it: the web throws `UnimplementedError`, and so may another engine. The
 /// first throw switches this upload to the asynchronous form for good, so an
 /// engine without it costs one failed call.

@@ -45,8 +45,8 @@ import 'package:mpx_core/src/texture/frame_texture_pool.dart';
 /// ([AssetPaintable.firstFrame]), never its live frame, and one with no still
 /// lends nothing: the binding's own entry starts from frame 0, and a frame
 /// from the middle of the sibling's loop would jump back when it arrives. A
-/// GIF picked from a panel cell is drawn in the message at once, at the
-/// cell's pixels, until the message's own decode arrives.
+/// clip picked from a grid cell is drawn in a list item at once, at the
+/// cell's pixels, until the item's own decode arrives.
 ///
 /// An entry with a live binding is pinned: neither the budget, [clearAll] nor
 /// the memory-pressure signal evicts it, so eviction can never invalidate a
@@ -60,7 +60,7 @@ import 'package:mpx_core/src/texture/frame_texture_pool.dart';
 /// foreground profile (`AssetProfile.foreground`): each keeps the frame it
 /// shows, as if its surface held it (`AssetBinding.held`), and goes on from
 /// that frame when the last hold is released. The clock keeps running, so the
-/// foreground surface (a content preview) plays while the panel, the chat and
+/// foreground surface (a content preview) plays while the grid, the list and
 /// a sheet under it stand still; a pause layer of the clock would stop it
 /// too. As a preview opens, every image below the preview's layer stops its
 /// animation, and as it closes they start again where they were.

@@ -55,7 +55,7 @@ void main() {
     });
 
     test('caps the decode at the longer side, keeping the proportion', () {
-      // A 206 dp sticker at density 3 is 618 px: decoded at 512.
+      // A 206 dp item at density 3 is 618 px: decoded at 512.
       final square = AssetPresets.media(
         size: const Size.square(206),
         devicePixelRatio: 3,

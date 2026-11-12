@@ -50,7 +50,7 @@ final class FrameLease {
 ///
 /// ## Memory pressure
 ///
-/// [releaseUnpinned] evicts every idle entry at once, as the glyph pages do:
+/// [releaseUnpinned] evicts every idle entry at once:
 /// pinned entries stay, because releasing what is on screen would be redrawn
 /// from nothing within a few frames.
 ///

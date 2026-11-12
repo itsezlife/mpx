@@ -9,7 +9,7 @@ import 'package:mpx_core/src/asset/asset_spec.dart';
 /// [overlayShown]) are set by it from its inputs; [routeMoving] and
 /// [fastScroll] belong to the host (a route transition, the scroll physics).
 enum PlaybackPauseLayer {
-  /// A route, a sheet or the panel's presentation is moving in or out; the
+  /// A route, a sheet or an overlaid surface is moving in or out; the
   /// frames are better spent on the motion.
   routeMoving,
 
@@ -25,21 +25,20 @@ enum PlaybackPauseLayer {
 
   /// The app is not the one the user is working in: its window lost focus to
   /// another app (desktop, a blurred tab on the web), or it is hidden. On
-  /// desktop, stickers, emoji and spoiler dust freeze the same moment the
-  /// window deactivates. A `PlaybackActivity` on a phone leaves it clear
+  /// desktop, animations freeze the same moment the window deactivates. A `PlaybackActivity` on a phone leaves it clear
   /// for a call or a system sheet over the visible app
   /// (`PlaybackActivityPolicy.pausesOnFocusLoss`).
   appInactive,
 
   /// The user asked the system for less motion. Not in the standard pausing
   /// set ([PlaybackPolicy.standardPausingLayers]): desktop does not read the
-  /// setting at all, and animated emoji are content
+  /// setting at all, and animated media are content
   /// rather than interface motion. A host that wants it to stop playback adds
   /// it to [PlaybackPolicy.pausingLayers].
   reducedMotion,
 
-  /// Something sits over the chat that is not part of it: a dialog, a sheet, a
-  /// full-screen route. Desktop pauses the chat under any box layer. Raised by holds (`PlaybackActivity.holdOverlay`) so that
+  /// Something covers the surface the animations are on: a dialog, a sheet,
+  /// a full-screen route. Raised by holds (`PlaybackActivity.holdOverlay`) so that
   /// nested overlays do not clear each other.
   overlayShown,
 }
@@ -50,7 +49,7 @@ enum PlaybackPauseLayer {
 ///
 /// Every layer pauses except [PlaybackPauseLayer.reducedMotion] (see
 /// [standardPausingLayers]). A small asset runs at 30 fps and a large one at 60:
-/// emoji up to 90 dp are capped at about 30 fps on mobile and repaint no faster
+/// animations up to 90 dp are capped at about 30 fps on mobile and repaint no faster
 /// than every 33 ms on desktop, because a small animation
 /// is not visibly smoother at 60 and costs a repaint of its surface each
 /// frame.

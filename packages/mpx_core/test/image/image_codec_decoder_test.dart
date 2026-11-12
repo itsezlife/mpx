@@ -286,7 +286,7 @@ void main() {
 
     tearDown(() => paintable.dispose());
 
-    // Ticket 100: an emoji borrowed by a sibling binding shows its first
+    // An animation borrowed by a sibling binding shows its first
     // frame, never the frame the loop is at.
     test('lends its first frame as a still, mid-loop too', () async {
       const start = Duration(seconds: 1);
@@ -354,7 +354,7 @@ void main() {
       },
     );
 
-    // Ticket 148: a cell scrolled off for a while and back goes on from the
+    // A cell scrolled off for a while and back goes on from the
     // frame it left on, for what was left of that frame's time, not its
     // whole duration again.
     test('back after a stop, the frame on show lasts only the rest of its '
