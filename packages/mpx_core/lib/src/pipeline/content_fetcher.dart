@@ -32,6 +32,7 @@ final class FetchRequest {
     required this.priority,
     required this.cancellation,
     this.onProgress = _ignoreProgress,
+    this.prefix,
   });
 
   /// What is known about the content. For [FetchPart.thumbnail] its
@@ -51,6 +52,13 @@ final class FetchRequest {
   /// Told the bytes received while the fetcher transfers the part; see the
   /// contract of [ContentFetcher]. Ignores every call by default.
   final FetchProgress onProgress;
+
+  /// Only the first [prefix] of the content is wanted, for a staged preload
+  /// (`AssetPreloadStage.seconds`); null for the whole part. A fetcher that
+  /// can resolve a duration to bytes (through the container's index) fetches
+  /// that much; one that cannot fetches the whole. The pipeline does not
+  /// decode what a prefix fetch returns.
+  final Duration? prefix;
 }
 
 /// What a fetch produced.

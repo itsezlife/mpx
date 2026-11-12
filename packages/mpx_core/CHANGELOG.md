@@ -10,6 +10,10 @@
 - Platform frame texture hosts (Android, iOS, macOS) on channel
   `dev.mpx.frame_texture`, native library `libmpx_frame_texture`.
 - `ImageCodecDecoder` for the engine's image formats.
+- Feed inputs: `AssetBinding.visibleFraction` with `AssetProfile.advanceFloor`;
+  staged preloads (`AssetCacheScope.preload`, `AssetPreloadStage`, distance
+  order, `FetchRequest.prefix`); `meteredNetwork` and `thermalStress` pause
+  layers fed through `PlaybackActivity`, which hold back staged preloads.
 
 ## 0.0.1
 

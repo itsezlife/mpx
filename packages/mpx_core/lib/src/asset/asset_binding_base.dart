@@ -46,7 +46,7 @@ abstract base class AssetBindingBase
 
   final AssetPaintable _placeholder;
   final PlaybackClock _clock;
-  bool _visible = true;
+  double _fraction = 1;
   bool _held = false;
   bool _backgroundHeld;
   // The clock's time when the hold began: what a held binding paints at.
@@ -100,7 +100,11 @@ abstract base class AssetBindingBase
   /// Kept apart from [held], which stays the surface's own wish: a surface
   /// that holds its binding is still holding it when the background hold
   /// ends.
-  bool get holdsFrame => _held || (_backgroundHeld && !profile.foreground);
+  bool get holdsFrame =>
+      _held || (_backgroundHeld && !profile.foreground) || _belowFloor;
+
+  // Shown, but too little of it to advance (`AssetProfile.advanceFloor`).
+  bool get _belowFloor => _fraction > 0 && _fraction < profile.advanceFloor;
 
   /// Set by the scope while a background hold is on
   /// (`AssetCacheScope.holdBackground`).
@@ -125,13 +129,24 @@ abstract base class AssetBindingBase
   AssetPaintable get paintable => _detached ? _placeholder : livePaintable;
 
   @override
-  bool get visible => _visible;
+  bool get visible => _fraction > 0;
 
   @override
-  set visible(bool value) {
-    if (_visible == value) return;
-    _visible = value;
-    if (!_detached) onVisibleChanged();
+  set visible(bool value) => visibleFraction = value ? 1 : 0;
+
+  @override
+  double get visibleFraction => _fraction;
+
+  @override
+  set visibleFraction(double value) {
+    final next = value.clamp(0.0, 1.0);
+    if (next == _fraction) return;
+    final wasVisible = visible;
+    final wasHolding = holdsFrame;
+    _fraction = next;
+    // The hold first: a binding that hides while held keeps its frame.
+    _holdChanged(wasHolding);
+    if (visible != wasVisible && !_detached) onVisibleChanged();
   }
 
   @override

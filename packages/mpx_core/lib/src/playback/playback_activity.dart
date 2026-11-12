@@ -106,6 +106,8 @@ final class PlaybackOverlayHold {
 /// | [lifecycle] `hidden`, `paused`, `detached` | `appInactive` and [PlaybackPauseLayer.surfaceHidden] |
 /// | `lowPower` | [PlaybackPauseLayer.lowPower] |
 /// | `reducedMotion` | [PlaybackPauseLayer.reducedMotion] |
+/// | `meteredNetwork` | [PlaybackPauseLayer.meteredNetwork] |
+/// | `thermalStress` | [PlaybackPauseLayer.thermalStress] |
 /// | [holdOverlay] | [PlaybackPauseLayer.overlayShown] |
 ///
 /// A state the source has not reported yet (`null`) is "unknown" and pauses
@@ -113,7 +115,7 @@ final class PlaybackOverlayHold {
 /// before the first real one. The platform delivers `resumed -> hidden` as
 /// `inactive` then `hidden`; the clock stops its frames once, on the first.
 ///
-/// This object owns those five layers. [PlaybackPauseLayer.routeMoving] and
+/// This object owns those seven layers. [PlaybackPauseLayer.routeMoving] and
 /// [PlaybackPauseLayer.fastScroll] stay the host's to set directly on the
 /// clock, and [dispose] leaves them alone.
 ///
@@ -129,9 +131,11 @@ final class PlaybackOverlayHold {
 final class PlaybackActivity {
   /// Starts driving [clock]'s layers from the inputs it is given.
   ///
-  /// [lifecycle] is `WidgetsPlaybackLifecycleSource` in production. [lowPower]
-  /// and [reducedMotion] are host-fed: the activity reads their value now and
-  /// follows them, and disposes neither. [startTimer] is for tests.
+  /// [lifecycle] is `WidgetsPlaybackLifecycleSource` in production. [lowPower],
+  /// [reducedMotion], [meteredNetwork] and [thermalStress] are host-fed (a
+  /// device-signals adapter, the host's own settings): the activity reads
+  /// their value now and follows them, and disposes none. [startTimer] is for
+  /// tests.
   ///
   /// A [policy] that leaves [PlaybackActivityPolicy.pausesOnFocusLoss] null
   /// takes the default of `defaultTargetPlatform`, read here once.
@@ -140,12 +144,18 @@ final class PlaybackActivity {
     PlaybackLifecycleSource? lifecycle,
     ValueListenable<bool>? lowPower,
     ValueListenable<bool>? reducedMotion,
+    ValueListenable<bool>? meteredNetwork,
+    ValueListenable<bool>? thermalStress,
     this.policy = const PlaybackActivityPolicy(),
     PlaybackTimerFactory startTimer = Timer.new,
   }) : _clock = clock,
        _lifecycle = lifecycle,
        _lowPower = lowPower,
        _reducedMotion = reducedMotion,
+       _inputs = {
+         PlaybackPauseLayer.meteredNetwork: ?meteredNetwork,
+         PlaybackPauseLayer.thermalStress: ?thermalStress,
+       },
        _startTimer = startTimer,
        _pausesOnFocusLoss =
            policy.pausesOnFocusLoss ??
@@ -156,10 +166,23 @@ final class PlaybackActivity {
     lifecycle?.addListener(_onLifecycle);
     lowPower?.addListener(_onLowPower);
     reducedMotion?.addListener(_onReducedMotion);
+    _inputs.forEach((layer, input) {
+      void follow() {
+        if (!_disposed) _set(layer, on: input.value);
+      }
+
+      _followers[layer] = follow;
+      input.addListener(follow);
+      follow();
+    });
     _onLifecycle();
     _onLowPower();
     _onReducedMotion();
   }
+
+  // Host-fed inputs that only mirror a layer, and the listener of each.
+  final Map<PlaybackPauseLayer, ValueListenable<bool>> _inputs;
+  final Map<PlaybackPauseLayer, void Function()> _followers = {};
 
   /// How long a change of focus must hold before it counts.
   final PlaybackActivityPolicy policy;
@@ -304,6 +327,9 @@ final class PlaybackActivity {
     _lifecycle?.removeListener(_onLifecycle);
     _lowPower?.removeListener(_onLowPower);
     _reducedMotion?.removeListener(_onReducedMotion);
+    _followers.forEach(
+      (layer, follow) => _inputs[layer]!.removeListener(follow),
+    );
     for (final layer in _held.toList()) {
       _clock.setPaused(layer, paused: false);
     }

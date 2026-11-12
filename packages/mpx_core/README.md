@@ -54,6 +54,9 @@ AssetCacheProvider(
 - `AssetPipeline`: resolve, fetch and decode with priority lanes and
   cancellation.
 - `PlaybackClock` with pause layers, fps caps and background holds.
+- Feed inputs: visible fraction with an advance floor, staged preloads
+  (metadata, a prefix in seconds, first frame) ordered by distance, network
+  and thermal inputs that hold preloads back.
 - Frame pool (`frame_pool.dart`) and platform texture hosts on Android, iOS
   and macOS.
 - `ImageCodecDecoder` for the engine's image formats, stills and animated

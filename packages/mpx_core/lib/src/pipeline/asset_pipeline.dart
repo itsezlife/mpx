@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 import 'package:mpx_core/src/asset/asset_cache_budgets.dart';
 import 'package:mpx_core/src/asset/asset_paintable.dart';
+import 'package:mpx_core/src/asset/asset_preload.dart';
 import 'package:mpx_core/src/asset/asset_producer.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_spec.dart';
@@ -88,6 +89,12 @@ final class AssetPipelineError implements Exception {
 ///   [know]) goes to the host's [MediaResolver], batched with the others
 ///   asked for in the same turn; the entry stays at `AssetStage.none` until
 ///   it resolves.
+/// - **Staged preloads.** While only staged preloads hold an entry
+///   (`AssetDemand.preloadStage`), the attempt stops at their stage: after the
+///   resolve for `metadata`, after a prefix fetch (`FetchRequest.prefix`, not
+///   decoded) for `seconds`, after the first frame for `firstFrame`. It ends
+///   as cancelled, not failed. Among preloads, the nearest
+///   (`AssetDemand.distance`) is served first.
 ///
 /// ## Failure
 ///
@@ -164,6 +171,12 @@ final class AssetPipeline implements AssetProducer {
   void _startFetch(_Work work) {
     work.phase = _Phase.fetching;
     final token = work.token = CancellationToken();
+    work.prefix = switch (work.job.demand.preloadStage) {
+      AssetPreloadStage$Seconds(:final duration)
+          when work.part == FetchPart.content =>
+        duration,
+      _ => null,
+    };
     Future<FetchedContent> result;
     try {
       result = _fetcher.fetch(
@@ -173,6 +186,7 @@ final class AssetPipeline implements AssetProducer {
           priority: work.priority,
           cancellation: token,
           onProgress: work.received,
+          prefix: work.prefix,
         ),
       );
     } on Object catch (error, stackTrace) {
@@ -273,6 +287,13 @@ final class _Job implements AssetTask {
   }
 
   void _begin(MediaDescriptor known) {
+    if (demand.preloadStage == AssetPreloadStage.metadata) {
+      // The descriptor is all a metadata preload wants; the directory keeps
+      // it for the attempt a binding starts later.
+      descriptor = known;
+      satisfied();
+      return;
+    }
     final decoder = pipeline._decoders.decoderFor(known.kind);
     if (decoder == null) {
       _fail(
@@ -287,8 +308,11 @@ final class _Job implements AssetTask {
     }
     descriptor = known;
     final content = _content = _Work(this, FetchPart.content, decoder);
+    // A prefix is for a player, which draws no stand-in from the pipeline.
+    final staged = demand.preloadStage;
     final thumbnail = switch (known.thumbnail) {
       null => null,
+      _ when staged is AssetPreloadStage$Seconds => null,
       _ => _thumbnail = _Work(this, FetchPart.thumbnail, decoder),
     };
     // The lane picks by priority, so the order of these two only breaks ties.
@@ -324,6 +348,17 @@ final class _Job implements AssetTask {
     if (work.part == FetchPart.content) _fail(error, stackTrace, kind);
   }
 
+  /// The attempt reached the stage of the preloads that hold the entry: it
+  /// ends as cancelled, which records no failure.
+  void satisfied() {
+    if (_ended) return;
+    _ended = true;
+    pipeline._jobs.remove(this);
+    _content?.cancel();
+    _thumbnail?.cancel();
+    progress.cancelled();
+  }
+
   /// The decoder gave up by itself (`AssetProgress.cancelled`).
   void contentCancelled() {
     if (_ended) return;
@@ -353,6 +388,8 @@ final class _Work implements LaneWork {
   final Decoder decoder;
   _Phase phase = _Phase.queuedFetch;
   CancellationToken? token;
+  // The prefix the running fetch asked for, or null for the whole part.
+  Duration? prefix;
   FetchedContent? content;
   _DecodeProgress? decodeProgress;
   bool _cancelled = false;
@@ -363,6 +400,9 @@ final class _Work implements LaneWork {
   AssetPriority get priority => part == FetchPart.thumbnail
       ? AssetPriority.placeholder
       : job.demand.priority;
+
+  @override
+  int get distance => job.demand.distance;
 
   // Whether the fetch of this part reported a transfer.
   bool _transferred = false;
@@ -387,6 +427,20 @@ final class _Work implements LaneWork {
     // All of it arrived, which a fetcher's last report need not say (nor a
     // fetch that found the announced content after all): a surface that drew
     // the download shows it complete until the decode.
+    if (prefix != null) {
+      prefix = null;
+      _pipeline._fetchLane.release(this);
+      if (job.demand.preloadStage is AssetPreloadStage$Seconds) {
+        phase = _Phase.done;
+        job.satisfied();
+      } else {
+        // A binding came while the prefix was fetched: the whole part is
+        // wanted now, and a prefix does not decode.
+        phase = _Phase.queuedFetch;
+        _pipeline._fetchLane.enqueue(this);
+      }
+      return;
+    }
     if (_transferred || job.announcedDownload) reportDownload(1);
     content = fetchedContent;
     phase = _Phase.queuedDecode;
@@ -464,6 +518,18 @@ final class _DecodeProgress implements AssetProgress {
         stage == AssetStage.full ||
         (stage == AssetStage.firstFrame &&
             spec.variant == AssetVariant.firstFrame);
+    if (!isFinal &&
+        stage == AssetStage.firstFrame &&
+        _work.part == FetchPart.content &&
+        job.demand.preloadStage == AssetPreloadStage.firstFrame) {
+      // The preloads holding the entry wanted the first frame: the decode
+      // stops here, and the attempt a binding starts later goes on.
+      stop();
+      _work.phase = _Phase.done;
+      _work._pipeline._decodeLane.release(_work);
+      job.satisfied();
+      return;
+    }
     if (!isFinal) return;
     _end();
     if (_work.part == FetchPart.content) job.contentDone();

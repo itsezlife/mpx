@@ -32,7 +32,12 @@ final class AssetProfile {
     this.fit = AssetFit.contain,
     this.halfFrameRate = false,
     this.foreground = false,
-  }) : assert(cornerRadius >= 0, 'A corner radius cannot be negative.');
+    this.advanceFloor = 0,
+  }) : assert(cornerRadius >= 0, 'A corner radius cannot be negative.'),
+       assert(
+         advanceFloor >= 0 && advanceFloor <= 1,
+         'The advance floor is a fraction, 0 to 1.',
+       );
 
   /// Whether the surface wants the asset to play when it is visible and no
   /// pause layer is set.
@@ -106,6 +111,16 @@ final class AssetProfile {
   /// too; a preview is drawn at a size of its own, and so has its own entry.
   final bool foreground;
 
+  /// The smallest visible fraction (`AssetBinding.visibleFraction`) at which
+  /// a playing binding advances; 0, the default, advances whenever any of it
+  /// shows.
+  ///
+  /// Below it the binding stays shown but holds its frame, as a held binding
+  /// does, and plays on from that frame once enough of it shows again. A
+  /// scrolling list that plays every visible clip sets it so a clip mostly
+  /// scrolled away costs no frames; Android's reference behaviour is 0.25.
+  final double advanceFloor;
+
   /// The source frame rate above which [halfFrameRate] skips every second
   /// frame.
   static const double halfFrameRateAbove = 30;
@@ -120,7 +135,8 @@ final class AssetProfile {
       other.cornerRadius == cornerRadius &&
       other.fit == fit &&
       other.halfFrameRate == halfFrameRate &&
-      other.foreground == foreground;
+      other.foreground == foreground &&
+      other.advanceFloor == advanceFloor;
 
   @override
   int get hashCode => Object.hash(
@@ -132,11 +148,13 @@ final class AssetProfile {
     fit,
     halfFrameRate,
     foreground,
+    advanceFloor,
   );
 
   @override
   String toString() =>
       'AssetProfile(animate: $animate, loop: $loop, '
       'restFrame: ${restFrame.name}, autoplayFirstFrame: $autoplayFirstFrame, cornerRadius: $cornerRadius, fit: ${fit.name}, '
-      'halfFrameRate: $halfFrameRate, foreground: $foreground)';
+      'halfFrameRate: $halfFrameRate, foreground: $foreground, '
+      'advanceFloor: $advanceFloor)';
 }

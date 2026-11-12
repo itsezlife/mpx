@@ -7,6 +7,7 @@ import 'package:mpx_core/src/asset/asset_binding_base.dart';
 import 'package:mpx_core/src/asset/asset_cache_budgets.dart';
 import 'package:mpx_core/src/asset/asset_paintable.dart';
 import 'package:mpx_core/src/asset/asset_playback.dart';
+import 'package:mpx_core/src/asset/asset_preload.dart';
 import 'package:mpx_core/src/asset/asset_producer.dart';
 import 'package:mpx_core/src/asset/asset_profile.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
@@ -14,6 +15,7 @@ import 'package:mpx_core/src/asset/asset_spec.dart';
 import 'package:mpx_core/src/asset/rect_placeholder.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 import 'package:mpx_core/src/playback/playback_clock.dart';
+import 'package:mpx_core/src/playback/playback_policy.dart';
 import 'package:mpx_core/src/texture/frame_texture_pool.dart';
 
 /// The asset cache of one host: entries keyed by content and [AssetSpec],
@@ -65,6 +67,19 @@ import 'package:mpx_core/src/texture/frame_texture_pool.dart';
 /// too. As a preview opens, every image below the preview's layer stops its
 /// animation, and as it closes they start again where they were.
 ///
+/// ## Staged preloads
+///
+/// [preload] asks for an entry nobody shows yet, only as far as a stage
+/// ([AssetPreloadStage]: the descriptor, a prefix of the bytes, the first
+/// frame), with a distance that orders it among other preloads. A preload pins
+/// its entry like a hidden binding; the producer reads the stage live
+/// (`AssetDemand.preloadStage`) and stops there, unless a binding attaches
+/// meanwhile and wants the rest. While a layer of [preloadPausingLayers] is
+/// set on the clock (low power, a fast scroll, a metered network, thermal
+/// stress), new preload attempts wait; they start when the last such layer
+/// clears. Running work is not stopped. Hidden bindings are not preloads and
+/// are never held back.
+///
 /// ## Textures
 ///
 /// A platform with a texture host registers its [FrameTexturePool] as
@@ -94,6 +109,7 @@ final class AssetCacheScope {
     Listenable? memoryPressure,
     AssetPaintable? placeholder,
     this.textures,
+    this.preloadPausingLayers = standardPreloadPausingLayers,
   }) : _producer = producer,
        _budgets = budgets,
        _clock = clock ?? PlaybackClock(),
@@ -101,6 +117,44 @@ final class AssetCacheScope {
        _memoryPressure = memoryPressure,
        placeholder = placeholder ?? const RectPlaceholder() {
     memoryPressure?.addListener(_onMemoryPressure);
+    _clock.addLayerListener(_onLayers);
+    _preloadsPaused = _layersPausePreloads();
+  }
+
+  /// The layers that hold back staged preloads unless a host says otherwise:
+  /// low power, a fast scroll, a metered network and thermal stress.
+  static const Set<PlaybackPauseLayer> standardPreloadPausingLayers = {
+    PlaybackPauseLayer.lowPower,
+    PlaybackPauseLayer.fastScroll,
+    PlaybackPauseLayer.meteredNetwork,
+    PlaybackPauseLayer.thermalStress,
+  };
+
+  /// The clock layers that hold back new staged preload attempts while set.
+  final Set<PlaybackPauseLayer> preloadPausingLayers;
+
+  bool _preloadsPaused = false;
+
+  /// Whether staged preloads wait now: a layer of [preloadPausingLayers] is
+  /// set on the clock.
+  bool get preloadsPaused => _preloadsPaused;
+
+  bool _layersPausePreloads() =>
+      _clock.pausedLayers.any(preloadPausingLayers.contains);
+
+  void _onLayers() {
+    if (_disposed) return;
+    final paused = _layersPausePreloads();
+    if (paused == _preloadsPaused) return;
+    _preloadsPaused = paused;
+    if (paused) return;
+    for (final entry in List<_Entry>.of(_entries.values)) {
+      if (entry.preloads.isNotEmpty &&
+          entry.attempt == null &&
+          !entry.isFinal) {
+        _start(entry);
+      }
+    }
   }
 
   final AssetProducer? _producer;
@@ -197,15 +251,11 @@ final class AssetCacheScope {
     if (_disposed) {
       throw StateError('AssetCacheScope.attach called after dispose.');
     }
-    final entry = _entries.putIfAbsent((key, spec), () {
-      final created = _Entry(key, spec);
-      (_byKey[key] ??= Set<_Entry>.identity()).add(created);
-      return created;
-    });
+    final entry = _entryFor(key, spec);
     final binding = _EntryBinding(scope: this, entry: entry, profile: profile);
     _unpinned[entry.tier]!.remove(entry);
     entry.bindings.add(binding);
-    entry.demand.refresh(entry.bindings);
+    entry.demand.refresh(entry);
     entry.syncShown();
     if (entry.attempt == null && !entry.isFinal) _start(entry);
     // After the start: a memory hit answered inside it needs no sibling.
@@ -264,6 +314,55 @@ final class AssetCacheScope {
     }
   }
 
+  /// Preloads [key] decoded as [spec] as far as [stage], before any surface
+  /// shows it. [distance] orders it among preloads: 0 for the next item,
+  /// larger further away. Preloading an entry a binding holds changes nothing
+  /// about its work. See "Staged preloads" above.
+  ///
+  /// Throws a [StateError] after [dispose], as [attach] does.
+  AssetPreload preload(
+    MediaKey key,
+    AssetSpec spec, {
+    required AssetPreloadStage stage,
+    int distance = 0,
+  }) {
+    if (_disposed) {
+      throw StateError('AssetCacheScope.preload called after dispose.');
+    }
+    final entry = _entryFor(key, spec);
+    final preload = _Preload(this, entry, stage, distance);
+    _unpinned[entry.tier]!.remove(entry);
+    entry.preloads.add(preload);
+    entry.demand.refresh(entry);
+    if (entry.attempt == null && !entry.isFinal) _start(entry);
+    return preload;
+  }
+
+  _Entry _entryFor(MediaKey key, AssetSpec spec) =>
+      _entries.putIfAbsent((key, spec), () {
+        final created = _Entry(key, spec);
+        (_byKey[key] ??= Set<_Entry>.identity()).add(created);
+        return created;
+      });
+
+  void _preloadCancelled(_Preload preload) {
+    final entry = preload.entry;
+    entry.preloads.remove(preload);
+    entry.demand.refresh(entry);
+    _lastClaimGone(entry);
+  }
+
+  // Cancels the work of an entry nobody binds or preloads any more and puts it
+  // in the budget, or drops it.
+  void _lastClaimGone(_Entry entry) {
+    if (entry.bindings.isNotEmpty || entry.preloads.isNotEmpty) return;
+    entry.attempt?.cancel();
+    // Nobody draws it any more; a re-attach starts an attempt that tells.
+    entry.download = null;
+    _release(entry);
+    _trim();
+  }
+
   /// Drops every entry nobody is bound to, disposing their paintables. Pinned
   /// entries stay: eviction never touches a live binding. This is also what
   /// the memory-pressure signal does. Baked atlas pages are not the cache's
@@ -282,7 +381,7 @@ final class AssetCacheScope {
   void connectivityRestored() {
     if (_disposed) return;
     for (final entry in List<_Entry>.of(_entries.values)) {
-      if (entry.bindings.isNotEmpty &&
+      if ((entry.bindings.isNotEmpty || entry.preloads.isNotEmpty) &&
           entry.attempt == null &&
           !entry.isFinal &&
           entry.failureKind == AssetFailureKind.transient) {
@@ -299,8 +398,11 @@ final class AssetCacheScope {
     if (_disposed) return;
     _disposed = true;
     _memoryPressure?.removeListener(_onMemoryPressure);
+    _clock.removeLayerListener(_onLayers);
     for (final entry in List<_Entry>.of(_entries.values)) {
       entry.attempt?.cancel();
+      entry.preloads.toList().forEach((preload) => preload.cancelled = true);
+      entry.preloads.clear();
       for (final binding in List<_EntryBinding>.of(entry.bindings)) {
         binding.detach();
       }
@@ -314,6 +416,8 @@ final class AssetCacheScope {
   void _start(_Entry entry) {
     final producer = _producer;
     if (producer == null) return;
+    // Only preloads want it, and the device or the network asks to wait.
+    if (entry.bindings.isEmpty && _preloadsPaused) return;
     final attempt = _Attempt(this, entry);
     entry.attempt = attempt;
     // The last attempt's download is no fact about this one: the producer
@@ -440,15 +544,10 @@ final class AssetCacheScope {
   void _detached(_EntryBinding binding) {
     final entry = binding.entry;
     entry.bindings.remove(binding);
-    entry.demand.refresh(entry.bindings);
+    entry.demand.refresh(entry);
     if (binding.holdsFrame) entry.syncKeep();
     entry.syncShown();
-    if (entry.bindings.isNotEmpty) return;
-    entry.attempt?.cancel();
-    // Nobody draws it any more; a re-attach starts an attempt that tells.
-    entry.download = null;
-    _release(entry);
-    _trim();
+    _lastClaimGone(entry);
   }
 }
 
@@ -460,6 +559,7 @@ final class _Entry {
   final MediaKey key;
   final AssetSpec spec;
   final Set<_EntryBinding> bindings = {};
+  final Set<_Preload> preloads = Set.identity();
   final _Demand demand = _Demand();
   AssetStage stage = AssetStage.none;
   AssetPaintable? paintable;
@@ -478,7 +578,8 @@ final class _Entry {
   // Bindings of sibling entries that show this entry's stage.
   int borrowers = 0;
 
-  bool get isPinned => bindings.isNotEmpty || borrowers > 0;
+  bool get isPinned =>
+      bindings.isNotEmpty || preloads.isNotEmpty || borrowers > 0;
 
   // What a binding of a sibling entry may show of this one. A paintable that
   // plays may be in the middle of a loop, and the borrower's own entry starts
@@ -545,10 +646,54 @@ final class _Demand implements AssetDemand {
   @override
   AssetPriority priority = AssetPriority.visible;
 
-  void refresh(Set<_EntryBinding> bindings) {
-    priority = bindings.any((binding) => binding.visible)
+  @override
+  AssetPreloadStage? preloadStage;
+
+  @override
+  int distance = 0;
+
+  void refresh(_Entry entry) {
+    priority = entry.bindings.any((binding) => binding.visible)
         ? AssetPriority.visible
         : AssetPriority.preload;
+    if (entry.bindings.isNotEmpty || entry.preloads.isEmpty) {
+      preloadStage = null;
+      distance = 0;
+      return;
+    }
+    AssetPreloadStage? furthest;
+    var nearest = entry.preloads.first.distance;
+    for (final preload in entry.preloads) {
+      furthest = furthest?.furthest(preload.stage) ?? preload.stage;
+      if (preload.distance < nearest) nearest = preload.distance;
+    }
+    preloadStage = furthest;
+    distance = nearest;
+  }
+}
+
+final class _Preload implements AssetPreload {
+  _Preload(this._scope, this.entry, this.stage, this.distance);
+
+  final AssetCacheScope _scope;
+  final _Entry entry;
+
+  @override
+  final AssetPreloadStage stage;
+
+  @override
+  final int distance;
+
+  bool cancelled = false;
+
+  @override
+  bool get isCancelled => cancelled;
+
+  @override
+  void cancel() {
+    if (cancelled) return;
+    cancelled = true;
+    if (!_scope._disposed) _scope._preloadCancelled(this);
   }
 }
 
@@ -839,7 +984,7 @@ final class _EntryBinding extends AssetBindingBase {
 
   @override
   void onVisibleChanged() {
-    entry.demand.refresh(entry.bindings);
+    entry.demand.refresh(entry);
     syncPlayback();
     entry.syncShown();
   }

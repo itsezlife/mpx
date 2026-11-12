@@ -58,13 +58,17 @@ void main() {
   });
 
   group('the default pausing set', () {
-    test('every layer pauses but reducedMotion, which a host opts into', () {
+    test('every layer pauses but reducedMotion, which a host opts into, '
+        'and the preload-only layers', () {
       const policy = PlaybackPolicy();
 
       expect(
         policy.pausingLayers,
-        PlaybackPauseLayer.values.toSet()
-          ..remove(PlaybackPauseLayer.reducedMotion),
+        PlaybackPauseLayer.values.toSet()..removeAll({
+          PlaybackPauseLayer.reducedMotion,
+          PlaybackPauseLayer.meteredNetwork,
+          PlaybackPauseLayer.thermalStress,
+        }),
       );
       expect(policy.pausingLayers, PlaybackPolicy.standardPausingLayers);
     });

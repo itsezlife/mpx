@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 import 'package:mpx_core/src/asset/asset_cache_budgets.dart';
 import 'package:mpx_core/src/asset/asset_paintable.dart';
+import 'package:mpx_core/src/asset/asset_preload.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_spec.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
@@ -52,6 +53,21 @@ abstract interface class AssetDemand {
   /// [AssetPriority.preload] when all are hidden. Never
   /// [AssetPriority.placeholder].
   AssetPriority get priority;
+
+  /// How far the work needs to go: null for the whole content (any binding
+  /// is attached), or the furthest stage the staged preloads of the entry ask
+  /// for while only preloads hold it (`AssetCacheScope.preload`).
+  ///
+  /// A producer stops once the stage is reached and ends the attempt with
+  /// `AssetProgress.cancelled`: a preload that got what it asked for did not
+  /// fail. It reads the value live, so a binding attaching while the work
+  /// runs lets it go on to the end.
+  AssetPreloadStage? get preloadStage;
+
+  /// Among work of one [priority], which goes first: lower first. 0 while a
+  /// binding is attached; otherwise the smallest distance of the entry's
+  /// preloads.
+  int get distance;
 }
 
 /// Whether a failed attempt is worth repeating when the network comes back.

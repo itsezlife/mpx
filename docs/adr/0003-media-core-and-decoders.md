@@ -76,6 +76,16 @@ collide across packages and name their owner.
 | Staged preload | Preload requests carry a stage (metadata, first frame, n seconds), a priority and a cancel; the single `preload` class becomes staged |
 | Network and power inputs | Host-fed inputs on the pause layers, like the existing `lowPower`; `mpx`'s device signals are the default source, wired by the stack, never a core dependency |
 
+Implemented as: `AssetBinding.visibleFraction` with a per-surface
+`AssetProfile.advanceFloor` (a feed knob passed down, default 0; below it the
+binding holds its frame); `AssetCacheScope.preload(key, spec, stage:,
+distance:)` with `AssetPreloadStage` `metadata` / `seconds(d)` / `firstFrame`,
+read live by producers through `AssetDemand.preloadStage` and `distance`, a
+satisfied attempt ending as cancelled; `PlaybackPauseLayer.meteredNetwork` and
+`thermalStress` fed through `PlaybackActivity`, outside the standard pausing
+set, which together with `lowPower` and `fastScroll` hold back new staged
+preload attempts (`AssetCacheScope.preloadPausingLayers`).
+
 ### Unchanged contracts
 
 The fetch contract stands: settle promptly on cancel, report progress at start
@@ -127,8 +137,6 @@ pool and its budget (ADR 0004).
 - Where a default preset table for a host without its own lives, if any
   (`mpx`'s factory is a candidate); the core keeps only the generic
   `AssetPresets.square` and `AssetPresets.media` recipes.
-- Whether the frame-advance floor and staged preload targets are core constants
-  or feed knobs passed down.
 
 ## Provenance
 

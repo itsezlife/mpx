@@ -7,10 +7,13 @@ abstract interface class LaneWork {
   /// How urgent the work is right now. Read each time the lane picks, so it
   /// can change while the work waits.
   AssetPriority get priority;
+
+  /// Within one [priority], lower goes first. Read with [priority].
+  int get distance;
 }
 
 /// A queue that runs at most [capacity] pieces of work at once, most urgent
-/// first and oldest first among equals.
+/// first, then nearest ([LaneWork.distance]), then oldest.
 ///
 /// Work holds its slot from the moment the lane starts it until [release];
 /// the lane does not preempt running work when something more urgent arrives.
@@ -83,7 +86,11 @@ final class PriorityLane<T extends LaneWork> {
   T _mostUrgent() {
     var best = _waiting.first;
     for (final work in _waiting) {
-      if (work.priority.index > best.priority.index) best = work;
+      final byPriority = work.priority.index - best.priority.index;
+      if (byPriority > 0 ||
+          (byPriority == 0 && work.distance < best.distance)) {
+        best = work;
+      }
     }
     return best;
   }

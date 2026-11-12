@@ -6,7 +6,8 @@ import 'package:mpx_core/src/asset/asset_spec.dart';
 ///
 /// Every layer is a plain on/off signal. The ones a `PlaybackActivity` drives
 /// ([appInactive], [surfaceHidden], [lowPower], [reducedMotion],
-/// [overlayShown]) are set by it from its inputs; [routeMoving] and
+/// [overlayShown], [meteredNetwork], [thermalStress]) are set by it from its
+/// inputs; [routeMoving] and
 /// [fastScroll] belong to the host (a route transition, the scroll physics).
 enum PlaybackPauseLayer {
   /// A route, a sheet or an overlaid surface is moving in or out; the
@@ -41,6 +42,16 @@ enum PlaybackPauseLayer {
   /// a full-screen route. Raised by holds (`PlaybackActivity.holdOverlay`) so that
   /// nested overlays do not clear each other.
   overlayShown,
+
+  /// The network costs the user: metered, roaming, a data-saving mode. Not in
+  /// the standard pausing set: animations already on the device are free to
+  /// play. It holds back staged preloads
+  /// (`AssetCacheScope.preloadPausingLayers`).
+  meteredNetwork,
+
+  /// The device is hot and throttles. Not in the standard pausing set; it
+  /// holds back staged preloads, as a feed backs off under stress.
+  thermalStress,
 }
 
 /// Which layers pause playback and how fast a playing asset advances.

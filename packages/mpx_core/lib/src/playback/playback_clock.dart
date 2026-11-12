@@ -84,8 +84,24 @@ final class PlaybackClock {
   /// nothing.
   void setPaused(PlaybackPauseLayer layer, {required bool paused}) {
     final changed = paused ? _layers.add(layer) : _layers.remove(layer);
-    if (changed) _sync();
+    if (!changed) return;
+    _sync();
+    for (final listener in List<void Function()>.of(_layerListeners)) {
+      listener();
+    }
   }
+
+  final List<void Function()> _layerListeners = [];
+
+  /// Calls [listener] after each change of [pausedLayers], for something that
+  /// follows the layers besides the clock's own frames (the scope's staged
+  /// preloads).
+  void addLayerListener(void Function() listener) =>
+      _layerListeners.add(listener);
+
+  /// Stops calling [listener]; an unknown one is ignored.
+  void removeLayerListener(void Function() listener) =>
+      _layerListeners.remove(listener);
 
   /// Starts advancing [target]. Registering twice does nothing.
   @internal
@@ -125,6 +141,7 @@ final class PlaybackClock {
     if (_disposed) return;
     _disposed = true;
     _lastTick.clear();
+    _layerListeners.clear();
     _sync();
   }
 

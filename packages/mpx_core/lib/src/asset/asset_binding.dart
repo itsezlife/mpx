@@ -105,11 +105,23 @@ abstract interface class AssetBinding implements Listenable {
   /// together.
   bool replay();
 
-  /// Whether the surface shows this binding. Defaults to true. An invisible
-  /// binding stays attached and pinned but is not advanced, so a leaf
-  /// scrolled out of view costs no ticks.
+  /// Whether the surface shows this binding: [visibleFraction] is above 0.
+  /// Defaults to true. An invisible binding stays attached and pinned but is
+  /// not advanced, so a leaf scrolled out of view costs no ticks.
+  ///
+  /// Setting it sets [visibleFraction] to 1 or 0.
   bool get visible;
   set visible(bool value);
+
+  /// How much of the binding the surface shows, 0 to 1 (clamped). Defaults
+  /// to 1.
+  ///
+  /// Above 0 the binding is shown ([visible]) and its entry's work is wanted
+  /// at visible priority. Below the profile's floor
+  /// (`AssetProfile.advanceFloor`) a shown binding holds its frame instead of
+  /// advancing. A feed reads it to pick the item in view.
+  double get visibleFraction;
+  set visibleFraction(double value);
 
   /// Whether the surface holds this binding's playback: it shows the binding
   /// but wants it still. Defaults to false.
