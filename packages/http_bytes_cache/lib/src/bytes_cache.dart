@@ -449,6 +449,7 @@ final class RegisteredQuota {
   }
 
   /// Asks the owner to free [bytes]; returns what it freed. Store side.
+  @internal
   Future<int> evict(int bytes) async {
     final freed = await _onEvict(bytes);
     final taken = freed.clamp(0, _usedBytes);
