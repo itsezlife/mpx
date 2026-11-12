@@ -12,7 +12,10 @@ import 'package:mpx_player/src/player/player_state.dart';
 ///
 /// With [autoPrepare] an engine becomes ready a microtask after `prepare`, as
 /// the contract suite expects; without it the test calls
-/// [FakePlayerEngine.completePrepare] or [FakePlayerEngine.fail].
+/// [FakePlayerEngine.completePrepare] or [FakePlayerEngine.fail]. With
+/// [autoFirstFrame] a ready engine shows its first frame at once; without it
+/// the test calls [FakePlayerEngine.renderFirstFrame], as a native engine
+/// shows it a little after it is ready.
 final class FakePlayerBackend implements PlayerBackend {
   /// Creates a backend whose media is [videoSize] large and [duration] long.
   /// Keys in [unplayable] fail to prepare.
@@ -21,7 +24,11 @@ final class FakePlayerBackend implements PlayerBackend {
     this.videoSize = const Size(1280, 720),
     this.duration = const Duration(seconds: 60),
     this.unplayable = const {},
+    this.autoFirstFrame = true,
   });
+
+  /// Whether a ready engine shows its first frame at once.
+  final bool autoFirstFrame;
 
   /// Whether engines become ready on their own.
   final bool autoPrepare;
@@ -78,12 +85,16 @@ final class FakePlayerEngine implements PlayerEngine {
   Duration? _pendingSeek;
   bool _disposed = false;
   int _prepares = 0;
+  Duration? _preparedFrom;
 
   /// Whether [dispose] has run.
   bool get isDisposed => _disposed;
 
   /// How many times [prepare] started a preparation.
   int get prepareCount => _prepares;
+
+  /// Where the last [prepare] started, or null before one.
+  Duration? get preparedFrom => _preparedFrom;
 
   @override
   ValueListenable<PlayerState> get state => _state;
@@ -95,6 +106,7 @@ final class FakePlayerEngine implements PlayerEngine {
   void prepare({Duration startAt = Duration.zero}) {
     if (_disposed || _state.value.phase != PlayerPhase.idle) return;
     _prepares++;
+    _preparedFrom = startAt;
     _position = _clamp(startAt);
     _emit(_state.value.copyWith(phase: PlayerPhase.preparing));
     if (_backend.autoPrepare) scheduleMicrotask(_autoComplete);
@@ -110,7 +122,8 @@ final class FakePlayerEngine implements PlayerEngine {
   }
 
   /// Ends a preparation successfully: a texture, the size and the duration,
-  /// the first buffer and the first frame.
+  /// the first buffer, and the first frame unless the backend leaves it to
+  /// [renderFirstFrame].
   void completePrepare() {
     if (_disposed || _state.value.phase != PlayerPhase.preparing) return;
     final pending = _pendingSeek;
@@ -123,9 +136,15 @@ final class FakePlayerEngine implements PlayerEngine {
         videoSize: _backend.videoSize,
         duration: _backend.duration,
         buffered: [PlayerTimeRange(_position, _clamp(_position + _ahead))],
-        firstFrameRendered: true,
+        firstFrameRendered: _backend.autoFirstFrame,
       ),
     );
+  }
+
+  /// Shows the first frame in the texture of a ready engine.
+  void renderFirstFrame() {
+    if (_disposed || !_state.value.holdsEngine) return;
+    _emit(_state.value.copyWith(firstFrameRendered: true));
   }
 
   static const Duration _ahead = Duration(seconds: 5);

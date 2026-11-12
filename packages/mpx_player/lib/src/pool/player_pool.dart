@@ -65,6 +65,16 @@ final class PlayerBudget {
 /// warm, so a surface that takes the key again (the viewer closing back onto
 /// its bubble) finds it where it was, until the budget needs its engine.
 ///
+/// ## Hand-off from the software path
+///
+/// A clip that loops silently in a bubble (the software decoder) opens on
+/// the player where the loop is: the surface takes a lease, seeks to the
+/// bubble's position and plays. A player without an engine prepares from
+/// that position; a warm one seeks there. The surface shows the bubble's
+/// frame as the `PlayerView`'s stand-in until the engine reports its first
+/// frame, so nothing flashes black. On close it reads [PlayerLease.position]
+/// for the bubble to continue from, then releases its lease.
+///
 /// ## The sound owner
 ///
 /// The pool is the app's one audio owner: at most one player is audible
