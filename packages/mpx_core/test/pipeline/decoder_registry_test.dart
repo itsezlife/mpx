@@ -1,37 +1,32 @@
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
 void main() {
   group('DecoderRegistry', () {
     test('finds the decoder registered for a media form', () {
       final decoder = FakeDecoder();
-      final registry = DecoderRegistry()..register(MediaForm.still, decoder);
+      final registry = DecoderRegistry()..register(MediaKind.still, decoder);
 
-      expect(registry.decoderFor(MediaForm.still), same(decoder));
-      expect(registry.decoderFor(MediaForm.video), isNull);
+      expect(registry.decoderFor(MediaKind.still), same(decoder));
+      expect(registry.decoderFor(MediaKind.video), isNull);
     });
 
     test('refuses a second decoder for the same form', () {
       final registry = DecoderRegistry()
-        ..register(MediaForm.still, FakeDecoder());
+        ..register(MediaKind.still, FakeDecoder());
 
       expect(
-        () => registry.register(MediaForm.still, FakeDecoder()),
+        () => registry.register(MediaKind.still, FakeDecoder()),
         throwsStateError,
       );
     });
 
-    test('refuses forms that are not decoded', () {
+    test('refuses the unknown kind', () {
       final registry = DecoderRegistry();
 
       expect(
-        () => registry.register(MediaForm.glyph, FakeDecoder()),
-        throwsArgumentError,
-      );
-      expect(
-        () => registry.register(MediaForm.unknown, FakeDecoder()),
+        () => registry.register(MediaKind.unknown, FakeDecoder()),
         throwsArgumentError,
       );
     });

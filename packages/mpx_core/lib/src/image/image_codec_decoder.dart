@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
 import 'package:flutter/foundation.dart';
-import 'package:image_decoder/src/image_paintable.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/src/image/image_paintable.dart';
 
 /// Decodes images with the engine's codecs, at the size of the spec.
 ///

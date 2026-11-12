@@ -1,19 +1,23 @@
 import 'dart:typed_data';
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
-const _sticker = ContentKey.document('42');
-const _other = ContentKey.document('43');
-final _preset = AssetPresets.keyboardCell(extent: 20, devicePixelRatio: 2);
-final _still = AssetPresets.keyboardCell(
+const _sticker = MediaKey.remote('42');
+const _other = MediaKey.remote('43');
+// A small playing cell and its still twin.
+final _preset = AssetPresets.square(
   extent: 20,
   devicePixelRatio: 2,
-  animate: false,
+  profile: const AssetProfile(animate: true, halfFrameRate: true),
+);
+final _still = AssetPresets.square(
+  extent: 20,
+  devicePixelRatio: 2,
+  profile: const AssetProfile(),
 );
 // Long enough for content that arrived after the attach to have faded in.
 const _pastFade = Duration(milliseconds: 160);
@@ -104,7 +108,11 @@ void main() {
       await tester.pumpWidget(
         host(ContentView(content: _sticker, preset: _preset)),
       );
-      final bigger = AssetPresets.keyboardCell(extent: 40, devicePixelRatio: 2);
+      final bigger = AssetPresets.square(
+        extent: 40,
+        devicePixelRatio: 2,
+        profile: _preset.profile,
+      );
 
       await tester.pumpWidget(
         host(ContentView(content: _sticker, preset: bigger)),
@@ -182,7 +190,7 @@ void main() {
       final withPlaceholder = AssetCacheScope(
         producer: producer,
         clock: PlaybackClock(ticks: ticks),
-        mediaPlaceholder: placeholder,
+        placeholder: placeholder,
       );
       addTearDown(withPlaceholder.dispose);
 
@@ -206,7 +214,7 @@ void main() {
         withPlaceholder = AssetCacheScope(
           producer: producer,
           clock: PlaybackClock(ticks: ticks),
-          mediaPlaceholder: scoped,
+          placeholder: scoped,
         );
         addTearDown(withPlaceholder.dispose);
       });
@@ -362,11 +370,10 @@ void main() {
       });
 
       group('over a pipeline', () {
-        const gif = ContentDescriptor(
+        const gif = MediaDescriptor(
           key: _sticker,
-          semanticKind: SemanticKind.gif,
-          mediaForm: MediaForm.still,
-          thumbnail: ThumbnailRef('thumb'),
+          kind: MediaKind.still,
+          thumbnail: MediaThumbnailRef('thumb'),
         );
         final bytes = FetchedContent.bytes(Uint8List.fromList(const [1, 2]));
         late FakeFetcher fetcher;
@@ -379,7 +386,7 @@ void main() {
           final pipeline = AssetPipeline(
             fetcher: fetcher,
             decoders: DecoderRegistry()
-              ..register(MediaForm.still, FakeDecoder()),
+              ..register(MediaKind.still, FakeDecoder()),
           )..know(gif);
           piped = AssetCacheScope(
             producer: pipeline,
@@ -549,26 +556,9 @@ void main() {
       expect(painted.paints.length, before + 1);
       expect(painted.paints.last.context.tint, const Color(0xFFFFFFFF));
     });
-
-    testWidgets('draws a glyph without a sprite as the placeholder', (
-      tester,
-    ) async {
-      final atlas = FakeGlyphSpriteSource(const ['a', 'b']);
-      addTearDown(atlas.dispose);
-      scope.glyphSource = atlas;
-
-      await tester.pumpWidget(
-        host(
-          ContentView(content: const ContentKey.unicode('a'), preset: _preset),
-        ),
-      );
-
-      expect(tester.takeException(), isNull);
-      expect(producer.attempts, isEmpty);
-    });
   });
 
-  // ADR 022, "Readiness": content that arrives after the attach fades in over
+  // content that arrives after the attach fades in over
   // what stood in for it, as a bitmap that is not a memory hit does (150 ms).
   group('fade', () {
     testWidgets('content that arrives after the attach rises from nothing to '
@@ -639,7 +629,7 @@ void main() {
       final withPlaceholder = AssetCacheScope(
         producer: producer,
         clock: PlaybackClock(ticks: ticks),
-        mediaPlaceholder: placeholder,
+        placeholder: placeholder,
       );
       addTearDown(withPlaceholder.dispose);
       await tester.pumpWidget(
@@ -705,121 +695,6 @@ void main() {
         matchesSemantics(label: 'thumbs up', isImage: true),
       );
       handle.dispose();
-    });
-  });
-
-  group('glyph page holds', () {
-    late FakeGlyphSpriteSource atlas;
-
-    setUp(() {
-      atlas = FakeGlyphSpriteSource(const ['a', 'b', 'c', 'd']);
-      scope.glyphSource = atlas;
-      addTearDown(atlas.dispose);
-    });
-
-    testWidgets('holds the page of its glyph while it is in the tree', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        host(
-          ContentView(content: const ContentKey.unicode('c'), preset: _preset),
-        ),
-      );
-
-      expect(atlas.holdCount(1), 1);
-      expect(atlas.holdCount(0), 0);
-
-      await tester.pumpWidget(host(const SizedBox()));
-
-      expect(atlas.holdCount(1), 0);
-    });
-
-    testWidgets('takes one hold however often the parent rebuilds', (
-      tester,
-    ) async {
-      Widget view() => host(
-        ContentView(content: const ContentKey.unicode('a'), preset: _preset),
-      );
-
-      await tester.pumpWidget(view());
-      await tester.pumpWidget(view());
-      await tester.pumpWidget(view());
-
-      expect(atlas.holdCount(0), 1);
-    });
-
-    testWidgets('moves its hold when the glyph changes', (tester) async {
-      await tester.pumpWidget(
-        host(
-          ContentView(content: const ContentKey.unicode('a'), preset: _preset),
-        ),
-      );
-
-      await tester.pumpWidget(
-        host(
-          ContentView(content: const ContentKey.unicode('d'), preset: _preset),
-        ),
-      );
-
-      expect(atlas.holdCount(0), 0);
-      expect(atlas.holdCount(1), 1);
-    });
-
-    testWidgets('draws the sprite when its page is baked and the placeholder '
-        'when the page is released again', (tester) async {
-      await tester.pumpWidget(
-        host(
-          ContentView(content: const ContentKey.unicode('a'), preset: _still),
-        ),
-      );
-
-      atlas.bakePage(0);
-      await tester.pump();
-      final baked = _drawCalls(tester);
-      atlas.releasePage(0);
-      await tester.pump();
-      final released = _drawCalls(tester);
-
-      expect(baked, contains('drawImageRect'));
-      expect(released, isNot(contains('drawImageRect')));
-      expect(atlas.holdCount(0), 1);
-    });
-
-    testWidgets('keeps a hold per view for views of one page', (tester) async {
-      await tester.pumpWidget(
-        host(
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ContentView(
-                content: const ContentKey.unicode('a'),
-                preset: _preset,
-              ),
-              ContentView(
-                content: const ContentKey.unicode('b'),
-                preset: _preset,
-              ),
-            ],
-          ),
-        ),
-      );
-      expect(atlas.holdCount(0), 2);
-
-      await tester.pumpWidget(
-        host(
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ContentView(
-                content: const ContentKey.unicode('a'),
-                preset: _preset,
-              ),
-            ],
-          ),
-        ),
-      );
-
-      expect(atlas.holdCount(0), 1);
     });
   });
 
@@ -916,7 +791,7 @@ void main() {
     });
   });
 
-  // ADR 043, "Paint capability": the view is a render object that pushes
+  // the view is a render object that pushes
   // layers, so a playing asset on a platform texture is a texture layer.
   group('texture', () {
     List<TextureLayer> textures(WidgetTester tester) =>
@@ -1017,16 +892,3 @@ List<T> _find<T extends Layer>(Layer layer) => [
 List<Layer> _ancestors(Layer layer) => [
   for (Layer? up = layer.parent; up != null; up = up.parent) up,
 ];
-
-List<String> _drawCalls(WidgetTester tester) {
-  final canvas = TestRecordingCanvas();
-  final box = tester.renderObject<RenderBox>(find.byType(ContentView));
-  box.paint(TestRecordingPaintingContext(canvas), Offset.zero);
-  return [
-    for (final call in canvas.invocations)
-      call.invocation.memberName.toString().replaceAll(
-        RegExp(r'Symbol\("|"\)'),
-        '',
-      ),
-  ];
-}

@@ -1,5 +1,5 @@
-import 'package:catalog_assets/src/playback/playback_tick_source.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/src/playback/playback_tick_source.dart';
 
 /// What a [PlaybackTickSource] contract run needs besides the source: a way to
 /// make the engine produce [frames] frames, `step` for each.

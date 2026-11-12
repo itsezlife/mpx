@@ -1,5 +1,5 @@
-import 'package:catalog_assets/src/playback/playback_lifecycle_source.dart';
 import 'package:flutter/widgets.dart';
+import 'package:mpx_core/src/playback/playback_lifecycle_source.dart';
 
 /// The production [PlaybackLifecycleSource]: the lifecycle the widgets binding
 /// receives from the embedder.

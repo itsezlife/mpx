@@ -1,10 +1,9 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
-import 'package:catalog_assets/src/asset/asset_fit.dart';
-import 'package:catalog_assets/src/asset/asset_profile.dart';
-import 'package:catalog_assets/src/asset/asset_spec.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_core/src/asset/asset_profile.dart';
+import 'package:mpx_core/src/asset/asset_spec.dart';
 
 /// A named recipe a surface attaches with: the logical [size] it shows an
 /// asset at, and the [spec] and [profile] that size and use imply.
@@ -13,8 +12,7 @@ import 'package:meta/meta.dart';
 /// picks a preset, so two surfaces that mean the same thing share one decode
 /// (the spec is part of the entry identity) and a host changes how a class of
 /// surfaces looks in one place. Presets are plain values: a host builds its
-/// own with the constructor, and `AssetPresets` has the ones the packages
-/// share.
+/// own with the constructor or the recipes of `AssetPresets`.
 @immutable
 final class AssetPreset {
   /// Creates a preset showing assets at [size] (logical pixels), decoded as
@@ -25,8 +23,8 @@ final class AssetPreset {
     required this.profile,
   });
 
-  /// The logical box the surface shows the asset in. It is the size hint of an
-  /// inline embed and the natural size of a `ContentView`.
+  /// The logical box the surface shows the asset in: the natural size of a
+  /// `ContentView`.
   final Size size;
 
   /// What is decoded: the pixels [size] takes at the device density.
@@ -49,165 +47,18 @@ final class AssetPreset {
   String toString() => 'AssetPreset($size, $spec, $profile)';
 }
 
-/// The presets of the surfaces that draw content: a cell of a content grid,
-/// a piece of content set inside message text, and the items of an emoji-only
-/// message.
+/// Recipes for the presets a host builds: a square box, and a box of the
+/// media's own proportion with a capped decode.
+///
+/// A host names the presets of its own surfaces (a grid cell, media set in
+/// text, media shown on its own) on top of these, with the size and playback
+/// rules of its design.
 abstract final class AssetPresets {
-  /// A cell of a content grid or strip: a square of [extent] logical pixels,
-  /// decoded at [devicePixelRatio] as [decodeMode] and filled as [fit].
-  ///
-  /// Plays and loops while visible unless [animate] is false (a grid that
-  /// should show stills).
-  ///
-  /// A playing cell of at most [smallCellExtent] logical pixels is small: it
-  /// plays at half rate (`AssetProfile.halfFrameRate`) and decodes at most
-  /// [smallCellPixels] on a side, however dense the screen. This is the
-  /// rule for a sticker drawn at up to 90 dp (rendered at
-  /// 160 px at most, every second frame): a grid of small playing cells is
-  /// what a content panel shows most of, and at full rate and size it costs
-  /// a render and a post per cell every frame. A still cell keeps its full
-  /// pixels: it is drawn once.
-  static AssetPreset keyboardCell({
-    required double extent,
-    required double devicePixelRatio,
-    bool animate = true,
-    AssetDecodeMode decodeMode = AssetDecodeMode.original,
-    AssetFit fit = AssetFit.contain,
-  }) {
-    final small = animate && extent <= smallCellExtent;
-    final full = AssetSpec.atDensity(
-      logicalWidth: extent,
-      logicalHeight: extent,
-      devicePixelRatio: devicePixelRatio,
-      decodeMode: decodeMode,
-    );
-    final pixels = small
-        ? math.min(full.pixelWidth, smallCellPixels)
-        : full.pixelWidth;
-    return AssetPreset(
-      size: Size.square(extent),
-      spec: AssetSpec(
-        pixelWidth: pixels,
-        pixelHeight: pixels,
-        decodeMode: decodeMode,
-      ),
-      profile: AssetProfile(animate: animate, fit: fit, halfFrameRate: small),
-    );
-  }
-
-  /// The largest extent, in logical pixels, of a [keyboardCell] that plays
-  /// as a small one.
-  static const double smallCellExtent = 90;
-
-  /// The most pixels on a side a small playing [keyboardCell] decodes at.
-  static const int smallCellPixels = 160;
-
-  /// Content set inline in text whose line is [ascent] + [descent] tall: a
-  /// square of 1.2 times that, rounded to whole device pixels at
-  /// [devicePixelRatio].
-  ///
-  /// This is the rule for inline custom emoji: the box
-  /// follows the font's vertical metrics, not its em, because an emoji is
-  /// wider than the em of the font it sits in. Every embed of a paragraph
-  /// takes the same metrics, so they share one spec and one cache entry per
-  /// key. [ascent] and [descent] are positive logical pixels, as
-  /// `InlineEmbedMetrics` carries them.
-  ///
-  /// The pixel size is rounded, not rounded up like `AssetSpec.atDensity`,
-  /// and the logical [AssetPreset.size] is that pixel count over the density,
-  /// so the decode is exactly the box the body reserves.
-  ///
-  /// Plays and loops while visible unless [animate] is false. Pass
-  /// [AssetDecodeMode.template] for content the surrounding text colour
-  /// tints.
-  static AssetPreset inlineMessage({
-    required double ascent,
-    required double descent,
-    required double devicePixelRatio,
-    AssetDecodeMode decodeMode = AssetDecodeMode.original,
-    bool animate = true,
-  }) {
-    assert(
-      ascent > 0 && descent > 0 && devicePixelRatio > 0,
-      'An inline preset needs positive metrics and density.',
-    );
-    final pixels = math.max(
-      1,
-      (_inlineExtentPerLine * (ascent + descent) * devicePixelRatio).round(),
-    );
-    return AssetPreset(
-      size: Size.square(pixels / devicePixelRatio),
-      spec: AssetSpec(
-        pixelWidth: pixels,
-        pixelHeight: pixels,
-        decodeMode: decodeMode,
-      ),
-      profile: AssetProfile(animate: animate),
-    );
-  }
-
-  /// Content set in text that has no font metrics to ask: a square of 1.2
-  /// times [fontSize], decoded at [devicePixelRatio].
-  ///
-  /// For a surface that knows only the font size of its text. A body that
-  /// lays text out has the ascent and descent and uses [inlineMessage]
-  /// instead, which is this preset's rule. Plays and loops while
-  /// visible unless [animate] is false.
-  static AssetPreset inlineFontSize({
-    required double fontSize,
-    required double devicePixelRatio,
-    AssetDecodeMode decodeMode = AssetDecodeMode.original,
-    bool animate = true,
-  }) => square(
-    extent: fontSize * _inlineExtentPerLine,
-    devicePixelRatio: devicePixelRatio,
-    decodeMode: decodeMode,
-    profile: AssetProfile(animate: animate),
-  );
-
-  /// One item of an emoji-only message laid out as text, at the font size
-  /// [step] its count gives: a square of [step] plus [emojiOnlyBoxPadding],
-  /// decoded at [devicePixelRatio].
-  ///
-  /// A step is a font size in logical pixels, so this package does not know
-  /// the viewport's table of steps. Each step is its own size and so its own
-  /// cache entry; the same step at the same density is one. Custom emoji animate and loop; pass [animate] false for
-  /// an item that is a still.
-  static AssetPreset emojiOnly({
-    required double step,
-    required double devicePixelRatio,
-    bool animate = true,
-  }) => square(
-    extent: step + emojiOnlyBoxPadding,
-    devicePixelRatio: devicePixelRatio,
-    profile: AssetProfile(animate: animate),
-  );
-
-  /// The single-emoji sticker: a square of [extent] logical pixels, decoded
-  /// at that size at [devicePixelRatio].
-  ///
-  /// It plays once and does not loop, then rests on [restFrame] (the first
-  /// frame by default) until the host replays it
-  /// (`AssetBinding.replay`). [autoplay] says whether it starts when it
-  /// attaches; the host decides it (a memory of what already played, per
-  /// chat), never the cache. With [autoplay] false the sticker holds its
-  /// first frame until the host replays it.
-  static AssetPreset emojiSticker({
-    required double extent,
-    required double devicePixelRatio,
-    bool autoplay = true,
-    AssetRestFrame restFrame = AssetRestFrame.first,
-  }) => square(
-    extent: extent,
-    devicePixelRatio: devicePixelRatio,
-    profile: AssetProfile(animate: autoplay, loop: false, restFrame: restFrame),
-  );
-
   /// A square of [extent] logical pixels decoded at [devicePixelRatio], used
   /// as [profile] says.
   ///
-  /// The way to a preset no named recipe covers: the pixel size is the extent
-  /// at the density, rounded up so the decode is never smaller than the box.
+  /// The pixel size is the extent at the density, rounded up so the decode is
+  /// never smaller than the box.
   static AssetPreset square({
     required double extent,
     required double devicePixelRatio,
@@ -224,15 +75,14 @@ abstract final class AssetPresets {
     profile: profile,
   );
 
-  /// A sticker or a GIF shown on its own: a box of [size] logical pixels, of
-  /// the media's own proportion, decoded at [devicePixelRatio] and used as
-  /// [profile] says.
+  /// Media shown on its own: a box of [size] logical pixels, of the media's
+  /// own proportion, decoded at [devicePixelRatio] and used as [profile]
+  /// says.
   ///
   /// [maxPixelExtent] caps the decode's longer side, the shorter scaled with
   /// it: a large box on a dense screen draws a decode smaller than its pixels
-  /// rather than one larger than the media holds (a sticker renders at 512 px at
-  /// most). Under the cap the decode is the box at the
-  /// density, rounded up like [square].
+  /// rather than one larger than the media holds. Under the cap the decode is
+  /// the box at the density, rounded up like [square].
   static AssetPreset media({
     required Size size,
     required double devicePixelRatio,
@@ -254,10 +104,4 @@ abstract final class AssetPresets {
     };
     return AssetPreset(size: size, spec: spec, profile: profile);
   }
-
-  /// Logical pixels an emoji-only item's box adds to its font size (the box is
-  /// the font size plus 4 dp).
-  static const double emojiOnlyBoxPadding = 4;
-
-  static const double _inlineExtentPerLine = 1.2;
 }

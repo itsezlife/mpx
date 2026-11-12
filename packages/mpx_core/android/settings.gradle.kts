@@ -1,1 +1,1 @@
-rootProject.name = "frame_texture"
+rootProject.name = "mpx_core"

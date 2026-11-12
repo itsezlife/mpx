@@ -1,5 +1,5 @@
-import 'package:catalog_assets/src/pool/frame_slot_allocator.dart';
 import 'package:flutter/foundation.dart';
+import 'package:mpx_core/src/pool/frame_slot_allocator.dart';
 
 /// One claim on an entry's slot, released exactly once.
 ///

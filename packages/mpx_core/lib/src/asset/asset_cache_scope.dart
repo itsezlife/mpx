@@ -1,24 +1,20 @@
 import 'dart:collection';
 import 'dart:ui' show Canvas, Color, Rect;
 
-import 'package:catalog_assets/src/asset/asset_binding.dart';
-import 'package:catalog_assets/src/asset/asset_binding_base.dart';
-import 'package:catalog_assets/src/asset/asset_cache_budgets.dart';
-import 'package:catalog_assets/src/asset/asset_paintable.dart';
-import 'package:catalog_assets/src/asset/asset_playback.dart';
-import 'package:catalog_assets/src/asset/asset_producer.dart';
-import 'package:catalog_assets/src/asset/asset_profile.dart';
-import 'package:catalog_assets/src/asset/asset_readiness.dart';
-import 'package:catalog_assets/src/asset/asset_spec.dart';
-import 'package:catalog_assets/src/asset/circle_placeholder.dart';
-import 'package:catalog_assets/src/asset/rect_placeholder.dart';
-import 'package:catalog_assets/src/glyph/glyph_binding.dart';
-import 'package:catalog_assets/src/glyph/glyph_sprite_source.dart';
-import 'package:catalog_assets/src/glyph/text_glyph_paintable.dart';
-import 'package:catalog_assets/src/playback/playback_clock.dart';
-import 'package:catalog_assets/src/texture/frame_texture_pool.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter/foundation.dart';
+import 'package:mpx_core/src/asset/asset_binding.dart';
+import 'package:mpx_core/src/asset/asset_binding_base.dart';
+import 'package:mpx_core/src/asset/asset_cache_budgets.dart';
+import 'package:mpx_core/src/asset/asset_paintable.dart';
+import 'package:mpx_core/src/asset/asset_playback.dart';
+import 'package:mpx_core/src/asset/asset_producer.dart';
+import 'package:mpx_core/src/asset/asset_profile.dart';
+import 'package:mpx_core/src/asset/asset_readiness.dart';
+import 'package:mpx_core/src/asset/asset_spec.dart';
+import 'package:mpx_core/src/asset/rect_placeholder.dart';
+import 'package:mpx_core/src/identity/media_key.dart';
+import 'package:mpx_core/src/playback/playback_clock.dart';
+import 'package:mpx_core/src/texture/frame_texture_pool.dart';
 
 /// The asset cache of one host: entries keyed by content and [AssetSpec],
 /// bindings that pin them, a byte-budgeted LRU for the ones nobody holds, and
@@ -26,8 +22,7 @@ import 'package:flutter/foundation.dart';
 ///
 /// Created by the host and handed to the surfaces that attach; there is no
 /// static instance. It owns what it made (entries, the default clock, the
-/// default placeholder) and nothing it was handed (a producer, a glyph source,
-/// a clock, the texture pool, the memory-pressure signal): [dispose] leaves
+/// default placeholder) and nothing it was handed (a producer, a clock, the texture pool, the memory-pressure signal): [dispose] leaves
 /// those alone.
 ///
 /// ## Entries
@@ -70,21 +65,11 @@ import 'package:flutter/foundation.dart';
 /// too. As a preview opens, every image below the preview's layer stops its
 /// animation, and as it closes they start again where they were.
 ///
-/// ## Glyphs
-///
-/// Unicode keys are the glyph media form: with a [glyphSource] registered they
-/// bind to a baked sprite on an atlas page and never reach the [producer]
-/// (see [GlyphSpriteSource]). Without one they are ordinary entries, which is
-/// how a platform that draws glyphs as text plugs in a producer that does.
-/// The strategy follows the source for the life of a binding, not only at
-/// attach: registering or removing the source moves the bindings already
-/// attached.
-///
 /// ## Textures
 ///
 /// A platform with a texture host registers its [FrameTexturePool] as
 /// [textures]; decoders whose assets play take textures from it, and fall back
-/// to their dynamic page slots without one (ADR 043). The memory-pressure
+/// to their dynamic page slots without one. The memory-pressure
 /// signal releases its idle textures along with the unpinned entries.
 ///
 /// ## Threading
@@ -95,63 +80,43 @@ import 'package:flutter/foundation.dart';
 final class AssetCacheScope {
   /// Creates a scope.
   ///
-  /// [producer] makes non-glyph entries; without one they stay at
-  /// [AssetStage.none]. [glyphSource] is the atlas unicode keys bind to.
-  /// [clock] is the playback clock (created, and disposed with the scope, if
-  /// omitted). [memoryPressure] is a signal that empties the unpinned
-  /// entries when it fires. [systemFonts] is the engine's signal that the
-  /// fonts it draws text with changed (`PaintingBinding.systemFonts`): glyphs
-  /// drawn as text lay out again and repaint when it fires, since a browser
-  /// fetches the font that draws an emoji only once it meets one, and what
-  /// was laid out before drew the missing-glyph box. [placeholder] is what a
-  /// glyph binding paints before any stage exists (a circle by default);
-  /// [mediaPlaceholder] is what any other binding paints (the whole rectangle
-  /// in a quiet colour by default, `RectPlaceholder`). [textures] is the
-  /// pool of the platform's texture host, or null where there is none.
+  /// [producer] makes the entries; without one they stay at
+  /// [AssetStage.none]. [clock] is the playback clock (created, and disposed
+  /// with the scope, if omitted). [memoryPressure] is a signal that empties the unpinned
+  /// entries when it fires. [placeholder] is what a binding paints before its
+  /// entry has produced any stage (the whole rectangle in a quiet colour by
+  /// default, `RectPlaceholder`). [textures] is the pool of the platform's
+  /// texture host, or null where there is none.
   AssetCacheScope({
     AssetProducer? producer,
-    GlyphSpriteSource? glyphSource,
     AssetCacheBudgets budgets = AssetCacheBudgets.defaults,
     PlaybackClock? clock,
     Listenable? memoryPressure,
-    Listenable? systemFonts,
     AssetPaintable? placeholder,
-    AssetPaintable? mediaPlaceholder,
     this.textures,
   }) : _producer = producer,
-       _glyphSource = glyphSource,
        _budgets = budgets,
        _clock = clock ?? PlaybackClock(),
        _ownsClock = clock == null,
        _memoryPressure = memoryPressure,
-       _systemFonts = systemFonts,
-       placeholder = placeholder ?? const CirclePlaceholder(),
-       mediaPlaceholder = mediaPlaceholder ?? const RectPlaceholder() {
+       placeholder = placeholder ?? const RectPlaceholder() {
     memoryPressure?.addListener(_onMemoryPressure);
-    systemFonts?.addListener(_onSystemFonts);
-    glyphSource?.addPageListener(_onGlyphPage);
   }
 
   final AssetProducer? _producer;
   final PlaybackClock _clock;
   final bool _ownsClock;
   final Listenable? _memoryPressure;
-  final Listenable? _systemFonts;
-  GlyphSpriteSource? _glyphSource;
   AssetCacheBudgets _budgets;
   bool _disposed = false;
 
-  /// What a glyph binding paints before its entry has produced any stage.
+  /// What a binding paints before its entry has produced any stage.
   final AssetPaintable placeholder;
 
-  /// What a binding of any other content paints before its entry has produced
-  /// any stage: a glyph has a box and no edges, media has a rectangle.
-  final AssetPaintable mediaPlaceholder;
-
-  final Map<(ContentKey, AssetSpec), _Entry> _entries = {};
+  final Map<(MediaKey, AssetSpec), _Entry> _entries = {};
   // Every entry of a key, whatever its spec: the siblings a binding below its
   // first frame borrows a stage from.
-  final Map<ContentKey, Set<_Entry>> _byKey = {};
+  final Map<MediaKey, Set<_Entry>> _byKey = {};
   // Entries nobody is bound to, per tier, least recently used first.
   final Map<AssetTier, LinkedHashSet<_Entry>> _unpinned = {
     for (final tier in AssetTier.values) tier: LinkedHashSet<_Entry>.identity(),
@@ -159,13 +124,7 @@ final class AssetCacheScope {
   final Map<AssetTier, int> _bytes = {
     for (final tier in AssetTier.values) tier: 0,
   };
-  final Set<GlyphBinding> _glyphBindings = {};
   int _backgroundHolds = 0;
-
-  // A unicode key that reaches an entry (a glyph drawn as text) is still a
-  // glyph: its stand-in is the circle, whatever the media default is.
-  AssetPaintable _placeholderOf(ContentKey key) =>
-      key is ContentKey$Unicode ? placeholder : mediaPlaceholder;
 
   /// The textures playing assets may take instead of a page slot, or null
   /// where the platform has no texture host.
@@ -186,52 +145,6 @@ final class AssetCacheScope {
   set budgets(AssetCacheBudgets value) {
     _budgets = value;
     _trim();
-  }
-
-  /// The atlas unicode keys bind to, or null.
-  GlyphSpriteSource? get glyphSource => _glyphSource;
-
-  /// Registers (or, with null, removes) the source glyph bindings read.
-  ///
-  /// Every unicode binding already attached moves in place, whichever way it
-  /// was made: each gives back what it held of the old mode (a hold on the old
-  /// source, or its entry when there was none), takes what the new needs (a
-  /// hold on the new source; without one, an entry of the producer) and
-  /// signals its listeners. A host that plans a new atlas replaces it without
-  /// re-attaching every leaf; one that registers its first atlas late, after
-  /// leaves drew as text, moves them onto it; one that drops it sends them
-  /// back to the producer instead of leaving a placeholder. The scope never
-  /// disposes a source. After [dispose] the value is only remembered.
-  set glyphSource(GlyphSpriteSource? value) {
-    if (identical(_glyphSource, value)) return;
-    if (_disposed) {
-      // Nothing is bound or listened to any more; a source arriving late is a
-      // host's ordering, not a lifecycle bug worth throwing for.
-      _glyphSource = value;
-      return;
-    }
-    _glyphSource?.removePageListener(_onGlyphPage);
-    _glyphSource = value;
-    value?.addPageListener(_onGlyphPage);
-    for (final binding in List<GlyphBinding>.of(_glyphBindings)) {
-      binding.rebind(value);
-    }
-  }
-
-  // Glyphs drawn as text drop their layout, and what draws them repaints.
-  void _onSystemFonts() {
-    if (_disposed) return;
-    for (final entry in _entries.values) {
-      if (entry.paintable case final TextGlyphPaintable text) {
-        text.systemFontsChanged();
-        for (final binding in List<_EntryBinding>.of(entry.bindings)) {
-          binding.entryChanged();
-        }
-      }
-    }
-    for (final binding in List<GlyphBinding>.of(_glyphBindings)) {
-      binding.systemFontsChanged();
-    }
   }
 
   /// Holds every binding of the scope but the foreground ones until the hold
@@ -260,17 +173,14 @@ final class AssetCacheScope {
         binding.backgroundHeld = held;
       }
     }
-    for (final binding in List<GlyphBinding>.of(_glyphBindings)) {
-      binding.backgroundHeld = held;
-    }
   }
 
   /// Whether any binding is attached to the entry for [key] at [spec].
-  bool isAttached(ContentKey key, AssetSpec spec) =>
+  bool isAttached(MediaKey key, AssetSpec spec) =>
       _entries[(key, spec)]?.bindings.isNotEmpty ?? false;
 
   /// Whether the cache holds an entry for [key] at [spec], attached or not.
-  bool contains(ContentKey key, AssetSpec spec) =>
+  bool contains(MediaKey key, AssetSpec spec) =>
       _entries.containsKey((key, spec));
 
   /// Bytes the entries of [tier] count, attached or not.
@@ -283,33 +193,10 @@ final class AssetCacheScope {
   ///
   /// Throws a [StateError] after [dispose]: a surface that outlives its scope
   /// is a lifecycle bug to see, not to absorb.
-  AssetBinding attach(ContentKey key, AssetSpec spec, AssetProfile profile) {
+  AssetBinding attach(MediaKey key, AssetSpec spec, AssetProfile profile) {
     if (_disposed) {
       throw StateError('AssetCacheScope.attach called after dispose.');
     }
-    if (key case final ContentKey$Unicode glyph) {
-      final binding = GlyphBinding(
-        key: glyph,
-        spec: spec,
-        profile: profile,
-        placeholder: placeholder,
-        clock: _clock,
-        backgroundHeld: _backgroundHolds > 0,
-        source: _glyphSource,
-        openEntry: () => _attachEntry(key, spec, profile),
-        onDetach: _glyphBindings.remove,
-      );
-      _glyphBindings.add(binding);
-      return binding;
-    }
-    return _attachEntry(key, spec, profile);
-  }
-
-  _EntryBinding _attachEntry(
-    ContentKey key,
-    AssetSpec spec,
-    AssetProfile profile,
-  ) {
     final entry = _entries.putIfAbsent((key, spec), () {
       final created = _Entry(key, spec);
       (_byKey[key] ??= Set<_Entry>.identity()).add(created);
@@ -404,16 +291,14 @@ final class AssetCacheScope {
     }
   }
 
-  /// Cancels every attempt, disposes every entry, gives back the holds of
-  /// live glyph bindings and stops listening to the memory-pressure signal.
+  /// Cancels every attempt, disposes every entry and stops listening to the
+  /// memory-pressure signal.
   /// Bindings still around go silent. Idempotent. Disposes the clock only if
   /// the scope made it.
   void dispose() {
     if (_disposed) return;
     _disposed = true;
     _memoryPressure?.removeListener(_onMemoryPressure);
-    _systemFonts?.removeListener(_onSystemFonts);
-    _glyphSource?.removePageListener(_onGlyphPage);
     for (final entry in List<_Entry>.of(_entries.values)) {
       entry.attempt?.cancel();
       for (final binding in List<_EntryBinding>.of(entry.bindings)) {
@@ -421,18 +306,7 @@ final class AssetCacheScope {
       }
       _evict(entry);
     }
-    for (final binding in List<GlyphBinding>.of(_glyphBindings)) {
-      binding.detach();
-    }
     if (_ownsClock) _clock.dispose();
-  }
-
-  // Every glyph binding repaints when any page changes: which cells are on a
-  // page is not tracked per binding, and a repaint request is idempotent.
-  void _onGlyphPage(int pageIndex) {
-    for (final binding in List<GlyphBinding>.of(_glyphBindings)) {
-      binding.pageChanged();
-    }
   }
 
   // --- Attempts -------------------------------------------------------------
@@ -583,7 +457,7 @@ final class AssetCacheScope {
 final class _Entry {
   _Entry(this.key, this.spec);
 
-  final ContentKey key;
+  final MediaKey key;
   final AssetSpec spec;
   final Set<_EntryBinding> bindings = {};
   final _Demand demand = _Demand();
@@ -758,7 +632,7 @@ final class _EntryBinding extends AssetBindingBase {
        super(
          key: entry.key,
          spec: entry.spec,
-         placeholder: scope._placeholderOf(entry.key),
+         placeholder: scope.placeholder,
          clock: scope.clock,
          backgroundHeld: scope._backgroundHolds > 0,
        );
@@ -918,7 +792,7 @@ final class _EntryBinding extends AssetBindingBase {
     if (_borrowed case _Entry(:final lent?)) return lent;
     final paintable = entry.paintable;
     if (paintable == null || _ownStage != entry.stage) {
-      return _scope._placeholderOf(entry.key);
+      return _scope.placeholder;
     }
     return paintable;
   }

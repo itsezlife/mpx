@@ -1,11 +1,10 @@
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
 import 'pipeline_harness.dart';
 
-FetchRequest _request(ContentDescriptor descriptor) => FetchRequest(
+FetchRequest _request(MediaDescriptor descriptor) => FetchRequest(
   descriptor: descriptor,
   part: FetchPart.content,
   priority: AssetPriority.visible,

@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:catalog_assets/catalog_assets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
 
 void main() {
   group('TextureFrameRegion', () {

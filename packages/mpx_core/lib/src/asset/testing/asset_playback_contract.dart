@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:ui';
 
-import 'package:catalog_assets/src/asset/asset_paintable.dart';
-import 'package:catalog_assets/src/asset/asset_profile.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/src/asset/asset_paintable.dart';
+import 'package:mpx_core/src/asset/asset_profile.dart';
 
 /// What an [AssetPlaybackContract] run needs besides the paintable: the
 /// durations of its frames and a way to paint it and read which frame that

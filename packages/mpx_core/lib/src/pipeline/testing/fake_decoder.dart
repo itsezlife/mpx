@@ -1,13 +1,13 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:catalog_assets/src/asset/asset_cache_budgets.dart';
-import 'package:catalog_assets/src/asset/asset_producer.dart';
-import 'package:catalog_assets/src/asset/asset_readiness.dart';
-import 'package:catalog_assets/src/asset/asset_spec.dart';
-import 'package:catalog_assets/src/asset/testing/fake_asset_paintable.dart';
-import 'package:catalog_assets/src/pipeline/content_fetcher.dart';
-import 'package:catalog_assets/src/pipeline/decoder.dart';
+import 'package:mpx_core/src/asset/asset_cache_budgets.dart';
+import 'package:mpx_core/src/asset/asset_producer.dart';
+import 'package:mpx_core/src/asset/asset_readiness.dart';
+import 'package:mpx_core/src/asset/asset_spec.dart';
+import 'package:mpx_core/src/asset/testing/fake_asset_paintable.dart';
+import 'package:mpx_core/src/pipeline/content_fetcher.dart';
+import 'package:mpx_core/src/pipeline/decoder.dart';
 
 /// One decode a [FakeDecoder] was asked for; a test plays the codec by
 /// calling [complete] and [fail].

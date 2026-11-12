@@ -1,9 +1,9 @@
 import 'dart:ui';
 
-import 'package:catalog_assets/src/asset/asset_paintable.dart';
-import 'package:catalog_assets/src/asset/asset_profile.dart';
-import 'package:catalog_assets/src/asset/asset_texture.dart';
-import 'package:catalog_assets/src/atlas/atlas_sprite.dart';
+import 'package:mpx_core/src/asset/asset_paintable.dart';
+import 'package:mpx_core/src/asset/asset_profile.dart';
+import 'package:mpx_core/src/asset/asset_texture.dart';
+import 'package:mpx_core/src/asset/atlas_sprite.dart';
 
 /// An [AssetPaintable] that records what is done to it.
 ///

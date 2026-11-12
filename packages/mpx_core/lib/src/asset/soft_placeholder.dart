@@ -1,7 +1,7 @@
 import 'dart:ui';
 
-import 'package:catalog_assets/src/asset/asset_paintable.dart';
-import 'package:catalog_assets/src/atlas/atlas_sprite.dart';
+import 'package:mpx_core/src/asset/asset_paintable.dart';
+import 'package:mpx_core/src/asset/atlas_sprite.dart';
 
 /// A quiet stand-in for content that has no outline to show yet (a sticker in
 /// a message): a faint rounded square on the shorter side of the rectangle,

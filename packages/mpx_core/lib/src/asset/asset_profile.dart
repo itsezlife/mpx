@@ -1,5 +1,5 @@
-import 'package:catalog_assets/src/asset/asset_fit.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_core/src/asset/asset_fit.dart';
 
 /// The frame a playback that does not loop rests on once its pass is over.
 ///

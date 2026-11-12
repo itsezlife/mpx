@@ -1,13 +1,12 @@
 import 'dart:ui';
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/src/playback/playback_clock.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/src/playback/playback_clock.dart';
+import 'package:mpx_core/testing.dart';
 
-const _sticker = ContentKey.document('sticker-1');
-const _other = ContentKey.document('sticker-2');
+const _sticker = MediaKey.remote('sticker-1');
+const _other = MediaKey.remote('sticker-2');
 const _spec = AssetSpec(pixelWidth: 64, pixelHeight: 64);
 const _bigger = AssetSpec(pixelWidth: 128, pixelHeight: 128);
 const _profile = AssetProfile();
@@ -30,15 +29,14 @@ void main() {
       final binding = scope.attach(_sticker, _spec, _profile);
 
       expect(binding.readiness, const AssetReadiness(AssetStage.none));
-      expect(binding.paintable, same(scope.mediaPlaceholder));
+      expect(binding.paintable, same(scope.placeholder));
       expect(binding.key, _sticker);
       expect(binding.spec, _spec);
       expect(binding.profile, _profile);
     });
 
-    test('media waits behind a rectangle and a glyph behind a circle', () {
-      expect(scope.mediaPlaceholder, isA<RectPlaceholder>());
-      expect(scope.placeholder, isNot(isA<RectPlaceholder>()));
+    test('media waits behind a rectangle by default', () {
+      expect(scope.placeholder, isA<RectPlaceholder>());
     });
 
     test('without a producer an attach stays at none and never fails', () {
@@ -135,7 +133,7 @@ void main() {
 
       attempt.advance(AssetStage.firstFrame);
       expect(binding.readiness.stage, AssetStage.placeholder);
-      expect(binding.paintable, same(scope.mediaPlaceholder));
+      expect(binding.paintable, same(scope.placeholder));
 
       final full = attempt.advance(AssetStage.full);
       expect(binding.readiness.stage, AssetStage.full);
@@ -148,7 +146,7 @@ void main() {
       final binding = scope.attach(_sticker, _spec, _profile);
 
       expect(binding.readiness.isFinal, isTrue);
-      expect(binding.paintable, isNot(same(scope.mediaPlaceholder)));
+      expect(binding.paintable, isNot(same(scope.placeholder)));
     });
   });
 
@@ -265,7 +263,7 @@ void main() {
       producer.last.advance(AssetStage.full);
 
       expect(signals, 0);
-      expect(binding.paintable, same(scope.mediaPlaceholder));
+      expect(binding.paintable, same(scope.placeholder));
     });
 
     test('a removed listener hears nothing', () {

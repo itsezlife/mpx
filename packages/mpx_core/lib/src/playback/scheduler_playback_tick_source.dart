@@ -1,5 +1,5 @@
-import 'package:catalog_assets/src/playback/playback_tick_source.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:mpx_core/src/playback/playback_tick_source.dart';
 
 /// The production [PlaybackTickSource]: one frame callback per frame on the
 /// [SchedulerBinding], requested only while started.

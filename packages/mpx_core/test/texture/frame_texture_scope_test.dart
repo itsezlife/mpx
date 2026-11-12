@@ -1,8 +1,8 @@
 import 'dart:ui';
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
 final class _Still extends AssetPaintable {
   const _Still();

@@ -10,13 +10,12 @@ library;
 
 import 'dart:ui';
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
-const _a = ContentKey.document('sticker-a');
-const _b = ContentKey.document('sticker-b');
+const _a = MediaKey.remote('sticker-a');
+const _b = MediaKey.remote('sticker-b');
 const _cell = AssetSpec(pixelWidth: 160, pixelHeight: 160);
 const _preview = AssetSpec(pixelWidth: 600, pixelHeight: 600);
 const _plays = AssetProfile(animate: true);
@@ -47,7 +46,7 @@ void main() {
 
   // Attaches [key] at [spec]; a first attach decodes it into a sequence.
   (AssetBinding, FakeAssetPaintable) attach(
-    ContentKey key,
+    MediaKey key,
     AssetSpec spec,
     AssetProfile profile,
   ) {
@@ -188,22 +187,6 @@ void main() {
       expect(cell.$1.isPlaying, isTrue);
       expect(own.$1.isPlaying, isFalse);
       expect(own.$1.held, isTrue);
-    });
-
-    test('is honoured by a glyph drawn as an entry', () {
-      const glyph = ContentKey.unicode('😀');
-      final binding = scope.attach(glyph, _cell, _plays);
-      producer.last.advance(
-        AssetStage.full,
-        tier: AssetTier.animated,
-        frames: _frames,
-      );
-      expect(binding.isPlaying, isTrue);
-
-      final hold = scope.holdBackground();
-      expect(binding.isPlaying, isFalse);
-      hold.release();
-      expect(binding.isPlaying, isTrue);
     });
   });
 }

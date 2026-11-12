@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:ui' show AppLifecycleState;
 
-import 'package:catalog_assets/src/playback/playback_clock.dart';
-import 'package:catalog_assets/src/playback/playback_lifecycle_source.dart';
-import 'package:catalog_assets/src/playback/playback_policy.dart';
 import 'package:flutter/foundation.dart';
+import 'package:mpx_core/src/playback/playback_clock.dart';
+import 'package:mpx_core/src/playback/playback_lifecycle_source.dart';
+import 'package:mpx_core/src/playback/playback_policy.dart';
 
 /// Starts a timer that calls [callback] once after [delay]. The default is
-/// `Timer.new`; tests inject `ManualRetentionTimers.start`.
+/// `Timer.new`; tests inject `ManualTimers.start`.
 typedef PlaybackTimerFactory =
     Timer Function(Duration delay, void Function() callback);
 

@@ -1,8 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
 const profile = AssetProfile();
 const spec = AssetSpec(pixelWidth: 64, pixelHeight: 64);
@@ -13,11 +12,10 @@ const firstFrameSpec = AssetSpec(
 );
 
 /// The descriptor of sticker [n], with a thumbnail unless [thumbnail] is off.
-ContentDescriptor sticker(int n, {bool thumbnail = false}) => ContentDescriptor(
-  key: ContentKey.document('sticker-$n'),
-  semanticKind: SemanticKind.sticker,
-  mediaForm: MediaForm.still,
-  thumbnail: thumbnail ? ThumbnailRef('thumb-$n') : null,
+MediaDescriptor sticker(int n, {bool thumbnail = false}) => MediaDescriptor(
+  key: MediaKey.remote('sticker-$n'),
+  kind: MediaKind.still,
+  thumbnail: thumbnail ? MediaThumbnailRef('thumb-$n') : null,
 );
 
 final bytes = FetchedContent.bytes(Uint8List.fromList(const [1, 2, 3]));
@@ -28,10 +26,10 @@ final class PipelineHarness {
     bool autoFetch = true,
     bool autoDecode = true,
     bool firstFrameEarly = false,
-    ContentResolver? resolver,
+    MediaResolver? resolver,
     AssetPipelineLimits limits = const AssetPipelineLimits(),
-    Iterable<ContentDescriptor> known = const [],
-    Iterable<ContentDescriptor> served = const [],
+    Iterable<MediaDescriptor> known = const [],
+    Iterable<MediaDescriptor> served = const [],
   }) : fetcher = FakeFetcher(autoRespond: autoFetch),
        decoder = FakeDecoder(
          autoRespond: autoDecode,
@@ -39,7 +37,7 @@ final class PipelineHarness {
        ) {
     pipeline = AssetPipeline(
       fetcher: fetcher,
-      decoders: DecoderRegistry()..register(MediaForm.still, decoder),
+      decoders: DecoderRegistry()..register(MediaKind.still, decoder),
       resolver: resolver,
       limits: limits,
     );
@@ -61,10 +59,10 @@ final class PipelineHarness {
   late final AssetPipeline pipeline;
   late final AssetCacheScope scope;
 
-  AssetBinding attach(ContentDescriptor descriptor, [AssetSpec spec = spec]) =>
+  AssetBinding attach(MediaDescriptor descriptor, [AssetSpec spec = spec]) =>
       scope.attach(descriptor.key, spec, profile);
 
-  AssetBinding attachKey(ContentKey key, [AssetSpec spec = spec]) =>
+  AssetBinding attachKey(MediaKey key, [AssetSpec spec = spec]) =>
       scope.attach(key, spec, profile);
 
   /// Lets queued microtasks and futures run.

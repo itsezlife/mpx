@@ -1,7 +1,7 @@
 import 'dart:ui';
 
-import 'package:catalog_assets/src/asset/asset_paintable.dart';
-import 'package:catalog_assets/src/atlas/atlas_sprite.dart';
+import 'package:mpx_core/src/asset/asset_paintable.dart';
+import 'package:mpx_core/src/asset/atlas_sprite.dart';
 
 /// The default placeholder: a soft circle filling the shorter side of the
 /// rectangle, in the context's tint (grey when there is none).

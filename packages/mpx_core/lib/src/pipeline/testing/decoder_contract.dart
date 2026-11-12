@@ -1,13 +1,13 @@
 import 'dart:async';
 
-import 'package:catalog_assets/src/asset/asset_cache_budgets.dart';
-import 'package:catalog_assets/src/asset/asset_paintable.dart';
-import 'package:catalog_assets/src/asset/asset_producer.dart';
-import 'package:catalog_assets/src/asset/asset_readiness.dart';
-import 'package:catalog_assets/src/asset/asset_spec.dart';
-import 'package:catalog_assets/src/pipeline/content_fetcher.dart';
-import 'package:catalog_assets/src/pipeline/decoder.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/src/asset/asset_cache_budgets.dart';
+import 'package:mpx_core/src/asset/asset_paintable.dart';
+import 'package:mpx_core/src/asset/asset_producer.dart';
+import 'package:mpx_core/src/asset/asset_readiness.dart';
+import 'package:mpx_core/src/asset/asset_spec.dart';
+import 'package:mpx_core/src/pipeline/content_fetcher.dart';
+import 'package:mpx_core/src/pipeline/decoder.dart';
 
 /// What a [Decoder] contract run needs besides the decoder.
 final class DecoderHarness {

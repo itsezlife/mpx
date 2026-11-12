@@ -1,5 +1,5 @@
-import 'package:catalog_assets/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/testing.dart';
 
 import 'support/host_table.dart';
 

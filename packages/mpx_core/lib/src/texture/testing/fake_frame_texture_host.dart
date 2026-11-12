@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:catalog_assets/src/texture/frame_texture_host.dart';
+import 'package:mpx_core/src/texture/frame_texture_host.dart';
 
 /// A [FrameTextureHost] over plain memory that records what is asked of it.
 ///

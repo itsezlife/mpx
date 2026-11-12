@@ -1,5 +1,5 @@
-import 'package:catalog_assets/catalog_assets.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_core/mpx_core.dart';
 
 /// A buffer of a texture, locked for writing: its first byte as a native
 /// address and the bytes from one row to the next.
@@ -17,7 +17,7 @@ final class LockedBuffer {
 
 /// The native texture table a [PlatformFrameTextureHost] locks and posts
 /// through: the C library the platform side attaches its surfaces to
-/// (`native/include/frame_texture.h`).
+/// (`native/include/mpx_frame_texture.h`).
 ///
 /// The platform side owns which ids exist; the table answers by id. Its
 /// rules are the C functions': [lock] answers null for a texture that is

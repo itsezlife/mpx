@@ -1,5 +1,5 @@
-import 'package:catalog_assets/src/asset/asset_spec.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_core/src/asset/asset_spec.dart';
 
 /// A reason the host can give for pausing every animation at once. Layers are
 /// independent: playback runs only while none of the policy's layers is set.

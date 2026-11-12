@@ -1,9 +1,9 @@
-// Headless ratio benchmark of the asset cache: what the nightly job tracks.
+// Headless ratio benchmark of the asset cache.
 //
 //   flutter test test/benchmark/asset_cache_ratio_bench_test.dart
 //   BENCH_REPORT=out.json flutter test test/benchmark/asset_cache_ratio_bench_test.dart
 //
-// Four probes, each reduced to numbers that do not depend on the machine:
+// Three probes, each reduced to numbers that do not depend on the machine:
 //
 //   * churn: attach + produce + detach (+ evict) cycles, as a ratio against a
 //     bare byte-budgeted LRU doing the same bookkeeping on the same machine,
@@ -13,23 +13,16 @@
 //   * clock fan-out: one tick to N animated bindings, as cost per binding
 //     against N = 10 (a flat line is 1), against N closures called in a loop,
 //     and the repaint requests the fps cap lets through;
-//   * page holds: glyph bindings holding atlas pages of a real
-//     `GlyphPageResidency`, against plain entries, with memory pressure.
 //
-// The invariants (budget respected, holds balanced, pinned pages survive
-// pressure) are asserted because they are deterministic. No time is asserted:
-// debug-mode microseconds are inflated by asserts and noisy, ratios are the
-// signal, and the nightly comparison (scripts/bench) is where a drift in one
-// is judged, never here. It makes no claim about fling smoothness or decode
+// The invariants (budget respected, holds balanced) are asserted because
+// they are deterministic. No time is asserted: debug-mode microseconds are
+// inflated by asserts and noisy, ratios are the signal, and a comparison of
+// two reports is where a drift in one is judged, never here. It makes no claim about fling smoothness or decode
 // cost: no pixel is decoded and nothing is rasterised.
 
-import 'dart:ui';
-
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/glyph_atlas.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
 import 'ratio_report.dart';
 import 'scroll_trace.dart';
@@ -39,11 +32,9 @@ const _entryBytes = 64 * 1024;
 
 AssetCacheScope _scope({
   required FakeAssetProducer producer,
-  GlyphSpriteSource? glyphSource,
   ManualPlaybackTickSource? ticks,
 }) => AssetCacheScope(
   producer: producer,
-  glyphSource: glyphSource,
   clock: PlaybackClock(ticks: ticks ?? ManualPlaybackTickSource()),
 );
 
@@ -59,13 +50,11 @@ FakeAssetProducer _stillProducer() =>
 /// Attach + detach cycles over [distinct] keys, round-robin: with the default
 /// budget (24 MiB, 384 entries of 64 KiB) 200 keys stay resident and 5000 are
 /// evicted all the time.
-double _churnUsPerCycle(int distinct, {GlyphSpriteSource? glyphs}) {
+double _churnUsPerCycle(int distinct) {
   const operations = 20000;
   final producer = _stillProducer();
-  final scope = _scope(producer: producer, glyphSource: glyphs);
-  final keys = [
-    for (var i = 0; i < distinct; i++) ContentKey.document('doc-$i'),
-  ];
+  final scope = _scope(producer: producer);
+  final keys = [for (var i = 0; i < distinct; i++) MediaKey.remote('doc-$i')];
   final us = medianUsPerOp(() {
     for (var i = 0; i < operations; i++) {
       scope
@@ -128,7 +117,7 @@ double _lruUsPerCycle(int distinct) {
   final attached = [
     for (var i = 0; i < bindings; i++)
       scope.attach(
-        ContentKey.document('anim-$i'),
+        MediaKey.remote('anim-$i'),
         // Small enough for the 30 fps cap: half the ticks reach a surface.
         const AssetSpec(pixelWidth: 100, pixelHeight: 100),
         const AssetProfile(animate: true),
@@ -167,124 +156,8 @@ double _closuresUsPerTick(int n) {
   return us;
 }
 
-// ---------------------------------------------------------------------------
-// Page holds
-// ---------------------------------------------------------------------------
-
-/// A glyph source over a real `GlyphPageResidency`: which glyph is on which
-/// page is a fixed table, the residency (holds, retention, memory pressure,
-/// release) is the production one. The atlas that would bake and plan the
-/// pages is not involved, so this measures the cache's side of the seam and
-/// the residency, nothing about baking.
-final class _ResidencySource implements GlyphSpriteSource {
-  _ResidencySource(this.residency, int pages, int glyphsPerPage)
-    : _pageOf = {
-        for (var i = 0; i < pages * glyphsPerPage; i++)
-          String.fromCharCode(0x4E00 + i): i ~/ glyphsPerPage,
-      };
-
-  final GlyphPageResidency residency;
-  final Map<String, int> _pageOf;
-
-  List<String> get glyphs => _pageOf.keys.toList();
-
-  int pageOf(String glyph) => _pageOf[glyph]!;
-
-  @override
-  AtlasSprite? spriteOf(String glyph) {
-    final page = _pageOf[glyph];
-    final image = page == null ? null : residency.imageOf(page);
-    if (page == null || image == null) return null;
-    return AtlasSprite(
-      pageIndex: page,
-      page: image,
-      source: const Rect.fromLTWH(0, 0, 1, 1),
-    );
-  }
-
-  @override
-  SpritePageHold? holdPageOf(String glyph) {
-    final page = _pageOf[glyph];
-    return page == null ? null : residency.hold(page);
-  }
-
-  @override
-  bool waitsForSprite(String glyph) => _pageOf.containsKey(glyph);
-
-  @override
-  void addPageListener(void Function(int pageIndex) listener) =>
-      residency.addReleaseListener(listener);
-
-  @override
-  void removePageListener(void Function(int pageIndex) listener) =>
-      residency.removeReleaseListener(listener);
-}
-
-Image _pageImage() {
-  final recorder = PictureRecorder();
-  Canvas(recorder).drawColor(const Color(0xFF000000), BlendMode.src);
-  final picture = recorder.endRecording();
-  final image = picture.toImageSync(4, 4);
-  picture.dispose();
-  return image;
-}
-
-/// A source over [pages] resident pages of [glyphsPerPage] glyphs each.
-({_ResidencySource source, ManualMemoryPressure pressure}) _residency(
-  int pages, {
-  int glyphsPerPage = 10,
-}) {
-  final pressure = ManualMemoryPressure();
-  final timers = ManualRetentionTimers();
-  final residency = GlyphPageResidency(
-    memoryPressure: pressure,
-    startTimer: timers.start,
-  );
-  for (var page = 0; page < pages; page++) {
-    residency.admit(page, _pageImage());
-  }
-  addTearDown(() {
-    residency.dispose();
-    pressure.dispose();
-  });
-  return (
-    source: _ResidencySource(residency, pages, glyphsPerPage),
-    pressure: pressure,
-  );
-}
-
-/// Attach + detach cycles of glyph bindings over [pages] resident pages.
-double _glyphHoldUsPerCycle(int pages) {
-  const operations = 20000;
-  final (:source, pressure: _) = _residency(pages);
-  final producer = _stillProducer();
-  final scope = _scope(producer: producer, glyphSource: source);
-  final keys = [for (final glyph in source.glyphs) ContentKey.unicode(glyph)];
-  final us = medianUsPerOp(() {
-    for (var i = 0; i < operations; i++) {
-      scope
-          .attach(keys[i % keys.length], _stillSpec, const AssetProfile())
-          .detach();
-    }
-  }, operations: operations);
-  for (var page = 0; page < pages; page++) {
-    expect(
-      source.residency.holdCount(page),
-      0,
-      reason: 'every hold taken at attach is given back at detach',
-    );
-  }
-  expect(
-    producer.attempts,
-    isEmpty,
-    reason: 'glyph keys never reach the producer',
-  );
-  scope.dispose();
-  return us;
-}
-
 void main() {
-  final report = RatioReport('catalog_assets');
+  final report = RatioReport('mpx_core');
   tearDownAll(() {
     report.writeIfRequested();
     // ignore: avoid_print
@@ -359,46 +232,5 @@ void main() {
       // The 30 fps cap lets every other 60 Hz tick through.
       expect(entry.value.repaintsPerBindingTick, closeTo(0.5, 0.01));
     }
-  });
-
-  test('page holds: glyph bindings holding atlas pages', () {
-    final fewPages = _glyphHoldUsPerCycle(4);
-    final manyPages = _glyphHoldUsPerCycle(256);
-    final plain = _churnUsPerCycle(200);
-
-    report
-      ..ratio('glyph_hold.cycle.4_pages.over_plain', fewPages, plain)
-      ..ratio('glyph_hold.cycle.256_pages.over_4_pages', manyPages, fewPages);
-  });
-
-  test('page holds: memory pressure releases exactly the unpinned pages', () {
-    const pages = 16;
-    const pinnedPages = 12;
-    final (:source, :pressure) = _residency(pages);
-    final scope = _scope(producer: _stillProducer(), glyphSource: source);
-    final bindings = [
-      for (var page = 0; page < pinnedPages; page++)
-        scope.attach(
-          ContentKey.unicode(source.glyphs[page * 10]),
-          _stillSpec,
-          const AssetProfile(),
-        ),
-    ];
-    expect(source.residency.residentPages, hasLength(pages));
-
-    pressure.raise();
-
-    // Pinned pages survive pressure (releasing them would only be re-read
-    // within a few frames); the rest go.
-    final resident = source.residency.residentPages.length;
-    report
-      ..count('pressure.pages_resident_after', resident)
-      ..count('pressure.pages_released', pages - resident);
-    expect(resident, pinnedPages);
-    for (final binding in bindings) {
-      expect(binding.paintable.sprite, isNotNull);
-      binding.detach();
-    }
-    scope.dispose();
   });
 }

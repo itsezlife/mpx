@@ -1,7 +1,7 @@
 name: mpx_core
 description: >
-  The core of mpx: media identity, an asset cache and decode pipeline,
-  playback clock, budgets and texture hosts.
+  Media core for Flutter: media keys, an asset cache with a fetch and decode
+  pipeline, a playback clock, budgets and platform texture hosts.
 version: 0.0.1
 homepage: https://github.com/itsezlife/mpx
 repository: https://github.com/itsezlife/mpx/tree/main/packages/mpx_core
@@ -14,13 +14,19 @@ environment:
   flutter: '>=3.38.0'
 
 dependencies:
+  ffi: ^2.1.0
   flutter:
     sdk: flutter
+  # Only lib/testing.dart needs it: its contract suites are written with the
+  # test framework, and a library cannot import a dev dependency. Production
+  # entry points never import it.
+  flutter_test:
+    sdk: flutter
+  listen: ^1.0.1
   meta: ^1.17.0
 
 dev_dependencies:
-  flutter_test:
-    sdk: flutter
+  test: ^1.25.0
 
 flutter:
   plugin:

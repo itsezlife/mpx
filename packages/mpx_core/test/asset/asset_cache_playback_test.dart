@@ -1,11 +1,10 @@
 import 'dart:ui';
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
-const _key = ContentKey.document('anim-1');
+const _key = MediaKey.remote('anim-1');
 const _small = AssetSpec(pixelWidth: 100, pixelHeight: 100);
 const _large = AssetSpec(pixelWidth: 512, pixelHeight: 512);
 const _plays = AssetProfile(animate: true);
@@ -30,7 +29,7 @@ void main() {
   AssetBinding animated({
     AssetSpec spec = _large,
     AssetProfile profile = _plays,
-    ContentKey key = _key,
+    MediaKey key = _key,
   }) {
     final binding = scope.attach(key, spec, profile);
     producer.last.advance(
@@ -166,7 +165,7 @@ void main() {
 
     test('paints at the time it was held, while the clock moves on', () {
       final binding = animated();
-      final other = animated(key: const ContentKey.document('anim-2'));
+      final other = animated(key: const MediaKey.remote('anim-2'));
       final paintable = binding.paintable as FakeAssetPaintable;
       ticks.tick(_ms(16));
 
@@ -187,7 +186,7 @@ void main() {
     test('tells the paintable its playback resumed when the hold ends, so '
         'the time the clock ran meanwhile is not played', () {
       final binding = animated();
-      final other = animated(key: const ContentKey.document('anim-2'));
+      final other = animated(key: const MediaKey.remote('anim-2'));
       final paintable = binding.paintable as FakeAssetPaintable;
       ticks.tick(_ms(16));
       final before = paintable.resumes;
@@ -313,7 +312,7 @@ void main() {
   group('the shared clock', () {
     test('a tick signals every playing binding, once per frame', () {
       final a = animated();
-      final b = animated(key: const ContentKey.document('anim-2'));
+      final b = animated(key: const MediaKey.remote('anim-2'));
       var heardA = 0;
       var heardB = 0;
       a.addListener(() => heardA++);
@@ -340,7 +339,7 @@ void main() {
     test('a profile that does not animate paints at one time, however the '
         'clock moves, so it shows one frame', () {
       // Something else keeps the clock running.
-      animated(key: const ContentKey.document('playing'));
+      animated(key: const MediaKey.remote('playing'));
       final still = animated(profile: const AssetProfile());
       final paintable = still.paintable as FakeAssetPaintable;
       void paint() {
@@ -383,10 +382,7 @@ void main() {
     });
 
     test('a small asset advances at 30 fps and a large one at 60', () {
-      final small = animated(
-        spec: _small,
-        key: const ContentKey.document('small'),
-      );
+      final small = animated(spec: _small, key: const MediaKey.remote('small'));
       final large = animated();
       var smallTicks = 0;
       var largeTicks = 0;
@@ -478,7 +474,7 @@ void main() {
     final frames = [_ms(40), _ms(60), _ms(80)]; // a pass of 180 ms
     const once = AssetProfile(animate: true, loop: false);
 
-    AssetBinding playing({AssetProfile profile = once, ContentKey key = _key}) {
+    AssetBinding playing({AssetProfile profile = once, MediaKey key = _key}) {
       final binding = scope.attach(key, _large, profile);
       producer.last.advance(
         AssetStage.full,
@@ -516,7 +512,7 @@ void main() {
         expect(
           animated(
             profile: const AssetProfile(),
-            key: const ContentKey.document('b'),
+            key: const MediaKey.remote('b'),
           ).playback,
           AssetPlayback.idle,
         );
@@ -638,7 +634,7 @@ void main() {
         'replay plays it', () {
       final binding = animated(
         profile: const AssetProfile(loop: false),
-        key: const ContentKey.document('held'),
+        key: const MediaKey.remote('held'),
       );
       expect(binding.playback, AssetPlayback.idle);
       expect(ticks.isRunning, isFalse);
@@ -653,7 +649,7 @@ void main() {
     test('a replay paints at the clock again, not at the time it held', () {
       final binding = animated(
         profile: const AssetProfile(loop: false),
-        key: const ContentKey.document('held'),
+        key: const MediaKey.remote('held'),
       );
       final paintable = binding.paintable as FakeAssetPaintable;
       paint(binding);
@@ -673,7 +669,7 @@ void main() {
       expect(hidden.replay(), isFalse);
 
       final still = scope.attach(
-        const ContentKey.document('still'),
+        const MediaKey.remote('still'),
         _large,
         const AssetProfile(loop: false),
       );
@@ -681,14 +677,14 @@ void main() {
       expect(still.replay(), isFalse);
 
       final early = scope.attach(
-        const ContentKey.document('early'),
+        const MediaKey.remote('early'),
         _large,
         const AssetProfile(loop: false),
       );
       producer.last.advance(AssetStage.placeholder);
       expect(early.replay(), isFalse);
 
-      final gone = playing(key: const ContentKey.document('gone'))..detach();
+      final gone = playing(key: const MediaKey.remote('gone'))..detach();
       expect(gone.replay(), isFalse);
     });
 

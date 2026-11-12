@@ -1,10 +1,10 @@
 import 'dart:ui';
 
-import 'package:catalog_assets/src/asset/asset_fit.dart';
-import 'package:catalog_assets/src/asset/asset_profile.dart';
-import 'package:catalog_assets/src/asset/asset_texture.dart';
-import 'package:catalog_assets/src/atlas/atlas_sprite.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_core/src/asset/asset_fit.dart';
+import 'package:mpx_core/src/asset/asset_profile.dart';
+import 'package:mpx_core/src/asset/asset_texture.dart';
+import 'package:mpx_core/src/asset/atlas_sprite.dart';
 
 /// What a surface passes to [AssetPaintable.paint] besides the rectangle.
 @immutable
@@ -89,7 +89,7 @@ final class AssetPaintContext {
 /// ## Texture capability
 ///
 /// A paintable that plays may expose [texture], a platform texture its
-/// render worker writes each frame into (ADR 043). A surface that composites
+/// render worker writes each frame into. A surface that composites
 /// (a render object that pushes layers) adds a texture layer for it instead
 /// of drawing the sprite or calling [paint]; a surface that only has a
 /// canvas ignores it and calls [paint], which keeps drawing through the

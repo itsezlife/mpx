@@ -1,16 +1,15 @@
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
 import 'pipeline_harness.dart';
 
-List<ContentDescriptor> stickers(int count, {bool thumbnails = false}) => [
+List<MediaDescriptor> stickers(int count, {bool thumbnails = false}) => [
   for (var n = 1; n <= count; n++) sticker(n, thumbnail: thumbnails),
 ];
 
 /// The keys of [fetches] in the order they were made.
-List<ContentKey> keysOf(Iterable<FakeFetch> fetches) => [
+List<MediaKey> keysOf(Iterable<FakeFetch> fetches) => [
   for (final fetch in fetches) fetch.request.descriptor.key,
 ];
 
@@ -164,7 +163,7 @@ void main() {
 
   group('priority', () {
     late PipelineHarness harness;
-    late List<ContentDescriptor> items;
+    late List<MediaDescriptor> items;
 
     setUp(() {
       items = stickers(5, thumbnails: true);
@@ -177,8 +176,8 @@ void main() {
     });
 
     /// Completes fetches one at a time, returning the order they ran in.
-    Future<List<(ContentKey, FetchPart)>> drain() async {
-      final order = <(ContentKey, FetchPart)>[];
+    Future<List<(MediaKey, FetchPart)>> drain() async {
+      final order = <(MediaKey, FetchPart)>[];
       var seen = 0;
       while (harness.fetcher.fetches.length > seen) {
         final fetch = harness.fetcher.fetches[seen++];
@@ -350,35 +349,6 @@ void main() {
       await harness.settle();
 
       expect(harness.fetcher.fetches, hasLength(4));
-    });
-
-    test('a saturated pipeline does not delay a glyph binding', () async {
-      final items = stickers(4);
-      final harness = PipelineHarness(
-        known: items,
-        autoFetch: false,
-        limits: const AssetPipelineLimits(maxConcurrentFetches: 1),
-      );
-      addTearDown(harness.dispose);
-      final atlas = FakeGlyphSpriteSource(const ['😀', '😃']);
-      addTearDown(atlas.dispose);
-      harness.scope.glyphSource = atlas;
-      items.forEach(harness.attach);
-      final fetchesBefore = harness.fetcher.fetches.length;
-
-      final glyph = harness.scope.attach(
-        const ContentKey.unicode('😀'),
-        spec,
-        profile,
-      );
-      atlas.bakePage(0);
-
-      expect(
-        glyph.readiness,
-        const AssetReadiness(AssetStage.full, isFinal: true),
-      );
-      expect(harness.fetcher.fetches, hasLength(fetchesBefore));
-      glyph.detach();
     });
   });
 }

@@ -1,5 +1,5 @@
 /*
- * The Apple texture host of ADR 043 (iOS and macOS share this file).
+ * The Apple texture host (iOS and macOS share this file).
  *
  * A texture is a FlutterTexture over a CVPixelBufferPool of IOSurface-backed
  * BGRA buffers, at most kBuffersPerTexture of them out at once: the ring. A
@@ -20,7 +20,7 @@
  * therefore sends one signal to the main queue per texture, coalesced: posts
  * made before the main thread runs it share it.
  */
-#import "FrameTexturePlugin.h"
+#import "MpxCorePlugin.h"
 
 #import <CoreVideo/CoreVideo.h>
 #import <os/lock.h>
@@ -32,13 +32,13 @@
  * PlatformFrameTextureHost.appleBuffersPerTexture counts the same. */
 static const int kBuffersPerTexture = 3;
 
-#define FRAME_TEXTURE_EXPORT __attribute__((visibility("default"), used))
+#define MPX_FRAME_TEXTURE_EXPORT __attribute__((visibility("default"), used))
 
-/* ---- The worker's ABI (native/include/frame_texture.h) ---- */
+/* ---- The worker's ABI (native/include/mpx_frame_texture.h) ---- */
 
-FRAME_TEXTURE_EXPORT void* frame_texture_lock(int64_t id, int32_t* row_stride);
-FRAME_TEXTURE_EXPORT void frame_texture_post(int64_t id);
-FRAME_TEXTURE_EXPORT int32_t frame_texture_count(void);
+MPX_FRAME_TEXTURE_EXPORT void* mpx_frame_texture_lock(int64_t id, int32_t* row_stride);
+MPX_FRAME_TEXTURE_EXPORT void mpx_frame_texture_post(int64_t id);
+MPX_FRAME_TEXTURE_EXPORT int32_t mpx_frame_texture_count(void);
 
 typedef NS_ENUM(NSInteger, FTLockState) {
   /* No buffer is out to a writer. */
@@ -104,7 +104,7 @@ static NSArray<FTRingTexture*>* FTAll(void) {
   return all;
 }
 
-void* frame_texture_lock(int64_t id, int32_t* row_stride) {
+void* mpx_frame_texture_lock(int64_t id, int32_t* row_stride) {
   if (row_stride == NULL) return NULL;
   @autoreleasepool {
     FTRingTexture* texture = FTFind(id);
@@ -116,14 +116,14 @@ void* frame_texture_lock(int64_t id, int32_t* row_stride) {
   }
 }
 
-void frame_texture_post(int64_t id) {
+void mpx_frame_texture_post(int64_t id) {
   @autoreleasepool {
     FTRingTexture* texture = FTFind(id);
     if (texture != nil && [texture post]) FTRemove(texture);
   }
 }
 
-int32_t frame_texture_count(void) {
+int32_t mpx_frame_texture_count(void) {
   os_unfair_lock_lock(&gTableLock);
   int32_t count = (int32_t)gTable.count;
   os_unfair_lock_unlock(&gTableLock);
@@ -313,7 +313,7 @@ int32_t frame_texture_count(void) {
 
 /* ---- The plugin ---- */
 
-@implementation FrameTexturePlugin {
+@implementation MpxCorePlugin {
   NSObject<FlutterTextureRegistry>* _textures;
   /* The ids this engine made, to end them when it goes. */
   NSMutableSet<NSNumber*>* _ids;
@@ -321,9 +321,9 @@ int32_t frame_texture_count(void) {
 }
 
 + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {
-  FrameTexturePlugin* plugin = [[FrameTexturePlugin alloc] initWithTextures:[registrar textures]];
+  MpxCorePlugin* plugin = [[MpxCorePlugin alloc] initWithTextures:[registrar textures]];
   FlutterMethodChannel* channel =
-      [FlutterMethodChannel methodChannelWithName:@"dev.chatscrollview.frame_texture"
+      [FlutterMethodChannel methodChannelWithName:@"dev.mpx.frame_texture"
                                   binaryMessenger:[registrar messenger]];
   [registrar addMethodCallDelegate:plugin channel:channel];
 }

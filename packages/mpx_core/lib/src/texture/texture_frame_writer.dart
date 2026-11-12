@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:catalog_assets/src/asset/asset_texture.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_core/src/asset/asset_texture.dart';
 
 /// One frame to write into one leased texture.
 ///
@@ -44,9 +44,9 @@ enum TextureFrameOutcome {
   posted,
 
   /// The texture could not be locked at once, so nothing was written and the
-  /// texture keeps its previous frame (ADR 043, "Writing"). The frame may be
+  /// texture keeps its previous frame. The frame may be
   /// asked again; a texture that keeps answering this goes back to a page
-  /// slot (ADR 043, "Failure").
+  /// slot.
   notLocked,
 
   /// The source could not be rendered (a disposed handle, an engine error):
@@ -55,7 +55,7 @@ enum TextureFrameOutcome {
 }
 
 /// Writes frames into textures a render worker locks and posts, a batch at a
-/// time (ADR 043, "Writing").
+/// time.
 ///
 /// The texture counterpart of `FrameRenderer`: the scheduler that owns the
 /// leases decides which frame each wants, and a writer (a decoder adapter)

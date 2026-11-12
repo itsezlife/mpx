@@ -1,15 +1,15 @@
 import 'dart:ui';
 
-import 'package:catalog_assets/src/asset/asset_binding.dart';
-import 'package:catalog_assets/src/asset/asset_paintable.dart';
-import 'package:catalog_assets/src/asset/asset_playback.dart';
-import 'package:catalog_assets/src/asset/asset_profile.dart';
-import 'package:catalog_assets/src/asset/asset_readiness.dart';
-import 'package:catalog_assets/src/asset/asset_spec.dart';
-import 'package:catalog_assets/src/playback/playback_clock.dart';
-import 'package:content_model/content_model.dart';
 import 'package:listen/listen.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_core/src/asset/asset_binding.dart';
+import 'package:mpx_core/src/asset/asset_paintable.dart';
+import 'package:mpx_core/src/asset/asset_playback.dart';
+import 'package:mpx_core/src/asset/asset_profile.dart';
+import 'package:mpx_core/src/asset/asset_readiness.dart';
+import 'package:mpx_core/src/asset/asset_spec.dart';
+import 'package:mpx_core/src/identity/media_key.dart';
+import 'package:mpx_core/src/playback/playback_clock.dart';
 
 /// What every binding shares, whatever media form is behind it: identity,
 /// listeners, the visible flag, the detached state and painting through the
@@ -36,7 +36,7 @@ abstract base class AssetBindingBase
   }
 
   @override
-  final ContentKey key;
+  final MediaKey key;
 
   @override
   final AssetSpec spec;

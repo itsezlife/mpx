@@ -1,15 +1,17 @@
-import 'package:catalog_assets/src/asset/asset_cache_budgets.dart';
-import 'package:catalog_assets/src/asset/asset_paintable.dart';
-import 'package:catalog_assets/src/asset/asset_producer.dart';
-import 'package:catalog_assets/src/asset/asset_readiness.dart';
-import 'package:catalog_assets/src/asset/asset_spec.dart';
-import 'package:catalog_assets/src/pipeline/cancellation_token.dart';
-import 'package:catalog_assets/src/pipeline/content_fetcher.dart';
-import 'package:catalog_assets/src/pipeline/decoder.dart';
-import 'package:catalog_assets/src/pipeline/descriptor_directory.dart';
-import 'package:catalog_assets/src/pipeline/priority_lane.dart';
-import 'package:content_model/content_model.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_core/src/asset/asset_cache_budgets.dart';
+import 'package:mpx_core/src/asset/asset_paintable.dart';
+import 'package:mpx_core/src/asset/asset_producer.dart';
+import 'package:mpx_core/src/asset/asset_readiness.dart';
+import 'package:mpx_core/src/asset/asset_spec.dart';
+import 'package:mpx_core/src/identity/media_descriptor.dart';
+import 'package:mpx_core/src/identity/media_key.dart';
+import 'package:mpx_core/src/pipeline/cancellation_token.dart';
+import 'package:mpx_core/src/pipeline/content_fetcher.dart';
+import 'package:mpx_core/src/pipeline/decoder.dart';
+import 'package:mpx_core/src/pipeline/descriptor_directory.dart';
+import 'package:mpx_core/src/pipeline/media_resolver.dart';
+import 'package:mpx_core/src/pipeline/priority_lane.dart';
 
 /// How much the pipeline does at once, and how much it remembers.
 @immutable
@@ -54,7 +56,7 @@ final class AssetPipelineError implements Exception {
   const AssetPipelineError(this.key, this.message);
 
   /// The content that could not be made.
-  final ContentKey key;
+  final MediaKey key;
 
   /// What is missing.
   final String message;
@@ -83,7 +85,7 @@ final class AssetPipelineError implements Exception {
 ///   token cancelled and a running decode its task cancelled, and the slot is
 ///   free at once.
 /// - **Unknown descriptors.** A key the pipeline has no descriptor for (see
-///   [know]) goes to the host's [ContentResolver], batched with the others
+///   [know]) goes to the host's [MediaResolver], batched with the others
 ///   asked for in the same turn; the entry stays at `AssetStage.none` until
 ///   it resolves.
 ///
@@ -108,7 +110,7 @@ final class AssetPipeline implements AssetProducer {
   AssetPipeline({
     required ContentFetcher fetcher,
     required DecoderRegistry decoders,
-    ContentResolver? resolver,
+    MediaResolver? resolver,
     AssetPipelineLimits limits = const AssetPipelineLimits(),
   }) : _fetcher = fetcher,
        _decoders = decoders,
@@ -139,7 +141,7 @@ final class AssetPipeline implements AssetProducer {
   /// Tells the pipeline what the host already knows about content, so its
   /// entries need no resolver round trip. Replaces what was known for the
   /// descriptor's key.
-  void know(ContentDescriptor descriptor) => _directory.add(descriptor);
+  void know(MediaDescriptor descriptor) => _directory.add(descriptor);
 
   /// Cancels every attempt and forgets every descriptor. Idempotent. The
   /// fetcher, the decoders and the resolver stay the host's to dispose.
@@ -221,7 +223,7 @@ final class _Job implements AssetTask {
   final AssetRequest request;
   final AssetProgress progress;
   final AssetDemand demand;
-  ContentDescriptor? descriptor;
+  MediaDescriptor? descriptor;
   _Work? _thumbnail;
   _Work? _content;
   bool _ended = false;
@@ -248,7 +250,7 @@ final class _Job implements AssetTask {
       _fail(
         AssetPipelineError(
           request.key,
-          'no descriptor is known and the pipeline has no ContentResolver',
+          'no descriptor is known and the pipeline has no MediaResolver',
         ),
         null,
         AssetFailureKind.permanent,
@@ -257,7 +259,7 @@ final class _Job implements AssetTask {
   }
 
   void _resolved(
-    ContentDescriptor? resolved,
+    MediaDescriptor? resolved,
     Object? error,
     StackTrace? stackTrace,
   ) {
@@ -276,13 +278,13 @@ final class _Job implements AssetTask {
     }
   }
 
-  void _begin(ContentDescriptor known) {
-    final decoder = pipeline._decoders.decoderFor(known.mediaForm);
+  void _begin(MediaDescriptor known) {
+    final decoder = pipeline._decoders.decoderFor(known.kind);
     if (decoder == null) {
       _fail(
         AssetPipelineError(
           request.key,
-          'no decoder is registered for ${known.mediaForm.name}',
+          'no decoder is registered for ${known.kind.name}',
         ),
         null,
         AssetFailureKind.permanent,

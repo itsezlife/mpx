@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/src/pool/frame_renderer.dart';
-import 'package:catalog_assets/src/pool/pixel_upload.dart';
+import 'package:mpx_core/src/pool/frame_renderer.dart';
+import 'package:mpx_core/src/pool/pixel_upload.dart';
 
 /// Turns the bytes of one page into a GPU image. [pixels] is premultiplied
 /// RGBA, [side] pixels wide and as many rows from the top of the page as

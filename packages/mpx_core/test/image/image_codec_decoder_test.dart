@@ -2,25 +2,24 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:image_decoder/image_decoder.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
 // 16 x 16, three frames: red 40 ms, blue 60 ms, green 80 ms.
 final Uint8List _threeFrames = File(
-  'test/fixtures/three_frames.gif',
+  'test/image/fixtures/three_frames.gif',
 ).readAsBytesSync();
 
 // 32 x 16, one yellow frame.
-final Uint8List _still = File('test/fixtures/still.png').readAsBytesSync();
+final Uint8List _still = File(
+  'test/image/fixtures/still.png',
+).readAsBytesSync();
 
-const ContentDescriptor _descriptor = ContentDescriptor(
-  key: ContentKey.document('fixture'),
-  semanticKind: SemanticKind.customEmoji,
-  mediaForm: MediaForm.animatedImage,
+const MediaDescriptor _descriptor = MediaDescriptor(
+  key: MediaKey.remote('fixture'),
+  kind: MediaKind.animatedImage,
   animated: true,
 );
 

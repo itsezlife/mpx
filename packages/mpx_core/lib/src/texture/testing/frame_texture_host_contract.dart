@@ -1,12 +1,12 @@
-import 'package:catalog_assets/src/texture/frame_texture_host.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/src/texture/frame_texture_host.dart';
 
 /// The behaviour every [FrameTextureHost] shares, run over the fake and over
 /// each platform host alike (the platform hosts on a device).
 ///
 /// A host that cannot create textures where the suite runs (a device without
 /// the producer) fails the creation tests rather than skipping them: the
-/// failure rule (ADR 043) covers a refusal at run time, but a host under test
+/// failure rule covers a refusal at run time, but a host under test
 /// that never creates one tests nothing.
 abstract final class FrameTextureHostContract {
   /// Registers the contract's tests; [create] builds a fresh host for each.

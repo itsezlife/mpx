@@ -1,11 +1,10 @@
 import 'dart:ui';
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
-const _gif = ContentKey.document('gif-1');
+const _gif = MediaKey.remote('gif-1');
 // The panel cell's decode and the chat's: the same content at two sizes.
 const _cell = AssetSpec(pixelWidth: 300, pixelHeight: 200);
 const _chat = AssetSpec(pixelWidth: 480, pixelHeight: 480);
@@ -158,7 +157,7 @@ void main() {
 
       final chat = scope.attach(_gif, _chat, const AssetProfile(animate: true));
 
-      expect(chat.paintable, same(scope.mediaPlaceholder));
+      expect(chat.paintable, same(scope.placeholder));
       expect(chat.readiness, const AssetReadiness(AssetStage.none));
     });
 
@@ -186,12 +185,12 @@ void main() {
         _profile,
       );
       producer.last.advance(AssetStage.full);
-      scope.attach(const ContentKey.document('gif-2'), _cell, _profile);
+      scope.attach(const MediaKey.remote('gif-2'), _cell, _profile);
       producer.last.advance(AssetStage.full);
 
       final chat = scope.attach(_gif, _chat, _profile);
 
-      expect(chat.paintable, same(scope.mediaPlaceholder));
+      expect(chat.paintable, same(scope.placeholder));
       expect(chat.readiness, const AssetReadiness(AssetStage.none));
     });
   });

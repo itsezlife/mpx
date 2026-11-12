@@ -1,6 +1,6 @@
-import 'package:catalog_assets/src/pool/frame_renderer.dart';
-import 'package:catalog_assets/src/pool/frame_slot_allocator.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/src/pool/frame_renderer.dart';
+import 'package:mpx_core/src/pool/frame_slot_allocator.dart';
 
 /// What a [FrameRenderer] contract run needs besides the renderer.
 final class FrameRendererHarness {

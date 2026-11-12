@@ -1,16 +1,16 @@
-import 'package:catalog_assets/src/asset/asset_binding.dart';
-import 'package:catalog_assets/src/asset/asset_cache_scope.dart';
-import 'package:catalog_assets/src/asset/asset_fade.dart';
-import 'package:catalog_assets/src/asset/asset_paintable.dart';
-import 'package:catalog_assets/src/asset/asset_preset.dart';
-import 'package:catalog_assets/src/asset/asset_readiness.dart';
-import 'package:catalog_assets/src/asset/asset_texture_layer.dart';
-import 'package:catalog_assets/src/asset/radial_progress.dart';
-import 'package:catalog_assets/src/widget/asset_cache_provider.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
+import 'package:mpx_core/src/asset/asset_binding.dart';
+import 'package:mpx_core/src/asset/asset_cache_scope.dart';
+import 'package:mpx_core/src/asset/asset_fade.dart';
+import 'package:mpx_core/src/asset/asset_paintable.dart';
+import 'package:mpx_core/src/asset/asset_preset.dart';
+import 'package:mpx_core/src/asset/asset_readiness.dart';
+import 'package:mpx_core/src/asset/asset_texture_layer.dart';
+import 'package:mpx_core/src/asset/radial_progress.dart';
+import 'package:mpx_core/src/identity/media_key.dart';
+import 'package:mpx_core/src/widget/asset_cache_provider.dart';
 
 /// Shows cache content: attaches `(content, preset.spec, preset.profile)` to
 /// the host's [AssetCacheScope], paints the binding's paintable and detaches
@@ -27,8 +27,7 @@ import 'package:flutter/widgets.dart';
 /// The view attaches once and keeps its binding across rebuilds. It attaches
 /// again only when [content], the preset's spec or the scope change, giving
 /// the old attach back first, so a parent that rebuilds every frame costs no
-/// attach. A unicode glyph on a platform that bakes holds the atlas page of
-/// its glyph for as long as the view is attached.
+/// attach.
 ///
 /// ## Arrival
 ///
@@ -38,7 +37,7 @@ import 'package:flutter/widgets.dart';
 /// placeholder (the view's own, or else the scope's), which fades out as the
 /// content rises. Content there at
 /// the attach shows at once, so a view built again over loaded content does
-/// not flicker. A glyph is never faded.
+/// not flicker.
 ///
 /// ## Playback
 ///
@@ -55,7 +54,7 @@ import 'package:flutter/widgets.dart';
 /// ## Texture
 ///
 /// The view composites: a playing asset whose frames go to a platform
-/// texture (`AssetPaintable.texture`, ADR 043) is a texture layer at the box,
+/// texture (`AssetPaintable.texture`) is a texture layer at the box,
 /// placed as the profile's fit says and clipped to the box for a cover fit or
 /// a corner radius, and is not painted. The view advances an animated
 /// paintable before it reads the texture, which is what tells the paintable
@@ -93,7 +92,7 @@ class ContentView extends StatefulWidget {
   }) : assert(opacity >= 0 && opacity <= 1, 'opacity must be within 0..1');
 
   /// Which content to show.
-  final ContentKey content;
+  final MediaKey content;
 
   /// The size, decode and use of the content. The view is as large as the
   /// preset's size allows its constraints.
@@ -155,7 +154,7 @@ class ContentView extends StatefulWidget {
 class _ContentViewState extends State<ContentView> {
   AssetBinding? _binding;
   AssetCacheScope? _attachedScope;
-  ContentKey? _attachedContent;
+  MediaKey? _attachedContent;
   AssetPreset? _attachedPreset;
   // Whether the tickers above are on.
   bool _tickers = true;
@@ -209,7 +208,7 @@ class _ContentViewState extends State<ContentView> {
         widget.preset == _attachedPreset) {
       return;
     }
-    // Attach first, so an entry (or glyph page) both attaches share is never
+    // Attach first, so an entry both attaches share is never
     // left without a holder in between.
     final previous = _binding;
     _attachedScope = scope;
@@ -229,7 +228,7 @@ class _ContentViewState extends State<ContentView> {
     final preset = widget.preset;
     Widget view = _ContentLeaf(
       binding: _binding!,
-      placeholder: widget.placeholder ?? _attachedScope!.mediaPlaceholder,
+      placeholder: widget.placeholder ?? _attachedScope!.placeholder,
       standsIn: widget.placeholder != null,
       placeholderTint: widget.placeholderTint,
       size: preset.size,

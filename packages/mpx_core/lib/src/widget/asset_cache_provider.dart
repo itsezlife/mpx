@@ -1,5 +1,5 @@
-import 'package:catalog_assets/src/asset/asset_cache_scope.dart';
 import 'package:flutter/widgets.dart';
+import 'package:mpx_core/src/asset/asset_cache_scope.dart';
 
 /// Makes the host's [AssetCacheScope] available to the widgets below, so
 /// `ContentView` finds the cache without it being passed down by hand.

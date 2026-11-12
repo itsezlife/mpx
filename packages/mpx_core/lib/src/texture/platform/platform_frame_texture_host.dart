@@ -1,12 +1,12 @@
 import 'dart:async';
 
-import 'package:catalog_assets/catalog_assets.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:frame_texture/src/frame_texture_natives.dart';
-import 'package:frame_texture/src/platform_host.dart' as environment_specific;
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/src/texture/platform/platform_host.dart'
+    as environment_specific;
 
-/// The [FrameTextureHost] of a platform plugin (ADR 043): the platform makes
+/// The [FrameTextureHost] of a platform plugin: the platform makes
 /// and destroys textures over a method channel, and every lock and post goes
 /// through the native texture table ([FrameTextureNatives]), which the
 /// platform side attaches each texture's surface to.
@@ -44,7 +44,7 @@ final class PlatformFrameTextureHost implements FrameTextureHost {
       environment_specific.$createPlatformFrameTextureHost();
 
   /// The channel the platform side answers on.
-  static const String channelName = 'dev.chatscrollview.frame_texture';
+  static const String channelName = 'dev.mpx.frame_texture';
 
   /// The buffers one Android texture holds in steady state: one the worker
   /// writes, the newest posted one, and up to two the engine still draws

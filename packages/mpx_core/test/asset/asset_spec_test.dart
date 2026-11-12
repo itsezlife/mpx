@@ -1,4 +1,4 @@
-import 'package:catalog_assets/catalog_assets.dart';
+import 'package:mpx_core/mpx_core.dart';
 import 'package:test/test.dart';
 
 void main() {

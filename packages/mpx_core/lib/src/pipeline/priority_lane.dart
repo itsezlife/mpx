@@ -1,5 +1,5 @@
-import 'package:catalog_assets/src/asset/asset_producer.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_core/src/asset/asset_producer.dart';
 
 /// Work a [PriorityLane] orders and starts.
 @internal

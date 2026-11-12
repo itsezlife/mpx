@@ -1,5 +1,5 @@
-import 'package:catalog_assets/frame_pool.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/frame_pool.dart';
 
 /// Two 256 px pages (512 KiB): eight 128 px cells, or two 256 px cells.
 const _budget = 2 * 256 * 256 * 4;

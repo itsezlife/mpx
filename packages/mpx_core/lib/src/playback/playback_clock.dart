@@ -1,7 +1,7 @@
-import 'package:catalog_assets/src/playback/playback_policy.dart';
-import 'package:catalog_assets/src/playback/playback_tick_source.dart';
-import 'package:catalog_assets/src/playback/scheduler_playback_tick_source.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_core/src/playback/playback_policy.dart';
+import 'package:mpx_core/src/playback/playback_tick_source.dart';
+import 'package:mpx_core/src/playback/scheduler_playback_tick_source.dart';
 
 /// Something the [PlaybackClock] advances: in practice a playing binding.
 @internal

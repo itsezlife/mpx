@@ -1,7 +1,7 @@
 import 'dart:ui' show AppLifecycleState;
 
-import 'package:catalog_assets/src/playback/playback_lifecycle_source.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/src/playback/playback_lifecycle_source.dart';
 
 /// What a [PlaybackLifecycleSource] contract run needs besides the source: a
 /// way to make the platform report a state, and to end the source.

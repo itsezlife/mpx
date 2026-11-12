@@ -18,9 +18,9 @@
 // The workloads and the scroll trace are in scroll_trace.dart, shared with the
 // ratio benchmark the nightly job runs (asset_cache_ratio_bench_test.dart).
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
 import 'scroll_trace.dart';
 

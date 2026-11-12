@@ -1,10 +1,10 @@
 import 'dart:ui' show AppLifecycleState;
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/src/playback/playback_clock.dart';
-import 'package:catalog_assets/testing.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/src/playback/playback_clock.dart';
+import 'package:mpx_core/testing.dart';
 
 Duration _ms(int ms) => Duration(milliseconds: ms);
 
@@ -22,14 +22,14 @@ void main() {
   late ManualPlaybackTickSource frames;
   late PlaybackClock clock;
   late ManualPlaybackLifecycleSource lifecycle;
-  late ManualRetentionTimers timers;
+  late ManualTimers timers;
   final created = <PlaybackActivity>[];
 
   setUp(() {
     frames = ManualPlaybackTickSource();
     clock = PlaybackClock(ticks: frames);
     lifecycle = ManualPlaybackLifecycleSource();
-    timers = ManualRetentionTimers();
+    timers = ManualTimers();
   });
   tearDown(() {
     created

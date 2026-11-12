@@ -23,7 +23,7 @@ enum AssetVariant {
 
 /// What is decoded for an entry: a pixel size, a decode mode and a variant.
 ///
-/// A spec together with a `ContentKey` is the identity of a cache entry, so
+/// A spec together with a `MediaKey` is the identity of a cache entry, so
 /// two surfaces that ask for the same pixels share one decode, and the same
 /// content at two sizes is two entries. It carries pixels rather than a
 /// surface name on purpose: "34 dp at density 3" and "102 px" are the same

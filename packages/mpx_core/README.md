@@ -1,9 +1,7 @@
 # mpx_core
 
-The core of mpx: media identity, an asset cache and decode pipeline, playback clock, budgets and texture hosts.
-
-> Skeleton: the API lands with the tickets of the mpx build order. Nothing is
-> usable yet.
+Media core for Flutter: media keys, an asset cache with a fetch and decode
+pipeline, a playback clock, budgets and platform texture hosts.
 
 ## Install
 
@@ -21,16 +19,49 @@ dependencies:
 
 ```dart
 import 'package:mpx_core/mpx_core.dart';
+
+final decoders = DecoderRegistry()
+  ..register(MediaKind.still, const ImageCodecDecoder())
+  ..register(MediaKind.animatedImage, const ImageCodecDecoder());
+final pipeline = AssetPipeline(fetcher: myFetcher, decoders: decoders);
+final scope = AssetCacheScope(producer: pipeline);
+
+pipeline.know(
+  const MediaDescriptor(key: MediaKey.remote('42'), kind: MediaKind.still),
+);
+
+// In the widget tree:
+AssetCacheProvider(
+  scope: scope,
+  child: ContentView(
+    content: const MediaKey.remote('42'),
+    preset: AssetPresets.square(
+      extent: 64,
+      devicePixelRatio: 2,
+      profile: const AssetProfile(),
+    ),
+  ),
+);
 ```
 
-## Features (planned)
+`myFetcher` is the host's `ContentFetcher`; the `mpx` package fills it from
+`http_bytes_cache`.
 
-- Media keys and descriptors
-- Asset cache and decode pipeline
-- Platform texture hosts and the engine image decoder
+## Features
+
+- `MediaKey` and `MediaDescriptor`: media identity, never a URL.
+- `AssetCacheScope`: staged readiness, byte-budgeted LRU, sibling stages.
+- `AssetPipeline`: resolve, fetch and decode with priority lanes and
+  cancellation.
+- `PlaybackClock` with pause layers, fps caps and background holds.
+- Frame pool (`frame_pool.dart`) and platform texture hosts on Android, iOS
+  and macOS.
+- `ImageCodecDecoder` for the engine's image formats, stills and animated
+  WebP / GIF.
+- Fakes and contract suites in `testing.dart`.
 
 ## Docs
 
 - [Spec](../../docs/spec.md)
 - [Package topology (ADR 0001)](../../docs/adr/0001-package-topology.md)
-- [ADR 0003](../../docs/adr/0003-media-core-and-decoders.md)
+- [Media core and decoders (ADR 0003)](../../docs/adr/0003-media-core-and-decoders.md)

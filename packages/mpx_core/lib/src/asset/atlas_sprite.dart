@@ -16,7 +16,7 @@ import 'package:meta/meta.dart';
 /// within the call that asked for it, never to be kept: ask again to learn
 /// whether the pixels are still there.
 ///
-/// [GlyphAtlas]: package:catalog_assets/glyph_atlas.dart
+/// [GlyphAtlas]: package:mpx_core/glyph_atlas.dart
 @immutable
 final class AtlasSprite {
   /// Creates a sprite cut from [source] on [page], page number [pageIndex].

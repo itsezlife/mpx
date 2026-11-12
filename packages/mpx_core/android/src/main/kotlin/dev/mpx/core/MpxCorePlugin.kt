@@ -1,4 +1,4 @@
-package dev.chatscrollview.frame_texture
+package dev.mpx.core
 
 import android.util.Log
 import android.view.Surface
@@ -8,8 +8,8 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.TextureRegistry
 
 /**
- * The Android texture host of ADR 043: a [TextureRegistry.SurfaceProducer]
- * per texture, its window handed to libframe_texture under the texture id, so
+ * The Android texture host: a [TextureRegistry.SurfaceProducer]
+ * per texture, its window handed to libmpx_frame_texture under the texture id, so
  * a render worker locks and posts it by id through FFI.
  *
  * The channel has two methods, both on the platform thread: `create`
@@ -17,7 +17,7 @@ import io.flutter.view.TextureRegistry
  * cannot make one; `destroy` (the id) ends it. Everything here runs on the
  * platform thread; the library is what the workers share.
  */
-class FrameTexturePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
+class MpxCorePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private var channel: MethodChannel? = null
     private var registry: TextureRegistry? = null
     private val textures = HashMap<Long, ProducedTexture>()
@@ -78,7 +78,7 @@ class FrameTexturePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     }
 
     private companion object {
-        const val CHANNEL = "dev.chatscrollview.frame_texture"
+        const val CHANNEL = "dev.mpx.frame_texture"
         const val TAG = "FrameTexture"
     }
 }
@@ -124,15 +124,15 @@ private class ProducedTexture(
     }
 }
 
-/** libframe_texture's JNI side (native/src/frame_texture_jni.c). */
+/** libmpx_frame_texture's JNI side (native/src/mpx_frame_texture_jni.c). */
 internal object FrameTextureNative {
-    /** `FRAME_TEXTURE_INVALID` of frame_texture.h. */
+    /** `MPX_FRAME_TEXTURE_INVALID` of mpx_frame_texture.h. */
     const val INVALID = -1
 
     init {
         // The one copy of the library in the process: the Dart side opens the
         // same file by name, and the dynamic linker hands it this instance.
-        System.loadLibrary("frame_texture")
+        System.loadLibrary("mpx_frame_texture")
     }
 
     @JvmStatic external fun attach(id: Long, surface: Surface, width: Int, height: Int): Int

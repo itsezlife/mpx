@@ -1,8 +1,7 @@
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
 AssetCacheScope _scope() {
   final scope = AssetCacheScope(
@@ -89,7 +88,7 @@ void main() {
 
     expect(
       () => scope.attach(
-        const ContentKey.document('1'),
+        const MediaKey.remote('1'),
         const AssetSpec(pixelWidth: 1, pixelHeight: 1),
         const AssetProfile(),
       ),

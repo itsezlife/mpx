@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:catalog_assets/src/pool/frame_renderer.dart';
+import 'package:mpx_core/src/pool/frame_renderer.dart';
 
 /// A [FrameRenderer] that fills the job's region with a colour taken from the
 /// frame, so a test can tell which frame a slot holds.

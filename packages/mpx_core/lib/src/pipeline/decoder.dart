@@ -1,8 +1,8 @@
-import 'package:catalog_assets/src/asset/asset_producer.dart';
-import 'package:catalog_assets/src/asset/asset_spec.dart';
-import 'package:catalog_assets/src/pipeline/content_fetcher.dart';
-import 'package:content_model/content_model.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_core/src/asset/asset_producer.dart';
+import 'package:mpx_core/src/asset/asset_spec.dart';
+import 'package:mpx_core/src/identity/media_descriptor.dart';
+import 'package:mpx_core/src/pipeline/content_fetcher.dart';
 
 /// What a [Decoder] is asked to decode.
 @immutable
@@ -16,7 +16,7 @@ final class DecodeRequest {
   });
 
   /// What is known about the content.
-  final ContentDescriptor descriptor;
+  final MediaDescriptor descriptor;
 
   /// The pixels wanted.
   final AssetSpec spec;
@@ -28,11 +28,11 @@ final class DecodeRequest {
   final FetchedContent content;
 }
 
-/// Turns fetched data into paintables, for one media form.
+/// Turns fetched data into paintables, for one media kind.
 ///
 /// Adapter packages provide decoders (a still image, a vector animation, a
 /// video clip) and the host registers each in a `DecoderRegistry` under the
-/// `MediaForm` it decodes. A decoder neither fetches nor caches: it gets bytes
+/// `MediaKind` it decodes. A decoder neither fetches nor caches: it gets bytes
 /// and a spec and reports stages.
 ///
 /// ## Contract
@@ -55,38 +55,35 @@ abstract interface class Decoder {
   AssetTask decode(DecodeRequest request, AssetProgress progress);
 }
 
-/// The decoders of a host, one per `MediaForm`.
+/// The decoders of a host, one per `MediaKind`.
 ///
-/// The pipeline looks the decoder of a descriptor's media form up here; a
-/// form with none leaves its entries at `AssetStage.none`. The glyph form has
-/// no decoder on purpose: unicode glyphs bind to baked sprites through the
-/// scope's glyph source and never reach the pipeline.
+/// The pipeline looks the decoder of a descriptor's kind up here; a
+/// kind with none leaves its entries at `AssetStage.none`.
 final class DecoderRegistry {
   /// Creates an empty registry.
   DecoderRegistry();
 
-  final Map<MediaForm, Decoder> _decoders = {};
+  final Map<MediaKind, Decoder> _decoders = {};
 
-  /// Registers [decoder] for [form].
+  /// Registers [decoder] for [kind].
   ///
-  /// Throws an [ArgumentError] for [MediaForm.glyph] and [MediaForm.unknown],
-  /// which are not decoded, and a [StateError] if [form] already has a
-  /// decoder: two adapters claiming one form is a wiring bug to see.
-  void register(MediaForm form, Decoder decoder) {
-    if (form == MediaForm.glyph || form == MediaForm.unknown) {
+  /// Throws an [ArgumentError] for [MediaKind.unknown], which has nothing to
+  /// decode, and a [StateError] if [kind] already has a decoder: two adapters
+  /// claiming one kind is a wiring bug to see.
+  void register(MediaKind kind, Decoder decoder) {
+    if (kind == MediaKind.unknown) {
       throw ArgumentError.value(
-        form,
-        'form',
-        'is not decoded: glyphs bind through the scope glyph source and an '
-            'unknown form has nothing to decode',
+        kind,
+        'kind',
+        'is not decoded: an unknown kind has nothing to decode',
       );
     }
-    if (_decoders.containsKey(form)) {
-      throw StateError('A decoder is already registered for ${form.name}.');
+    if (_decoders.containsKey(kind)) {
+      throw StateError('A decoder is already registered for ${kind.name}.');
     }
-    _decoders[form] = decoder;
+    _decoders[kind] = decoder;
   }
 
-  /// The decoder registered for [form], or null.
-  Decoder? decoderFor(MediaForm form) => _decoders[form];
+  /// The decoder registered for [kind], or null.
+  Decoder? decoderFor(MediaKind kind) => _decoders[kind];
 }

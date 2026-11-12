@@ -1,13 +1,14 @@
 import 'dart:typed_data';
 
-import 'package:catalog_assets/src/asset/asset_producer.dart';
-import 'package:catalog_assets/src/pipeline/cancellation_token.dart';
-import 'package:content_model/content_model.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_core/src/asset/asset_producer.dart';
+import 'package:mpx_core/src/identity/media_descriptor.dart';
+import 'package:mpx_core/src/identity/media_key.dart';
+import 'package:mpx_core/src/pipeline/cancellation_token.dart';
 
 /// Which bytes of a piece of content a fetch is for.
 enum FetchPart {
-  /// The stand-in named by `ContentDescriptor.thumbnail`: small, shown while
+  /// The stand-in named by `MediaDescriptor.thumbnail`: small, shown while
   /// the content loads. Only requested for a descriptor that has one.
   thumbnail,
 
@@ -35,7 +36,7 @@ final class FetchRequest {
 
   /// What is known about the content. For [FetchPart.thumbnail] its
   /// `thumbnail` is set.
-  final ContentDescriptor descriptor;
+  final MediaDescriptor descriptor;
 
   /// Which bytes.
   final FetchPart part;
@@ -170,5 +171,5 @@ abstract interface class ContentFetcher {
   /// the host keeps, or a stat of the disk tier's file. A fetcher that cannot
   /// tell answers false; the surfaces then show the download from the
   /// transfer's first report (`FetchRequest.onProgress`).
-  bool needsDownload(ContentKey key);
+  bool needsDownload(MediaKey key);
 }

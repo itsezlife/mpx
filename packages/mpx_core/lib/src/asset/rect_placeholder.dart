@@ -1,7 +1,7 @@
 import 'dart:ui';
 
-import 'package:catalog_assets/src/asset/asset_paintable.dart';
-import 'package:catalog_assets/src/atlas/atlas_sprite.dart';
+import 'package:mpx_core/src/asset/asset_paintable.dart';
+import 'package:mpx_core/src/asset/atlas_sprite.dart';
 
 /// The default stand-in of media (a GIF, a clip, a picture) that has nothing to
 /// show yet: the whole rectangle in one quiet colour.

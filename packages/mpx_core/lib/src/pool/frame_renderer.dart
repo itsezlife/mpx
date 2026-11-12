@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:catalog_assets/src/pool/frame_slot_allocator.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_core/src/pool/frame_slot_allocator.dart';
 
 /// The bytes of the dynamic pages, where a renderer writes frames.
 ///

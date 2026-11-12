@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
-import 'package:catalog_assets/src/asset/asset_texture.dart';
+import 'package:mpx_core/src/asset/asset_texture.dart';
 
 /// How content of one proportion fills a rectangle of another.
 ///

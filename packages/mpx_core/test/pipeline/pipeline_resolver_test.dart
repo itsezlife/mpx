@@ -1,18 +1,17 @@
 import 'dart:async';
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:content_model/content_model.dart';
-import 'package:content_model/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
 import 'pipeline_harness.dart';
 
 /// A resolver that answers when the test says so.
-final class _HeldResolver implements ContentResolver {
-  final List<List<ContentKey>> requests = [];
-  final List<Completer<Map<ContentKey, ContentDescriptor>>> _answers = [];
+final class _HeldResolver implements MediaResolver {
+  final List<List<MediaKey>> requests = [];
+  final List<Completer<Map<MediaKey, MediaDescriptor>>> _answers = [];
 
-  void answer(int request, Iterable<ContentDescriptor> descriptors) =>
+  void answer(int request, Iterable<MediaDescriptor> descriptors) =>
       _answers[request].complete({
         for (final descriptor in descriptors) descriptor.key: descriptor,
       });
@@ -21,11 +20,9 @@ final class _HeldResolver implements ContentResolver {
       _answers[request].completeError(error);
 
   @override
-  Future<Map<ContentKey, ContentDescriptor>> resolve(
-    Iterable<ContentKey> keys,
-  ) {
+  Future<Map<MediaKey, MediaDescriptor>> resolve(Iterable<MediaKey> keys) {
     requests.add(keys.toList());
-    final answer = Completer<Map<ContentKey, ContentDescriptor>>();
+    final answer = Completer<Map<MediaKey, MediaDescriptor>>();
     _answers.add(answer);
     return answer.future;
   }
@@ -35,7 +32,7 @@ void main() {
   group('a bare key', () {
     test('is resolved by the host, then fetched and decoded', () async {
       final item = sticker(1);
-      final resolver = FakeContentResolver([item]);
+      final resolver = FakeMediaResolver([item]);
       final harness = PipelineHarness(served: [item], resolver: resolver);
       addTearDown(harness.dispose);
 
@@ -69,7 +66,7 @@ void main() {
 
     test('keys attached in one turn are resolved in one batch', () async {
       final items = [for (var n = 1; n <= 4; n++) sticker(n)];
-      final resolver = FakeContentResolver(items);
+      final resolver = FakeMediaResolver(items);
       final harness = PipelineHarness(served: items, resolver: resolver);
       addTearDown(harness.dispose);
 
@@ -88,7 +85,7 @@ void main() {
 
     test('is resolved once for all the sizes it is shown at', () async {
       final item = sticker(1);
-      final resolver = FakeContentResolver([item]);
+      final resolver = FakeMediaResolver([item]);
       final harness = PipelineHarness(served: [item], resolver: resolver);
       addTearDown(harness.dispose);
 
@@ -104,7 +101,7 @@ void main() {
       'a key the host does not know ends the attempt, permanently',
       () async {
         final item = sticker(1);
-        final resolver = FakeContentResolver(const []);
+        final resolver = FakeMediaResolver(const []);
         final harness = PipelineHarness(served: [item], resolver: resolver);
         addTearDown(harness.dispose);
 
@@ -128,7 +125,7 @@ void main() {
 
     test('a resolver that cannot be reached is a transient failure', () async {
       final item = sticker(1);
-      final resolver = FakeContentResolver([item])
+      final resolver = FakeMediaResolver([item])
         ..failure = Exception('no connection');
       final harness = PipelineHarness(served: [item], resolver: resolver);
       addTearDown(harness.dispose);
@@ -183,7 +180,7 @@ void main() {
   group('a bare key that leaves in the same turn', () {
     test('is never asked for', () async {
       final item = sticker(1);
-      final resolver = FakeContentResolver([item]);
+      final resolver = FakeMediaResolver([item]);
       final harness = PipelineHarness(served: [item], resolver: resolver);
       addTearDown(harness.dispose);
 
@@ -198,7 +195,7 @@ void main() {
   group('known descriptors', () {
     test('a descriptor the host gave needs no resolver', () async {
       final item = sticker(1);
-      final resolver = FakeContentResolver(const []);
+      final resolver = FakeMediaResolver(const []);
       final harness = PipelineHarness(known: [item], resolver: resolver);
       addTearDown(harness.dispose);
 
@@ -211,7 +208,7 @@ void main() {
 
     test('the least recently used one is forgotten past the limit', () async {
       final items = [for (var n = 1; n <= 3; n++) sticker(n)];
-      final resolver = FakeContentResolver(items);
+      final resolver = FakeMediaResolver(items);
       final harness = PipelineHarness(
         known: items,
         resolver: resolver,

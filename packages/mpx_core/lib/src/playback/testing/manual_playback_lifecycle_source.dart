@@ -1,7 +1,7 @@
 import 'dart:ui' show AppLifecycleState;
 
-import 'package:catalog_assets/src/playback/playback_lifecycle_source.dart';
 import 'package:flutter/foundation.dart';
+import 'package:mpx_core/src/playback/playback_lifecycle_source.dart';
 
 /// A [PlaybackLifecycleSource] a test moves by hand with [emit].
 final class ManualPlaybackLifecycleSource extends ChangeNotifier

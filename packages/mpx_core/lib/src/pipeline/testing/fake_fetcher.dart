@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:catalog_assets/src/pipeline/content_fetcher.dart';
-import 'package:catalog_assets/src/pipeline/testing/manual_clock.dart';
-import 'package:content_model/content_model.dart';
+import 'package:mpx_core/src/identity/media_descriptor.dart';
+import 'package:mpx_core/src/identity/media_key.dart';
+import 'package:mpx_core/src/pipeline/content_fetcher.dart';
+import 'package:mpx_core/src/pipeline/testing/manual_clock.dart';
 
 /// One fetch a [FakeFetcher] was asked for; a test plays the network by
 /// calling [complete] and [fail].
@@ -71,16 +72,16 @@ final class FakeFetcher implements ContentFetcher {
   /// (the next microtask without a clock); without it each waits for
   /// [FakeFetch.complete] or [FakeFetch.fail].
   FakeFetcher({
-    Map<ContentKey, FetchedContent> contents = const {},
-    Map<ThumbnailRef, FetchedContent> thumbnails = const {},
+    Map<MediaKey, FetchedContent> contents = const {},
+    Map<MediaThumbnailRef, FetchedContent> thumbnails = const {},
     this.autoRespond = true,
     this.latency = Duration.zero,
     this.clock,
   }) : _contents = {...contents},
        _thumbnails = {...thumbnails};
 
-  final Map<ContentKey, FetchedContent> _contents;
-  final Map<ThumbnailRef, FetchedContent> _thumbnails;
+  final Map<MediaKey, FetchedContent> _contents;
+  final Map<MediaThumbnailRef, FetchedContent> _thumbnails;
 
   /// Whether fetches answer by themselves.
   final bool autoRespond;
@@ -97,7 +98,7 @@ final class FakeFetcher implements ContentFetcher {
 
   /// The keys whose content [needsDownload] reports missing; any other is
   /// one the fetcher cannot tell about.
-  final Set<ContentKey> missing = {};
+  final Set<MediaKey> missing = {};
 
   /// Every fetch, oldest first.
   final List<FakeFetch> fetches = [];
@@ -105,11 +106,10 @@ final class FakeFetcher implements ContentFetcher {
   int _peak = 0;
 
   /// Serves [content] for [key] from now on.
-  void serve(ContentKey key, FetchedContent content) =>
-      _contents[key] = content;
+  void serve(MediaKey key, FetchedContent content) => _contents[key] = content;
 
   /// Serves [content] as the thumbnail [ref] from now on.
-  void serveThumbnail(ThumbnailRef ref, FetchedContent content) =>
+  void serveThumbnail(MediaThumbnailRef ref, FetchedContent content) =>
       _thumbnails[ref] = content;
 
   /// Fetches that have no outcome yet.
@@ -125,7 +125,7 @@ final class FakeFetcher implements ContentFetcher {
   int get peakConcurrency => _peak;
 
   /// The fetches made for [part] of [key].
-  List<FakeFetch> fetchesOf(ContentKey key, [FetchPart? part]) => [
+  List<FakeFetch> fetchesOf(MediaKey key, [FetchPart? part]) => [
     for (final fetch in fetches)
       if (fetch.request.descriptor.key == key &&
           (part == null || fetch.request.part == part))
@@ -150,7 +150,7 @@ final class FakeFetcher implements ContentFetcher {
   }
 
   @override
-  bool needsDownload(ContentKey key) => missing.contains(key);
+  bool needsDownload(MediaKey key) => missing.contains(key);
 
   FetchedContent? _served(FetchRequest request) => switch (request.part) {
     FetchPart.thumbnail => _thumbnails[request.descriptor.thumbnail],

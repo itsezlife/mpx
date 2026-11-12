@@ -1,9 +1,8 @@
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
-const _key = ContentKey.document('sticker-1');
+const _key = MediaKey.remote('sticker-1');
 const _spec = AssetSpec(pixelWidth: 64, pixelHeight: 64);
 const _profile = AssetProfile();
 

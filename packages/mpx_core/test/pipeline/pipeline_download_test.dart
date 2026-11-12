@@ -1,6 +1,6 @@
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:content_model/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
 import 'pipeline_harness.dart';
 
@@ -121,7 +121,7 @@ void main() {
       final harness = PipelineHarness(
         served: [item],
         autoFetch: false,
-        resolver: FakeContentResolver([item]),
+        resolver: FakeMediaResolver([item]),
       );
       addTearDown(harness.dispose);
       harness.fetcher.missing.add(item.key);

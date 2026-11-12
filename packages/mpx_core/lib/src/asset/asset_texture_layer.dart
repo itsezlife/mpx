@@ -1,8 +1,8 @@
-import 'package:catalog_assets/src/asset/asset_binding.dart';
 import 'package:flutter/rendering.dart';
+import 'package:mpx_core/src/asset/asset_binding.dart';
 
 /// How a surface that pushes layers shows a binding whose frames go to a
-/// platform texture (ADR 043, "Paint capability"): the one place `ContentView`
+/// platform texture: the one place `ContentView`
 /// and `ContentEmbed` composite.
 ///
 /// [composite] advances an animated paintable (which is what tells it that a

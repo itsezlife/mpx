@@ -1,18 +1,11 @@
 import 'dart:async';
-import 'dart:developer' as developer;
 import 'dart:ui';
 
-import 'package:catalog_assets/src/atlas/atlas_sprite.dart';
-import 'package:catalog_assets/src/pool/frame_page_images.dart';
-import 'package:catalog_assets/src/pool/frame_pool.dart';
-import 'package:catalog_assets/src/pool/frame_renderer.dart';
 import 'package:flutter/foundation.dart' show Listenable;
-
-// [DEBUG-fl01] ticket 55 diagnosis probe; remove with `grep -rn DEBUG-fl01`.
-const bool _fl01 = bool.fromEnvironment('DEBUG_FL01');
-void _fl01Log(String message) =>
-    // ignore: avoid_print
-    print('[DEBUG-fl01] t=${developer.Timeline.now} $message');
+import 'package:mpx_core/src/asset/atlas_sprite.dart';
+import 'package:mpx_core/src/pool/frame_page_images.dart';
+import 'package:mpx_core/src/pool/frame_pool.dart';
+import 'package:mpx_core/src/pool/frame_renderer.dart';
 
 /// What an entry has shown, shared by every handle on it.
 ///
@@ -429,12 +422,6 @@ final class FrameAtlas<K extends Object> {
           continue;
         }
         handle._state.frame = frames[handle]!;
-      }
-      if (_fl01) {
-        _fl01Log(
-          'atlas uploaded pages=${{for (final h in rendered) h._lease.slot.pageIndex}} '
-          'images=${{for (final h in rendered) identityHashCode(_images.imageOf(h._lease.slot.pageIndex))}}',
-        );
       }
       return (rendered: rendered, failed: failed);
     } finally {

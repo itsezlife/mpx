@@ -1,8 +1,8 @@
-import 'package:catalog_assets/src/asset/asset_spec.dart';
-import 'package:catalog_assets/src/playback/playback_clock.dart';
-import 'package:catalog_assets/src/playback/playback_policy.dart';
-import 'package:catalog_assets/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/src/asset/asset_spec.dart';
+import 'package:mpx_core/src/playback/playback_clock.dart';
+import 'package:mpx_core/src/playback/playback_policy.dart';
+import 'package:mpx_core/testing.dart';
 
 const _small = AssetSpec(pixelWidth: 100, pixelHeight: 100);
 const _large = AssetSpec(pixelWidth: 512, pixelHeight: 512);

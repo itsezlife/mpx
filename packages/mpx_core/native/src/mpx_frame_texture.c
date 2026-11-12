@@ -1,6 +1,6 @@
 /*
  * The texture table: windows by texture id, and the lock state of each.
- * See frame_texture.h for the contract.
+ * See mpx_frame_texture.h for the contract.
  *
  * A texture is idle, busy (a caller is between taking it and the platform's
  * lock or post returning) or locked (a buffer is out to a writer). Only an
@@ -9,7 +9,7 @@
  * platform calls run outside it, on a window reference the caller took, so a
  * detach or a forget during a lock never frees the window under the writer.
  */
-#include "frame_texture.h"
+#include "mpx_frame_texture.h"
 
 #include <pthread.h>
 #include <stdbool.h>
@@ -82,7 +82,7 @@ static void end_lock(int64_t id, ANativeWindow* window) {
   ANativeWindow_release(window);
 }
 
-void* frame_texture_lock(int64_t id, int32_t* row_stride) {
+void* mpx_frame_texture_lock(int64_t id, int32_t* row_stride) {
   if (row_stride == NULL) return NULL;
   pthread_mutex_lock(&table_mutex);
   texture* entry = find(id);
@@ -125,7 +125,7 @@ void* frame_texture_lock(int64_t id, int32_t* row_stride) {
   return buffer.bits;
 }
 
-void frame_texture_post(int64_t id) {
+void mpx_frame_texture_post(int64_t id) {
   pthread_mutex_lock(&table_mutex);
   texture* entry = find(id);
   if (entry == NULL || entry->state != STATE_LOCKED) {
@@ -141,7 +141,7 @@ void frame_texture_post(int64_t id) {
   end_lock(id, window);
 }
 
-int32_t frame_texture_count(void) {
+int32_t mpx_frame_texture_count(void) {
   pthread_mutex_lock(&table_mutex);
   int32_t count = 0;
   for (int32_t i = 0; i < table_length; i++) {
@@ -151,30 +151,30 @@ int32_t frame_texture_count(void) {
   return count;
 }
 
-int32_t frame_texture_attach(int64_t id, ANativeWindow* window, int32_t width,
+int32_t mpx_frame_texture_attach(int64_t id, ANativeWindow* window, int32_t width,
                              int32_t height) {
-  if (window == NULL) return FRAME_TEXTURE_INVALID;
+  if (window == NULL) return MPX_FRAME_TEXTURE_INVALID;
   if (width <= 0 || height <= 0) {
     ANativeWindow_release(window);
-    return FRAME_TEXTURE_INVALID;
+    return MPX_FRAME_TEXTURE_INVALID;
   }
   if (ANativeWindow_setBuffersGeometry(window, width, height,
                                        WINDOW_FORMAT_RGBA_8888) != 0) {
     ANativeWindow_release(window);
-    return FRAME_TEXTURE_GEOMETRY;
+    return MPX_FRAME_TEXTURE_GEOMETRY;
   }
   pthread_mutex_lock(&table_mutex);
   texture* entry = find(id);
   if (entry != NULL && entry->forgotten) {
     pthread_mutex_unlock(&table_mutex);
     ANativeWindow_release(window);
-    return FRAME_TEXTURE_DESTROYED;
+    return MPX_FRAME_TEXTURE_DESTROYED;
   }
   entry = find_or_add(id);
   if (entry == NULL) {
     pthread_mutex_unlock(&table_mutex);
     ANativeWindow_release(window);
-    return FRAME_TEXTURE_NO_MEMORY;
+    return MPX_FRAME_TEXTURE_NO_MEMORY;
   }
   ANativeWindow* old = entry->window;
   entry->window = window;
@@ -182,10 +182,10 @@ int32_t frame_texture_attach(int64_t id, ANativeWindow* window, int32_t width,
   entry->height = height;
   pthread_mutex_unlock(&table_mutex);
   if (old != NULL) ANativeWindow_release(old);
-  return FRAME_TEXTURE_OK;
+  return MPX_FRAME_TEXTURE_OK;
 }
 
-void frame_texture_detach(int64_t id) {
+void mpx_frame_texture_detach(int64_t id) {
   pthread_mutex_lock(&table_mutex);
   texture* entry = find(id);
   ANativeWindow* old = NULL;
@@ -197,7 +197,7 @@ void frame_texture_detach(int64_t id) {
   if (old != NULL) ANativeWindow_release(old);
 }
 
-void frame_texture_forget(int64_t id) {
+void mpx_frame_texture_forget(int64_t id) {
   pthread_mutex_lock(&table_mutex);
   texture* entry = find(id);
   ANativeWindow* old = NULL;

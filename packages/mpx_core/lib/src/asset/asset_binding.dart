@@ -1,12 +1,12 @@
 import 'dart:ui';
 
-import 'package:catalog_assets/src/asset/asset_paintable.dart';
-import 'package:catalog_assets/src/asset/asset_playback.dart';
-import 'package:catalog_assets/src/asset/asset_profile.dart';
-import 'package:catalog_assets/src/asset/asset_readiness.dart';
-import 'package:catalog_assets/src/asset/asset_spec.dart';
-import 'package:content_model/content_model.dart';
 import 'package:listen/listen.dart';
+import 'package:mpx_core/src/asset/asset_paintable.dart';
+import 'package:mpx_core/src/asset/asset_playback.dart';
+import 'package:mpx_core/src/asset/asset_profile.dart';
+import 'package:mpx_core/src/asset/asset_readiness.dart';
+import 'package:mpx_core/src/asset/asset_spec.dart';
+import 'package:mpx_core/src/identity/media_key.dart';
 
 /// One surface's live attach to a cache entry, from `AssetCacheScope.attach`
 /// until [detach].
@@ -33,7 +33,7 @@ import 'package:listen/listen.dart';
 /// or on [retry]. [lastError] is for logs and diagnostics, not for painting.
 abstract interface class AssetBinding implements Listenable {
   /// Which content.
-  ContentKey get key;
+  MediaKey get key;
 
   /// Which pixels the entry holds.
   AssetSpec get spec;

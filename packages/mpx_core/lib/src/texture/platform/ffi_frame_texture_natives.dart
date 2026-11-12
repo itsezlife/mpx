@@ -1,16 +1,15 @@
 import 'dart:ffi';
 import 'dart:io';
 
-import 'package:catalog_assets/catalog_assets.dart';
 import 'package:ffi/ffi.dart';
-import 'package:frame_texture/src/frame_texture_natives.dart';
+import 'package:mpx_core/mpx_core.dart';
 
 typedef _LockNative = Pointer<Void> Function(Int64 id, Pointer<Int32> stride);
 typedef _Lock = Pointer<Void> Function(int id, Pointer<Int32> stride);
 typedef _PostNative = Void Function(Int64 id);
 typedef _Post = void Function(int id);
 
-/// [FrameTextureNatives] over the C library (`native/include/frame_texture.h`).
+/// [FrameTextureNatives] over the C library (`native/include/mpx_frame_texture.h`).
 ///
 /// Neither call is a leaf: `ANativeWindow_lock` may wait for a buffer of the
 /// queue, an Apple lock may allocate a pixel buffer, and a leaf call would
@@ -19,13 +18,13 @@ final class FfiFrameTextureNatives implements FrameTextureNatives {
   /// Binds the functions of [library].
   FfiFrameTextureNatives(DynamicLibrary library)
     : _lockPointer = library.lookup<NativeFunction<_LockNative>>(
-        'frame_texture_lock',
+        'mpx_frame_texture_lock',
       ),
       _postPointer = library.lookup<NativeFunction<_PostNative>>(
-        'frame_texture_post',
+        'mpx_frame_texture_post',
       ),
       _count = library.lookupFunction<Int32 Function(), int Function()>(
-        'frame_texture_count',
+        'mpx_frame_texture_count',
       ) {
     _lock = _lockPointer.asFunction<_Lock>();
     _post = _postPointer.asFunction<_Post>();
@@ -35,7 +34,7 @@ final class FfiFrameTextureNatives implements FrameTextureNatives {
   /// plugin loads it first (`System.loadLibrary`); opening it by name here
   /// gives the same instance, since both loads go through the app's linker
   /// namespace, so the windows the plugin attaches are the ones locked here.
-  static const String androidLibrary = 'libframe_texture.so';
+  static const String androidLibrary = 'libmpx_frame_texture.so';
 
   /// The table of the Android plugin, or null where it is not loaded (not
   /// Android, or an app built without the plugin).
@@ -49,7 +48,7 @@ final class FfiFrameTextureNatives implements FrameTextureNatives {
     }
   }
 
-  /// The table of the Apple plugin (`darwin/Classes/FrameTexturePlugin.m`),
+  /// The table of the Apple plugin (`darwin/Classes/MpxCorePlugin.m`),
   /// or null where it is not linked (not iOS or macOS, or an app built
   /// without the plugin). The plugin's framework is loaded with the app, so
   /// its exported functions are found in the process.

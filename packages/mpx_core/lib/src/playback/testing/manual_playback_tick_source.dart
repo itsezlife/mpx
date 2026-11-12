@@ -1,4 +1,4 @@
-import 'package:catalog_assets/src/playback/playback_tick_source.dart';
+import 'package:mpx_core/src/playback/playback_tick_source.dart';
 
 /// A [PlaybackTickSource] a test steps by hand with [tick].
 final class ManualPlaybackTickSource implements PlaybackTickSource {

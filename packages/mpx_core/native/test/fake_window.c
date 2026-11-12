@@ -1,6 +1,6 @@
 /*
  * A fake ANativeWindow over plain memory, linked with the table into a host
- * library (built with FRAME_TEXTURE_TESTING) so the tests run the real table
+ * library (built with MPX_FRAME_TEXTURE_TESTING) so the tests run the real table
  * without a device. Not part of any app build.
  *
  * A window is reference counted like the platform's: fake_window_new gives
@@ -11,7 +11,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
-#include "frame_texture.h"
+#include "mpx_frame_texture.h"
 
 #define FAKE_EXPORT __attribute__((visibility("default")))
 

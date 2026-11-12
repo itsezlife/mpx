@@ -1,7 +1,7 @@
-import 'package:catalog_assets/src/asset/asset_cache_budgets.dart';
-import 'package:catalog_assets/src/asset/asset_producer.dart';
-import 'package:catalog_assets/src/asset/asset_readiness.dart';
-import 'package:catalog_assets/src/asset/testing/fake_asset_paintable.dart';
+import 'package:mpx_core/src/asset/asset_cache_budgets.dart';
+import 'package:mpx_core/src/asset/asset_producer.dart';
+import 'package:mpx_core/src/asset/asset_readiness.dart';
+import 'package:mpx_core/src/asset/testing/fake_asset_paintable.dart';
 
 /// One attempt a [FakeAssetProducer] was asked to make; the test plays the
 /// producer by calling [advance], [fail] and [cancelled].

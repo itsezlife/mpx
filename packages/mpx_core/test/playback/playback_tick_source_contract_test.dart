@@ -1,7 +1,7 @@
-import 'package:catalog_assets/src/playback/scheduler_playback_tick_source.dart';
-import 'package:catalog_assets/testing.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/src/playback/scheduler_playback_tick_source.dart';
+import 'package:mpx_core/testing.dart';
 
 void main() {
   group('ManualPlaybackTickSource', () {

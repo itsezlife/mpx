@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:catalog_assets/src/texture/texture_frame_writer.dart';
+import 'package:mpx_core/src/texture/texture_frame_writer.dart';
 
 /// A [TextureFrameWriter] that writes nothing and records what it was asked.
 ///

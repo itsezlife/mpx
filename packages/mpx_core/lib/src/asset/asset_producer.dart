@@ -1,9 +1,9 @@
-import 'package:catalog_assets/src/asset/asset_cache_budgets.dart';
-import 'package:catalog_assets/src/asset/asset_paintable.dart';
-import 'package:catalog_assets/src/asset/asset_readiness.dart';
-import 'package:catalog_assets/src/asset/asset_spec.dart';
-import 'package:content_model/content_model.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_core/src/asset/asset_cache_budgets.dart';
+import 'package:mpx_core/src/asset/asset_paintable.dart';
+import 'package:mpx_core/src/asset/asset_readiness.dart';
+import 'package:mpx_core/src/asset/asset_spec.dart';
+import 'package:mpx_core/src/identity/media_key.dart';
 
 /// What a producer is asked to make: the entry's identity.
 @immutable
@@ -12,7 +12,7 @@ final class AssetRequest {
   const AssetRequest(this.key, this.spec);
 
   /// Which content.
-  final ContentKey key;
+  final MediaKey key;
 
   /// Which pixels.
   final AssetSpec spec;

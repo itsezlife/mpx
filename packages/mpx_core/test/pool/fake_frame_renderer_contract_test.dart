@@ -1,5 +1,5 @@
-import 'package:catalog_assets/frame_pool.dart';
-import 'package:catalog_assets/testing.dart';
+import 'package:mpx_core/frame_pool.dart';
+import 'package:mpx_core/testing.dart';
 
 void main() {
   FrameRendererContract.run(() {

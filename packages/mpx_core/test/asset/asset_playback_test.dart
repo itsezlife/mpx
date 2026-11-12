@@ -1,5 +1,5 @@
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/testing.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
 Duration _ms(int ms) => Duration(milliseconds: ms);
 

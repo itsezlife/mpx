@@ -1,8 +1,8 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
-import 'package:catalog_assets/catalog_assets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
 
 typedef _Arc = ({Rect rect, double start, double sweep, Paint paint});
 

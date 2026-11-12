@@ -1,24 +1,21 @@
-import 'package:catalog_assets/src/asset/asset_binding.dart';
-import 'package:catalog_assets/src/asset/asset_readiness.dart';
-import 'package:content_model/content_model.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_core/src/asset/asset_binding.dart';
+import 'package:mpx_core/src/asset/asset_readiness.dart';
 
-/// The fade of one surface's binding (ADR 022, "Readiness"): content that
+/// The fade of one surface's binding: content that
 /// arrives after the attach rises from transparent to opaque over [duration]
 /// from the first frame it is drawn in; content there at the attach (a memory
 /// hit) shows at once, so going back over loaded content never flickers.
 ///
 /// A bitmap that is not a memory hit fades in over its thumbnail, over
-/// [duration] (150 ms). A glyph is never faded: it is text, not an image that
-/// arrives.
+/// [duration] (150 ms).
 ///
 /// Internal to the package: a surface keeps one per binding and reads
 /// [opacityAt] when it paints.
 @internal
 final class AssetFade {
   /// The fade of the binding a surface just attached.
-  AssetFade(this._binding)
-    : _done = _binding.key is ContentKey$Unicode || _hasContent(_binding);
+  AssetFade(this._binding) : _done = _hasContent(_binding);
 
   /// How long arriving content takes to become opaque.
   static const Duration duration = Duration(milliseconds: 150);

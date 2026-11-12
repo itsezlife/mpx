@@ -78,8 +78,7 @@ final class FrameTextureEntryPoints {
   final int post;
 }
 
-/// The platform's maker of textures a render worker writes frames into
-/// (ADR 043).
+/// The platform's maker of textures a render worker writes frames into.
 ///
 /// This package defines the seam and depends on no platform code; a plugin
 /// implements it (an Android surface producer, an Apple pixel-buffer ring),

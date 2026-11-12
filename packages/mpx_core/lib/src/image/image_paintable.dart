@@ -1,8 +1,8 @@
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
+import 'package:mpx_core/mpx_core.dart';
 
 /// One decoded frame, placed in a rectangle as the surface's
 /// `AssetPaintContext.fit` says (centred whole, or centred and filling).

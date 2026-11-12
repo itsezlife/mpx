@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:collection';
 
-import 'package:content_model/content_model.dart';
 import 'package:meta/meta.dart';
+import 'package:mpx_core/src/identity/media_descriptor.dart';
+import 'package:mpx_core/src/identity/media_key.dart';
+import 'package:mpx_core/src/pipeline/media_resolver.dart';
 
 /// Called when a requested key is resolved: with its descriptor, or with null
 /// when the host does not know the key, or with an error when the host could
@@ -10,13 +12,13 @@ import 'package:meta/meta.dart';
 @internal
 typedef DescriptorWaiter =
     void Function(
-      ContentDescriptor? descriptor,
+      MediaDescriptor? descriptor,
       Object? error,
       StackTrace? stackTrace,
     );
 
 /// What the pipeline knows about content: descriptors the host gave it, and
-/// descriptors the host's [ContentResolver] answered for, kept in a bounded
+/// descriptors the host's [MediaResolver] answered for, kept in a bounded
 /// least-recently-used map.
 ///
 /// Keys asked for within one turn of the event loop go to the resolver in one
@@ -29,17 +31,17 @@ typedef DescriptorWaiter =
 final class DescriptorDirectory {
   /// Creates a directory that keeps [capacity] descriptors and asks
   /// [resolver] for the rest (nothing is resolved without one).
-  DescriptorDirectory({required this.capacity, ContentResolver? resolver})
+  DescriptorDirectory({required this.capacity, MediaResolver? resolver})
     : _resolver = resolver,
       assert(capacity > 0, 'A directory keeps at least one descriptor.');
 
   /// How many descriptors are kept.
   final int capacity;
 
-  final ContentResolver? _resolver;
-  final LinkedHashMap<ContentKey, ContentDescriptor> _known = LinkedHashMap();
-  final Map<ContentKey, List<DescriptorWaiter>> _waiters = {};
-  final Set<ContentKey> _unsent = {};
+  final MediaResolver? _resolver;
+  final LinkedHashMap<MediaKey, MediaDescriptor> _known = LinkedHashMap();
+  final Map<MediaKey, List<DescriptorWaiter>> _waiters = {};
+  final Set<MediaKey> _unsent = {};
   bool _flushScheduled = false;
   bool _disposed = false;
 
@@ -47,7 +49,7 @@ final class DescriptorDirectory {
   bool get canResolve => _resolver != null;
 
   /// Keeps [descriptor], replacing what was known for its key.
-  void add(ContentDescriptor descriptor) {
+  void add(MediaDescriptor descriptor) {
     _known
       ..remove(descriptor.key)
       ..[descriptor.key] = descriptor;
@@ -57,7 +59,7 @@ final class DescriptorDirectory {
   }
 
   /// The descriptor known for [key], or null. Counts as a use.
-  ContentDescriptor? lookup(ContentKey key) {
+  MediaDescriptor? lookup(MediaKey key) {
     final descriptor = _known.remove(key);
     if (descriptor != null) _known[key] = descriptor;
     return descriptor;
@@ -65,8 +67,8 @@ final class DescriptorDirectory {
 
   /// Asks the resolver for [key], calling [waiter] once with the outcome,
   /// never synchronously. Requires [canResolve].
-  void resolve(ContentKey key, DescriptorWaiter waiter) {
-    assert(canResolve, 'resolve needs a ContentResolver');
+  void resolve(MediaKey key, DescriptorWaiter waiter) {
+    assert(canResolve, 'resolve needs a MediaResolver');
     final waiting = _waiters[key];
     if (waiting == null) {
       _waiters[key] = [waiter];
@@ -80,7 +82,7 @@ final class DescriptorDirectory {
   }
 
   /// Drops [waiter]; it is not called afterwards.
-  void cancel(ContentKey key, DescriptorWaiter waiter) {
+  void cancel(MediaKey key, DescriptorWaiter waiter) {
     final waiting = _waiters[key];
     if (waiting == null) return;
     waiting.remove(waiter);
@@ -101,13 +103,13 @@ final class DescriptorDirectory {
   void _flush() {
     _flushScheduled = false;
     if (_disposed || _unsent.isEmpty) return;
-    final keys = List<ContentKey>.of(_unsent);
+    final keys = List<MediaKey>.of(_unsent);
     _unsent.clear();
     unawaited(_ask(keys));
   }
 
-  Future<void> _ask(List<ContentKey> keys) async {
-    Map<ContentKey, ContentDescriptor> found;
+  Future<void> _ask(List<MediaKey> keys) async {
+    Map<MediaKey, MediaDescriptor> found;
     try {
       found = await _resolver!.resolve(keys);
     } on Object catch (error, stackTrace) {
@@ -120,8 +122,8 @@ final class DescriptorDirectory {
   }
 
   void _answer(
-    List<ContentKey> keys,
-    Map<ContentKey, ContentDescriptor>? found,
+    List<MediaKey> keys,
+    Map<MediaKey, MediaDescriptor>? found,
     Object? error,
     StackTrace? stackTrace,
   ) {

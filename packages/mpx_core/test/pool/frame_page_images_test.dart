@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/frame_pool.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/frame_pool.dart';
 
 const _side = 8;
 

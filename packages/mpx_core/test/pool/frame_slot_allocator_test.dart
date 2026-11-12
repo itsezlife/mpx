@@ -1,7 +1,7 @@
 import 'dart:ui';
 
-import 'package:catalog_assets/frame_pool.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/frame_pool.dart';
 
 /// Two pages' worth of bytes at 256 px a page.
 const _twoPages = 2 * 256 * 256 * 4;

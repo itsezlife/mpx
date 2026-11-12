@@ -7,9 +7,8 @@
 // 85 dp whose entry costs two frame buffers, the way a Lottie drawable is
 // counted (width * height * 4 * 2).
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
 const mebibyte = 1024 * 1024;
 
@@ -61,7 +60,7 @@ const animatedWorkload = TraceWorkload(
   tier: AssetTier.animated,
 );
 
-ContentKey traceKey(int n) => ContentKey.document('doc-$n');
+MediaKey traceKey(int n) => MediaKey.remote('doc-$n');
 
 /// What the scroll trace saw.
 final class TraceResult {

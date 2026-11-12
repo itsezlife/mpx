@@ -1,7 +1,6 @@
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:catalog_assets/testing.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
 import 'pipeline_harness.dart';
 
@@ -140,9 +139,9 @@ void main() {
     });
 
     test('a media form without a decoder is not fetched', () async {
-      const video = ContentDescriptor(
-        key: ContentKey.document('clip-1'),
-        mediaForm: MediaForm.video,
+      const video = MediaDescriptor(
+        key: MediaKey.remote('clip-1'),
+        kind: MediaKind.video,
       );
       final harness = PipelineHarness(known: [video]);
       addTearDown(harness.dispose);
@@ -186,7 +185,7 @@ void _misbehaving() {
           producer: AssetPipeline(
             fetcher: _ThrowingFetcher(),
             decoders: DecoderRegistry()
-              ..register(MediaForm.still, FakeDecoder()),
+              ..register(MediaKind.still, FakeDecoder()),
           )..know(item),
           clock: PlaybackClock(ticks: ManualPlaybackTickSource()),
         );
@@ -208,7 +207,7 @@ void _misbehaving() {
           producer: AssetPipeline(
             fetcher: FakeFetcher(contents: {item.key: bytes}),
             decoders: DecoderRegistry()
-              ..register(MediaForm.still, _ThrowingDecoder()),
+              ..register(MediaKind.still, _ThrowingDecoder()),
           )..know(item),
           clock: PlaybackClock(ticks: ManualPlaybackTickSource()),
         );
@@ -229,7 +228,7 @@ void _misbehaving() {
           producer: AssetPipeline(
             fetcher: FakeFetcher(contents: {item.key: bytes}),
             decoders: DecoderRegistry()
-              ..register(MediaForm.still, _GivingUpDecoder()),
+              ..register(MediaKind.still, _GivingUpDecoder()),
           )..know(item),
           clock: PlaybackClock(ticks: ManualPlaybackTickSource()),
         );
@@ -295,7 +294,7 @@ final class _ThrowingFetcher implements ContentFetcher {
       throw StateError('fetcher bug');
 
   @override
-  bool needsDownload(ContentKey key) => false;
+  bool needsDownload(MediaKey key) => false;
 }
 
 final class _ThrowingDecoder implements Decoder {

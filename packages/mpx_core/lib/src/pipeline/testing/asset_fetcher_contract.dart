@@ -1,8 +1,8 @@
-import 'package:catalog_assets/src/asset/asset_producer.dart';
-import 'package:catalog_assets/src/pipeline/cancellation_token.dart';
-import 'package:catalog_assets/src/pipeline/content_fetcher.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/src/asset/asset_producer.dart';
+import 'package:mpx_core/src/identity/media_descriptor.dart';
+import 'package:mpx_core/src/pipeline/cancellation_token.dart';
+import 'package:mpx_core/src/pipeline/content_fetcher.dart';
 
 /// What a [ContentFetcher] contract run needs besides the fetcher.
 final class AssetFetcherHarness {
@@ -21,10 +21,10 @@ final class AssetFetcherHarness {
 
   /// A descriptor the fetcher can serve content for. When it has a
   /// `thumbnail`, the fetcher can serve that as well.
-  final ContentDescriptor available;
+  final MediaDescriptor available;
 
   /// A descriptor the host has nothing for, thumbnail included.
-  final ContentDescriptor missing;
+  final MediaDescriptor missing;
 
   /// Lets time pass for a fetcher that answers after a delay (a manual
   /// clock). A real adapter leaves the default.
@@ -53,7 +53,7 @@ abstract final class AssetFetcherContract {
       });
 
       FetchRequest request(
-        ContentDescriptor descriptor, [
+        MediaDescriptor descriptor, [
         FetchPart part = FetchPart.content,
       ]) => FetchRequest(
         descriptor: descriptor,

@@ -3,10 +3,10 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:frame_texture/frame_texture.dart';
-import 'package:frame_texture/src/ffi_frame_texture_natives.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/src/texture/platform/ffi_frame_texture_natives.dart';
 
-/// The real texture table (`native/src/frame_texture.c`) compiled for this
+/// The real texture table (`native/src/mpx_frame_texture.c`) compiled for this
 /// machine with a fake window (`native/test/fake_window.c`) in place of
 /// Android's, and the plugin's side played over a mock channel: what the
 /// Kotlin plugin does on a device, minus the producer.
@@ -17,14 +17,14 @@ final class HostTable {
           .lookupFunction<
             Int32 Function(Int64, Pointer<Void>, Int32, Int32),
             int Function(int, Pointer<Void>, int, int)
-          >('frame_texture_attach'),
+          >('mpx_frame_texture_attach'),
       _detach = library
           .lookupFunction<Void Function(Int64), void Function(int)>(
-            'frame_texture_detach',
+            'mpx_frame_texture_detach',
           ),
       _forget = library
           .lookupFunction<Void Function(Int64), void Function(int)>(
-            'frame_texture_forget',
+            'mpx_frame_texture_forget',
           ),
       _newWindow = library
           .lookupFunction<
@@ -74,9 +74,9 @@ final class HostTable {
         '-Wextra',
         '-Werror',
         '-fvisibility=hidden',
-        '-DFRAME_TEXTURE_TESTING',
+        '-DMPX_FRAME_TEXTURE_TESTING',
         '-I${package.path}/native/include',
-        '${package.path}/native/src/frame_texture.c',
+        '${package.path}/native/src/mpx_frame_texture.c',
         '${package.path}/native/test/fake_window.c',
         if (Platform.isLinux) '-lpthread',
         '-o',
@@ -96,8 +96,10 @@ final class HostTable {
   static Directory _packageRoot() {
     // `flutter test` runs from the package; a workspace run may not.
     var directory = Directory.current;
-    while (!File('${directory.path}/native/src/frame_texture.c').existsSync()) {
-      final candidate = Directory('${directory.path}/packages/frame_texture');
+    while (!File(
+      '${directory.path}/native/src/mpx_frame_texture.c',
+    ).existsSync()) {
+      final candidate = Directory('${directory.path}/packages/mpx_core');
       if (candidate.existsSync()) return candidate;
       directory = directory.parent;
     }
@@ -125,14 +127,14 @@ final class HostTable {
   /// held by the caller (as `ANativeWindow_fromSurface` gives).
   Pointer<Void> newWindow({int rowPadding = 0}) => _newWindow(rowPadding);
 
-  /// `frame_texture_attach`: takes over the reference to [window].
+  /// `mpx_frame_texture_attach`: takes over the reference to [window].
   int attach(int id, Pointer<Void> window, int width, int height) =>
       _attach(id, window, width, height);
 
-  /// `frame_texture_detach`.
+  /// `mpx_frame_texture_detach`.
   void detach(int id) => _detach(id);
 
-  /// `frame_texture_forget`.
+  /// `mpx_frame_texture_forget`.
   void forget(int id) => _forget(id);
 
   /// Makes the platform refuse every lock of [window] (or stop refusing).

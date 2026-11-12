@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:catalog_assets/src/asset/asset_texture.dart';
-import 'package:catalog_assets/src/texture/frame_texture_host.dart';
 import 'package:flutter/foundation.dart';
+import 'package:mpx_core/src/asset/asset_texture.dart';
+import 'package:mpx_core/src/texture/frame_texture_host.dart';
 
 /// One playing asset's claim on a texture of a [FrameTexturePool], ended
 /// exactly once.
@@ -51,7 +51,7 @@ final class FrameTextureLease {
 }
 
 /// The textures of one [FrameTextureHost], pooled by size class and paid for
-/// out of a byte budget (ADR 043, "Pool").
+/// out of a byte budget.
 ///
 /// A host registers one pool with the `AssetCacheScope`; a playing asset asks
 /// it for a texture at each lease and keeps its slot on a dynamic page when it
@@ -79,7 +79,7 @@ final class FrameTextureLease {
 /// cover makes room by destroying idle textures of other classes, released
 /// longest ago first; it stops when even those would not cover it. Leased
 /// textures are never destroyed for room. The default, 48 MiB, is the
-/// default of the dynamic frame pages (ADR 022), which a texture replaces for
+/// default of the dynamic frame pages, which a texture replaces for
 /// the asset that holds it.
 ///
 /// ## Kept frames
@@ -149,7 +149,7 @@ final class FrameTexturePool {
     }
   }
 
-  /// The default of [budgetBytes]: the dynamic pages' default (ADR 022).
+  /// The default of [budgetBytes]: the dynamic pages' default.
   static const int defaultBudgetBytes = 48 * 1024 * 1024;
 
   /// The default of [idleLimit]: about a screen of a sticker grid, so leaving

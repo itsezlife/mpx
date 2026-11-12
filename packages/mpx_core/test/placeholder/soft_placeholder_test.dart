@@ -1,7 +1,7 @@
 import 'dart:ui';
 
-import 'package:catalog_assets/catalog_assets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
 
 final class _Recording implements Canvas {
   final List<({RRect rrect, Color color})> rrects = [];

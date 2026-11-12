@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
 
 /// A [width] x [height] PNG, black on the left half and white on the right.
 Future<Uint8List> _halves(int width, int height) async {

@@ -12,10 +12,8 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
-import 'package:catalog_assets/catalog_assets.dart';
-import 'package:content_model/content_model.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:image_decoder/image_decoder.dart';
+import 'package:mpx_core/mpx_core.dart';
 
 // The frame: 192 x 144; ten bar cells of 16 x 24 from (16, 8), the last eight
 // the frame's index, most significant first.
@@ -45,16 +43,15 @@ Future<AssetPaintable> _decode(String fixture) async {
   final paintable = Completer<AssetPaintable>();
   const ImageCodecDecoder().decode(
     DecodeRequest(
-      descriptor: const ContentDescriptor(
-        key: ContentKey.document('counter'),
-        semanticKind: SemanticKind.gif,
-        mediaForm: MediaForm.animatedImage,
+      descriptor: const MediaDescriptor(
+        key: MediaKey.remote('counter'),
+        kind: MediaKind.animatedImage,
         animated: true,
       ),
       spec: const AssetSpec(pixelWidth: _width, pixelHeight: _height),
       part: FetchPart.content,
       content: FetchedContent.bytes(
-        File('test/fixtures/$fixture').readAsBytesSync(),
+        File('test/image/fixtures/$fixture').readAsBytesSync(),
       ),
     ),
     _Progress(paintable),
