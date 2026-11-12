@@ -1,0 +1,200 @@
+# image_bytes_cache
+
+Durable remote image **bytes**. Pure-Dart engine in this repository. Not
+Flutter's decoded [ImageCache], not a generic KV store, and not Hive.
+
+Paint widgets live in sibling
+[image_bytes_cache_flutter](../image_bytes_cache_flutter/CONTEXT.md). Hosts
+bootstrap this package with `ImageBytesCache.open` / `configure`, then paint
+through the flutter adapters.
+
+Deep docs: [AGENTS.md](AGENTS.md) (agent orientation),
+[docs/architecture.md](docs/architecture.md),
+[docs/storage.md](docs/storage.md),
+[docs/resolve-ladder.md](docs/resolve-ladder.md),
+[docs/development.md](docs/development.md).
+
+## Language
+
+**ImageCacheKey**:
+Filename-safe identity for a remote image body. Derived from the
+`Uri.base.resolve` canonical URL + canonical headers (lowercase keys, sorted).
+Conditional request headers (`If-None-Match`, `If-Modified-Since`, and RFC
+equivalents) are excluded from the fingerprint so local validators stay
+wire-only. Fingerprint material is length-prefixed (not a `url|headers` join).
+Distinct URLs that share a basename do not collide. Relative and absolute forms
+of the same resource share one key. Explicit `ImageBytesRequest.cacheKey` is a
+full identity override for durable and coalesce: headers still go on
+the wire but are not folded in.
+_Avoid_: basename-only disk keys, header casing as identity, delimiter joins
+for coalesce/fingerprint, folding conditionals into identity, assuming override
+keys fold Authorization
+
+**IImageBytesCache** / **IndexedImageBytesCache**:
+Bytes store contract and the indexed composition over meta + blob halves.
+Hot path: concurrent reads on the RAM index mirror; write / evict / prune /
+TTL-delete / meta commit / orphan reclaim share one exclusive domain. Durable
+meta commits once per mutate epoch. If that commit throws, the RAM mirror
+rolls back to the pre-epoch snapshot (no optimistic durable hit); write-through
+still reports without failing resolve. Memory and NoOp implementations exist
+for tests and pre-configure.
+_Avoid_: Hive for this path; SQL SELECT on every read; bodies in SQLite BLOB
+columns; serializing pure reads; reclaim outside the exclusive domain;
+leaving "write failed but RAM hit" after a thrown commit
+
+**IImageBytesIndex** / **IImageBytesBlobStore**:
+Split ports: retention meta vs payload bytes. Index is a RAM mirror after
+open: put/delete do not persist; `commit` writes the durable document once per
+epoch. VM: versioned JSON index file + one file per key behind
+IsolateController; large blob writes use TransferableTypedData above a
+documented threshold. Worker death fails in-flight blob RPCs (no hang) and
+drops the dead controller so later ops can respawn. Web: Cache API index document; blobs under 64 KiB use
+Cache API with synthetic `.invalid` keys; blobs at or above 64 KiB use OPFS
+files (same cut as the VM transferable threshold). Hot-path reads pass index
+`byteLength` so large bodies skip a guaranteed Cache API miss and go to OPFS.
+Index document bytes go
+through [ImageBytesIndexDocumentCodec] (`Map` ↔ UTF-8 JSON bytes via fused
+converters); adapters do not call `jsonEncode` / `utf8.encode` directly.
+_Avoid_: sidecar `.meta.json` per blob; SharedPreferences for image blobs;
+peeling UTF-8/JSON around the document codec at call sites; per-key full index
+rewrite during soft-LRU flush; per-write `compute` on VM; all-OPFS or
+all-Cache-API when the size split is the documented policy; IsolateController
+on web; importing `package:shared` for the isolate helper; Cache-then-OPFS on
+every large hit when meta already knows the body is above the cut
+
+**ImageBytesRetention**:
+Sealed eviction policy. TTL checked on read; capacity trimmed on write/prune.
+No background timer. Default `standard` caps age, entry count, and total bytes.
+Non-positive `maxEntries` / `maxBytes` are asserted invalid.
+_Avoid_: background eviction timers; entry-count-only budgets for large payloads;
+zero or negative capacity caps
+
+**ImageBytesOrigin** (`network` / `cache`):
+Paint-relevant provenance of a resolved body. `cache` means the body was
+served without downloading a new network body (fresh store hit, revalidated
+304 reuse, or stale-served on soft network failure). `network` means a
+downloaded body. Ladder diagnostic ops stay separate from this binary.
+_Avoid_: `durable` in public API names; one origin variant per `resolve_*` log
+op; conflating with Flutter's decoded [ImageCache]
+
+**ImageBytesResolveResult**:
+Full body bytes plus [ImageBytesOrigin]. Returned by an additive rich resolve
+on [IImageBytesResolver]; the existing bytes-only `resolve` stays.
+_Avoid_: breaking `resolve` to return a result type; using diagnostics events as
+the paint origin channel
+
+**ImageBytesResolver** / **ImageBytesRequest**:
+Resolve ladder: rich cache read, then fresh return or conditional /
+unconditional GET, then soft write-through (bytes+meta on 200; meta refresh on
+304). Freshness is [ImageHttpCacheFreshness]: validators without Cache-Control
+revalidate on use; no validators retain until [ImageBytesRetention]; honor
+max-age / Expires / no-cache / must-revalidate / immutable. Retention is not
+HTTP freshness (see **ImageHttpCacheFreshness** / **ImageBytesRetention**).
+Uses `HttpBytesClient.send` (`HttpBytesRequest`); typed HTTP errors propagate
+unless stale-on-network-error applies: non-empty cached bytes plus `$Network` /
+`$Timeout` / `$Server` return those bytes (`resolve_stale_used` when diagnostics
+are audible). Audible debug also covers `resolve_revalidated` (304 reuse) and
+`resolve_unconditional` (held stale bytes, full GET; cold misses stay quiet).
+Cancel, auth failures, 404-class `$Request`, and empty or missing cache still
+fail. Conditional GETs need [HttpBytesConditionalMiddleware] on the client.
+`cacheKey` sets durable and coalesce identity (`HttpBytesContext.identityOverride`).
+`cacheKey` plus request `Authorization` emits a debug diagnostic. `skipCache`
+sets `CacheContext.skipCache` when the store is a middleware wrapper with
+Skip-cache. Empty cached payloads count as a miss. Empty durable writes are not
+retained (evict). Write-through failures do not fail paint; throwing diagnostics
+`onEvent` is swallowed so it cannot become an unhandled async error. Resolve
+remains a single [Future] of the full body, not a public byte stream. An
+additive rich resolve returns [ImageBytesResolveResult] (bytes +
+[ImageBytesOrigin]) for paint policy; bytes-only `resolve` remains. Optional
+bytes-progress reporting (cumulative / optional total) may ride with the request
+so paint adapters can surface honest download progress; fresh cache hits do not
+invent mid-flight percents. 412 after conditional falls back to one
+unconditional GET. No public ETag flags on open/configure; no host `allowStale`
+either.
+_Avoid_: failing resolve when durable write fails; sticky empty capacity waste;
+replacing resolve with a streaming public API for progress alone; fake
+progress events that are not tied to real fetch bytes; assuming `skipCache`
+works without Skip-cache middleware; assuming conditional headers without
+Conditional middleware; conflating retention TTL with Cache-Control freshness;
+serving stale on cancel / auth / 404; host `allowStale` flags; breaking
+bytes-only `resolve` for origin alone
+
+**ImageHttpCacheFreshness** / **ImageHttpCacheMeta**:
+HTTP freshness policy and per-entry response meta (`etag`, `lastModified`,
+`date`, `expires`, `cacheControl`, `age`, `lastValidatedAt`). Drives whether a
+rich cache hit is fresh or must revalidate. Stored under index document `h`;
+missing fields mean a pre-ETag entry. Not the same as [ImageBytesRetention],
+which only caps durable age / entry count / total bytes.
+_Avoid_: treating retention TTL as Cache-Control max-age; folding validators
+into ImageCacheKey; wiping indexes that merely lack `h`
+
+**CacheMiddleware** / **MiddlewareImageBytesCache** / **CacheContext**:
+Same fold grammar as HTTP: list outermost first; sealed `CacheOperation` /
+`CacheOperationResult` (read, write, evict, prune, close — never reclaim).
+Wrapper implements `IImageBytesCache` and dispatches into an inner store. Rich
+reads yield `CacheReadHit` (bytes + optional retention timestamps + optional
+`ImageHttpCacheMeta`); public `read` unwraps to bytes-or-null. Opt-in
+[SkipCacheMiddleware] honors `CacheContext.skipCache` (resolver sets it from
+`ImageBytesRequest.skipCache`). Opt-in [CacheLoggerMiddleware$Developer]
+observes without durable IO. Place Cache Logger outermost when used.
+_Avoid_: reclaim as a CacheOperation; assuming `skipCache` works on a plain
+store; durable IO inside logger middleware
+
+**HttpBytesClient**:
+HTTP GET with concurrency pool and in-flight coalesce by `ImageCacheKey`
+(canonical URL + canonical headers; conditionals excluded), or by
+`HttpBytesContext.identityOverride` when set. Default success is 2xx or 304 Not
+Modified (empty/ignored body; empty-body-as-`$Internal` only for non-304).
+Default middleware list is Timeout only (`null` → Timeout; `[]` → none). Opt-in
+layers: [HttpBytesLoggerMiddleware$Developer], [HttpBytesRetryMiddleware],
+[HttpBytesBearerMiddleware], [HttpBytesConditionalMiddleware]. Recommended
+revalidation stack (outermost first): Logger → Retry → Timeout → Bearer →
+Conditional. Conditional maps context `etag` / `lastModified` to
+`If-None-Match` / `If-Modified-Since` (after Bearer, before coalesce). Timeout
+after pool slot via `AbortableRequest` (aborts when the client honors it). Pool
+wait for a slot is intentionally unbounded. When a progress sink is supplied,
+reports cumulative bytes as the response body is read (total when the response
+provides it). Process-wide `configure` / `shared` / `resetShared` mirror the
+cache facade so hosts can inject a custom `http.Client` once at bootstrap.
+_Avoid_: homemade download queues; Mutex for N-way downloads; `url|headers`
+string joins for coalesce; assuming timeout covers pool queue time; treating 304
+as `$Request` or empty-body `$Internal`; folding validators into identity;
+synthetic chunk percents after the body is already fully buffered; putting
+Conditional outside Bearer or after coalesce
+
+**ImageBytesDiagnostics**:
+Soft-failure and soft-path policy (silent / developer log / onEvent).
+Process-wide `current` set by open/configure. Covers write-through, index wipe,
+degraded open, `cache_key_authorization` (debug) when `cacheKey` is set with
+request `Authorization`, `resolve_stale_used` (warning) when resolve completes
+with cached bytes after `$Network` / `$Timeout` / `$Server`,
+`resolve_revalidated` (debug) on 304 reuse, and `resolve_unconditional` (debug)
+when the ladder held stale bytes and still full-fetched. `onEvent` must not
+throw; throws are swallowed in `report`. Package does not depend on a product
+logger. Not M4 metrics.
+_Avoid_: `package:l` inside the ladder; `enableLogging` bool soup; throwing
+host callbacks that escalate soft failures; treating silent as broken when
+debug/warning ops are expected only when audible
+
+**ImageBytesCache.open / configure / shared / resetShared**:
+Host wiring. VM `directory` must be under a reclaimable cache root. Web ignores
+`directory`. Hard open failure degrades to in-memory with a warning unless
+`throwOnOpenFailure` is set; platform open closes any partial worker / web
+handles first. Missing VM directory still throws. `configure` closes the
+previous instance before assign; `resetShared` closes then clears, including
+`ImageBytesResolver` and `HttpBytesClient` shared wiring. `ImageBytesResolver.shared`
+looks up the current shared cache/client on each resolve (not a one-shot
+snapshot).
+_Avoid_: documents/support paths for remote image bytes; Config paths inside
+package open code; letting open throw kill bootstrap when storage is optional;
+assuming first `shared().resolve` permanently binds NoOp
+
+## Web smoke
+
+Chrome integration: from the package root,
+
+`dart test -p chrome test/open/open_web_test.dart`
+
+Covers Cache vs OPFS routing by size, close/reopen, and orphan reclaim on both
+backends. CI runs this as a merge gate; also run it locally when iterating on
+web blob / open code.
