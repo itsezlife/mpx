@@ -2,8 +2,8 @@
 
 A hardware video player for mpx: a player pool with leases, one audio owner, and feed playback modes.
 
-> Skeleton: the API lands with the tickets of the mpx build order. Nothing is
-> usable yet.
+> Early: the pool, leases and views work over a fake backend; the Media3 and
+> AVPlayer backends land next.
 
 ## Install
 
@@ -21,13 +21,23 @@ dependencies:
 
 ```dart
 import 'package:mpx_player/mpx_player.dart';
+
+final pool = PlayerPool(backend: backend);
+final lease = pool.lease(const MediaKey.remote('42'))..play();
+// In the tree: PlayerView(lease: lease, standIn: thumbnail)
+lease.release();
 ```
 
-## Features (planned)
+## Features
 
-- Player pool and leases
-- One audio owner app-wide
-- Feed list and pager modes
+- Player pool keyed by `MediaKey`; leases share one player, so hand-offs
+  keep position and buffer
+- One immutable `PlayerState` per player; the playhead is read per frame
+- `PlayerBudget` of playing and prepared engines, coldest released first
+- `PlayerView` with a stand-in until the first frame
+- `FakePlayerBackend` and `PlayerEngineContract` in `testing.dart`
+
+Planned: Media3 and AVPlayer backends, one audio owner, feed modes.
 
 ## Docs
 

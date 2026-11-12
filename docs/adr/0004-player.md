@@ -32,9 +32,9 @@ surfaces.
 | Pool | `PlayerPool` keyed by `MediaKey`. Players are leased like assets |
 | Lease | `PlayerLease` from the pool by key. Commands on the lease: play, pause, seek, speed, loop, volume |
 | Surfaces | Bubble, feed cell, viewer and PiP attach views to one player. Several may attach at once |
-| State | One immutable value through a `ValueListenable` (package:listen): phase, buffered ranges, video size, error |
+| State | One immutable `PlayerState` through Flutter's `ValueListenable`: phase, play wish, buffered ranges, video size and quarter turns, texture, settings, error |
 | Playhead | Read per frame, never pushed as events |
-| Budget | Prepared/active counts come from a policy. Feed and viewer policies fill it; device class and decoder-instance caps bound it |
+| Budget | `PlayerBudget(active, prepared)`; past the capacity the coldest non-playing engine is released (unleased, then unshown, then least recently used), keeping its position. Feed and viewer policies fill it; device class and decoder-instance caps bound it |
 | Core | Follows the core's clock pause layers and visibility; one texture per player, outside the CPU texture pool and its budget |
 | Bytes | Through the ranged resource of `http_bytes_cache` (ADR 0002). Edge `mpx_player -> http_bytes_cache`, Dart and native code alike; the player owns no range protocol of its own |
 
@@ -119,8 +119,6 @@ the bytes cache, with playlists still through the loader.
 
 - The JNI shim and Swift wrapper over the reader's function table (ADR 0002
   settles how they reach it: its address from Dart, no linking by name).
-- Whether the API exposes "texture + size + rotation" uniformly, given Android
-  rotates in Dart and Apple bakes it in.
 - The player texture budget's size and how it relates to the CPU pool's.
 - How `DefaultPreloadManager`'s rule (play only on its own builder's player)
   maps onto the pool's leases.
@@ -129,7 +127,7 @@ the bytes cache, with playlists still through the loader.
 - Concurrent decoder limits on Apple: undocumented, measure on device.
 - The probe ran on a simulator and macOS, not a physical iOS device.
 - The loopback proxy for Apple HLS: design and timing.
-- Type names for the state value, view, audio owner and budget policy.
+- Type name for the audio owner.
 
 ## Provenance
 

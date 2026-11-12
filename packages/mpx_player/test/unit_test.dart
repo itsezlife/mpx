@@ -6,8 +6,16 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'backend/fake_player_engine_contract_test.dart'
+    as fake_player_engine_contract_test;
+import 'pool/player_pool_test.dart' as player_pool_test;
+import 'widget/player_view_test.dart' as player_view_test;
+
 void main() {
-  // The stub has no behaviour yet; this keeps the entrypoint runnable until
-  // the first real test file replaces it.
-  test('package stub loads', () {});
+  group(
+    'fake_player_engine_contract_test',
+    fake_player_engine_contract_test.main,
+  );
+  group('player_pool_test', player_pool_test.main);
+  group('player_view_test', player_view_test.main);
 }
