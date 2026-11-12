@@ -113,6 +113,9 @@ final class BytesIndex$Cache$JS implements IBytesIndex {
   Future<BytesRecord?> get(BytesCacheKey key) async => _records[key.value];
 
   @override
+  BytesRecord? peek(BytesCacheKey key) => _records[key.value];
+
+  @override
   Future<void> put(BytesRecord record) async {
     _ensureOpen();
     _records[record.key.value] = record;

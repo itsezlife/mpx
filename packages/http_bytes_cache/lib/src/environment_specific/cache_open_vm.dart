@@ -17,7 +17,7 @@ import 'package:http_bytes_cache/src/environment_specific/index_file_vm.dart';
 /// function closes those partial resources before rethrowing so
 /// [BytesCache.open] degrade / `throwOnOpenFailure` paths cannot leak
 /// workers. Missing [directory] still throws [ArgumentError] before any spawn.
-Future<IBytesCache> $openBytesCache({
+Future<IBytesStore> $openBytesCache({
   String? directory,
   BytesRetention retention = BytesRetention.standard,
   DateTime Function()? clock,
@@ -63,7 +63,7 @@ Future<IBytesCache> $openBytesCache({
 ///
 /// Orphan reclaim on open/prune stays on the inner brain’s exclusive
 /// gate. This wrapper does not reclaim outside that domain.
-final class BytesCache$VM implements IBytesCache {
+final class BytesCache$VM implements IBytesStore {
   BytesCache$VM({
     required IndexedBytesCache inner,
     required BytesBlobStore$File$VM blobs,
@@ -77,6 +77,12 @@ final class BytesCache$VM implements IBytesCache {
 
   @override
   Future<Uint8List?> read(BytesCacheKey key) => _inner.read(key);
+
+  @override
+  Future<BytesRichHit?> readRich(BytesCacheKey key) => _inner.readRich(key);
+
+  @override
+  bool contains(BytesCacheKey key) => _inner.contains(key);
 
   @override
   Future<void> write(

@@ -450,6 +450,13 @@ final class HttpBytesClient {
   /// body). Overridable per request via [HttpBytesContext.validateStatus].
   final bool Function(int statusCode)? validateStatus;
 
+  /// Whether a GET whose coalesce identity is [key] is queued or running.
+  ///
+  /// The identity is the override a resolver passes ([BytesRequest.cacheKey])
+  /// or the post-middleware URL + headers fingerprint, so a request whose
+  /// headers a middleware changes (Bearer) is found only by its override.
+  bool isInFlight(BytesCacheKey key) => _inFlight.containsKey(key.value);
+
   /// Runs [request] through middlewares (delegates to [_sendUnstreamed]).
   Future<HttpBytesResponse> send(
     HttpBytesRequest request, {

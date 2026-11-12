@@ -34,7 +34,7 @@ dependencies:
   meta: any
   path: ^1.9.1
   pool: ^1.5.3
-  web: ^1.1.1
-
-dev_dependencies:
+  # Only lib/testing.dart needs this: its contract suites are written with the
+  # test framework, and a library cannot import a dev dependency.
   test: ^1.25.0
+  web: ^1.1.1

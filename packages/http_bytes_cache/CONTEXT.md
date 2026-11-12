@@ -41,6 +41,20 @@ _Avoid_: Hive for this path; SQL SELECT on every read; bodies in SQLite BLOB
 columns; serializing pure reads; reclaim outside the exclusive domain;
 leaving "write failed but RAM hit" after a thrown commit
 
+**IBytesStore**:
+The one store behind the ladder: an `IBytesCache` plus the queries and handles
+that need its RAM index. `contains` answers synchronously (no IO) whether a
+key holds bytes. `IndexedBytesCache`, the stores `BytesCache.open` returns and
+`MemoryBytesCache` implement it; a `MiddlewareBytesCache` forwards to an inner
+store. Contract suite: `runBytesStoreContract` in `testing.dart`.
+_Avoid_: awaiting the index to answer a peek; downcasting to a concrete store
+
+**BytesPeek**:
+`BytesResolver.peek(request)`: `cached`, `inFlight` or `absent`, from the
+store's RAM index plus resolves and GETs underway. Cached wins over in flight.
+`absent` is the core's "needs download".
+_Avoid_: an async lookup for a sync question
+
 **IBytesIndex** / **IBytesBlobStore**:
 Split ports: retention meta vs payload bytes. Index is a RAM mirror after
 open: put/delete do not persist; `commit` writes the durable document once per

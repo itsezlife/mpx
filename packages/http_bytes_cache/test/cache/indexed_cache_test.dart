@@ -439,6 +439,9 @@ final class _FakeIndex implements IBytesIndex {
   }
 
   @override
+  BytesRecord? peek(BytesCacheKey key) => records[key.value];
+
+  @override
   Future<void> put(BytesRecord record) async {
     await _delay();
     putCount++;

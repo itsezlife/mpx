@@ -205,6 +205,15 @@ sealed class BytesRetention {
     maxBytes: 50 * 1024 * 1024,
   );
 
+  /// Whether a row anchored at [anchor] is past [limits]' `maxAge` at [now].
+  ///
+  /// False when the policy sets no age.
+  bool isExpired(DateTime anchor, {required DateTime now}) =>
+      switch (limits.maxAge) {
+        final maxAge? => now.difference(anchor) > maxAge,
+        null => false,
+      };
+
   /// Flattened view of this policy for implementers.
   ({Duration? maxAge, int? maxEntries, int? maxBytes}) get limits =>
       switch (this) {
@@ -500,6 +509,11 @@ abstract interface class IBytesIndex {
   /// Returns the record for [key], or `null` if missing. RAM mirror only.
   Future<BytesRecord?> get(BytesCacheKey key);
 
+  /// Same as [get], answered synchronously from the RAM mirror.
+  ///
+  /// Backs [IBytesStore.contains], which must answer without awaiting.
+  BytesRecord? peek(BytesCacheKey key);
+
   /// Inserts or replaces the record for [record.key] in the RAM mirror.
   ///
   /// Does not persist. [IndexedBytesCache] calls [commit] once after the
@@ -582,6 +596,20 @@ abstract interface class IBytesCache {
   Future<void> close();
 }
 
+/// The one store behind the resolve ladder: an [IBytesCache] with the
+/// queries and handles that need its index.
+///
+/// [IndexedBytesCache] (and the platform stores [BytesCache.open] returns)
+/// and [MemoryBytesCache] implement it; a [MiddlewareBytesCache] does when its
+/// inner store does.
+abstract interface class IBytesStore implements IBytesCache, IBytesRichCache {
+  /// Whether [key] holds bytes now, answered from RAM without any IO.
+  ///
+  /// A row past its retention age answers false. Optimistic about payloads:
+  /// a row whose payload went missing answers true until a read heals it.
+  bool contains(BytesCacheKey key);
+}
+
 /// [IBytesCache] that keeps metadata and payloads in separate stores.
 ///
 /// ## Hot path
@@ -632,7 +660,7 @@ abstract interface class IBytesCache {
 /// Also implements [IBytesRichCache]: [readRich] returns the same hit or
 /// miss as [read], and attaches [BytesRecord] timestamps plus
 /// [HttpCacheMeta] when the index row has them.
-final class IndexedBytesCache implements IBytesCache, IBytesRichCache {
+final class IndexedBytesCache implements IBytesStore {
   /// Wires [index] and [blobs] under [retention].
   ///
   /// [clock] is injectable for tests (defaults to UTC now).
@@ -672,6 +700,14 @@ final class IndexedBytesCache implements IBytesCache, IBytesRichCache {
 
   var _closed = false;
 
+  @override
+  bool contains(BytesCacheKey key) {
+    _ensureOpen();
+    final record = _index.peek(key);
+    return record != null &&
+        !retention.isExpired(record.writtenAt, now: _clock());
+  }
+
   /// Reads payload after TTL check. Soft-touches access time (see class docs).
   ///
   /// Concurrent with other pure reads. TTL expiry and index-without-blob
@@ -690,8 +726,7 @@ final class IndexedBytesCache implements IBytesCache, IBytesRichCache {
       if (record == null) return const _ReadProbe.miss();
 
       final now = _clock();
-      if (retention.limits.maxAge case final maxAge?
-          when now.difference(record.writtenAt) > maxAge) {
+      if (retention.isExpired(record.writtenAt, now: now)) {
         return const _ReadProbe.needsDelete();
       }
 
@@ -731,11 +766,7 @@ final class IndexedBytesCache implements IBytesCache, IBytesRichCache {
         final record = await _index.get(key);
         if (record == null) return null;
         final now = _clock();
-        final expired = switch (retention.limits.maxAge) {
-          final maxAge? => now.difference(record.writtenAt) > maxAge,
-          null => false,
-        };
-        if (!expired) {
+        if (!retention.isExpired(record.writtenAt, now: now)) {
           return _finishSharedRichHit(key, now, preEpoch, record);
         }
         await _deleteBoth(key);
@@ -1109,7 +1140,7 @@ DateTime _defaultClock() => DateTime.now().toUtc();
 /// Keeps optional [HttpCacheMeta] in the same map entry as the bytes.
 /// [readRich] and a middleware `execute` read can return it without a durable
 /// index.
-final class MemoryBytesCache implements IBytesCache, IBytesRichCache {
+final class MemoryBytesCache implements IBytesStore {
   /// Creates an empty in-memory store.
   ///
   /// [clock] is injectable for tests (defaults to UTC now).
@@ -1129,13 +1160,20 @@ final class MemoryBytesCache implements IBytesCache, IBytesRichCache {
   Future<Uint8List?> read(BytesCacheKey key) async =>
       (await readRich(key))?.bytes;
 
+  @override
+  bool contains(BytesCacheKey key) => switch (_entries[key]) {
+    final entry? =>
+      entry.bytes.isNotEmpty &&
+          !retention.isExpired(entry.writtenAt, now: _clock()),
+    null => false,
+  };
+
   /// Same miss rules as [read], plus timestamps and [HttpCacheMeta].
   @override
   Future<BytesRichHit?> readRich(BytesCacheKey key) async {
     if (_entries[key] case final entry?) {
       final now = _clock();
-      if (retention.limits.maxAge case final maxAge?
-          when now.difference(entry.writtenAt) > maxAge) {
+      if (retention.isExpired(entry.writtenAt, now: now)) {
         _entries.remove(key);
         return null;
       }
@@ -1320,7 +1358,7 @@ abstract final class BytesCache {
   /// neither degrade nor strict rethrow leaks isolates or Cache/OPFS quota.
   /// [ArgumentError] from a missing VM [directory] still throws: that is a
   /// host wiring bug, not storage unavailability.
-  static Future<IBytesCache> open({
+  static Future<IBytesStore> open({
     String? directory,
     BytesRetention retention = BytesRetention.standard,
     DateTime Function()? clock,

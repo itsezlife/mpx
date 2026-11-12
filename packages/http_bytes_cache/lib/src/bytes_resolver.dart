@@ -27,6 +27,21 @@ enum BytesOrigin {
   network,
 }
 
+/// What the ladder holds for a request right now, answered without IO.
+///
+/// A sharer that would start a download asks for [absent]; [cached] and
+/// [inFlight] mean the bytes are here or already on their way.
+enum BytesPeek {
+  /// The store holds bytes for the key (fresh or not).
+  cached,
+
+  /// Nothing stored yet, but a resolve or GET for the key is underway.
+  inFlight,
+
+  /// Neither: resolving would download.
+  absent,
+}
+
 /// Full body bytes plus [BytesOrigin].
 ///
 /// Returned by [IBytesResolver.resolveRich]. Bytes-only
@@ -165,6 +180,14 @@ abstract interface class IBytesResolver {
   /// progress callback, [BytesRequest.cacheKey] override rules). Body
   /// bytes match [resolve] for the same request.
   Future<BytesResolveResult> resolveRich(BytesRequest request);
+
+  /// Answers synchronously whether [request] is held, on its way, or absent.
+  ///
+  /// Reads the store's RAM index ([IBytesStore.contains]) and the set of
+  /// resolves and GETs in flight. A store that is not an [IBytesStore] counts
+  /// as empty. Cached wins over in flight: a background refresh of held bytes
+  /// still answers [BytesPeek.cached].
+  BytesPeek peek(BytesRequest request);
 }
 
 /// Default ladder: [IBytesCache] then [HttpBytesClient].
@@ -275,6 +298,10 @@ final class BytesResolver implements IBytesResolver {
   final BytesDiagnostics? _diagnostics;
   final DateTime Function() _clock;
 
+  /// Resolves underway per key value, so [peek] sees a resolve before its
+  /// GET reaches the client (the store read comes first).
+  final Map<String, int> _resolving = {};
+
   BytesDiagnostics get _effectiveDiagnostics =>
       _diagnostics ?? BytesDiagnostics.current;
 
@@ -285,10 +312,36 @@ final class BytesResolver implements IBytesResolver {
   }
 
   @override
-  Future<BytesResolveResult> resolveRich(BytesRequest request) async {
-    final key =
-        request.cacheKey ??
-        BytesCacheKey.fromUrl(request.url, headers: request.headers);
+  BytesPeek peek(BytesRequest request) {
+    final key = _keyOf(request);
+    if (_cacheOf() case final IBytesStore store when store.contains(key)) {
+      return BytesPeek.cached;
+    }
+    if (_resolving.containsKey(key.value) || _clientOf().isInFlight(key)) {
+      return BytesPeek.inFlight;
+    }
+    return BytesPeek.absent;
+  }
+
+  static BytesCacheKey _keyOf(BytesRequest request) =>
+      request.cacheKey ??
+      BytesCacheKey.fromUrl(request.url, headers: request.headers);
+
+  @override
+  Future<BytesResolveResult> resolveRich(BytesRequest request) {
+    final key = _keyOf(request);
+    _resolving.update(key.value, (n) => n + 1, ifAbsent: () => 1);
+    return _resolveRich(request, key).whenComplete(() {
+      if (_resolving.update(key.value, (n) => n - 1) == 0) {
+        _resolving.remove(key.value);
+      }
+    });
+  }
+
+  Future<BytesResolveResult> _resolveRich(
+    BytesRequest request,
+    BytesCacheKey key,
+  ) async {
     final cache = _cacheOf();
     final client = _clientOf();
     final now = _clock();

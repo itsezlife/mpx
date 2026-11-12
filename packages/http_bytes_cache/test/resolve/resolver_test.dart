@@ -1581,6 +1581,9 @@ final class _CommitFailingIndex implements IBytesIndex {
   Future<BytesRecord?> get(BytesCacheKey key) async => records[key.value];
 
   @override
+  BytesRecord? peek(BytesCacheKey key) => records[key.value];
+
+  @override
   Future<void> put(BytesRecord record) async {
     records[record.key.value] = record;
   }

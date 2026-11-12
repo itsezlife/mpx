@@ -253,8 +253,12 @@ final class CacheReadHit {
 ///
 /// Wrong result variant for an op throws [StateError]. A write result on a
 /// read is middleware breaking the grammar, not a store miss.
+///
+/// The [IBytesStore] queries and handles (such as [contains]) do not run
+/// through the chain: they go straight to [inner] when it is an
+/// [IBytesStore], and answer as an empty store otherwise.
 /// {@endtemplate}
-final class MiddlewareBytesCache implements IBytesCache {
+final class MiddlewareBytesCache implements IBytesStore {
   /// {@macro middleware_bytes_cache}
   MiddlewareBytesCache({
     required this.inner,
@@ -299,6 +303,31 @@ final class MiddlewareBytesCache implements IBytesCache {
       ),
     };
   }
+
+  /// Bytes plus timestamps and meta for [key] through the chain, or null.
+  @override
+  Future<BytesRichHit?> readRich(BytesCacheKey key) async {
+    final result = await execute(CacheOperation$Read(key));
+    return switch (result) {
+      CacheOperationResult$Read(:final hit?) => BytesRichHit(
+        bytes: hit.bytes,
+        writtenAt: hit.writtenAt,
+        accessedAt: hit.accessedAt,
+        httpCacheMeta: hit.httpCacheMeta,
+      ),
+      CacheOperationResult$Read() => null,
+      _ => throw StateError(
+        'Cache middleware returned ${result.runtimeType} for read; '
+        'expected CacheOperationResult.Read',
+      ),
+    };
+  }
+
+  @override
+  bool contains(BytesCacheKey key) => switch (inner) {
+    final IBytesStore store => store.contains(key),
+    _ => false,
+  };
 
   /// Writes [bytes] under [key] as [CacheOperation$Write].
   @override

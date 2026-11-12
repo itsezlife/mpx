@@ -16,7 +16,7 @@ import 'package:http_bytes_cache/src/environment_specific/index_cache_js.dart';
 /// On any failure after Cache/OPFS handles exist, this function closes those
 /// partial resources before rethrowing so degrade / `throwOnOpenFailure` paths
 /// cannot leak quota-holding handles.
-Future<IBytesCache> $openBytesCache({
+Future<IBytesStore> $openBytesCache({
   String? directory,
   BytesRetention retention = BytesRetention.standard,
   DateTime Function()? clock,
@@ -56,7 +56,7 @@ Future<IBytesCache> $openBytesCache({
 ///
 /// Reclaim stays on the inner brain’s exclusive gate. This wrapper does not
 /// reclaim outside that domain.
-final class BytesCache$JS implements IBytesCache {
+final class BytesCache$JS implements IBytesStore {
   BytesCache$JS({
     required IndexedBytesCache inner,
     required BytesIndex$Cache$JS index,
@@ -73,6 +73,12 @@ final class BytesCache$JS implements IBytesCache {
 
   @override
   Future<Uint8List?> read(BytesCacheKey key) => _inner.read(key);
+
+  @override
+  Future<BytesRichHit?> readRich(BytesCacheKey key) => _inner.readRich(key);
+
+  @override
+  bool contains(BytesCacheKey key) => _inner.contains(key);
 
   @override
   Future<void> write(
