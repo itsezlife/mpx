@@ -16,6 +16,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -54,6 +55,12 @@ typedef struct hbc_resource {
 struct hbc_reader {
   hbc_resource *resource;
   int fd;
+  /* The resource's reset_seq when [fd] was last checked against the path.
+   * The store empties a payload by putting a new file in its place, so after
+   * a reset, or a read that came back short, the reader reopens the path
+   * when the file there is no longer the one it holds. */
+  uint64_t file_reset;
+  int reading; /* file reads of this reader running outside g_lock */
   int32_t priority;
   uint64_t cancel_seq;
 };
@@ -301,6 +308,42 @@ void hbc_detach_finalizer(void *owner) {
 
 /* --- Reader side -------------------------------------------------------- */
 
+/* Opens [path] for reading, retrying on EINTR; -1 on failure. */
+static int open_file(const char *path) {
+  int fd;
+  do {
+    fd = open(path, O_RDONLY);
+  } while (fd < 0 && errno == EINTR);
+  return fd;
+}
+
+/* Points [reader] at the file now at its resource's path when that is
+ * another file than the one it holds (g_lock held). Until then the reader
+ * keeps the bytes it opened: an alias reading another key's payload is not
+ * moved by that key's rewrite, and a key's own reader moves only once the
+ * new file shows (a reset, or bytes counted present missing from its file).
+ * Not while another read of this reader is in its file read, which still
+ * uses the old descriptor; that read, or the next, reopens. A failed open
+ * keeps the old file: the read comes back short and waits for the next
+ * change, as for any stale read. Returns 1 when it reopened. */
+static int refresh_file(hbc_reader *reader) {
+  if (reader->reading > 0) return 0;
+  hbc_resource *r = reader->resource;
+  struct stat held;
+  struct stat current;
+  if (stat(r->path, &current) != 0) return 0;
+  reader->file_reset = r->reset_seq;
+  if (fstat(reader->fd, &held) == 0 && held.st_dev == current.st_dev &&
+      held.st_ino == current.st_ino) {
+    return 0;
+  }
+  int fd = open_file(r->path);
+  if (fd < 0) return 0;
+  close(reader->fd);
+  reader->fd = fd;
+  return 1;
+}
+
 hbc_reader *hbc_reader_open(const char *key) {
   if (key == NULL) return NULL;
   pthread_mutex_lock(&g_lock);
@@ -309,10 +352,7 @@ hbc_reader *hbc_reader_open(const char *key) {
     pthread_mutex_unlock(&g_lock);
     return NULL;
   }
-  int fd;
-  do {
-    fd = open(r->path, O_RDONLY);
-  } while (fd < 0 && errno == EINTR);
+  int fd = open_file(r->path);
   hbc_reader *reader =
       fd < 0 ? NULL : (hbc_reader *)calloc(1, sizeof(hbc_reader));
   if (reader == NULL) {
@@ -322,6 +362,7 @@ hbc_reader *hbc_reader_open(const char *key) {
   }
   reader->resource = r;
   reader->fd = fd;
+  reader->file_reset = r->reset_seq;
   reader->priority = HBC_PRIORITY_VISIBLE;
   r->readers++;
   pthread_mutex_unlock(&g_lock);
@@ -397,15 +438,21 @@ int64_t hbc_reader_read(hbc_reader *reader, int64_t offset, uint8_t *buffer,
       }
       continue;
     }
+    if (end > offset && reader->file_reset != r->reset_seq) {
+      refresh_file(reader);
+    }
     if (end > offset) {
       int64_t want = length < end - offset ? length : end - offset;
       uint64_t read_reset = r->reset_seq;
+      int fd = reader->fd;
+      reader->reading++;
       pthread_mutex_unlock(&g_lock);
       ssize_t got;
       do {
-        got = pread(reader->fd, buffer, (size_t)want, (off_t)offset);
+        got = pread(fd, buffer, (size_t)want, (off_t)offset);
       } while (got < 0 && errno == EINTR);
       pthread_mutex_lock(&g_lock);
+      reader->reading--;
       if (got < 0) {
         result = HBC_ERR_IO;
         break;
@@ -415,6 +462,9 @@ int64_t hbc_reader_read(hbc_reader *reader, int64_t offset, uint8_t *buffer,
         result = (int64_t)got;
         break;
       }
+      /* A short read from a file the store has replaced is read again from
+       * the new one at once; otherwise the bytes are on their way. */
+      if (got == 0 && refresh_file(reader)) continue;
       if (!stale) {
         stale = 1;
         clock_gettime(CLOCK_REALTIME, &deadline);

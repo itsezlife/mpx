@@ -82,6 +82,38 @@ void main() {
       expect(server.requests, isEmpty);
     });
 
+    test('a reader of an alias keeps the bytes it opened while the local '
+        'key is rewritten', () async {
+      const local = BytesCacheKey('native-local');
+      await store.write(local, body);
+      await store.alias(local, key);
+      await publish();
+      final reader = await _OpenedElsewhere.open(key.value);
+      addTearDown(reader.close);
+
+      await store.resetRanges(local);
+      await store.writeRange(local, 0, patternBytes(10000, seed: 3));
+
+      expect(await reader.read(0, 1000), body.sublist(0, 1000));
+      expect(await reader.read(9000, 1000), body.sublist(9000));
+      expect(server.requests, isEmpty);
+    });
+
+    test('an open reader follows a new representation to its bytes', () async {
+      final publication = await publish();
+      await publication.resource.ensure(const ByteRange(0, 2000));
+      final reader = await _OpenedElsewhere.open(key.value);
+      addTearDown(reader.close);
+      final next = patternBytes(10000, seed: 5);
+      server
+        ..body = next
+        ..etag = '"v2"';
+
+      await publication.resource.ensure(const ByteRange(2000, 3000));
+
+      expect(await reader.read(0, 100), next.sublist(0, 100));
+    });
+
     test('miss: the read asks Dart, blocks, and wakes when the range '
         'lands', () async {
       await publish();
@@ -297,5 +329,58 @@ void _blockedRead((SendPort, String, int) message) {
     replies.send(error.code);
   } finally {
     reader.close();
+  }
+}
+
+/// A reader opened on a helper isolate and kept open there, so a test can
+/// change the store between its reads.
+final class _OpenedElsewhere {
+  _OpenedElsewhere._(this._replies, this._messages, this._commands);
+
+  final ReceivePort _replies;
+  final StreamIterator<Object?> _messages;
+  final SendPort _commands;
+
+  static Future<_OpenedElsewhere> open(String key) async {
+    final replies = ReceivePort();
+    final messages = StreamIterator<Object?>(replies);
+    await Isolate.spawn(_heldReader, (replies.sendPort, key));
+    await messages.moveNext();
+    return _OpenedElsewhere._(replies, messages, messages.current! as SendPort);
+  }
+
+  /// The bytes at [offset], or the error code.
+  Future<Object> read(int offset, int length) async {
+    _commands.send((offset, length));
+    await _messages.moveNext();
+    return _messages.current!;
+  }
+
+  Future<void> close() async {
+    _commands.send(null);
+    await _messages.moveNext();
+    _replies.close();
+  }
+}
+
+/// Opens a reader on `key` and serves `(offset, length)` reads until a null
+/// closes it.
+Future<void> _heldReader((SendPort, String) message) async {
+  final (replies, key) = message;
+  final commands = ReceivePort();
+  final reader = NativeRangedReader.open(BytesCacheKey(key))!;
+  replies.send(commands.sendPort);
+  await for (final command in commands) {
+    if (command case (final int offset, final int length)) {
+      try {
+        replies.send(reader.read(offset, length));
+      } on NativeReadException catch (error) {
+        replies.send(error.code);
+      }
+      continue;
+    }
+    reader.close();
+    commands.close();
+    replies.send('closed');
   }
 }

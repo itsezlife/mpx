@@ -116,7 +116,10 @@ HBC_EXPORT int64_t hbc_reader_length(hbc_reader *reader, int32_t wait);
  * while the byte at [offset] is missing. A read that races a reset (the
  * file no longer holds bytes counted present, or changed under the read)
  * waits for the next landing or reset and reads again; HBC_ERR_IO only when
- * the file read fails, or nothing follows the short read for seconds. */
+ * the file read fails, or nothing follows the short read for seconds. The
+ * store empties a payload by putting a new file in its place: the reader
+ * keeps the file it opened until a reset, or a short read, shows that the
+ * path holds another file, and then reopens it. */
 HBC_EXPORT int64_t hbc_reader_read(hbc_reader *reader, int64_t offset,
                                    uint8_t *buffer, int64_t length);
 

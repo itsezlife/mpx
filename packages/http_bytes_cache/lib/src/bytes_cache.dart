@@ -80,6 +80,41 @@ final class BytesCacheKey {
     return BytesCacheKey(value);
   }
 
+  /// The key of a part fetched from [url] that belongs to [owner]: a
+  /// stream's playlists, init sections and segments, each under the
+  /// stream's key and one per URL.
+  ///
+  /// The form is `<owner>~<basename>_<fingerprint>`, the fingerprint taken
+  /// from the [Uri.base.resolve] canonical URL (query included: it may
+  /// select the bytes). Headers never take part, as with any host-supplied
+  /// key. An owner too long to leave room for the part is replaced by its
+  /// own fingerprint, so parts of two owners never share a key and the value
+  /// stays a safe file name.
+  factory BytesCacheKey.within(BytesCacheKey owner, String url) {
+    final canonicalUrl = Uri.base.resolve(url).toString();
+    final basename = switch (Uri.tryParse(canonicalUrl)?.pathSegments) {
+      final segments? when segments.isNotEmpty && segments.last.isNotEmpty =>
+        segments.last,
+      _ => 'part',
+    };
+    var safeName = basename
+        .replaceAll(RegExp('[^a-zA-Z0-9._-]'), '_')
+        .replaceAll('..', '_');
+    if (safeName.length > _maxPartNameLength) {
+      safeName = safeName.substring(0, _maxPartNameLength);
+    }
+    final fingerprint = sha1
+        .convert(_fingerprintMaterial(canonicalUrl, null))
+        .toString()
+        .substring(0, 12);
+    final part = '${safeName}_$fingerprint';
+    final room = _maxValueLength - part.length - 1;
+    final prefix = owner.value.length <= room
+        ? owner.value
+        : 'h${sha1.convert(utf8.encode(owner.value)).toString().substring(0, 20)}';
+    return BytesCacheKey('$prefix~$part');
+  }
+
   /// Filename-safe identity string.
   final String value;
 
@@ -88,6 +123,9 @@ final class BytesCacheKey {
 
   /// Cap on the basename segment before host/fingerprint are applied.
   static const int _maxBasenameLength = 64;
+
+  /// Cap on a part's basename in [BytesCacheKey.within].
+  static const int _maxPartNameLength = 40;
 
   /// HTTP conditional request headers that never participate in identity.
   ///

@@ -548,10 +548,26 @@ Uint8List? _readAt(String path, int offset, int length) {
   }
 }
 
-/// Truncates in place (same file), creating it when absent.
+/// Empties the payload by putting a new empty file in its place, creating it
+/// when absent.
+///
+/// Not a truncate in place: a reader holding the old file open (a player
+/// on an alias of this payload, or this key's own reader before the reset
+/// reaches it) keeps reading the bytes it opened instead of new bytes at old
+/// offsets; the key's own native readers reopen the path once the reset is
+/// signalled. Where the platform refuses to replace an open file (Windows),
+/// the file is truncated in place.
 void _clear(String path) {
   final file = File(path);
   file.parent.createSync(recursive: true);
+  try {
+    File('$path.tmp')
+      ..writeAsBytesSync(const [], flush: true)
+      ..renameSync(path);
+    return;
+  } on FileSystemException {
+    // Fall through to the truncate.
+  }
   final handle = file.openSync(mode: FileMode.append);
   try {
     handle.truncateSync(0);

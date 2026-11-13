@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `BytesCacheKey.within(owner, url)`: one key per URL under an owner's key,
+  for the playlists and segments of a stream.
+- Emptying a ranged payload puts a new file in its place instead of
+  truncating it. A native reader of an alias keeps the bytes it opened
+  while the local key is rewritten; a key's own readers reopen the file
+  after a reset, and no longer read new bytes at old offsets before the
+  reset reaches them.
 - Ranged resources: opening an alias of complete bytes (a captured file
   aliased to its server key) reads them in place instead of fetching the
   server's copy; `readRange` and `rangesOf` follow the alias too.

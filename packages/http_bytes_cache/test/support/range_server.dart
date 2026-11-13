@@ -128,7 +128,8 @@ final class RecordedRequest {
   final String? ifNoneMatch;
 }
 
-/// [length] bytes where byte i is `i % 251` (a prime, so offsets are easy to
-/// check and no window repeats at a power of two).
-Uint8List patternBytes(int length) =>
-    Uint8List.fromList([for (var i = 0; i < length; i++) i % 251]);
+/// [length] bytes where byte i is `(i + seed) % 251` (a prime, so offsets
+/// are easy to check and no window repeats at a power of two); another
+/// [seed] gives another representation of the same length.
+Uint8List patternBytes(int length, {int seed = 0}) =>
+    Uint8List.fromList([for (var i = 0; i < length; i++) (i + seed) % 251]);

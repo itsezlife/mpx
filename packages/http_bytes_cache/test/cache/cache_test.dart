@@ -151,6 +151,55 @@ void main() {
     });
   });
 
+  group('BytesCacheKey.within', () {
+    const stream = BytesCacheKey('media-42');
+
+    test('keys a part by its URL under the owner', () {
+      final segment = BytesCacheKey.within(
+        stream,
+        'https://cdn.example.com/v/720p/seg-00001.ts',
+      );
+      expect(segment.value, startsWith('media-42~'));
+      expect(segment.value, contains('seg-00001'));
+      expect(
+        segment,
+        BytesCacheKey.within(
+          stream,
+          'https://cdn.example.com/v/720p/seg-00001.ts',
+        ),
+      );
+      expect(
+        segment,
+        isNot(
+          BytesCacheKey.within(
+            stream,
+            'https://cdn.example.com/v/480p/seg-00001.ts',
+          ),
+        ),
+      );
+    });
+
+    test('one URL under two owners is two keys', () {
+      const url = 'https://cdn.example.com/v/init.mp4';
+      expect(
+        BytesCacheKey.within(stream, url),
+        isNot(BytesCacheKey.within(const BytesCacheKey('media-43'), url)),
+      );
+    });
+
+    test('a long owner still yields a short, safe, distinct key', () {
+      final longA = BytesCacheKey('a' * 200);
+      final longB = BytesCacheKey('${'a' * 199}b');
+      final url = 'https://cdn.example.com/../v/${'x' * 300}.ts?token=1';
+      final a = BytesCacheKey.within(longA, url);
+      final b = BytesCacheKey.within(longB, url);
+      expect(a.value.length, lessThanOrEqualTo(180));
+      expect(a.value, isNot(contains('/')));
+      expect(a.value, isNot(contains('..')));
+      expect(a, isNot(b));
+    });
+  });
+
   group('BytesCacheKey.fromUrl', () {
     test('produces safe key with host path and hash', () {
       final key = BytesCacheKey.fromUrl(
