@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A video that fails says so over its picture with a retry
+  (`ViewerVideoFailure`, `ViewerVideoStrings.failed` and `retry`), not a
+  black page. The speed presets are 48 px targets sharing the row, with press
+  feedback and the chosen one marked (`ViewerTapTarget`); the speed slider is
+  48 px tall.
 - The viewer's origin frame is a placeholder the content replaces, no longer
   drawn under transparent content.
 - An animation's page draws the surface's own playback

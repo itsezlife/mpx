@@ -1101,6 +1101,22 @@ class MediaViewerState extends State<MediaViewer>
                   strings: widget.videoStrings,
                 ),
               ),
+            // A video that failed says so over the controls, in the
+            // middle, where the play button would be.
+            if (_session case final session? when _phase == _Phase.open)
+              ValueListenableBuilder<PlayerState>(
+                valueListenable: session.lease.state,
+                builder: (context, state, _) =>
+                    state.phase != PlayerPhase.failed
+                    ? const SizedBox.shrink()
+                    : Center(
+                        child: ViewerVideoFailure(
+                          strings: widget.videoStrings,
+                          tokens: widget.tokens,
+                          onRetry: session.retry,
+                        ),
+                      ),
+              ),
             if (widget.chrome case final chrome? when _phase == _Phase.open)
               ViewerChromeOverlay(
                 chrome: chrome,
@@ -1642,11 +1658,19 @@ class _PlayerOverPictureState extends State<_PlayerOverPicture>
   // view of the player for the pool, and its texture is ready to show. Once
   // it is opaque the picture under it is not painted: two layers inside one
   // rounded clip each blend their edge, and the lower one shows as a rim.
+  // A player that failed shows nothing: its picture comes back under the
+  // failure, rather than black.
   @override
-  Widget build(BuildContext context) => Stack(
+  Widget build(BuildContext context) => ValueListenableBuilder<PlayerState>(
+    valueListenable: widget.lease.state,
+    builder: (context, state, _) =>
+        _layers(covered: _covered && state.phase != PlayerPhase.failed),
+  );
+
+  Widget _layers({required bool covered}) => Stack(
     fit: StackFit.expand,
     children: [
-      Opacity(opacity: _covered ? 0 : 1, child: widget.picture),
+      Opacity(opacity: covered ? 0 : 1, child: widget.picture),
       TweenAnimationBuilder<double>(
         key: const ValueKey('mpx-viewer-player'),
         tween: Tween(begin: widget.shown ? 1 : 0, end: _moving ? 1 : 0),

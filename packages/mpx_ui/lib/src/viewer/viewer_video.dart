@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show kMinInteractiveDimension;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -84,6 +85,8 @@ final class ViewerVideoStrings {
     this.pause = 'Pause',
     this.speed = 'Speed',
     this.quality = 'Quality',
+    this.failed = 'This video could not be played',
+    this.retry = 'Retry',
   });
 
   /// The play button's semantic label.
@@ -97,6 +100,136 @@ final class ViewerVideoStrings {
 
   /// The quality button's semantic label.
   final String quality;
+
+  /// What a video that failed to play says over its picture.
+  final String failed;
+
+  /// The button that tries a failed video again.
+  final String retry;
+}
+
+/// A tap target of at least [kMinInteractiveDimension] on each side around
+/// [child], with a highlight while pressed: the viewer's buttons that are no
+/// more than a word.
+class ViewerTapTarget extends StatefulWidget {
+  /// Calls [onTap] for a tap anywhere in the target.
+  const ViewerTapTarget({
+    required this.onTap,
+    required this.child,
+    this.highlight = const Color(0x33FFFFFF),
+    this.selected = false,
+    this.selectedFill = const Color(0x1FFFFFFF),
+    super.key,
+  });
+
+  /// Called on a tap.
+  final VoidCallback onTap;
+
+  /// What the target shows.
+  final Widget child;
+
+  /// The fill while pressed.
+  final Color highlight;
+
+  /// Whether the target is the one chosen: it keeps [selectedFill].
+  final bool selected;
+
+  /// The fill of a chosen target.
+  final Color selectedFill;
+
+  @override
+  State<ViewerTapTarget> createState() => _ViewerTapTargetState();
+}
+
+class _ViewerTapTargetState extends State<ViewerTapTarget> {
+  bool _pressed = false;
+
+  void _press(bool pressed) {
+    if (_pressed != pressed) setState(() => _pressed = pressed);
+  }
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onTap: widget.onTap,
+    onTapDown: (_) => _press(true),
+    onTapUp: (_) => _press(false),
+    onTapCancel: () => _press(false),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(
+        minWidth: kMinInteractiveDimension,
+        minHeight: kMinInteractiveDimension,
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: _pressed
+              ? widget.highlight
+              : widget.selected
+              ? widget.selectedFill
+              : null,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Center(child: widget.child),
+      ),
+    ),
+  );
+}
+
+/// What a video that failed to play shows over its picture: [ViewerVideoStrings.failed]
+/// and a retry.
+class ViewerVideoFailure extends StatelessWidget {
+  /// Shows the failure, calling [onRetry] for the retry.
+  const ViewerVideoFailure({
+    required this.strings,
+    required this.tokens,
+    required this.onRetry,
+    super.key,
+  });
+
+  /// The texts.
+  final ViewerVideoStrings strings;
+
+  /// The colours and type.
+  final ViewerTokens tokens;
+
+  /// Called by the retry.
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    key: const ValueKey('mpx-viewer-video-failed'),
+    decoration: BoxDecoration(
+      color: tokens.menuBackground,
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            strings.failed,
+            style: tokens.subtitle,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Semantics(
+            button: true,
+            child: ViewerTapTarget(
+              onTap: onRetry,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  strings.retry,
+                  style: tokens.subtitle.copyWith(color: tokens.link),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// The controls over a video in the viewer: the play button in the middle,
@@ -546,7 +679,7 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
         onHorizontalDragUpdate: (d) => at(d.localPosition.dx),
         onTapUp: (d) => at(d.localPosition.dx),
         child: CustomPaint(
-          size: Size(width, 44),
+          size: Size(width, kMinInteractiveDimension),
           painter: _SeekBarPainter(
             duration: const Duration(seconds: 1),
             position:
@@ -592,21 +725,24 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
                 Expanded(child: _speedSlider(speed, rule)),
               ],
             ),
-            Wrap(
-              spacing: 8,
+            // One target per preset, sharing the row evenly: each at least
+            // 48 px, none overlapping, a tap anywhere in it taken.
+            Row(
               children: [
                 for (final preset in rule.presets)
-                  GestureDetector(
-                    key: ValueKey(('mpx-viewer-speed-preset', preset)),
-                    onTap: () => widget.onSpeed(preset),
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
+                  Expanded(
+                    child: ViewerTapTarget(
+                      key: ValueKey(('mpx-viewer-speed-preset', preset)),
+                      onTap: () => widget.onSpeed(preset),
+                      selected: preset == speed,
                       child: Text(
                         '${_speedText(preset)}x',
+                        maxLines: 1,
                         style: widget.tokens.subtitle.copyWith(
                           color: preset == speed
                               ? widget.tokens.link
                               : widget.tokens.menuForeground,
+                          fontWeight: preset == speed ? FontWeight.w600 : null,
                         ),
                       ),
                     ),

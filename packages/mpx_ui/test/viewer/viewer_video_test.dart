@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart' show kMinInteractiveDimension;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -327,6 +328,36 @@ void main() {
     });
   });
 
+  group('a video that fails', () {
+    testWidgets('shows what happened and a retry over its picture, and a '
+        'retry plays it again', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+      );
+      await harness.pump(tester);
+      expect(
+        find.byKey(const ValueKey('mpx-viewer-video-failed')),
+        findsNothing,
+      );
+
+      harness.engine(0).fail(StateError('the decoder stopped'));
+      await tester.pump();
+
+      const strings = ViewerVideoStrings();
+      expect(find.text(strings.failed), findsOneWidget);
+      expect(find.text(strings.retry), findsOneWidget);
+      final created = harness.backend!.created.length;
+
+      await tester.tap(find.text(strings.retry));
+      // Past the page's double-tap window, which holds a single tap back.
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(harness.backend!.created.length, created + 1);
+      expect(find.text(strings.failed), findsNothing);
+    });
+  });
+
   group('controls', () {
     late ViewerHarness harness;
 
@@ -438,6 +469,55 @@ void main() {
       expect(tester.getRect(value).center.dy, closeTo(slider.center.dy, 1));
       expect(find.byKey(const ValueKey('mpx-viewer-seek-bar')), findsOne);
     });
+
+    for (final policy in [
+      ViewerPolicy.$Android,
+      // Controls show on open here too, so the panel can be opened.
+      ViewerPolicy.$IOS.copyWith(
+        video: ViewerPolicy.$IOS.video.copyWith(controlsVisibleOnOpen: true),
+      ),
+    ]) {
+      testWidgets('each speed preset is a 48 px target that takes a tap at '
+          'its edge (${policy.openStyle.name})', (tester) async {
+        harness = ViewerHarness(
+          items: ViewerHarness.videos(1),
+          videoDuration: const Duration(seconds: 60),
+        );
+        await harness.pump(tester, policy: policy);
+        await tester.tap(find.byKey(const ValueKey('mpx-viewer-speed')));
+        await tester.pump();
+
+        final rects = <Rect>[];
+        for (final preset in policy.video.speed.presets) {
+          final target = find.byKey(
+            ValueKey(('mpx-viewer-speed-preset', preset)),
+          );
+          final rect = tester.getRect(target);
+          expect(rect.width, greaterThanOrEqualTo(kMinInteractiveDimension));
+          expect(rect.height, greaterThanOrEqualTo(kMinInteractiveDimension));
+          for (final other in rects) {
+            expect(rect.overlaps(other), isFalse, reason: '$preset');
+          }
+          rects.add(rect);
+
+          await tester.tapAt(rect.topLeft + const Offset(2, 2));
+          await tester.pump();
+          expect(harness.lease(tester).state.value.speed, preset);
+        }
+        expect(
+          tester
+              .getSize(find.byKey(const ValueKey('mpx-viewer-speed-slider')))
+              .height,
+          greaterThanOrEqualTo(kMinInteractiveDimension),
+        );
+        expect(
+          tester
+              .getSize(find.byKey(const ValueKey('mpx-viewer-seek-bar')))
+              .height,
+          greaterThanOrEqualTo(kMinInteractiveDimension),
+        );
+      });
+    }
 
     testWidgets('its text is styled whatever the host puts above it', (
       tester,

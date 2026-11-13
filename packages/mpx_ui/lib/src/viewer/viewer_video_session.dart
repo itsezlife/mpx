@@ -170,6 +170,12 @@ final class ViewerVideoSession extends ChangeNotifier {
     interacted();
   }
 
+  /// Plays a video that failed again: the pool makes it a new engine.
+  void retry() {
+    _lease.play();
+    interacted();
+  }
+
   /// Plays at [speed], kept as the policy's speed memory says.
   void setSpeed(double speed) {
     _lease.setSpeed(speed);
