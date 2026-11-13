@@ -1,5 +1,5 @@
 import 'dart:collection';
-import 'dart:ui' show Canvas, Color, Rect;
+import 'dart:ui' show Canvas, Color, Image, Rect;
 
 import 'package:flutter/foundation.dart';
 import 'package:mpx_core/src/asset/asset_binding.dart';
@@ -221,6 +221,29 @@ final class AssetCacheScope {
   /// Whether a background hold is on.
   bool get isBackgroundHeld => _backgroundHolds > 0;
 
+  /// Holds every binding of the entry for [key] at [spec], as if each
+  /// surface held it (`AssetBinding.held`), until the hold is released: the
+  /// playback stops on its frame, keeps it on screen and costs no decoding,
+  /// then goes on from that frame. For a surface that plays the same content
+  /// another way meanwhile (a player with sound over a muted loop). Holds
+  /// count; a binding attached to the entry while one is on starts held.
+  /// Without such an entry there is no playback to hold, and the hold is
+  /// released already.
+  ///
+  /// Throws a [StateError] after [dispose], as [attach] does.
+  AssetPlaybackHold holdPlayback(MediaKey key, AssetSpec spec) {
+    if (_disposed) {
+      throw StateError('AssetCacheScope.holdPlayback called after dispose.');
+    }
+    final entry = _entries[(key, spec)];
+    if (entry == null) return AssetPlaybackHold._(null);
+    if (entry.playbackHolds++ == 0) entry.setHeld(held: true);
+    return AssetPlaybackHold._(() {
+      if (_disposed) return;
+      if (--entry.playbackHolds == 0) entry.setHeld(held: false);
+    });
+  }
+
   void _setBackgroundHeld(bool held) {
     for (final entry in List<_Entry>.of(_entries.values)) {
       for (final binding in List<_EntryBinding>.of(entry.bindings)) {
@@ -244,9 +267,22 @@ final class AssetCacheScope {
       _entries[(key, spec)]?.paintable?.playbackPosition;
 
   /// Moves the playback of the entry for [key] at [spec] to [position] into
-  /// its pass ([AssetPaintable.seekPlayback]); nothing without such an entry.
-  void seekPlayback(MediaKey key, AssetSpec spec, Duration position) =>
-      _entries[(key, spec)]?.paintable?.seekPlayback(position);
+  /// its pass ([AssetPaintable.seekPlayback]), handing it [picture], which
+  /// the scope owns from now on; without such an entry it only disposes
+  /// [picture].
+  void seekPlayback(
+    MediaKey key,
+    AssetSpec spec,
+    Duration position, {
+    Image? picture,
+  }) {
+    final paintable = _entries[(key, spec)]?.paintable;
+    if (paintable == null) {
+      picture?.dispose();
+      return;
+    }
+    paintable.seekPlayback(position, picture: picture);
+  }
 
   /// Bytes the entries of [tier] count, attached or not.
   int bytesIn(AssetTier tier) => _bytes[tier]!;
@@ -263,7 +299,8 @@ final class AssetCacheScope {
       throw StateError('AssetCacheScope.attach called after dispose.');
     }
     final entry = _entryFor(key, spec);
-    final binding = _EntryBinding(scope: this, entry: entry, profile: profile);
+    final binding = _EntryBinding(scope: this, entry: entry, profile: profile)
+      ..entryHeld = entry.playbackHolds > 0;
     _unpinned[entry.tier]!.remove(entry);
     entry.bindings.add(binding);
     entry.demand.refresh(entry);
@@ -588,6 +625,14 @@ final class _Entry {
   double? download;
   // Bindings of sibling entries that show this entry's stage.
   int borrowers = 0;
+  // Holds of the entry's playback (AssetCacheScope.holdPlayback).
+  int playbackHolds = 0;
+
+  void setHeld({required bool held}) {
+    for (final binding in List<_EntryBinding>.of(bindings)) {
+      binding.entryHeld = held;
+    }
+  }
 
   bool get isPinned =>
       bindings.isNotEmpty || preloads.isNotEmpty || borrowers > 0;
@@ -1052,6 +1097,26 @@ final class _EntryBinding extends AssetBindingBase {
       entry.syncPlaying();
     }
     _scope._detached(this);
+  }
+}
+
+/// One hold of an entry's playback, released exactly once.
+///
+/// Returned by [AssetCacheScope.holdPlayback].
+final class AssetPlaybackHold {
+  AssetPlaybackHold._(this._onRelease);
+
+  void Function()? _onRelease;
+
+  /// Whether [release] has run.
+  bool get isReleased => _onRelease == null;
+
+  /// Gives the hold back: the entry plays again from its frame once no hold
+  /// is left. Idempotent; after the scope's dispose it does nothing.
+  void release() {
+    final onRelease = _onRelease;
+    _onRelease = null;
+    onRelease?.call();
   }
 }
 

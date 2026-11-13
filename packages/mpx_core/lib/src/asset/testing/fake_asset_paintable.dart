@@ -190,9 +190,14 @@ final class FakeAssetPaintable extends AssetPaintable {
           microseconds: _played.inMicroseconds % _passLength.inMicroseconds,
         );
 
+  /// The pictures handed with each [seekPlayback], in order; the test
+  /// disposes them.
+  final List<Image?> seekPictures = [];
+
   @override
-  void seekPlayback(Duration position) {
+  void seekPlayback(Duration position, {Image? picture}) {
     seeks.add(position);
+    seekPictures.add(picture);
     _played = position;
   }
 

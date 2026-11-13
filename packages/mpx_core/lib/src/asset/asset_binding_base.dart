@@ -101,10 +101,24 @@ abstract base class AssetBindingBase
   /// that holds its binding is still holding it when the background hold
   /// ends.
   bool get holdsFrame =>
-      _held || (_backgroundHeld && !profile.foreground) || _belowFloor;
+      _held ||
+      _entryHeld ||
+      (_backgroundHeld && !profile.foreground) ||
+      _belowFloor;
 
   // Shown, but too little of it to advance (`AssetProfile.advanceFloor`).
   bool get _belowFloor => _fraction > 0 && _fraction < profile.advanceFloor;
+
+  bool _entryHeld = false;
+
+  /// Set by the scope while a hold of this binding's entry is on
+  /// (`AssetCacheScope.holdPlayback`).
+  set entryHeld(bool value) {
+    if (_entryHeld == value) return;
+    final before = holdsFrame;
+    _entryHeld = value;
+    _holdChanged(before);
+  }
 
   /// Set by the scope while a background hold is on
   /// (`AssetCacheScope.holdBackground`).

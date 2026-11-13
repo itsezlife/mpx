@@ -428,6 +428,41 @@ void main() {
     });
   });
 
+  group('a held entry', () {
+    test('holds every binding of the entry, those that attach later too, '
+        'and nothing else; released, they go on from their frame', () {
+      final a = animated();
+      final paintable = a.paintable as FakeAssetPaintable;
+      final other = animated(key: const MediaKey.remote('anim-2'));
+      final resumes = paintable.resumes;
+
+      final hold = scope.holdPlayback(_key, _large);
+      final b = scope.attach(_key, _large, _plays);
+
+      expect(a.isPlaying, isFalse);
+      expect(b.isPlaying, isFalse);
+      expect(a.visible, isTrue);
+      expect(paintable.keepsFrame, isTrue);
+      expect(other.isPlaying, isTrue);
+
+      hold
+        ..release()
+        ..release();
+
+      expect(a.isPlaying, isTrue);
+      expect(b.isPlaying, isTrue);
+      expect(paintable.keepsFrame, isFalse);
+      expect(paintable.resumes, resumes + 1);
+    });
+
+    test('an entry that does not exist has nothing to hold', () {
+      final hold = scope.holdPlayback(_key, _large);
+
+      expect(hold.isReleased, isTrue);
+      expect(scope.contains(_key, _large), isFalse);
+    });
+  });
+
   group('global pause layers', () {
     test('any layer stops playback and clearing it resumes', () {
       final binding = animated();

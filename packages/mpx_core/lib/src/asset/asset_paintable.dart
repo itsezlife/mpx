@@ -150,8 +150,13 @@ abstract class AssetPaintable {
 
   /// Moves the playback to [position] into its pass, for a surface that hands
   /// a position back (a player that played the same content on its own).
-  /// Every surface of the entry sees it. Does nothing by default.
-  void seekPlayback(Duration position) {}
+  /// Every surface of the entry sees it.
+  ///
+  /// [picture], the frame at [position] as the other surface showed it, is
+  /// this paintable's from now on: one that cannot show its own frame there
+  /// at once draws it until it can, then disposes it. Does nothing by
+  /// default but dispose [picture].
+  void seekPlayback(Duration position, {Image? picture}) => picture?.dispose();
 
   /// Lets a paintable that plays advance before a surface reads [sprite], for
   /// a surface that draws the sprite itself and so never calls [paint].

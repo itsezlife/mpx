@@ -25,7 +25,9 @@
 - `AssetPresets.animation`: content that plays decodes at one size whatever
   the box, so a thumbnail and its fullscreen copy share one entry and one
   playback. `AssetCacheScope.playbackPosition` and `seekPlayback` read and
-  move an entry's playback.
+  move an entry's playback (the seek hands over the picture at the position);
+  `holdPlayback` stops it on its frame while something else plays the
+  content.
 
 ## 0.0.1
 
