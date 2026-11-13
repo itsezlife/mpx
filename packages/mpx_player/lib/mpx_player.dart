@@ -10,7 +10,8 @@
 ///
 /// A `FeedPolicy` holds the rules of a scrolling surface (the 25 feed knobs
 /// with reference defaults); `FeedListPlanner` turns what a list shows into
-/// what plays, what is in view and what preloads.
+/// what plays, what is in view and what preloads. A `FeedController` runs
+/// it inside any host scrollable whose cells are `FeedSlot`s.
 ///
 /// Single-threaded on the UI isolate; no static state.
 library;
