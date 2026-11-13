@@ -350,15 +350,71 @@ void main() {
               );
             }
           }
-          for (final (shown, platform) in frames.skip(frames.length - 12)) {
-            expect(
-              (shown - platform).abs(),
-              lessThan(Duration(milliseconds: (20 * fastest).round() + 5)),
-              reason: 'settled',
-            );
+          // A player that took the speed at once is followed closely; one
+          // that took it late leaves an error the playhead makes up gently.
+          if (lateMs == 0) {
+            for (final (shown, platform) in frames.skip(frames.length - 12)) {
+              expect(
+                (shown - platform).abs(),
+                lessThan(Duration(milliseconds: (20 * fastest).round() + 5)),
+                reason: 'settled',
+              );
+            }
           }
         });
       }
+    }
+
+    // Runs [engine] at [from]x for 1 s, then [to]x for 2 s, the platform
+    // taking the change at once and its reports arriving 20 to 60 ms after
+    // they were read (a busy main thread). Returns the playhead per frame.
+    Future<List<Duration>> delayed(
+      PlayerEngine engine, {
+      required double from,
+      required double to,
+    }) async {
+      final player = host.live.single;
+      var platformUs = player.positionUs.toDouble();
+      var rate = from;
+      final frames = <Duration>[];
+      for (var frame = 1; frame <= 180; frame++) {
+        clock.advance(const Duration(microseconds: 16667));
+        platformUs += 16667 * rate;
+        if (frame == 60) {
+          engine.setSpeed(to);
+          rate = to;
+        }
+        if (frame % 6 == 0) {
+          // Read some time ago, arriving now.
+          final lateUs = 20000 + (frame * 7919) % 40000;
+          player.positionUs = (platformUs - lateUs * rate).round();
+          host.now = () => clock.elapsedMicroseconds - lateUs;
+          player.report();
+          await settle();
+        }
+        frames.add(engine.position);
+      }
+      return frames;
+    }
+
+    for (final (from, to) in [(2.0, 1.0), (2.0, 1.5), (1.0, 2.0)]) {
+      test('${from}x to ${to}x with reports arriving late: no burst and no '
+          'stall', () async {
+        final engine = await playing(speed: from);
+        final frames = await delayed(engine, from: from, to: to);
+
+        for (var i = 13; i < frames.length; i++) {
+          final rateNow = i < 60 ? from : to;
+          final steady = 16667 * rateNow;
+          final moved = (frames[i] - frames[i - 1]).inMicroseconds;
+          expect(moved, greaterThan(0), reason: 'a stall at frame $i');
+          expect(
+            moved,
+            lessThanOrEqualTo((steady * 1.3).round() + 1),
+            reason: 'a burst at frame $i',
+          );
+        }
+      });
     }
 
     test('a seek still jumps, back as well', () async {

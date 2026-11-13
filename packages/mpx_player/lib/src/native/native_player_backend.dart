@@ -40,10 +40,10 @@ typedef PlayerPlaylistLoader = Future<Uint8List> Function(BytesRequest request);
 /// call. It moves at the rate measured from the reports, not at the speed
 /// asked for: a player takes a new speed when it can, a while late with
 /// time-stretched audio, and the playhead follows what it really does. While
-/// it plays it moves only forward: a report that disagrees is reached over a
-/// few frames (at up to twice the rate, or standing still), and only a seek,
-/// a pause, a start, a loop's wrap or a disagreement over a second moves it
-/// at once.
+/// it plays it moves only forward: a report that disagrees (placed by the
+/// time it was read) is made up at up to a quarter above or below the
+/// measured rate, and only a seek, a pause, a start, a loop's wrap or a
+/// disagreement over half a second moves it at once.
 ///
 /// An HLS source ([PlayerSourceKind.hls], Android only) publishes nothing up
 /// front: the platform player asks for each part as it needs it. A
@@ -503,20 +503,21 @@ final class _NativePlayerEngine implements PlayerEngine {
     _slew = Duration.zero;
   }
 
-  /// The longest a report that disagrees with the playhead is slewed over;
-  /// one further off than that is taken at once.
-  static const Duration _longestSlew = Duration(seconds: 1);
+  /// A disagreement past which a report is taken at once, a jump: a seek
+  /// the platform made by itself, a stall, a clock gone wrong.
+  static const Duration _jumpOver = Duration(milliseconds: 500);
 
-  /// How long a small disagreement is slewed over: a few frames.
-  static const Duration _slewTime = Duration(milliseconds: 250);
+  /// How far from the measured rate the playhead moves while it makes up a
+  /// disagreement: a quarter, so a tenth of a second is absorbed over about
+  /// four tenths at 1x, never as a burst or a stall.
+  static const double _slewShare = 0.25;
 
-  // Takes a report of [reported] while the playhead advances and went on
-  // advancing: the playhead keeps its place and moves faster or slower (not
-  // backward, at most twice the speed) until it is on the reported course,
-  // so a platform a little behind or ahead of the clock (time-stretched
-  // audio runs late at speeds above 1) never shows as a step. A wrap or a
-  // disagreement it could not make up within [_longestSlew] is taken at
-  // once.
+  // Takes a report of [reported] (on the course now) while the playhead
+  // advances and went on advancing: the playhead keeps its place and moves
+  // up to a quarter faster or slower than the measured rate until it is on
+  // the reported course, so a platform a little behind or ahead never shows
+  // as a step, a burst or a stall. A wrap, or a disagreement over
+  // [_jumpOver], is taken at once.
   void _slewTo(Duration reported, Duration shown) {
     final now = _backend._clock.elapsed;
     final speed = _velocity;
@@ -527,24 +528,38 @@ final class _NativePlayerEngine implements PlayerEngine {
         duration != null &&
         apart.isNegative &&
         -apart > duration ~/ 2;
-    if (wrapped || speed <= 0) return _anchorAt(reported);
-    // Where the reported course is _slewTime from now, and the rate that
-    // meets it then.
-    var slew = _slewTime;
-    var rate = speed + apart.inMicroseconds / slew.inMicroseconds;
-    if (rate < 0) {
-      // Ahead of the course: stand still until it catches up.
-      rate = 0;
-      slew = Duration(microseconds: (-apart.inMicroseconds / speed).round());
-    } else if (rate > 2 * speed) {
-      rate = 2 * speed;
-      slew = Duration(microseconds: (apart.inMicroseconds / speed).round());
+    if (wrapped || speed <= 0 || apart.abs() > _jumpOver) {
+      return _anchorAt(reported);
     }
-    if (slew > _longestSlew) return _anchorAt(reported);
+    // The course is met when the deviation has made up the distance.
+    final deviation = speed * _slewShare;
     _anchor = shown;
     _anchoredAt = now;
-    _rate = rate;
-    _slew = slew;
+    _rate = apart.isNegative ? speed - deviation : speed + deviation;
+    _slew = Duration(
+      microseconds: (apart.inMicroseconds.abs() / deviation).round(),
+    );
+  }
+
+  // The least difference seen between this clock and the platform's, in
+  // microseconds: the platform's sampling time plus it is when a report
+  // read with no delay would have arrived.
+  int? _clockOffset;
+
+  // Where [position], read at [at] on the platform's clock, is by [now]:
+  // moved on at the measured rate for the time the report spent on its way
+  // beyond the quickest one seen. Without it each report's own delay read as
+  // the playhead running ahead of the player, a disagreement made up by
+  // every report in turn.
+  Duration _reportedNow(Duration position, int at, Duration now) {
+    final seen = now.inMicroseconds - at;
+    final offset = _clockOffset = switch (_clockOffset) {
+      final least? when least <= seen => least,
+      _ => seen,
+    };
+    final late = seen - offset;
+    if (late <= 0) return position;
+    return position + Duration(microseconds: (late * _velocity).round());
   }
 
   // Takes the rate between the last report and this one, [position] read at
@@ -669,9 +684,10 @@ final class _NativePlayerEngine implements PlayerEngine {
         _seekTarget == null;
     if (continuous) {
       // Where the playhead shows now, before the rate it moved at changes.
-      final shown = _movedBy(_backend._clock.elapsed);
+      final now = _backend._clock.elapsed;
+      final shown = _movedBy(now);
       _measure(reported, snapshot.sampledAtUs);
-      _slewTo(reported, shown);
+      _slewTo(_reportedNow(reported, snapshot.sampledAtUs, now), shown);
     } else {
       _measured = null;
       _anchorAt(reported);

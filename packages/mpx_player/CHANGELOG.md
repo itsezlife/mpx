@@ -6,8 +6,11 @@
   read the position (`NativePlayerSnapshot.sampledAtUs`). The playhead moves
   at a new speed at once and then at the rate measured from those reports,
   and slews onto each report instead of stepping, so a seek bar moves
-  smoothly through a speed change, even one the player takes late; seeks,
-  pauses and loop wraps still move it at once.
+  smoothly through a speed change, even one the player takes late. A small
+  disagreement is made up within a quarter of the measured rate, so it shows
+  as no burst and no stall; reports are placed by the time they were read.
+  Seeks, pauses, loop wraps and errors over half a second still move it at
+  once.
 - Android applies a speed change at once (AudioTrack playback params),
   rather than after the audio already processed has played out.
 - Android fixes from device runs: the JNI library is 16 KB page aligned;
