@@ -91,7 +91,7 @@ internal class MpxVideoPlayer(
                 .build()
         exo.addListener(this)
         exo.repeatMode = if (looping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
-        exo.playbackParameters = PlaybackParameters(settings.speed.toFloat())
+        exo.playbackParameters = playbackParameters(settings.speed)
         exo.volume = settings.volume.toFloat()
         exo.playWhenReady = settings.playing
         producer.setCallback(
@@ -182,9 +182,14 @@ internal class MpxVideoPlayer(
     fun setSpeed(speed: Double) {
         if (disposed) return
         Log.d(TAG, "player $id speed $speed")
-        exo.playbackParameters = PlaybackParameters(speed.toFloat())
+        exo.playbackParameters = playbackParameters(speed)
         send()
     }
+
+    // A faster pass lowers the pitch a little, so speech sped up does not
+    // sound thin.
+    private fun playbackParameters(speed: Double) =
+        PlaybackParameters(speed.toFloat(), if (speed > 1.0) FAST_PITCH else 1f)
 
     fun setLooping(looping: Boolean) {
         if (disposed) return
@@ -345,5 +350,6 @@ internal class MpxVideoPlayer(
         const val SCHEME = "mpx-hbc"
         private const val TAG = "mpx_player"
         private const val TICK_MS = 100L
+        private const val FAST_PITCH = 0.98f
     }
 }
