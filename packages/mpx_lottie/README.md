@@ -46,11 +46,32 @@ try {
 `NativeFramePageMemory`; `frameCache` is an optional on-disk `FrameCache`. At
 shutdown dispose the scheduler, then the cache, then close the engine.
 
+With `MpxStack`, the cache's folder can count against the store's one budget
+as the `lottie_frames` quota, instead of a budget or sweep of its own:
+
+```dart
+final frames = FrameCache(directoryPath: framesDir, diskBudgetBytes: null);
+final stack = await MpxStack.create(
+  // ...
+  registeredQuotas: {BytesQuota.lottieFrames: frames.evict},
+  decoders: (context) async {
+    final quota = context.registeredQuotas[BytesQuota.lottieFrames.name]!;
+    frames.diskBytes.addListener(
+      () => quota.reportUsage(frames.diskBytes.value),
+    );
+    await frames.scan();
+    // ... the Lottie decoder over `frames`
+  },
+);
+```
+
 ## Features
 
 - Render isolates (or a web worker) drawing straight into frame pool pages or
   platform textures.
-- An on-disk frame cache (lz4) keyed by file hash, size and engine version.
+- An on-disk frame cache (lz4) keyed by file hash, size and engine version;
+  its folder can be a quota of the host's store (`FrameCache.evict`,
+  `diskBytes`).
 - Build hook: compile from source, or a hash-pinned prebuilt
   (`native/prebuilts.json`); force a source build with the
   `build_from_source` user define or `MPX_LOTTIE_BUILD_FROM_SOURCE=1`.

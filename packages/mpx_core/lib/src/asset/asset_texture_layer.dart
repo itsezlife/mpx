@@ -2,8 +2,9 @@ import 'package:flutter/rendering.dart';
 import 'package:mpx_core/src/asset/asset_binding.dart';
 
 /// How a surface that pushes layers shows a binding whose frames go to a
-/// platform texture: the one place `ContentView`
-/// and `ContentEmbed` composite.
+/// platform texture: `ContentView` composites through it, and so does a
+/// host's own render object that paints a binding (an inline embed in
+/// text), so the two never disagree on fit, clip or fade.
 ///
 /// [composite] advances an animated paintable (which is what tells it that a
 /// surface that composites shows it) and, when it then exposes a texture,

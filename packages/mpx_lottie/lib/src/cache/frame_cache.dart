@@ -70,6 +70,14 @@ void _reportToFlutter(Object error, StackTrace stack) {
 /// evicts none, and the host's store keeps the directory. A file in use is
 /// stamped when it is opened and at most every 30 seconds while it serves
 /// frames, so such a store sees it as in use.
+///
+/// ## A quota of the host's store
+///
+/// A host whose store keeps one budget for all its media registers the
+/// directory as a named quota there: [evict] is the store's evictor (it frees
+/// files least recently used first and never one in use), and [diskBytes]
+/// is the usage the host reports to the store, known from the first [scan]
+/// (or [open]) on. The cache then has no disk budget of its own.
 final class FrameCache {
   /// Creates a cache keeping files in the directory at [directoryPath]; null
   /// keeps memory only, which is all the web can do (a path there is an
@@ -128,6 +136,7 @@ final class FrameCache {
   // The disk tier, as this cache last saw it. Filled by one scan, lazily: a
   // cache that only ever misses in memory never lists the directory.
   final Map<String, _DiskFile> _disk = {};
+  final ValueNotifier<int> _diskBytes = ValueNotifier(0);
   Future<void>? _scanned;
   final Set<Future<void>> _pending = {};
   // Writes stop after the first failure: a directory that refused one write
@@ -293,7 +302,7 @@ final class FrameCache {
   /// meanwhile.
   Future<void> _deleteDamaged(_Fill fill, List<Future<void>> before) async {
     final stem = fill.$1.toFileStem(fill.$2);
-    _disk.remove(stem);
+    if (_disk.remove(stem) != null) _diskChanged();
     await Future.wait(before);
     // Frames put again while this waited built a new animation and, once
     // complete, a new file under the same name: it is not the damaged one.
@@ -328,18 +337,77 @@ final class FrameCache {
         await files.delete(stem);
       }
       _disk.clear();
+      _diskChanged();
     } on Object catch (error, stack) {
       _report(error, stack);
     }
   }
+
+  /// The bytes the files of the directory take, as this cache last saw them:
+  /// 0 until the directory is listed ([scan], [open], a write), and always 0
+  /// without a directory.
+  ValueListenable<int> get diskBytes => _diskBytes;
+
+  /// Lists the directory if it was not listed yet, so [diskBytes] counts the
+  /// files of earlier runs. Reads no frame.
+  Future<void> scan() {
+    _checkAlive();
+    if (_files == null) return Future.value();
+    return _ensureScanned();
+  }
+
+  /// Frees at least [bytes] from the directory if it can, deleting files
+  /// least recently used first, and returns how many bytes it freed (0
+  /// without a directory). A file used within [playingFor] (one that serves
+  /// frames now) is never deleted, so the result may fall short. The shape
+  /// of a store's quota evictor.
+  ///
+  /// Files of earlier runs are listed first. A file that cannot be deleted
+  /// is reported, forgotten and not counted.
+  Future<int> evict(int bytes) async {
+    _checkAlive();
+    final files = _files;
+    if (files == null || bytes <= 0) return 0;
+    await _ensureScanned();
+    final now = _clock();
+    final idle = [
+      for (final entry in _disk.entries)
+        if (now.difference(entry.value.lastUsed) >= playingFor) entry,
+    ]..sort((a, b) => a.value.lastUsed.compareTo(b.value.lastUsed));
+    var freed = 0;
+    for (final MapEntry(key: stem, value: file) in idle) {
+      if (freed >= bytes) break;
+      // Used or replaced while an earlier delete ran.
+      if (!identical(_disk[stem], file) ||
+          _clock().difference(file.lastUsed) < playingFor) {
+        continue;
+      }
+      _disk.remove(stem);
+      try {
+        await files.delete(stem);
+        freed += file.bytes;
+      } on Object catch (error, stack) {
+        _report(error, stack);
+      }
+    }
+    _diskChanged();
+    return freed;
+  }
+
+  void _diskChanged() => _diskBytes.value = _disk.values.fold<int>(
+    0,
+    (sum, file) => sum + file.bytes,
+  );
 
   /// Whether [dispose] was called: [open], [put] and [invalidate] then throw.
   bool get isDisposed => _disposed;
 
   /// Finishes pending writes, then stops; idempotent.
   Future<void> dispose() async {
+    if (_disposed) return _settle();
     _disposed = true;
     await _settle();
+    _diskBytes.dispose();
   }
 
   /// Waits until no write or stamp is under way.
@@ -370,6 +438,7 @@ final class FrameCache {
       // found, and the first write will report if it cannot write either.
       _report(error, stack);
     }
+    _diskChanged();
     await _evictDisk();
   }
 
@@ -390,6 +459,7 @@ final class FrameCache {
       }
       _disk.remove(oldest!.key);
       total -= oldest.value.bytes;
+      _diskChanged();
       try {
         await _files!.delete(oldest.key);
       } on Object catch (error, stack) {
@@ -421,6 +491,7 @@ final class FrameCache {
       // frames, and invalidate deletes the file once this write settles.
       if (animation.invalidated) return;
       _disk[stem] = _DiskFile(header.length + animation.bytes, now);
+      _diskChanged();
       if (identical(_animations[fill], animation)) {
         _animations.remove(fill);
         _ramBytes -= animation.bytes;

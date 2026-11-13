@@ -37,6 +37,7 @@ export 'src/asset/asset_profile.dart';
 export 'src/asset/asset_readiness.dart';
 export 'src/asset/asset_spec.dart';
 export 'src/asset/asset_texture.dart';
+export 'src/asset/asset_texture_layer.dart';
 export 'src/asset/atlas_sprite.dart';
 export 'src/asset/circle_placeholder.dart';
 export 'src/asset/mini_thumbnail.dart';

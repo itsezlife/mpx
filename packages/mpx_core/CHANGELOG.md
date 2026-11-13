@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `AssetTextureLayer` is exported: a host's own render object composites a
+  binding's texture exactly as `ContentView` does.
 - `MediaKey` (`remote`, `external`, `local`) with a stable, file-name-safe
   string form, and `MediaDescriptor` with `MediaKind`, dimensions, byte size,
   duration and a thumbnail handle.

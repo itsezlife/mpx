@@ -836,6 +836,30 @@ void main() {
       expect(playing.paints, hasLength(paintsWithTexture));
     });
 
+    testWidgets('a host render object composites a binding the same way', (
+      tester,
+    ) async {
+      final binding = scope.attach(_sticker, _preset.spec, _preset.profile)
+        ..visible = true;
+      addTearDown(binding.detach);
+      final composited = <bool>[];
+      await tester.pumpWidget(
+        host(
+          SizedBox.fromSize(
+            size: _preset.size,
+            child: _EmbedBox(binding, composited),
+          ),
+        ),
+      );
+      producer.last.advance(AssetStage.full, animated: true).textureOnAdvance =
+          const AssetTexture(id: 9, width: 64, height: 64);
+      tester.renderObject(find.byType(_EmbedBox)).markNeedsPaint();
+      await tester.pump();
+
+      expect(composited.last, isTrue);
+      expect(textures(tester).single.textureId, 9);
+    });
+
     testWidgets('a cover preset fills its box with the frame and is clipped '
         'to the box', (tester) async {
       const size = Size(40, 20);
@@ -908,3 +932,33 @@ List<T> _find<T extends Layer>(Layer layer) => [
 List<Layer> _ancestors(Layer layer) => [
   for (Layer? up = layer.parent; up != null; up = up.parent) up,
 ];
+
+/// A host's own render object that paints a binding: an inline embed.
+class _EmbedBox extends LeafRenderObjectWidget {
+  const _EmbedBox(this.binding, this.composited);
+
+  final AssetBinding binding;
+  final List<bool> composited;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderEmbed(binding, composited);
+}
+
+class _RenderEmbed extends RenderBox {
+  _RenderEmbed(this.binding, this.composited);
+
+  final AssetBinding binding;
+  final List<bool> composited;
+
+  @override
+  bool get sizedByParent => true;
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) => constraints.biggest;
+
+  @override
+  void paint(PaintingContext context, Offset offset) => composited.add(
+    AssetTextureLayer.composite(context, binding, offset & size),
+  );
+}

@@ -35,6 +35,12 @@ const List<(MediaKey, MediaKind, String, String)> _media = [
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Rendered Lottie frames keep a folder of their own, counted against the
+  // store's one budget as its `lottie_frames` quota: no sweep of our own.
+  final frames = FrameCache(
+    directoryPath: '${Directory.systemTemp.path}/mpx_example_frames',
+    diskBudgetBytes: null,
+  );
   final stack = await MpxStack.create(
     // Where each key's bytes are. A real host maps its keys to its CDN.
     locate: (descriptor, part) => switch (_fileOf(descriptor.key)) {
@@ -42,7 +48,8 @@ Future<void> main() async {
       null => null,
     },
     cacheDirectory: '${Directory.systemTemp.path}/mpx_example',
-    decoders: _decoders,
+    registeredQuotas: {BytesQuota.lottieFrames: frames.evict},
+    decoders: (context) => _decoders(context, frames),
     // The example's origin answers from the app bundle so it runs offline; a
     // real host leaves `client` out and gets the network.
     client: HttpBytesClient(client: _BundleOrigin()),
@@ -63,12 +70,23 @@ String? _fileOf(MediaKey key) => [
 /// The heavy decoders, each over its own native engine. One that cannot start
 /// (no native library in this build) is left out, and its kind shows the
 /// placeholder.
-Future<Map<MediaKind, Decoder>> _decoders(MpxDecoderContext context) async {
+Future<Map<MediaKind, Decoder>> _decoders(
+  MpxDecoderContext context,
+  FrameCache cache,
+) async {
   final decoders = <MediaKind, Decoder>{};
+  // Teardowns run last first: the listener goes before the cache.
+  context.onDispose(cache.dispose);
+  final quota = context.registeredQuotas[BytesQuota.lottieFrames.name];
+  if (quota != null) {
+    void report() => quota.reportUsage(cache.diskBytes.value);
+    cache.diskBytes.addListener(report);
+    context.onDispose(() => cache.diskBytes.removeListener(report));
+    await cache.scan();
+  }
   try {
     final engine = await IsolateLottieEngine.spawn();
     final memory = NativeFramePageMemory();
-    final cache = FrameCache(directoryPath: null);
     final renderer = LottieFrameRenderer(
       engine: engine,
       memory: memory,
@@ -90,7 +108,6 @@ Future<Map<MediaKind, Decoder>> _decoders(MpxDecoderContext context) async {
     context
       ..onDispose(memory.dispose)
       ..onDispose(engine.close)
-      ..onDispose(cache.dispose)
       ..onDispose(scheduler.dispose);
     decoders[MediaKind.vectorAnimation] = LottieDecoder(
       engine: engine,

@@ -828,6 +828,103 @@ void main() {
     });
   });
 
+  group('a registered quota', () {
+    late Directory dir;
+    late _CountingFiles files;
+
+    /// The file of three 10-byte even frames under a one-letter hash.
+    const fileBytes = 36 + 5 + 1 + 3 * 8 + 30;
+
+    FrameCache build() {
+      files = _CountingFiles(dir.path);
+      final cache = FrameCache(
+        directoryPath: dir.path,
+        files: files,
+        diskBudgetBytes: null,
+        clock: clock,
+      );
+      addTearDown(cache.dispose);
+      return cache;
+    }
+
+    String fileOf(String name) =>
+        '${_key(name).toFileStem(FrameParity.even)}.frames';
+
+    /// Writes a, b and c, a second apart, then lets them idle.
+    Future<void> writeThree(FrameCache cache) async {
+      for (final name in ['a', 'b', 'c']) {
+        putEven(cache, _key(name), 3, 10);
+        await files.writes(files.written.length + 1);
+        advance();
+      }
+      now = now.add(const Duration(minutes: 1));
+    }
+
+    setUp(() => dir = _tempDir());
+
+    test('frees the bytes asked, least recently used first', () async {
+      final cache = build();
+      await writeThree(cache);
+
+      expect(await cache.evict(fileBytes + 1), fileBytes * 2);
+
+      expect(_names(dir, '.frames'), [fileOf('c')]);
+      expect(cache.diskBytes.value, fileBytes);
+    });
+
+    test('never deletes a file in use', () async {
+      final cache = build();
+      await writeThree(cache);
+      cache.frame(_key('a'), 0); // a plays now
+
+      expect(await cache.evict(fileBytes * 3), fileBytes * 2);
+
+      expect(_names(dir, '.frames'), [fileOf('a')]);
+      expect(_read(cache.frame(_key('a'), 0)), _bytes(10, 1));
+    });
+
+    test('a file stops being in use once idle for the playing grace', () async {
+      final cache = build();
+      await writeThree(cache);
+      cache.frame(_key('a'), 0);
+      now = now.add(cache.playingFor);
+
+      expect(await cache.evict(fileBytes * 3), fileBytes * 3);
+      expect(_names(dir, '.frames'), isEmpty);
+    });
+
+    test('lists the directory first, so files of a past run count', () async {
+      final writer = build();
+      await writeThree(writer);
+      await writer.dispose();
+
+      final restarted = build();
+      expect(restarted.diskBytes.value, 0);
+      await restarted.scan();
+      expect(restarted.diskBytes.value, fileBytes * 3);
+
+      expect(await restarted.evict(1), fileBytes);
+      expect(_names(dir, '.frames'), [fileOf('b'), fileOf('c')]);
+    });
+
+    test('reports its usage as files are written', () async {
+      final cache = build();
+      final reported = <int>[];
+      cache.diskBytes.addListener(() => reported.add(cache.diskBytes.value));
+
+      await writeThree(cache);
+
+      expect(reported, [fileBytes, fileBytes * 2, fileBytes * 3]);
+    });
+
+    test('memory only frees nothing', () async {
+      final cache = FrameCache(directoryPath: null);
+      addTearDown(cache.dispose);
+
+      expect(await cache.evict(100), 0);
+    });
+  });
+
   group('a file larger than the disk budget', () {
     test('is deleted by the scan that finds it, never served', () async {
       final dir = _tempDir();
