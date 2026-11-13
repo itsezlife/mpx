@@ -17,6 +17,7 @@ import 'asset/asset_fit_test.dart' as asset_fit_test;
 import 'asset/asset_foreground_playback_test.dart'
     as asset_foreground_playback_test;
 import 'asset/asset_playback_test.dart' as asset_playback_test;
+import 'asset/asset_profile_test.dart' as asset_profile_test;
 import 'asset/asset_sibling_stage_test.dart' as asset_sibling_stage_test;
 import 'asset/asset_spec_test.dart' as asset_spec_test;
 import 'asset/asset_stand_in_test.dart' as asset_stand_in_test;
@@ -75,6 +76,7 @@ import 'texture/platform/texture_table_test.dart' as texture_table_test;
 import 'texture/texture_frame_region_test.dart' as texture_frame_region_test;
 import 'widget/asset_cache_provider_test.dart' as asset_cache_provider_test;
 import 'widget/content_view_test.dart' as content_view_test;
+import 'widget/viewport_visibility_test.dart' as viewport_visibility_test;
 
 void main() {
   group('asset_cache_budget_test', asset_cache_budget_test.main);
@@ -86,6 +88,7 @@ void main() {
   group('asset_fit_test', asset_fit_test.main);
   group('asset_foreground_playback_test', asset_foreground_playback_test.main);
   group('asset_playback_test', asset_playback_test.main);
+  group('asset_profile_test', asset_profile_test.main);
   group('asset_sibling_stage_test', asset_sibling_stage_test.main);
   group('asset_spec_test', asset_spec_test.main);
   group('asset_stand_in_test', asset_stand_in_test.main);
@@ -149,4 +152,5 @@ void main() {
   group('texture_frame_region_test', texture_frame_region_test.main);
   group('asset_cache_provider_test', asset_cache_provider_test.main);
   group('content_view_test', content_view_test.main);
+  group('viewport_visibility_test', viewport_visibility_test.main);
 }

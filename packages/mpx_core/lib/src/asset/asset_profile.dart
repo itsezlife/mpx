@@ -121,6 +121,29 @@ final class AssetProfile {
   /// scrolled away costs no frames; Android's reference behaviour is 0.25.
   final double advanceFloor;
 
+  /// This profile with the given fields replaced.
+  AssetProfile copyWith({
+    bool? animate,
+    bool? loop,
+    AssetRestFrame? restFrame,
+    bool? autoplayFirstFrame,
+    double? cornerRadius,
+    AssetFit? fit,
+    bool? halfFrameRate,
+    bool? foreground,
+    double? advanceFloor,
+  }) => AssetProfile(
+    animate: animate ?? this.animate,
+    loop: loop ?? this.loop,
+    restFrame: restFrame ?? this.restFrame,
+    autoplayFirstFrame: autoplayFirstFrame ?? this.autoplayFirstFrame,
+    cornerRadius: cornerRadius ?? this.cornerRadius,
+    fit: fit ?? this.fit,
+    halfFrameRate: halfFrameRate ?? this.halfFrameRate,
+    foreground: foreground ?? this.foreground,
+    advanceFloor: advanceFloor ?? this.advanceFloor,
+  );
+
   /// The source frame rate above which [halfFrameRate] skips every second
   /// frame.
   static const double halfFrameRateAbove = 30;

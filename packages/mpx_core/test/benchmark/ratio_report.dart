@@ -2,12 +2,11 @@
 /// and rates the nightly job compares against stored baselines.
 ///
 /// Off unless `BENCH_REPORT` names a file, so a plain `flutter test` (the
-/// required gate) writes nothing. The json form is read by `workspace_check`
-/// (`BenchReport`, in scripts/); this is its producing half, a few lines kept
-/// here so the benchmark has no dependency on the tooling that reads it. The
-/// schema version below must match `BenchReport.schemaVersion`. The same
-/// producer exists in panel_catalog's benchmark: two packages, one small
-/// writer each, not a shared package for thirty lines.
+/// required gate) writes nothing. The json form is read by the nightly
+/// comparison tool; this is its producing half, a few lines kept here so the
+/// benchmark has no dependency on the tooling that reads it. The schema
+/// version below must match the reader's. Other benchmarks may carry the same
+/// small writer: one each, not a shared package for thirty lines.
 library;
 
 import 'dart:convert';

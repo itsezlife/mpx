@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `ViewportVisibility.of`: a box's rectangle, the clip of every viewport
+  around it, its visible share, centre distance and how many viewports away
+  it is, in one walk. The feed slot and the viewer origin measure with it.
+- `AssetProfile.copyWith`.
 - `AssetTextureLayer` is exported: a host's own render object composites a
   binding's texture exactly as `ContentView` does.
 - `MediaKey` (`remote`, `external`, `local`) with a stable, file-name-safe
