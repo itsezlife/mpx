@@ -48,6 +48,14 @@ abstract interface class VideoEngine {
   /// a stream that cannot seek.
   Future<bool> rewind(VideoClip clip);
 
+  /// Seeks [clip] to [position]: the next [nextFrame] is the first frame at
+  /// or after it (the last frame when it lies past every frame), the frames
+  /// between the keyframe before it and it decoded and dropped on the
+  /// engine's side, off the caller's isolate where the engine has a worker.
+  /// [position] zero is a [rewind]. False for a closed or unknown clip, a
+  /// negative position or a stream that cannot seek.
+  Future<bool> seek(VideoClip clip, Duration position);
+
   /// Releases [clip]. Idempotent, and harmless once the engine is disposed
   /// (its clips went with it).
   Future<void> close(VideoClip clip);

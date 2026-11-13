@@ -32,6 +32,10 @@ abstract interface class VideoElementPort {
   /// [VideoElementFailure] when the video cannot seek.
   Future<void> rewind();
 
+  /// Seeks to [position]; the next [nextFrame] plays from there. Throws a
+  /// [VideoElementFailure] when the video cannot seek.
+  Future<void> seek(Duration position);
+
   /// Releases the element and everything it holds, and completes any request
   /// still waiting with a [VideoElementFailure]. Idempotent.
   void dispose();

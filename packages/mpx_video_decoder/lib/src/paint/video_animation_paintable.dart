@@ -38,9 +38,11 @@ import 'package:mpx_video_decoder/src/playback/video_frame_scheduler.dart';
 /// ## Position and seek
 ///
 /// [playbackPosition] is how far into its pass the clip is. [seekPlayback]
-/// moves the clip there ([VideoFrameLease.skipTo]), at once or, without a
+/// seeks the clip there ([VideoFrameLease.seekTo]), at once or, without a
 /// lease, on the next one: a player that played the same clip hands its
-/// position back so the loop goes on from it.
+/// position back so the loop goes on from it. The picture it is handed with
+/// the position (the player's last frame) shows until the clip has drawn
+/// its frame there, so the seek shows no frame from before it.
 ///
 /// ## Half frame rate
 ///
@@ -103,26 +105,49 @@ final class VideoAnimationPaintable extends AssetPaintable {
   // waits for a lease.
   Duration _position = Duration.zero;
   Duration? _seek;
+  // The picture a seek was handed, drawn until the clip has drawn its frame
+  // there.
+  ui.Image? _cover;
 
   @override
   Duration? get playbackPosition => _position;
 
   @override
-  void seekPlayback(Duration position) {
+  void seekPlayback(Duration position, {ui.Image? picture}) {
+    if (_disposed) {
+      picture?.dispose();
+      return;
+    }
     _position = position;
+    _cover?.dispose();
+    _cover = picture;
     final lease = _lease;
     if (lease == null || lease.isReleased) {
       _seek = position;
     } else {
-      lease.skipTo(position);
+      lease.seekTo(position);
     }
   }
 
-  @override
-  AtlasSprite? get sprite => _lease?.sprite;
+  // Whether the cover still shows: it goes once the seek's frame is drawn.
+  bool _keepsCover() {
+    final cover = _cover;
+    if (cover == null) return false;
+    final lease = _lease;
+    final waiting =
+        _seek != null ||
+        (lease != null && !lease.isReleased && lease.isSeeking);
+    if (waiting) return true;
+    cover.dispose();
+    _cover = null;
+    return false;
+  }
 
   @override
-  AssetTexture? get texture => _lease?.texture;
+  AtlasSprite? get sprite => _keepsCover() ? null : _lease?.sprite;
+
+  @override
+  AssetTexture? get texture => _keepsCover() ? null : _lease?.texture;
 
   /// The first-frame still this paintable draws while it has no frame.
   @override
@@ -187,6 +212,21 @@ final class VideoAnimationPaintable extends AssetPaintable {
     if (_advancedAt != context.time && context.animate && !_failed) {
       _ask(context, onCanvas: true);
     }
+    if (_cover case final cover? when _keepsCover()) {
+      final placed = context.fit.place(
+        Size(cover.width.toDouble(), cover.height.toDouble()),
+        rect,
+      );
+      canvas.drawImageRect(
+        cover,
+        placed.source,
+        placed.destination,
+        Paint()
+          ..filterQuality = FilterQuality.medium
+          ..color = Color.fromRGBO(0, 0, 0, context.opacity),
+      );
+      return;
+    }
     final sprite = this.sprite;
     if (sprite == null) {
       _still.paint(canvas, rect, context);
@@ -224,7 +264,7 @@ final class VideoAnimationPaintable extends AssetPaintable {
       lease.kept = _keep;
       if (_seek case final seek?) {
         _seek = null;
-        lease.skipTo(seek);
+        lease.seekTo(seek);
       }
     }
     _scheduler.want(
@@ -234,6 +274,8 @@ final class VideoAnimationPaintable extends AssetPaintable {
       frameStep: context.frameStepFor(_clip.info.frameRate),
     );
     _position = lease.passPosition;
+    // The seek's frame drawn: the cover goes now, not at the next read.
+    _keepsCover();
     if (!context.loop && lease.isPassComplete) {
       _holding = true;
       if (context.restFrame == AssetRestFrame.last) {
@@ -260,6 +302,8 @@ final class VideoAnimationPaintable extends AssetPaintable {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _cover?.dispose();
+    _cover = null;
     _lease?.release();
     _lease = null;
     // A frame kept for a return that will not come.

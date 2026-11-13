@@ -113,13 +113,17 @@ final class VideoFrameLease {
   /// How far into its pass the clip's time is.
   Duration get passPosition => _player.passPosition;
 
-  /// Moves the clip's time forward to [position] into its pass, into the
-  /// next pass when [position] is behind it. Decoding is sequential: the
-  /// frames before it are decoded and dropped unseen, and the frame on show
-  /// stays up until the one at [position] is decoded. Does nothing when
-  /// [position] is behind and the pass's length is not known yet (a
-  /// container that declares no duration, before the stream first ends).
-  void skipTo(Duration position) => _player.skipTo(position);
+  /// Seeks the clip to [position] into its pass, forward or back
+  /// (`VideoEngine.seek`): the decoder goes to the keyframe before it and
+  /// decodes forward on the engine's side. The frames decoded ahead are
+  /// dropped, the clip's time stands at [position] until the frame there is
+  /// decoded, and the frame on show stays up meanwhile ([isSeeking]); then
+  /// the clip plays on from that frame, none skipped, none shown twice.
+  void seekTo(Duration position) => _player.seekTo(position);
+
+  /// Whether a [seekTo] has not drawn its frame yet: the slot or texture
+  /// still holds the frame from before it.
+  bool get isSeeking => _player.isSeeking;
 
   /// Where the current frame is, or null while there is none to draw. Read it
   /// when painting and never keep it, as [FrameHandle.sprite] says.
@@ -1211,31 +1215,46 @@ final class _ClipPlayer implements VideoFrameSource {
 
   bool get isPassComplete {
     final length = _passLength;
-    return length != null && _clipTime >= length;
+    return length != null && _clipTime - _origin >= length;
   }
 
-  // Whether the clip time jumped ahead (skipTo) and the frames before the
-  // one it names are dropped, not shown.
-  bool _catchingUp = false;
+  // The clip time at which the pass that is playing began: zero, or where a
+  // seek put it.
+  Duration _origin = Duration.zero;
+  // The position a seek still has to ask the engine for; whether the clip
+  // waits for the frame of a seek (its time stands still meanwhile); and
+  // the number of that frame once decoded, until it was drawn.
+  Duration? _seekTo;
+  bool _seeking = false;
+  int? _seekFrame;
+  // Counts seeks, so a decode that was in flight across one is dropped.
+  int _generation = 0;
 
-  Duration get passPosition => switch (_passLength) {
-    final length? => _within(_clipTime, length),
-    null => _clipTime,
-  };
+  Duration get passPosition {
+    final played = _clipTime - _origin;
+    return switch (_passLength) {
+      final length? => _within(played, length),
+      null => played,
+    };
+  }
 
-  void skipTo(Duration position) {
-    final at = passPosition;
-    final Duration ahead;
-    if (_passLength case final length?) {
-      ahead = _within(position - at, length);
-    } else if (position >= at) {
-      ahead = position - at;
-    } else {
-      return;
+  bool get isSeeking => _seeking || _seekFrame != null;
+
+  void seekTo(Duration position) {
+    _generation++;
+    _seekTo = position;
+    _seeking = true;
+    _seekFrame = null;
+    _needsRewind = false;
+    _origin = _clipTime - position;
+    for (final frame in _ring) {
+      _recycle(frame.pixels);
     }
-    if (ahead == Duration.zero) return;
-    _clipTime += ahead;
-    _catchingUp = true;
+    _ring.clear();
+    final stale = _toShow;
+    _toShow = null;
+    if (stale != null) _recycle(stale.pixels);
+    _dropSentLast();
   }
 
   static Duration _within(Duration time, Duration length) =>
@@ -1246,7 +1265,7 @@ final class _ClipPlayer implements VideoFrameSource {
   void note(Duration played) {
     final last = _lastPlayed;
     _lastPlayed = played;
-    if (last == null || !playing) return;
+    if (last == null || !playing || _seeking) return;
     final step = played - last;
     if (!step.isNegative) _clipTime += step;
   }
@@ -1278,16 +1297,6 @@ final class _ClipPlayer implements VideoFrameSource {
       if (_ring[i].time <= _clipTime) best = i;
     }
     if (best < 0) return;
-    // Catching up: a frame the clip time is a whole frame past would show
-    // for a tick only; it goes unseen, and the frame on show stays.
-    if (_catchingUp && _ring[best].time + _frameInterval() <= _clipTime) {
-      for (var i = 0; i <= best; i++) {
-        _recycle(_ring[i].pixels);
-      }
-      _ring.removeRange(0, best + 1);
-      return;
-    }
-    _catchingUp = false;
     for (var i = 0; i < best; i++) {
       _recycle(_ring[i].pixels);
     }
@@ -1328,6 +1337,7 @@ final class _ClipPlayer implements VideoFrameSource {
   void endFrame(int number, {bool keep = false}) {
     final frame = _drawing.remove(number);
     if (frame == null) return;
+    if (_seekFrame case final first? when number >= first) _seekFrame = null;
     if (!keep || _toShow != null) {
       _recycle(frame.pixels);
       return;
@@ -1382,7 +1392,19 @@ final class _ClipPlayer implements VideoFrameSource {
 
   Future<void> _decodeOne() async {
     Uint8List? buffer;
+    final generation = _generation;
     try {
+      if (_seekTo case final position?) {
+        _seekTo = null;
+        final sought = await _owner._engine.seek(_clip, position);
+        if (_dead || generation != _generation) return;
+        if (!sought) {
+          failed = true;
+          return;
+        }
+        _lastPts = position;
+        _framesInPass = 0;
+      }
       if (_needsRewind) {
         final rewound = await _owner._engine.rewind(_clip);
         if (_dead) return;
@@ -1394,10 +1416,24 @@ final class _ClipPlayer implements VideoFrameSource {
       }
       buffer = _take();
       final result = await _owner._engine.nextFrame(_clip, destination: buffer);
-      if (_dead) return;
+      // Decoded from before a seek: not a frame of the clip's timeline now.
+      if (_dead || generation != _generation) return;
       switch (result.status) {
         case VideoFrameStatus.frame:
           final pts = Duration(milliseconds: result.ptsMs);
+          if (_seeking) {
+            // The seek's frame: the timeline goes on from it, at the clip
+            // time that stood still for it.
+            _seeking = false;
+            _passBase = _clipTime - pts;
+            _origin = _passBase;
+            _seekFrame = _number;
+            _ring.add(_Frame(_number++, _clipTime, buffer));
+            buffer = null;
+            _lastPts = pts;
+            _framesInPass = 1;
+            break;
+          }
           // A frame between two kept ones is dropped unseen: its buffer goes
           // back in `finally`. It still counts for the pass length.
           if (_framesInPass % frameStep == 0) {

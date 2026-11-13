@@ -143,6 +143,15 @@ final class NativeVideoBinding implements VideoBinding {
   }
 
   @override
+  bool seek(VideoHandle handle, Duration position) {
+    _requireAvailable();
+    final pointer = _handles[handle.id];
+    return pointer != null &&
+        !position.isNegative &&
+        mpxVideoSeek(pointer, position.inMilliseconds) == MpxVideoStatus.ok;
+  }
+
+  @override
   void dispose(VideoHandle handle) {
     final pointer = _handles.remove(handle.id);
     if (pointer != null) mpxVideoFree(pointer);

@@ -55,7 +55,7 @@ enum {
   MPX_VIDEO_MAX_SKIPPED_PACKETS = 10            /* consecutive undecodable packets tolerated */
 };
 
-enum { MPX_VIDEO_ABI_VERSION = 1 };
+enum { MPX_VIDEO_ABI_VERSION = 2 };
 
 typedef struct MpxVideo MpxVideo; /* opaque */
 
@@ -90,6 +90,15 @@ MPX_VIDEO_API int32_t mpx_video_next(MpxVideo *handle, uint8_t *dst, size_t stri
 /* Seeks to the start and flushes the decoder, for looping. Resets the
  * per-pass budgets. */
 MPX_VIDEO_API int32_t mpx_video_rewind(MpxVideo *handle);
+
+/* Seeks to position_ms (from the stream's start): back to the keyframe at
+ * or before it, then the next mpx_video_next decodes forward and returns
+ * the first frame at or after it, the frames before decoded and dropped. A
+ * position past the last frame returns the last frame, then the end. 0 is a
+ * rewind. Resets the per-pass budgets. Returns 0, MPX_VIDEO_INVALID_ARGUMENT
+ * (a null handle or a negative position) or MPX_VIDEO_DECODE_FAILED (cannot
+ * seek at all). */
+MPX_VIDEO_API int32_t mpx_video_seek(MpxVideo *handle, int64_t position_ms);
 
 /* Releases a handle. NULL is accepted. */
 MPX_VIDEO_API void mpx_video_free(MpxVideo *handle);

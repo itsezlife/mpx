@@ -151,6 +151,13 @@ final class _FakePort implements VideoElementPort {
   @override
   Future<void> rewind() async => _next = 0;
 
+  // Frames lie every 40 ms: the first at or after [position], or the last.
+  @override
+  Future<void> seek(Duration position) async {
+    final index = (position.inMilliseconds + 39) ~/ 40;
+    _next = index < _script.frameCount ? index : _script.frameCount - 1;
+  }
+
   void release() {
     for (final gate in _held) {
       if (!gate.isCompleted) gate.complete();

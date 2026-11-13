@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_video_decoder/src/binding/binding.dart';
+import 'package:mpx_video_decoder/src/binding/ffi/mpx_video_symbols.dart';
 
 // ignore: always_use_package_imports
 import 'support/missing_abi_symbol.dart';
@@ -21,8 +22,12 @@ void main() {
     });
 
     test('says the ABI differs for a version other than the expected', () {
-      final other = NativeVideoBinding.probing(() => 2);
-      final same = NativeVideoBinding.probing(() => 1);
+      final other = NativeVideoBinding.probing(
+        () => MpxVideoAbi.expectedVersion + 1,
+      );
+      final same = NativeVideoBinding.probing(
+        () => MpxVideoAbi.expectedVersion,
+      );
 
       expect(other.availability, VideoAvailability.abiMismatch);
       expect(same.availability, VideoAvailability.available);

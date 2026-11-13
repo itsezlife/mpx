@@ -125,6 +125,19 @@ final class FakeVideoBinding implements VideoBinding {
   }
 
   @override
+  bool seek(VideoHandle handle, Duration position) {
+    _requireAvailable();
+    final playback = _live[handle.id];
+    if (playback == null || position.isNegative) return false;
+    playback.next = _FakeFrames.firstAt(
+      position,
+      playback.frameCount,
+      playback.info.frameRate,
+    );
+    return true;
+  }
+
+  @override
   void dispose(VideoHandle handle) {
     _live.remove(handle.id);
   }
@@ -133,6 +146,22 @@ final class FakeVideoBinding implements VideoBinding {
   void close() {
     _closed = true;
     _live.clear();
+  }
+}
+
+/// Where the fakes' frames lie in time: frame `i` at `i * 1000 / rate` ms,
+/// rounded (every 40 ms without a rate).
+abstract final class _FakeFrames {
+  static int ptsMs(int index, double rate) =>
+      rate > 0 ? (index * 1000 / rate).round() : index * 40;
+
+  // The first frame at or after [position], or the last one.
+  static int firstAt(Duration position, int frameCount, double rate) {
+    final ms = position.inMilliseconds;
+    for (var i = 0; i < frameCount; i++) {
+      if (ptsMs(i, rate) >= ms) return i;
+    }
+    return frameCount - 1;
   }
 }
 

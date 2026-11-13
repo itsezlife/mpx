@@ -50,6 +50,12 @@ final class InProcessVideoEngine implements VideoTextureEngine {
   }
 
   @override
+  Future<bool> seek(VideoClip clip, Duration position) async {
+    _requireOpen();
+    return _core.seek(clip.id, position);
+  }
+
+  @override
   Future<List<TextureFrameOutcome>> writeTextures(
     FrameTextureEntryPoints entryPoints,
     FrameTextureFormat format,

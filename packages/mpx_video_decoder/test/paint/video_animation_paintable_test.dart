@@ -292,26 +292,30 @@ void main() {
         expect(p.playbackPosition, const Duration(milliseconds: 192));
       });
 
-      test('a seek moves the clip there and shows none of the frames before '
-          'it', () async {
+      // Frame i of the 30 fps clip lies at i * 33 ms: 320 ms is frame 10's
+      // time rounded up from 9's, so the first frame at or after it is 10.
+      test('a seek forward goes to the frame there and plays on from it, '
+          'none skipped, none twice', () async {
         final p = paintable();
         addTearDown(p.dispose);
         await play(p, 0, 100);
         final posted = writer.indices.length;
 
         p.seekPlayback(const Duration(milliseconds: 320));
-        await play(p, 100, 160);
+        await play(p, 100, 200);
 
         final after = writer.indices.skip(posted).toList();
-        // Frame 9, or 10 when the clock passed 9 while it was decoded.
-        expect(after.first, inInclusiveRange(9, 10));
+        expect(after.first, 10);
+        // One frame after another, round the 12 of a pass.
         for (var i = 1; i < after.length; i++) {
-          expect(after[i], greaterThanOrEqualTo(after[i - 1]));
+          expect((after[i] - after[i - 1]) % 12, inInclusiveRange(0, 1));
         }
+        expect(after.toSet().length, greaterThan(1));
+        expect(engine.seeks, [const Duration(milliseconds: 320)]);
       });
 
       test(
-        'a seek behind the clip goes round to it in the next pass',
+        'a seek back goes back, through the engine, not round a pass',
         () async {
           final p = paintable();
           addTearDown(p.dispose);
@@ -319,9 +323,17 @@ void main() {
           final posted = writer.indices.length;
 
           p.seekPlayback(const Duration(milliseconds: 120));
-          await play(p, 250, 350);
+          await play(p, 250, 300);
 
-          expect(writer.indices.skip(posted).first, inInclusiveRange(3, 4));
+          expect(writer.indices.skip(posted).first, 4);
+          expect(
+            p.playbackPosition,
+            greaterThanOrEqualTo(const Duration(milliseconds: 120)),
+          );
+          expect(
+            p.playbackPosition,
+            lessThan(const Duration(milliseconds: 250)),
+          );
         },
       );
 
@@ -339,11 +351,39 @@ void main() {
         final posted = writer.indices.length;
         await play(p, 500, 550);
 
-        expect(writer.indices.skip(posted).first, inInclusiveRange(9, 10));
-        expect(
-          p.playbackPosition,
-          greaterThanOrEqualTo(const Duration(milliseconds: 320)),
+        expect(writer.indices.skip(posted).first, 10);
+      });
+
+      test('the picture handed with a seek shows until the frame there is '
+          'drawn, then goes', () async {
+        final p = paintable();
+        addTearDown(p.dispose);
+        await play(p, 0, 100);
+        final picture = _solid(0xFFFF0000, side: 8);
+        final mine = picture.clone();
+        addTearDown(mine.dispose);
+
+        p.seekPlayback(const Duration(milliseconds: 320), picture: picture);
+
+        expect(p.texture, isNull);
+        final canvas = _RecordingCanvas();
+        p.paint(
+          canvas,
+          const Rect.fromLTWH(0, 0, 16, 16),
+          const AssetPaintContext(time: Duration(milliseconds: 100)),
         );
+        expect(canvas.draws.single.image.isCloneOf(mine), isTrue);
+
+        await play(p, 116, 250);
+
+        expect(picture.debugDisposed, isTrue);
+        final after = _RecordingCanvas();
+        p.paint(
+          after,
+          const Rect.fromLTWH(0, 0, 16, 16),
+          const AssetPaintContext(time: Duration(milliseconds: 250)),
+        );
+        expect(after.draws.single.image.isCloneOf(mine), isFalse);
       });
     });
 

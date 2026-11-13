@@ -163,6 +163,53 @@ abstract final class VideoEngineContract {
         expect(destination, orderedEquals(firstPixels));
       });
 
+      test('seek goes forward and back to the first frame at or after a '
+          'time, and past the end to the last frame', () async {
+        final clip = await open();
+        final destination = Uint8List(clip.frameBytes);
+        final times = <int>[];
+        final pixels = <Uint8List>[];
+        for (
+          var result = await engine.nextFrame(clip, destination: destination);
+          result.status == VideoFrameStatus.frame;
+          result = await engine.nextFrame(clip, destination: destination)
+        ) {
+          times.add(result.ptsMs);
+          pixels.add(Uint8List.fromList(destination));
+        }
+        final k = times.length ~/ 2;
+
+        expect(
+          await engine.seek(clip, Duration(milliseconds: times[k])),
+          isTrue,
+        );
+        expect(
+          (await engine.nextFrame(clip, destination: destination)).ptsMs,
+          times[k],
+        );
+        expect(destination, orderedEquals(pixels[k]));
+
+        await engine.seek(clip, Duration(milliseconds: times[1]));
+        expect(
+          (await engine.nextFrame(clip, destination: destination)).ptsMs,
+          times[1],
+        );
+
+        await engine.seek(clip, Duration(milliseconds: times.last + 5000));
+        expect(
+          (await engine.nextFrame(clip, destination: destination)).ptsMs,
+          times.last,
+        );
+        expect(
+          (await engine.nextFrame(clip, destination: destination)).status,
+          VideoFrameStatus.endOfStream,
+        );
+        expect(
+          await engine.seek(clip, const Duration(milliseconds: -1)),
+          isFalse,
+        );
+      });
+
       test('a destination that is too short is a bad size and costs the clip '
           'no frame', () async {
         final clip = await open();

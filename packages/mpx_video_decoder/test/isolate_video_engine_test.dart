@@ -96,6 +96,10 @@ final class _ScriptedBinding implements VideoBinding {
   }
 
   @override
+  bool seek(VideoHandle handle, Duration position) =>
+      _fake.seek(handle, position);
+
+  @override
   void close() => _fake.close();
 }
 

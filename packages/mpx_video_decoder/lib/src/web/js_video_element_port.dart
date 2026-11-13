@@ -256,14 +256,18 @@ final class JsVideoElementPort implements VideoElementPort {
     });
   }
 
-  // --- Rewind and release --------------------------------------------------
+  // --- Rewind, seek and release --------------------------------------------
 
   @override
-  Future<void> rewind() async {
+  Future<void> rewind() => seek(Duration.zero);
+
+  @override
+  Future<void> seek(Duration position) async {
     if (_disposed) throw const VideoElementFailure(VideoRejection.internal);
     _idle?.cancel();
     _video.pause();
-    if (_video.currentTime == 0 && !_video.ended) return;
+    final seconds = position.inMicroseconds / Duration.microsecondsPerSecond;
+    if (_video.currentTime == seconds && !_video.ended) return;
     final seeked = Completer<void>();
     late final JSFunction onSeeked;
     onSeeked = ((web.Event _) {
@@ -271,7 +275,7 @@ final class JsVideoElementPort implements VideoElementPort {
       if (!seeked.isCompleted) seeked.complete();
     }).toJS;
     _video.addEventListener('seeked', onSeeked);
-    _video.currentTime = 0;
+    _video.currentTime = seconds;
     try {
       await seeked.future.timeout(const Duration(seconds: 2));
     } finally {

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_video_decoder/src/binding/binding.dart';
+import 'package:mpx_video_decoder/src/binding/ffi/mpx_video_symbols.dart';
 import 'package:mpx_video_decoder/testing.dart';
 
 // ignore: always_use_package_imports
@@ -24,7 +25,8 @@ void main() {
         ),
         frameCount: mp4.frames,
         malformedBytes: Uint8List(2048),
-        unavailable: () => NativeVideoBinding.probing(() => 2),
+        unavailable: () =>
+            NativeVideoBinding.probing(() => MpxVideoAbi.expectedVersion + 1),
       ),
     );
   });

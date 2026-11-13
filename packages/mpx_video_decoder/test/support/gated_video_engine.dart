@@ -74,6 +74,10 @@ final class GatedVideoEngine implements VideoEngine {
   }
 
   @override
+  Future<bool> seek(VideoClip clip, Duration position) =>
+      inner.seek(clip, position);
+
+  @override
   Future<void> close(VideoClip clip) {
     closed++;
     return inner.close(clip);

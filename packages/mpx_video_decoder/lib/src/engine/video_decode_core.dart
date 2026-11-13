@@ -85,6 +85,12 @@ final class VideoDecodeCore {
     return open != null && _binding.rewind(open.handle);
   }
 
+  /// Seeks clip [id] to [position].
+  bool seek(int id, Duration position) {
+    final open = _clips[id];
+    return open != null && _binding.seek(open.handle, position);
+  }
+
   /// Closes clip [id]; idempotent.
   void close(int id) {
     final open = _clips.remove(id);

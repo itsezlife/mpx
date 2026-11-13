@@ -1,4 +1,4 @@
-// The C ABI of native/include/mpx_video.h, bound by hand: six functions are
+// The C ABI of native/include/mpx_video.h, bound by hand: seven functions are
 // too few to be worth putting LLVM (ffigen) on every contributor. The asset
 // id of these `@Native`s is this file's library URI, which is the name
 // hook/build.dart registers the library under; moving this file means
@@ -10,7 +10,7 @@ import 'dart:ffi';
 /// The ABI of `mpx_video.h` the bindings were written against.
 abstract final class MpxVideoAbi {
   /// The version a library must answer from its ABI probe.
-  static const expectedVersion = 1;
+  static const expectedVersion = 2;
 }
 
 /// The status numbers of `mpx_video.h`, in one place so no other file
@@ -84,6 +84,10 @@ external int mpxVideoNext(
 /// Not a leaf: a seek reads the container.
 @Native<Int32 Function(Pointer<Void>)>(symbol: 'mpx_video_rewind')
 external int mpxVideoRewind(Pointer<Void> handle);
+
+/// Not a leaf: a seek reads the container.
+@Native<Int32 Function(Pointer<Void>, Int64)>(symbol: 'mpx_video_seek')
+external int mpxVideoSeek(Pointer<Void> handle, int positionMs);
 
 /// Not a leaf: closing a decoder joins its threads.
 @Native<Void Function(Pointer<Void>)>(symbol: 'mpx_video_free')

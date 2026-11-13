@@ -103,6 +103,29 @@ final class FakeVideoEngine implements VideoEngine {
   }
 
   @override
+  Future<bool> seek(VideoClip clip, Duration position) async {
+    _requireOpen();
+    final playback = _clips[clip.id];
+    if (playback == null || position.isNegative) return false;
+    final ms = position.inMilliseconds;
+    final rate = clip.info.frameRate;
+    var next = playback.frameCount - 1;
+    for (var i = 0; i < playback.frameCount; i++) {
+      final pts = rate > 0 ? (i * 1000 / rate).round() : i * 40;
+      if (pts >= ms) {
+        next = i;
+        break;
+      }
+    }
+    playback.next = next;
+    seeks.add(position);
+    return true;
+  }
+
+  /// Every position a clip was sought to, in order.
+  final List<Duration> seeks = [];
+
+  @override
   Future<void> close(VideoClip clip) async {
     _clips.remove(clip.id);
   }

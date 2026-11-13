@@ -179,6 +179,16 @@ final class IsolateVideoEngine implements VideoTextureEngine {
     );
   }
 
+  @override
+  Future<bool> seek(VideoClip clip, Duration position) async {
+    _requireOpen();
+    final placement = _placements[clip.id];
+    if (placement == null) return false;
+    return placement.worker.request<bool>(
+      (id) => _Seek(id, placement.localId, position.inMicroseconds),
+    );
+  }
+
   /// Each frame goes to the worker that decodes its clip, in one request per
   /// worker; the bytes cross as a transferable, the one copy on this isolate
   /// (the copy into a page it replaces cost the same). A clip that is not
@@ -462,6 +472,13 @@ final class _Rewind extends _Request {
   final int localId;
 }
 
+final class _Seek extends _Request {
+  const _Seek(this.id, this.localId, this.positionMicros);
+  final int id;
+  final int localId;
+  final int positionMicros;
+}
+
 /// Frames to write into textures: each its texture, size and bytes.
 final class _WriteTextures extends _Request {
   const _WriteTextures(this.id, this.entryPoints, this.format, this.jobs);
@@ -529,6 +546,11 @@ void _workerMain(_Boot boot) {
         });
       case _Rewind(:final id, :final localId):
         answer(id, () => core.rewind(localId));
+      case _Seek(:final id, :final localId, :final positionMicros):
+        answer(
+          id,
+          () => core.seek(localId, Duration(microseconds: positionMicros)),
+        );
       case _WriteTextures(
         :final id,
         :final entryPoints,

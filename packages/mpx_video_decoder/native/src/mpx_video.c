@@ -41,6 +41,12 @@ struct MpxVideo {
   int64_t frames;  /* decoded since the last rewind */
   int skipped;     /* consecutive undecodable packets */
   int64_t last_pts_ms; /* -1 before the first frame of a pass */
+
+  /* After a seek: frames before this time are decoded and dropped; -1 when
+   * no seek is pending. The last one dropped is kept in `held`, in case the
+   * stream ends before the time. */
+  int64_t seek_ms;
+  AVFrame *held;
 };
 
 /* --- In-memory AVIO --------------------------------------------------- */
@@ -77,6 +83,7 @@ void mpx_video_free(MpxVideo *h) {
   if (!h) return;
   sws_freeContext(h->sws);
   av_frame_free(&h->frame);
+  av_frame_free(&h->held);
   av_packet_free(&h->pkt);
   avcodec_free_context(&h->dec);
   /* Closes the input (with a custom pb it does not free the pb itself). */
@@ -142,7 +149,8 @@ static int32_t open_decoder(MpxVideo *h) {
 
   h->pkt = av_packet_alloc();
   h->frame = av_frame_alloc();
-  if (!h->pkt || !h->frame) return MPX_VIDEO_INTERNAL;
+  h->held = av_frame_alloc();
+  if (!h->pkt || !h->frame || !h->held) return MPX_VIDEO_INTERNAL;
 
   AVRational rate = av_guess_frame_rate(h->fmt, st, NULL);
   const AVDictionaryEntry *alpha_mode = av_dict_get(st->metadata, "alpha_mode", NULL, 0);
@@ -180,6 +188,7 @@ int32_t mpx_video_open(const uint8_t *data, size_t len, uint32_t target_w,
   h->target_w = target_w;
   h->target_h = target_h;
   h->last_pts_ms = -1;
+  h->seek_ms = -1;
 
   const int io_size = 32 * 1024;
   uint8_t *io_buffer = av_malloc(io_size);
@@ -259,6 +268,25 @@ static int32_t spend(MpxVideo *h, int32_t status) {
   return status;
 }
 
+/* The stream ended. A seek past the last frame shows that frame (kept in
+ * `held`) once, then the end; otherwise the end at once. */
+static int32_t end_of_stream(MpxVideo *h, uint8_t *dst, size_t stride, int64_t *out_pts_ms) {
+  h->state = STATE_DONE;
+  if (h->seek_ms < 0 || !h->held->buf[0]) {
+    h->seek_ms = -1;
+    return MPX_VIDEO_END_OF_STREAM;
+  }
+  h->seek_ms = -1;
+  av_frame_unref(h->frame);
+  av_frame_move_ref(h->frame, h->held);
+  int32_t status = convert(h, dst, stride);
+  if (status == MPX_VIDEO_OK) {
+    *out_pts_ms = h->last_pts_ms = frame_pts_ms(h);
+  }
+  av_frame_unref(h->frame);
+  return status == MPX_VIDEO_OK ? MPX_VIDEO_OK : spend(h, status);
+}
+
 int32_t mpx_video_next(MpxVideo *h, uint8_t *dst, size_t stride, int64_t *out_pts_ms) {
   if (!h || !dst || !out_pts_ms) return MPX_VIDEO_INVALID_ARGUMENT;
   if (stride < (size_t)h->target_w * 4) return MPX_VIDEO_BAD_SIZE;
@@ -273,6 +301,19 @@ int32_t mpx_video_next(MpxVideo *h, uint8_t *dst, size_t stride, int64_t *out_pt
         return spend(h, MPX_VIDEO_LIMIT_EXCEEDED);
       }
       h->frames++;
+      if (h->seek_ms >= 0) {
+        int64_t pts = frame_pts_ms(h);
+        if (pts < h->seek_ms) {
+          /* Before the time sought: dropped, but kept in case the stream
+           * ends first. */
+          h->last_pts_ms = pts;
+          av_frame_unref(h->held);
+          av_frame_move_ref(h->held, h->frame);
+          continue;
+        }
+        h->seek_ms = -1;
+        av_frame_unref(h->held);
+      }
       int32_t status = convert(h, dst, stride);
       if (status == MPX_VIDEO_OK) {
         *out_pts_ms = h->last_pts_ms = frame_pts_ms(h);
@@ -281,16 +322,10 @@ int32_t mpx_video_next(MpxVideo *h, uint8_t *dst, size_t stride, int64_t *out_pt
       av_frame_unref(h->frame);
       return status == MPX_VIDEO_OK ? MPX_VIDEO_OK : spend(h, status);
     }
-    if (r == AVERROR_EOF) {
-      h->state = STATE_DONE;
-      return MPX_VIDEO_END_OF_STREAM;
-    }
+    if (r == AVERROR_EOF) return end_of_stream(h, dst, stride, out_pts_ms);
     if (r != AVERROR(EAGAIN)) return spend(h, MPX_VIDEO_DECODE_FAILED);
     /* EAGAIN after the flush packet cannot happen; do not wait for it. */
-    if (h->state == STATE_DRAINING) {
-      h->state = STATE_DONE;
-      return MPX_VIDEO_END_OF_STREAM;
-    }
+    if (h->state == STATE_DRAINING) return end_of_stream(h, dst, stride, out_pts_ms);
 
     /* The decoder wants a packet. */
     if (h->packets >= MPX_VIDEO_MAX_PACKETS_PER_PASS) return spend(h, MPX_VIDEO_LIMIT_EXCEEDED);
@@ -329,6 +364,35 @@ int32_t mpx_video_rewind(MpxVideo *h) {
   h->frames = 0;
   h->skipped = 0;
   h->last_pts_ms = -1;
+  h->seek_ms = -1;
+  av_frame_unref(h->held);
+  return MPX_VIDEO_OK;
+}
+
+int32_t mpx_video_seek(MpxVideo *h, int64_t position_ms) {
+  if (!h || position_ms < 0) return MPX_VIDEO_INVALID_ARGUMENT;
+  if (position_ms == 0) return mpx_video_rewind(h);
+  AVStream *st = h->fmt->streams[h->stream];
+  int64_t start = st->start_time != AV_NOPTS_VALUE ? st->start_time : 0;
+  int64_t ts = start + av_rescale_q(position_ms, (AVRational){1, 1000}, st->time_base);
+  /* To the keyframe at or before the time; a container that cannot seek
+   * there goes back to the start, and the frames between are decoded and
+   * dropped all the same. */
+  int r = av_seek_frame(h->fmt, h->stream, ts, AVSEEK_FLAG_BACKWARD);
+  if (r < 0) r = avformat_seek_file(h->fmt, h->stream, INT64_MIN, ts, ts, 0);
+  if (r < 0) {
+    int32_t rewound = mpx_video_rewind(h);
+    if (rewound != MPX_VIDEO_OK) return rewound;
+  } else {
+    avcodec_flush_buffers(h->dec);
+    h->state = STATE_RUNNING;
+    h->packets = 0;
+    h->frames = 0;
+    h->skipped = 0;
+    h->last_pts_ms = -1;
+    av_frame_unref(h->held);
+  }
+  h->seek_ms = position_ms;
   return MPX_VIDEO_OK;
 }
 

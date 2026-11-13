@@ -201,6 +201,24 @@ final class WebVideoEngine implements VideoEngine {
     });
   }
 
+  @override
+  Future<bool> seek(VideoClip clip, Duration position) async {
+    _requireOpen();
+    final open = _clips[clip.id];
+    if (open == null || position.isNegative) return false;
+    return _serve(open, () async {
+      if (_clips[open.clip.id] != open) return false;
+      try {
+        await open.port.seek(position);
+        return true;
+        // See _frame: any failure of the element is "cannot seek".
+        // ignore: avoid_catches_without_on_clauses
+      } catch (_) {
+        return false;
+      }
+    });
+  }
+
   bool _isOpen(_OpenClip open) => !_disposed && _clips[open.clip.id] == open;
 
   /// Runs [body] after the clip's earlier requests, so calls on one clip are

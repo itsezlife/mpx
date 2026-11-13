@@ -166,6 +166,105 @@ abstract final class VideoBindingContract {
         );
       });
 
+      group('seek', () {
+        // Every frame's time and pixels, from the start.
+        (List<int>, List<Uint8List>) readAll(VideoHandle handle) {
+          final times = <int>[];
+          final pixels = <Uint8List>[];
+          for (
+            var result = next(handle);
+            result.status == VideoFrameStatus.frame;
+            result = next(handle)
+          ) {
+            times.add(result.ptsMs);
+            pixels.add(
+              Uint8List.fromList(target.asTypedList(stride * harness.height)),
+            );
+          }
+          return (times, pixels);
+        }
+
+        Uint8List shown() =>
+            Uint8List.fromList(target.asTypedList(stride * harness.height));
+
+        test('forward, to a frame\'s time: that frame comes next', () {
+          final handle = open();
+          final (times, pixels) = readAll(handle);
+          expect(harness.binding.rewind(handle), isTrue);
+          final k = times.length ~/ 2;
+
+          expect(
+            harness.binding.seek(handle, Duration(milliseconds: times[k])),
+            isTrue,
+          );
+
+          final result = next(handle);
+          expect(result.status, VideoFrameStatus.frame);
+          expect(result.ptsMs, times[k]);
+          expect(shown(), orderedEquals(pixels[k]));
+          expect(next(handle).ptsMs, times[k + 1]);
+        });
+
+        test('between two frames: the later one comes next', () {
+          final handle = open();
+          final (times, _) = readAll(handle);
+          final k = times.length ~/ 3;
+
+          harness.binding.seek(handle, Duration(milliseconds: times[k] + 1));
+
+          expect(next(handle).ptsMs, times[k + 1]);
+        });
+
+        test('backward, from the end of the stream', () {
+          final handle = open();
+          final (times, pixels) = readAll(handle);
+
+          expect(
+            harness.binding.seek(handle, Duration(milliseconds: times[1])),
+            isTrue,
+          );
+
+          expect(next(handle).ptsMs, times[1]);
+          expect(shown(), orderedEquals(pixels[1]));
+        });
+
+        test('near the end, then past it: the last frame, then the end', () {
+          final handle = open();
+          final (times, pixels) = readAll(handle);
+
+          harness.binding.seek(handle, Duration(milliseconds: times.last));
+          expect(next(handle).ptsMs, times.last);
+          expect(next(handle).status, VideoFrameStatus.endOfStream);
+
+          harness.binding.seek(
+            handle,
+            Duration(milliseconds: times.last + 5000),
+          );
+          final last = next(handle);
+          expect(last.status, VideoFrameStatus.frame);
+          expect(last.ptsMs, times.last);
+          expect(shown(), orderedEquals(pixels.last));
+          expect(next(handle).status, VideoFrameStatus.endOfStream);
+        });
+
+        test('zero is a rewind; a negative position or an unknown handle is '
+            'refused', () {
+          final handle = open();
+          final (times, _) = readAll(handle);
+
+          expect(harness.binding.seek(handle, Duration.zero), isTrue);
+          expect(next(handle).ptsMs, times.first);
+          expect(
+            harness.binding.seek(handle, const Duration(milliseconds: -1)),
+            isFalse,
+          );
+          expect(
+            harness.binding.seek(const VideoHandle(9999), Duration.zero),
+            isFalse,
+          );
+        });
+      });
+
       test('a frame leaves the stride padding of its rows alone', () {
         final handle = open();
         target

@@ -189,6 +189,56 @@ void main() {
     });
   });
 
+  group('seek', skip: nativeSkipReason(binding), () {
+    test('to every frame of each fixture, forward and back, past keyframes: '
+        'the same frame a straight decode gives', () {
+      for (final fixture in fixtures) {
+        final opened =
+            binding.open(fixture.bytes, width: 32, height: 24) as VideoOpened;
+        final target = calloc<Uint8>(32 * 24 * 4);
+        (int, Uint8List)? next() {
+          final result = binding.nextFrame(
+            opened.handle,
+            target: target,
+            strideBytes: 32 * 4,
+          );
+          if (result.status != VideoFrameStatus.frame) return null;
+          return (
+            result.ptsMs,
+            Uint8List.fromList(target.asTypedList(32 * 24 * 4)),
+          );
+        }
+
+        try {
+          final frames = <(int, Uint8List)>[];
+          for (var frame = next(); frame != null; frame = next()) {
+            frames.add(frame);
+          }
+          // Back to front, then front to back: every seek crosses a run of
+          // frames, and the late ones lie past the stream's later keyframes.
+          final order = [
+            for (var i = frames.length - 1; i >= 0; i -= 3) i,
+            for (var i = 1; i < frames.length; i += 4) i,
+          ];
+          for (final i in order) {
+            final (pts, pixels) = frames[i];
+            expect(
+              binding.seek(opened.handle, Duration(milliseconds: pts)),
+              isTrue,
+              reason: '${fixture.file} $i',
+            );
+            final got = next();
+            expect(got?.$1, pts, reason: '${fixture.file} frame $i');
+            expect(got!.$2, orderedEquals(pixels), reason: fixture.file);
+          }
+        } finally {
+          calloc.free(target);
+          binding.dispose(opened.handle);
+        }
+      }
+    });
+  });
+
   group('hostile input', skip: nativeSkipReason(binding), () {
     VideoRejection? rejection(
       Uint8List bytes, {

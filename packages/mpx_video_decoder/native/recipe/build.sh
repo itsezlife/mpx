@@ -152,7 +152,7 @@ do_libvpx() {
       --disable-examples --disable-tools --disable-docs --disable-unit-tests \
       --disable-install-bins --disable-install-docs \
       --enable-multithread \
-      "${LIBVPX_EXTRA[@]}"
+      ${LIBVPX_EXTRA[@]+"${LIBVPX_EXTRA[@]}"}
     make -j"$JOBS"
     make install )
 }

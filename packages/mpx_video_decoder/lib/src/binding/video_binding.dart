@@ -49,6 +49,15 @@ abstract interface class VideoBinding {
   /// a stream that cannot seek.
   bool rewind(VideoHandle handle);
 
+  /// Seeks to [position] from the start: the next [nextFrame] returns the
+  /// first frame at or after it (the last frame when it lies past every
+  /// frame, then the end of the stream). The decoder goes back to the
+  /// keyframe at or before [position] and the next [nextFrame] decodes and
+  /// drops the frames between, so the seek itself is short. [position] zero
+  /// is a [rewind]. Returns false for an unknown handle, a negative
+  /// position or a stream that cannot seek.
+  bool seek(VideoHandle handle, Duration position);
+
   /// Releases [handle]. Idempotent.
   void dispose(VideoHandle handle);
 
