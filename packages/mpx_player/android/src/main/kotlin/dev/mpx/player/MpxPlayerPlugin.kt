@@ -16,6 +16,7 @@ class MpxPlayerPlugin : FlutterPlugin, PlayerHostApi {
     private lateinit var textures: TextureRegistry
     private lateinit var flutter: PlayerFlutterApi
     private lateinit var focus: MpxAudioFocus
+    private lateinit var device: MpxDeviceProbe
     private val players = HashMap<Long, MpxVideoPlayer>()
     private var nextId = 1L
 
@@ -23,6 +24,7 @@ class MpxPlayerPlugin : FlutterPlugin, PlayerHostApi {
         context = binding.applicationContext
         textures = binding.textureRegistry
         flutter = PlayerFlutterApi(binding.binaryMessenger)
+        device = MpxDeviceProbe(context)
         // Focus callbacks and the noisy broadcast arrive on the main thread,
         // where Pigeon's Flutter API must be called.
         focus = MpxAudioFocus(context) { change -> flutter.onAudioFocusChange(change) {} }
@@ -60,7 +62,7 @@ class MpxPlayerPlugin : FlutterPlugin, PlayerHostApi {
                 producer = textures.createSurfaceProducer(),
                 renderers = MpxRenderersFactory(context),
                 report = { snapshot -> flutter.onSnapshot(snapshot) {} },
-                failedCodecOf = { null },
+                failedCodecOf = device::failedCodecOf,
             )
         return id
     }
@@ -101,16 +103,7 @@ class MpxPlayerPlugin : FlutterPlugin, PlayerHostApi {
 
     // --- Hardware probe (ticket 28) ------------------------------------------
 
-    override fun probe(): NativeDeviceProbe =
-        NativeDeviceProbe(
-            lowRam = false,
-            totalMemoryBytes = 0,
-            cpuCount = Runtime.getRuntime().availableProcessors().toLong(),
-            memoryClassMb = 0,
-            decoders = emptyList(),
-            containers = emptyList(),
-            failedCodecs = emptyList(),
-        )
+    override fun probe(): NativeDeviceProbe = device.probe()
 
     // --- Picture in picture and background audio (ticket 29) -----------------
 

@@ -34,7 +34,7 @@ internal class MpxVideoPlayer(
     private val producer: TextureRegistry.SurfaceProducer,
     renderers: RenderersFactory,
     private val report: (NativePlayerSnapshot) -> Unit,
-    private val failedCodecOf: (PlaybackException) -> String?,
+    private val failedCodecOf: (PlaybackException, String?) -> String?,
 ) : Player.Listener {
     private val readers = OpenReaders(source.readerApi)
     private val handler = Handler(Looper.getMainLooper())
@@ -212,7 +212,7 @@ internal class MpxVideoPlayer(
 
     override fun onPlayerError(error: PlaybackException) {
         this.error = "${error.errorCodeName}: ${error.message}"
-        failedCodec = failedCodecOf(error)
+        failedCodec = failedCodecOf(error, exo.videoFormat?.sampleMimeType)
         send()
     }
 
