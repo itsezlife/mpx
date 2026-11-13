@@ -26,3 +26,7 @@ migrate_working_dir/
 .pub/
 build/
 coverage/
+
+# The example lab's sessions and media corpus (packages/mpx/example/tool/lab)
+packages/mpx/example/perf/
+__pycache__/

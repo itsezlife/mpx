@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mpx/mpx.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_example/gallery.dart';
+import 'package:mpx_example/lab/lab_viewer.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_ui/mpx_ui.dart';
 
@@ -48,6 +49,12 @@ class _FeedPageState extends State<FeedPage> {
     super.dispose();
   }
 
+  AssetPreset _preset(double dpr, AssetProfile profile) => AssetPresets.media(
+    size: const Size(360, _extent - 20),
+    devicePixelRatio: dpr,
+    profile: profile,
+  );
+
   @override
   Widget build(BuildContext context) {
     final dpr = MediaQuery.devicePixelRatioOf(context);
@@ -71,24 +78,33 @@ class _FeedPageState extends State<FeedPage> {
             conditions: _conditions,
             itemOf: (index) =>
                 FeedItem(widget.clips[index % widget.clips.length]),
-            presetOf: (index, profile) => AssetPresets.media(
-              size: const Size(360, _extent - 20),
-              devicePixelRatio: dpr,
-              profile: profile,
-            ),
-            cellBuilder: (context, index, clip) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              child: Center(
-                child: GestureDetector(
-                  onTap: () => MediaViewer.show(
-                    context,
-                    source: _gallery,
-                    initialIndex: index,
+            presetOf: (index, profile) => _preset(dpr, profile),
+            cellBuilder: (context, index, clip) {
+              LabViewer.card(
+                'feed',
+                index,
+                widget.clips[index % widget.clips.length],
+                _preset(dpr, const AssetProfile()).spec,
+              );
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Center(
+                  child: GestureDetector(
+                    // The picture paints without taking hits: the whole cell does.
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => MediaViewer.show(
+                      context,
+                      source: _gallery,
+                      initialIndex: index,
+                      controller: LabViewer.controller('feed'),
+                      policy: LabViewer.policy(context),
+                      onBackdropScale: LabViewer.onBackdropScale,
+                    ),
+                    child: ViewerOrigin(index: index, child: clip),
                   ),
-                  child: ViewerOrigin(index: index, child: clip),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ),
       ),
