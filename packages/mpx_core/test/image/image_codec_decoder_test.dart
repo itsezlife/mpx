@@ -305,8 +305,8 @@ void main() {
 
     tearDown(() => paintable.dispose());
 
-    // An animation borrowed by a foreground sibling binding shows its
-    // first frame, never the frame the loop is at.
+    // An animation borrowed by a sibling binding shows its first
+    // frame, never the frame the loop is at.
     test('lends its first frame as a still, mid-loop too', () async {
       const start = Duration(seconds: 1);
       await _settledAt(paintable, start);

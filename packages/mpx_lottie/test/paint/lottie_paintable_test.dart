@@ -206,8 +206,8 @@ void main() {
       expect(p.sprite, isNull);
     });
 
-    // A foreground sibling binding borrows the first frame, never the
-    // frame the loop is at.
+    // A sibling binding borrows the first frame, never the frame
+    // the loop is at.
     test('lends its first frame as a still, mid-loop too', () async {
       final still = _image(8);
       final p = make(still: still);
