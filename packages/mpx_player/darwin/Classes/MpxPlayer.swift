@@ -18,8 +18,8 @@ import Foundation
 /// upright and `quarterTurns` is always 0.
 ///
 /// Every method runs on the main thread. State goes to Dart as whole
-/// snapshots through [report] on each change and once a second while
-/// playing.
+/// snapshots through [report] on each change and every 100 ms while playing;
+/// Dart extrapolates the playhead in between and slews it onto each report.
 final class MpxPlayer: NSObject, FlutterTexture {
   let id: Int64
   private(set) var textureId: Int64 = 0
@@ -210,7 +210,7 @@ final class MpxPlayer: NSObject, FlutterTexture {
       },
     ]
     timeObserver = player.addPeriodicTimeObserver(
-      forInterval: CMTime(value: 1, timescale: 1), queue: .main
+      forInterval: CMTime(value: 1, timescale: 10), queue: .main
     ) { [weak self] _ in
       guard let self, self.player.timeControlStatus == .playing else { return }
       self.report(self.snapshot())

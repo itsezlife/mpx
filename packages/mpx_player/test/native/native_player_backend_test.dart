@@ -36,6 +36,7 @@ void main() {
     SimulatedHost simulated, {
     Map<MediaKey, List<PlayerSource>>? sources,
     bool backgroundAudio = false,
+    Stopwatch? clock,
   }) {
     host = simulated;
     final made = NativePlayerBackend.over(
@@ -59,6 +60,7 @@ void main() {
           ],
       backgroundAudio: backgroundAudio,
       receive: false,
+      clock: clock,
     );
     simulated.receiver = made.receiver;
     return made;
@@ -176,6 +178,137 @@ void main() {
       engine.seekTo(const Duration(seconds: 5));
 
       expect(engine.position, const Duration(seconds: 5));
+    });
+  });
+
+  group('the playhead between reports', () {
+    late _ManualClock clock;
+
+    setUp(() {
+      clock = _ManualClock();
+      backend = backendOver(SimulatedHost(), clock: clock);
+    });
+    tearDown(() => backend.dispose());
+
+    Future<PlayerEngine> playing({double speed = 1}) async {
+      final engine = backend.create(clip)..prepare();
+      for (var i = 0; i < 20; i++) {
+        if (engine.state.value.phase == PlayerPhase.ready) break;
+        await settle();
+      }
+      engine
+        ..setSpeed(speed)
+        ..play();
+      await settle();
+      return engine;
+    }
+
+    // Runs 3 s of 60 Hz frames over [engine], the platform reporting every
+    // 500 ms a position that runs at [drift] times the speed set (a player
+    // behind or ahead of the clock); returns the playhead of every frame and
+    // the platform's position at it.
+    Future<List<(Duration, Duration)>> run(
+      PlayerEngine engine, {
+      required double speed,
+      required double drift,
+    }) async {
+      final player = host.live.single;
+      final start = player.positionUs;
+      final frames = <(Duration, Duration)>[];
+      for (var frame = 1; frame <= 180; frame++) {
+        clock.advance(const Duration(microseconds: 16667));
+        final wallUs = clock.elapsed.inMicroseconds;
+        final platformUs = start + (wallUs * speed * drift).round();
+        if (frame % 30 == 0) {
+          player
+            ..positionUs = platformUs
+            ..report();
+          await settle();
+        }
+        frames.add((engine.position, Duration(microseconds: platformUs)));
+      }
+      return frames;
+    }
+
+    for (final speed in [0.5, 1.0, 2.0]) {
+      for (final drift in [0.9, 1.1]) {
+        test('at ${speed}x, against a platform ${drift}x the clock, it never '
+            'steps back and stays near the platform', () async {
+          final engine = await playing(speed: speed);
+          final frames = await run(engine, speed: speed, drift: drift);
+
+          for (var i = 1; i < frames.length; i++) {
+            expect(
+              frames[i].$1,
+              greaterThanOrEqualTo(frames[i - 1].$1),
+              reason: 'frame $i',
+            );
+            // No frame jumps more than a frame and a half at twice the speed.
+            expect(
+              frames[i].$1 - frames[i - 1].$1,
+              lessThanOrEqualTo(
+                Duration(microseconds: (16667 * speed * 3).round()),
+              ),
+              reason: 'frame $i',
+            );
+          }
+          for (final (shown, platform) in frames.skip(30)) {
+            expect(
+              (shown - platform).abs(),
+              lessThan(Duration(milliseconds: (100 * speed).round() + 20)),
+            );
+          }
+        });
+      }
+    }
+
+    test('a seek still jumps, back as well', () async {
+      final engine = await playing();
+      clock.advance(const Duration(seconds: 3));
+      host.live.single
+        ..positionUs = 3000000
+        ..report();
+      await settle();
+
+      engine.seekTo(const Duration(seconds: 1));
+      await settle();
+
+      expect(engine.position, const Duration(seconds: 1));
+      clock.advance(const Duration(milliseconds: 100));
+      expect(engine.position, const Duration(seconds: 1, milliseconds: 100));
+    });
+
+    test('a loop that wraps to the start jumps there', () async {
+      final engine = await playing();
+      engine.setLooping(looping: true);
+      await settle();
+      final player = host.live.single;
+      clock.advance(const Duration(milliseconds: 100));
+      player
+        ..positionUs = SimulatedHost.durationUs - 50000
+        ..report();
+      await settle();
+      clock.advance(const Duration(milliseconds: 100));
+      player
+        ..positionUs = 50000
+        ..report();
+      await settle();
+
+      expect(engine.position, const Duration(milliseconds: 50));
+    });
+
+    test('a pause stops it where the platform says', () async {
+      final engine = await playing();
+      clock.advance(const Duration(seconds: 1));
+      host.live.single
+        ..positionUs = 900000
+        ..playing = false
+        ..report();
+      await settle();
+
+      expect(engine.position, const Duration(milliseconds: 900));
+      clock.advance(const Duration(seconds: 1));
+      expect(engine.position, const Duration(milliseconds: 900));
     });
   });
 
@@ -578,4 +711,38 @@ void main() {
       expect(host.backgroundAudio, isTrue);
     });
   });
+}
+
+/// A stopwatch the test moves by hand.
+final class _ManualClock implements Stopwatch {
+  Duration _elapsed = Duration.zero;
+
+  void advance(Duration by) => _elapsed += by;
+
+  @override
+  Duration get elapsed => _elapsed;
+
+  @override
+  int get elapsedMicroseconds => _elapsed.inMicroseconds;
+
+  @override
+  int get elapsedMilliseconds => _elapsed.inMilliseconds;
+
+  @override
+  int get elapsedTicks => _elapsed.inMicroseconds;
+
+  @override
+  int get frequency => 1000000;
+
+  @override
+  bool get isRunning => true;
+
+  @override
+  void reset() => _elapsed = Duration.zero;
+
+  @override
+  void start() {}
+
+  @override
+  void stop() {}
 }

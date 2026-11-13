@@ -42,7 +42,9 @@ abstract interface class PlayerEngine {
 
   /// The playhead now, read when painting. Between the engine's own reports a
   /// backend extrapolates it from the last report, the time since and the
-  /// speed, so a read per frame costs no platform call.
+  /// speed, so a read per frame costs no platform call. While it plays it
+  /// never steps back or jumps ahead between reads; a seek, a pause and a
+  /// loop's wrap move it at once.
   Duration get position;
 
   /// Opens the media, fills the first buffer and creates the texture, starting

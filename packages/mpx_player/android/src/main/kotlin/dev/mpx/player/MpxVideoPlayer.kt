@@ -26,8 +26,10 @@ import io.flutter.view.TextureRegistry
  * file by its cache key, or an HLS stream whose parts Dart hands over one by
  * one ([parts]).
  *
- * Reports a whole snapshot to Dart on every change and about once a second
- * while it plays; Dart extrapolates the playhead in between. Every call is on
+ * Reports a whole snapshot to Dart on every change and every 100 ms while it
+ * plays; Dart extrapolates the playhead in between and slews it onto each
+ * report (the player's position lags the clock at speeds above 1, where the
+ * audio is time-stretched). Every call is on
  * the main thread, where ExoPlayer's listeners run too.
  */
 @UnstableApi
@@ -309,6 +311,6 @@ internal class MpxVideoPlayer(
 
     companion object {
         const val SCHEME = "mpx-hbc"
-        private const val TICK_MS = 1000L
+        private const val TICK_MS = 100L
     }
 }

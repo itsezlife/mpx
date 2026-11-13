@@ -34,9 +34,12 @@ typedef PlayerPlaylistLoader = Future<Uint8List> Function(BytesRequest request);
 /// fetches at the reader's priority. Disposing the engine withdraws the
 /// publication.
 ///
-/// The platform reports each player's state when it changes and about once a
-/// second while it plays; [PlayerEngine.position] extrapolates between
-/// reports, so reading it per frame costs no platform call.
+/// The platform reports each player's state when it changes and every 100 ms
+/// while it plays; [PlayerEngine.position] extrapolates between reports, so
+/// reading it per frame costs no platform call. While it plays it moves only
+/// forward: a report that disagrees is reached over a few frames (at up to
+/// twice the speed, or standing still), and only a seek, a pause, a start, a
+/// loop's wrap or a disagreement over a second moves it at once.
 ///
 /// An HLS source ([PlayerSourceKind.hls], Android only) publishes nothing up
 /// front: the platform player asks for each part as it needs it. A
@@ -87,7 +90,9 @@ final class NativePlayerBackend implements PlayerBackend {
     PlayerPlaylistLoader? loadPlaylist,
     bool backgroundAudio = false,
     bool receive = true,
-  }) : _host = host,
+    Stopwatch? clock,
+  }) : _clock = clock ?? (Stopwatch()..start()),
+       _host = host,
        _publish = publish,
        _readerApi = readerApi,
        _sourcesOf = sourcesOf,
@@ -108,6 +113,8 @@ final class NativePlayerBackend implements PlayerBackend {
     _lifecycle = AppLifecycleListener(onHide: _onHide);
   }
 
+  // The wall clock the playheads move by between reports; a test's own.
+  final Stopwatch _clock;
   final PlayerHostApi _host;
   final PlayerBytesPublisher _publish;
   final int _readerApi;
@@ -417,10 +424,15 @@ final class _NativePlayerEngine implements PlayerEngine {
   NativePlayerSnapshot? _last;
   Object? _error;
 
-  // The playhead: the last reported position, the time since that report
-  // and whether it moves; a seek not reported yet wins over both.
+  // The playhead: a position at a clock time and whether it moves from there;
+  // a seek not reported yet wins over both. It moves at [_rate] (media time
+  // per clock time) for [_slew] after the anchor, then at the speed: a
+  // report that disagrees with the playhead shown is reached over a few
+  // frames, never by a step (see _apply).
   Duration _anchor = Duration.zero;
-  final Stopwatch _since = Stopwatch();
+  Duration _anchoredAt = Duration.zero;
+  double _rate = 1;
+  Duration _slew = Duration.zero;
   bool _advancing = false;
   Duration? _seekTarget;
   Duration? _held;
@@ -446,13 +458,73 @@ final class _NativePlayerEngine implements PlayerEngine {
     if (!_advancing) {
       return duration != null && _anchor > duration ? duration : _anchor;
     }
-    final moved = _anchor + _since.elapsed * _speed;
+    final moved = _movedBy(_backend._clock.elapsed);
     if (duration == null || duration <= Duration.zero || moved <= duration) {
       return moved;
     }
     return _looping
         ? Duration(microseconds: moved.inMicroseconds % duration.inMicroseconds)
         : duration;
+  }
+
+  // The unclamped playhead at clock time [now] while it advances.
+  Duration _movedBy(Duration now) {
+    final since = now - _anchoredAt;
+    if (since <= _slew) return _anchor + since * _rate;
+    return _anchor + _slew * _rate + (since - _slew) * _speed;
+  }
+
+  // Moves the playhead to [position] at once, at the speed from now.
+  void _anchorAt(Duration position) {
+    _anchor = position;
+    _anchoredAt = _backend._clock.elapsed;
+    _rate = _speed;
+    _slew = Duration.zero;
+  }
+
+  /// The longest a report that disagrees with the playhead is slewed over;
+  /// one further off than that is taken at once.
+  static const Duration _longestSlew = Duration(seconds: 1);
+
+  /// How long a small disagreement is slewed over: a few frames.
+  static const Duration _slewTime = Duration(milliseconds: 250);
+
+  // Takes a report of [reported] while the playhead advances and went on
+  // advancing: the playhead keeps its place and moves faster or slower (not
+  // backward, at most twice the speed) until it is on the reported course,
+  // so a platform a little behind or ahead of the clock (time-stretched
+  // audio runs late at speeds above 1) never shows as a step. A wrap or a
+  // disagreement it could not make up within [_longestSlew] is taken at
+  // once.
+  void _slewTo(Duration reported) {
+    final now = _backend._clock.elapsed;
+    final shown = _movedBy(now);
+    final speed = _speed;
+    final duration = _duration;
+    final apart = reported - shown;
+    final wrapped =
+        _looping &&
+        duration != null &&
+        apart.isNegative &&
+        -apart > duration ~/ 2;
+    if (wrapped || speed <= 0) return _anchorAt(reported);
+    // Where the reported course is _slewTime from now, and the rate that
+    // meets it then.
+    var slew = _slewTime;
+    var rate = speed + apart.inMicroseconds / slew.inMicroseconds;
+    if (rate < 0) {
+      // Ahead of the course: stand still until it catches up.
+      rate = 0;
+      slew = Duration(microseconds: (-apart.inMicroseconds / speed).round());
+    } else if (rate > 2 * speed) {
+      rate = 2 * speed;
+      slew = Duration(microseconds: (apart.inMicroseconds / speed).round());
+    }
+    if (slew > _longestSlew) return _anchorAt(reported);
+    _anchor = shown;
+    _anchoredAt = now;
+    _rate = rate;
+    _slew = slew;
   }
 
   @override
@@ -543,19 +615,29 @@ final class _NativePlayerEngine implements PlayerEngine {
       _held = _seekTarget ?? _held;
       _seekTarget = null;
     }
+    final sought = _held != null;
     if (snapshot.advancing) _held = null;
-    _anchor = _held ?? Duration(microseconds: snapshot.positionUs);
-    _since
-      ..reset()
-      ..start();
-    _advancing = snapshot.advancing;
-    _phase = switch (snapshot.phase) {
+    final reported = _held ?? Duration(microseconds: snapshot.positionUs);
+    final phase = switch (snapshot.phase) {
       NativePlayerPhase.preparing => PlayerPhase.preparing,
       NativePlayerPhase.ready => PlayerPhase.ready,
       NativePlayerPhase.buffering => PlayerPhase.buffering,
       NativePlayerPhase.ended => PlayerPhase.ended,
       NativePlayerPhase.failed => PlayerPhase.failed,
     };
+    // A periodic report while it went on playing is slewed to; a seek, a
+    // pause, a start and a change of phase are taken as they are.
+    if (_advancing &&
+        snapshot.advancing &&
+        !sought &&
+        phase == _phase &&
+        _seekTarget == null) {
+      _slewTo(reported);
+    } else {
+      _anchorAt(reported);
+    }
+    _advancing = snapshot.advancing;
+    _phase = phase;
     if (_phase == PlayerPhase.failed) {
       _error = snapshot.error ?? 'The platform player failed';
       _closeNative();
@@ -643,10 +725,7 @@ final class _NativePlayerEngine implements PlayerEngine {
   // to how it moves.
   void _reanchor() {
     if (_seekTarget != null) return;
-    _anchor = position;
-    _since
-      ..reset()
-      ..start();
+    _anchorAt(position);
   }
 
   @override
@@ -726,7 +805,6 @@ final class _NativePlayerEngine implements PlayerEngine {
     if (_disposed) return;
     _closeNative();
     _disposed = true;
-    _since.stop();
   }
 }
 
