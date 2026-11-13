@@ -85,7 +85,7 @@ H.264 source that would not change is remuxed instead of re-encoded
 
 | Platform | Compression | Round video |
 | --- | --- | --- |
-| Android (API 24+) | Media3 Transformer | not yet |
+| Android (API 24+) | Media3 Transformer | CameraX preview through a GL stage into MediaCodec, MediaMuxer |
 | iOS 15+, macOS 12+ | AVAssetReader into AVAssetWriter; an export session for a remux | AVCaptureSession into AVAssetWriter |
 
 One compression runs at a time; jobs started together queue. On a Mac the
@@ -96,6 +96,11 @@ first camera counts as front, a second one as back.
 Compression needs none. Round video needs the camera and the microphone;
 `requestPermission()` asks for both, and `start` fails with
 `CapturePermissionDenied` without them. The host declares them:
+
+**Android**: the package's manifest declares `CAMERA` and `RECORD_AUDIO`
+(and the camera as an optional feature); they merge into the app's
+manifest, nothing to add. `requestPermission()` asks through the plugin's
+activity.
 
 **iOS and macOS** (`Info.plist`):
 
