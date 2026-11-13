@@ -122,6 +122,9 @@ final class LottieAnimationPaintable extends AssetPaintable {
   bool _disposed = false;
 
   @override
+  Size get pictureSize => Size(_info.width.toDouble(), _info.height.toDouble());
+
+  @override
   AtlasSprite? get sprite => _lease?.sprite;
 
   @override

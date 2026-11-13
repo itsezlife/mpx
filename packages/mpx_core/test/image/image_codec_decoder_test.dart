@@ -275,6 +275,16 @@ void main() {
     );
   });
 
+  test('a decoded picture says its size', () async {
+    final playing = (await _decode(_request(_threeFrames))).advances.single;
+    final still = (await _decode(_request(_still))).advances.single;
+    addTearDown(playing.paintable.dispose);
+    addTearDown(still.paintable.dispose);
+
+    expect(playing.paintable.pictureSize, isNotNull);
+    expect(still.paintable.pictureSize, isNotNull);
+  });
+
   group('PlayingImagePaintable', () {
     late AssetPaintable paintable;
 

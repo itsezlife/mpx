@@ -1,5 +1,5 @@
 import 'dart:collection';
-import 'dart:ui' show Canvas, Color, Image, Rect;
+import 'dart:ui' show Canvas, Color, Image, Rect, Size;
 
 import 'package:flutter/foundation.dart';
 import 'package:mpx_core/src/asset/asset_binding.dart';
@@ -259,6 +259,17 @@ final class AssetCacheScope {
   /// Whether the cache holds an entry for [key] at [spec], attached or not.
   bool contains(MediaKey key, AssetSpec spec) =>
       _entries.containsKey((key, spec));
+
+  /// The size of the picture an entry of [key] draws
+  /// ([AssetPaintable.pictureSize]), whatever its spec, or null when none
+  /// can say: the content's proportion, for a surface that has to place it
+  /// before it knows its size.
+  Size? pictureSizeOf(MediaKey key) {
+    for (final entry in _byKey[key] ?? const <_Entry>{}) {
+      if (entry.paintable?.pictureSize case final size?) return size;
+    }
+    return null;
+  }
 
   /// How far into its pass the playback of the entry for [key] at [spec] is,
   /// or null when there is no such entry or it does not play

@@ -198,6 +198,13 @@ void main() {
       expect(disposed, 1);
     });
 
+    test('says its picture size, the animation\'s', () {
+      final p = make();
+      addTearDown(p.dispose);
+
+      expect(p.pictureSize, const Size(64, 64));
+    });
+
     test('is animated and paints itself', () {
       final p = make();
       expect(p.isAnimated, isTrue);

@@ -144,6 +144,11 @@ abstract class AssetPaintable {
   /// decodes forward only) leaves it at that and goes on from its frame.
   void rewind() {}
 
+  /// The size in pixels of the picture this paintable draws, or null when it
+  /// draws none of its own (a placeholder) or cannot say. A surface reads
+  /// the content's proportion from it before it knows the content's own size.
+  Size? get pictureSize => null;
+
   /// How far into its pass the playback is, or null for a paintable that
   /// does not play or keeps no such position. Null by default.
   Duration? get playbackPosition => null;

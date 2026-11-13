@@ -28,10 +28,14 @@ final class FakeAssetPaintable extends AssetPaintable {
     this.texture,
     this.frameDurations = const [],
     this.firstFrame,
+    this.pictureSize,
   }) : isAnimated = isAnimated ?? frameDurations.isNotEmpty;
 
   /// Names this paintable in test output.
   final String label;
+
+  @override
+  final Size? pictureSize;
 
   @override
   final bool isAnimated;

@@ -42,6 +42,10 @@ final class StillImagePaintable extends AssetPaintable {
   final bool _template;
 
   @override
+  Size get pictureSize =>
+      Size(_image.width.toDouble(), _image.height.toDouble());
+
+  @override
   AtlasSprite? get sprite => null;
 
   @override
@@ -165,6 +169,9 @@ final class PlayingImagePaintable extends AssetPaintable {
 
   @override
   bool get isAnimated => true;
+
+  @override
+  Size get pictureSize => _first.pictureSize;
 
   @override
   bool get isHolding => _holding;

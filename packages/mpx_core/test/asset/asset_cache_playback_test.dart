@@ -428,6 +428,24 @@ void main() {
     });
   });
 
+  group('picture size', () {
+    test('the content\'s proportion, from any entry of it that knows', () {
+      expect(scope.pictureSizeOf(_key), isNull);
+      scope.attach(_key, _small, _plays);
+      producer.last.advance(AssetStage.placeholder);
+      expect(scope.pictureSizeOf(_key), isNull);
+
+      scope.attach(_key, _large, _plays);
+      producer.last.advance(
+        AssetStage.full,
+        animated: true,
+        pictureSize: const Size(512, 288),
+      );
+
+      expect(scope.pictureSizeOf(_key), const Size(512, 288));
+    });
+  });
+
   group('a held entry', () {
     test('holds every binding of the entry, those that attach later too, '
         'and nothing else; released, they go on from their frame', () {

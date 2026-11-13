@@ -144,6 +144,9 @@ final class VideoAnimationPaintable extends AssetPaintable {
   }
 
   @override
+  Size get pictureSize => Size(_clip.width.toDouble(), _clip.height.toDouble());
+
+  @override
   AtlasSprite? get sprite => _keepsCover() ? null : _lease?.sprite;
 
   @override

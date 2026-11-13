@@ -16,6 +16,10 @@ final class LottieStillPaintable extends AssetPaintable {
   final ui.Image _image;
 
   @override
+  Size get pictureSize =>
+      Size(_image.width.toDouble(), _image.height.toDouble());
+
+  @override
   AtlasSprite? get sprite => null;
 
   @override

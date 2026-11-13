@@ -8,6 +8,7 @@
   silent clip reports its position and seeks to one (`playbackPosition`,
   `seekPlayback`), showing the picture it is handed until its frame there is
   drawn, so a player can hand its position back to the loop.
+- The video paintables say their picture size (`pictureSize`).
 - `native/recipe/build.sh` runs under the macOS system bash.
 - The software video decoder and its native library in one package, on
   `mpx_core`'s `MediaKey` and `MediaKind`.

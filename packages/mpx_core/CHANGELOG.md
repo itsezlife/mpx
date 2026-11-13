@@ -28,6 +28,9 @@
   move an entry's playback (the seek hands over the picture at the position);
   `holdPlayback` stops it on its frame while something else plays the
   content.
+- `AssetPaintable.pictureSize` and `AssetCacheScope.pictureSizeOf`: the size
+  of the picture an entry draws, for a surface that places the content
+  before it knows its size.
 
 ## 0.0.1
 

@@ -1,3 +1,5 @@
+import 'dart:ui' show Size;
+
 import 'package:mpx_core/src/asset/asset_cache_budgets.dart';
 import 'package:mpx_core/src/asset/asset_producer.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
@@ -32,12 +34,14 @@ final class FakeAssetAttempt implements AssetTask {
     bool animated = false,
     List<Duration> frames = const [],
     bool firstFrameStill = true,
+    Size? pictureSize,
   }) {
     final plays = animated || frames.isNotEmpty;
     final paintable = FakeAssetPaintable(
       label: '${request.key}@${stage.name}',
       isAnimated: plays,
       frameDurations: frames,
+      pictureSize: pictureSize,
       firstFrame: plays && firstFrameStill
           ? FakeAssetPaintable(label: '${request.key}@${stage.name}:frame0')
           : null,

@@ -579,6 +579,14 @@ void main() {
   });
 
   group('VideoAnimationPaintable', () {
+    test('says its picture size, the clip\'s', () {
+      final p = paintable();
+      addTearDown(p.dispose);
+
+      expect(p.pictureSize, const Size(16, 16));
+      expect(p.firstFrame.pictureSize, const Size(16, 16));
+    });
+
     test('is animated and paints its first frame until one is drawn', () async {
       final p = paintable();
       addTearDown(p.dispose);
