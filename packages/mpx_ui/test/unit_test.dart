@@ -10,10 +10,16 @@ import 'feed/feed_list_view_test.dart' as feed_list_view_test;
 import 'feed/feed_pager_view_test.dart' as feed_pager_view_test;
 import 'viewer/media_viewer_test.dart' as media_viewer_test;
 import 'viewer/viewer_chrome_test.dart' as viewer_chrome_test;
+import 'viewer/viewer_desktop_policy_test.dart' as viewer_desktop_policy_test;
+import 'viewer/viewer_ios_policy_test.dart' as viewer_ios_policy_test;
+import 'viewer/viewer_video_test.dart' as viewer_video_test;
 
 void main() {
   group('feed_list_view_test', feed_list_view_test.main);
   group('feed_pager_view_test', feed_pager_view_test.main);
   group('media_viewer_test', media_viewer_test.main);
   group('viewer_chrome_test', viewer_chrome_test.main);
+  group('viewer_desktop_policy_test', viewer_desktop_policy_test.main);
+  group('viewer_ios_policy_test', viewer_ios_policy_test.main);
+  group('viewer_video_test', viewer_video_test.main);
 }

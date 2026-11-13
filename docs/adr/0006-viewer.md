@@ -129,14 +129,34 @@ continue the bubble's animation (software path), as on every reference client.
 - Strings for built-in actions (speed, quality, PiP, rotation, "N of M") need a
   host-supplied strings object.
 
+### Implemented as (tickets 36-38)
+
+`ViewerPolicy` grew `openStyle` (`morph` / `reveal` / `appear`),
+`backgroundFadeDuration`, `dismissDrag`, `dismissVelocity`,
+`backgroundFadeDistance`, `backgroundClickCloses`, `zoomRule`
+(`fixed` / `fill` / `steps`), `doubleTapEdgeInset`, `controlsHideDuration`,
+`desktopInput` and `video` (`ViewerVideoRules`: controls on open, auto-hide,
+`ViewerDoubleTapSeek`, double tap for fullscreen, `ViewerSpeedRule`,
+`ViewerHoldSpeed`, the loop rule, the seek-preview box). `$IOS` and
+`$Desktop` sit beside `$Android`. Video plays through `MediaViewer.players`
+(only the item on screen holds a lease), hands off from the origin
+(`GalleryOrigin.position`, `OriginBridge.handBack`), and is drawn under
+`ViewerVideoControls`. Fullscreen on desktop is the host's window through
+`MediaViewer.onFullscreenChanged`; the package takes no window plugin.
+
 ## Open in implementation
 
 - Desktop colour values and fade/slide durations: the toolkit's style and
   palette files are absent from the reference checkout.
 - Android open/close interpolators are unset in source (framework default
   inferred).
-- Quality list source: how the host or the player exposes alternatives.
-- The strings seam's shape.
+- Quality list source: answered as a host callback,
+  `MediaViewer.qualitiesOf(index, item) -> [ViewerQuality(label, key)]`;
+  choosing one leases the other key at the same position.
+- The strings seam's shape: `ViewerStrings` (chrome) and
+  `ViewerVideoStrings` (controls) for now; one strings object later.
+- Desktop zoom below the fitted size (the reference goes down to 1/8 of the
+  picture's pixels) is not offered: steps start at fit.
 - Instant-view galleries, stories and secret media: not covered.
 
 ## Provenance

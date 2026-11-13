@@ -26,6 +26,7 @@ class ViewerChromeOverlay extends StatefulWidget {
     required this.onAction,
     super.key,
     this.scope,
+    this.bottomInset = 0,
   });
 
   /// What the host fills in.
@@ -57,6 +58,9 @@ class ViewerChromeOverlay extends StatefulWidget {
 
   /// The cache the thumbnails attach to.
   final AssetCacheScope? scope;
+
+  /// Room left at the bottom for the video controls.
+  final double bottomInset;
 
   @override
   State<ViewerChromeOverlay> createState() => _ViewerChromeOverlayState();
@@ -118,6 +122,7 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
             visible: visible,
             slide: -widget.policy.controlsSlide,
             duration: widget.policy.controlsDuration,
+            hideDuration: widget.policy.controlsHideDuration,
             child: Column(
               key: const ValueKey('mpx-viewer-top'),
               mainAxisSize: MainAxisSize.min,
@@ -136,6 +141,7 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
             visible: visible,
             slide: widget.policy.controlsSlide,
             duration: widget.policy.controlsDuration,
+            hideDuration: widget.policy.controlsHideDuration,
             child: Column(
               key: const ValueKey('mpx-viewer-bottom'),
               mainAxisSize: MainAxisSize.min,
@@ -143,7 +149,7 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
                 if (item != null) ?_caption(context, item, metrics),
                 if (widget.chrome.thumbnails && widget.source.count > 1)
                   _strip(metrics),
-                SizedBox(height: padding.bottom),
+                SizedBox(height: padding.bottom + widget.bottomInset),
               ],
             ),
           ),
@@ -443,12 +449,14 @@ class _Shown extends StatelessWidget {
     required this.visible,
     required this.slide,
     required this.duration,
+    required this.hideDuration,
     required this.child,
   });
 
   final bool visible;
   final double slide;
   final Duration duration;
+  final Duration hideDuration;
   final Widget child;
 
   @override
@@ -456,7 +464,7 @@ class _Shown extends StatelessWidget {
     ignoring: !visible,
     child: TweenAnimationBuilder<double>(
       tween: Tween(end: visible ? 1 : 0),
-      duration: duration,
+      duration: visible ? duration : hideDuration,
       builder: (context, t, child) => Transform.translate(
         offset: Offset(0, slide * (1 - t)),
         child: Opacity(opacity: t.clamp(0.0, 1.0), child: child),

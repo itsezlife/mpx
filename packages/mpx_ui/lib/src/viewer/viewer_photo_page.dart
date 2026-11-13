@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_ui/src/viewer/viewer_policy.dart';
 
@@ -19,13 +20,21 @@ final class ViewerDragEvents {
   /// The picture is [offset] from where it rests, positive down.
   final ValueChanged<double> onUpdate;
 
-  /// The drag ended at [offset].
-  final ValueChanged<double> onEnd;
+  /// The drag ended at [offset] with a velocity of [velocity] (pixels per
+  /// second, positive down).
+  final void Function(double offset, double velocity) onEnd;
 }
 
+/// Answers a double tap at [local] on a page of [page] size; true when it
+/// was taken (a video seeks, the window goes fullscreen) and the page must
+/// not zoom.
+typedef ViewerDoubleTapHandler = bool Function(Offset local, Size page);
+
 /// One page of the viewer: the picture fitted into the page, zoomed by pinch
-/// and double tap within the policy's range, panned within its bounds, and
-/// dragged vertically to dismiss while it is not zoomed.
+/// and double tap within [maxZoom], panned within its bounds, and dragged
+/// vertically to dismiss while it is not zoomed. A video page passes
+/// [onDoubleTap] to seek instead of zooming, and [onHoldStart] /
+/// [onHoldEnd] for a held press.
 class ViewerPhotoPage extends StatefulWidget {
   /// Creates a page drawing [child] in a box of [contentSize], centred.
   const ViewerPhotoPage({
@@ -34,8 +43,15 @@ class ViewerPhotoPage extends StatefulWidget {
     required this.policy,
     required this.drag,
     required this.onZoomedChanged,
+    required this.maxZoom,
     super.key,
+    this.doubleTapZoom,
     this.onTap,
+    this.onBackgroundTap,
+    this.onDoubleTap,
+    this.holdDelay,
+    this.onHoldStart,
+    this.onHoldEnd,
   });
 
   /// The picture.
@@ -54,8 +70,30 @@ class ViewerPhotoPage extends StatefulWidget {
   /// stops paging while a picture is zoomed.
   final ValueChanged<bool> onZoomedChanged;
 
-  /// A single tap on the page.
+  /// The largest zoom.
+  final double maxZoom;
+
+  /// The zoom a double tap goes to; null for none.
+  final double? doubleTapZoom;
+
+  /// A single tap on the picture, or anywhere when [onBackgroundTap] is
+  /// null.
   final VoidCallback? onTap;
+
+  /// A single tap beside the picture.
+  final VoidCallback? onBackgroundTap;
+
+  /// Takes a double tap before the page zooms.
+  final ViewerDoubleTapHandler? onDoubleTap;
+
+  /// How long a press is held before [onHoldStart]; null for no hold.
+  final Duration? holdDelay;
+
+  /// A press held for [holdDelay] at a point on a page of a size.
+  final void Function(Offset local, Size page)? onHoldStart;
+
+  /// The held press ended.
+  final VoidCallback? onHoldEnd;
 
   @override
   State<ViewerPhotoPage> createState() => ViewerPhotoPageState();
@@ -165,13 +203,53 @@ class ViewerPhotoPageState extends State<ViewerPhotoPage>
     final at = _doubleTapAt;
     if (at == null) return;
     final policy = widget.policy;
+    final inset = policy.doubleTapEdgeInset;
+    if (at.dx < inset ||
+        at.dy < inset ||
+        at.dx > _pageSize.width - inset ||
+        at.dy > _pageSize.height - inset) {
+      return;
+    }
+    if (widget.onDoubleTap?.call(at, _pageSize) ?? false) return;
     if (_zoom != policy.minZoom) {
       _animateTo(policy.minZoom, Offset.zero);
       return;
     }
-    final target = policy.doubleTapZoom;
+    final target = widget.doubleTapZoom;
+    if (target == null) return;
     final pan = _panAround(_fromCentre(at), _zoom, _pan, target);
     _animateTo(target, _clampPan(pan, target));
+  }
+
+  /// Zooms to [zoom] around [focal] (local to the page; its centre when
+  /// null), animated: what the keyboard and the wheel do.
+  void zoomTo(double zoom, {Offset? focal}) {
+    final target = zoom.clamp(widget.policy.minZoom, widget.maxZoom);
+    final around = focal == null ? Offset.zero : _fromCentre(focal);
+    final pan = target == widget.policy.minZoom
+        ? Offset.zero
+        : _clampPan(_panAround(around, _zoom, _pan, target), target);
+    _animateTo(target, pan);
+  }
+
+  // Whether [local] falls on the picture as it is drawn now.
+  bool _onPicture(Offset local) {
+    final size = widget.contentSize * _zoom;
+    final centre = Offset(_pageSize.width / 2, _pageSize.height / 2) + _pan;
+    return Rect.fromCenter(
+      center: centre,
+      width: size.width,
+      height: size.height,
+    ).contains(local);
+  }
+
+  void _onTapUp(TapUpDetails details) {
+    final background = widget.onBackgroundTap;
+    if (background != null && !_onPicture(details.localPosition)) {
+      background();
+    } else {
+      widget.onTap?.call();
+    }
   }
 
   void _onScaleStart(ScaleStartDetails details) {
@@ -216,10 +294,13 @@ class ViewerPhotoPageState extends State<ViewerPhotoPage>
   void _onScaleEnd(ScaleEndDetails details) {
     if (_dismissing) {
       _dismissing = false;
-      widget.drag.onEnd(_lastFocal.dy - _startFocal.dy - _dismissFrom);
+      widget.drag.onEnd(
+        _lastFocal.dy - _startFocal.dy - _dismissFrom,
+        details.velocity.pixelsPerSecond.dy,
+      );
       return;
     }
-    final zoom = widget.policy.settleZoom(_zoom);
+    final zoom = widget.policy.settleZoom(_zoom, max: widget.maxZoom);
     final pan = zoom == 1 ? Offset.zero : _clampPan(_pan, zoom);
     if (zoom != _zoom || pan != _pan) _animateTo(zoom, pan);
   }
@@ -228,9 +309,9 @@ class ViewerPhotoPageState extends State<ViewerPhotoPage>
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       _pageSize = constraints.biggest;
-      return GestureDetector(
+      Widget page = GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
+        onTapUp: _onTapUp,
         onDoubleTapDown: (details) => _doubleTapAt = details.localPosition,
         onDoubleTap: _onDoubleTap,
         onScaleStart: _onScaleStart,
@@ -248,6 +329,33 @@ class ViewerPhotoPageState extends State<ViewerPhotoPage>
           ),
         ),
       );
+      final delay = widget.holdDelay;
+      if (delay != null) {
+        page = RawGestureDetector(
+          behavior: HitTestBehavior.opaque,
+          gestures: {
+            LongPressGestureRecognizer:
+                GestureRecognizerFactoryWithHandlers<
+                  LongPressGestureRecognizer
+                >(() => LongPressGestureRecognizer(duration: delay), (
+                  recognizer,
+                ) {
+                  recognizer
+                    ..onLongPressStart = (details) {
+                      widget.onHoldStart?.call(
+                        details.localPosition,
+                        _pageSize,
+                      );
+                    }
+                    ..onLongPressEnd = (_) {
+                      widget.onHoldEnd?.call();
+                    };
+                }),
+          },
+          child: page,
+        );
+      }
+      return page;
     },
   );
 }

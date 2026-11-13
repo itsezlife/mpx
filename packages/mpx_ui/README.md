@@ -2,8 +2,7 @@
 
 Optional media UI for mpx: a fullscreen media viewer and feed list and pager widgets.
 
-> Early: the feed list, the pager and the photo viewer work; video in the
-> viewer is on its way.
+> Early: the API may still change before the first release.
 
 ## Install
 
@@ -42,6 +41,9 @@ MediaViewer.show(
   source: gallery, // your GallerySource
   initialIndex: 4,
   bridge: origins, // your OriginBridge: where each item sits on screen
+  policy: ViewerPolicy.$IOS, // or $Android, $Desktop
+  players: pool, // a PlayerPool, for video items
+  onFullscreenChanged: (on) => window.setFullscreen(on), // your window API
   tokens: ViewerTokens(background: theme.colorScheme.scrim),
   chrome: ViewerChrome(
     title: (context, i, item) => Text(authorOf(i)),
@@ -65,12 +67,14 @@ MediaViewer.show(
   policy's floor, the items ahead preload by stage
 - `FeedPagerView`: the page shown plays with sound, its neighbours keep
   prepared players, a swipe takes one over
-- `MediaViewer`: photos open from and close to their origin; drag down to
-  dismiss, double tap and pinch to zoom, swipe to page; `ViewerPolicy.$Android`
+- `MediaViewer`: photos and videos open from and close to their origin;
+  dismiss drag, zoom and paging per `ViewerPolicy.$Android`, `$IOS` or
+  `$Desktop` (an in-app overlay with keyboard, wheel and step zoom)
+- Viewer video on the player pool: seek bar with preview, double-tap seek,
+  auto-hide, speed (kept per item, per viewer or per session), quality,
+  hold to play faster, the loop rule; GIFs loop muted without controls
 - Viewer chrome: bars, counter, caption, thumbnail strip and menu; save and
   share stay the host's actions, handed the cached file and the current frame
-
-Planned: viewer video, iOS and desktop policies.
 
 ## Docs
 

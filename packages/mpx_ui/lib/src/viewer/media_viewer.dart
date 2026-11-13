@@ -2,9 +2,12 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_ui/src/viewer/gallery_source.dart';
 import 'package:mpx_ui/src/viewer/origin_bridge.dart';
 import 'package:mpx_ui/src/viewer/viewer_actions.dart';
@@ -12,6 +15,7 @@ import 'package:mpx_ui/src/viewer/viewer_chrome_overlay.dart';
 import 'package:mpx_ui/src/viewer/viewer_photo_page.dart';
 import 'package:mpx_ui/src/viewer/viewer_policy.dart';
 import 'package:mpx_ui/src/viewer/viewer_tokens.dart';
+import 'package:mpx_ui/src/viewer/viewer_video.dart';
 
 /// The fullscreen viewer: pages through a [GallerySource], opening from and
 /// closing to each item's place on the host's surface through an
@@ -45,6 +49,29 @@ import 'package:mpx_ui/src/viewer/viewer_tokens.dart';
 /// [ViewerChrome.openFile], released when the action completes) and the
 /// picture as it shows.
 ///
+/// ## Video
+///
+/// With [players] a video item plays on the player pool: it opens where the
+/// origin's loop is ([GalleryOrigin.position]), shows the origin's frame
+/// until the player's first frame, and hands its position back on close
+/// ([OriginBridge.handBack]). Its controls (play, seek bar with preview,
+/// time, speed, quality) hide after the policy's auto-hide while it plays;
+/// double tap seeks or toggles fullscreen and a held press plays faster, as
+/// the policy says. Short or silent videos loop by the policy's rule; a
+/// video that ends otherwise goes back to its start, paused, with the
+/// controls shown. Animations (GIFs) loop muted on the software path, with
+/// no controls.
+///
+/// ## Desktop input
+///
+/// With [ViewerPolicy.desktopInput] the keyboard and the wheel drive the
+/// viewer: Esc closes; the arrows page (or seek 5 s in fullscreen); J and L
+/// seek 10 s; K plays or pauses; Space does too, and held plays faster;
+/// 0 to 9 jump to that tenth of the video; Ctrl (or Cmd) with + - 0 zooms in
+/// steps, F toggles fullscreen; the wheel pages, and zooms with Ctrl. A
+/// mouse move shows the controls. Fullscreen is the host's window:
+/// [onFullscreenChanged] is told to enter or leave it.
+///
 /// Media is drawn through the core's asset cache ([scope], or the closest
 /// `AssetCacheProvider`); until the item's own picture arrives the origin's
 /// current frame shows.
@@ -62,6 +89,12 @@ class MediaViewer extends StatefulWidget {
     this.onIndexChanged,
     this.onBackdropScale,
     this.chrome,
+    this.players,
+    this.speeds,
+    this.qualitiesOf,
+    this.previewFrame,
+    this.onFullscreenChanged,
+    this.videoStrings = const ViewerVideoStrings(),
   });
 
   /// The items.
@@ -97,6 +130,25 @@ class MediaViewer extends StatefulWidget {
   /// The bars, menu and caption, and the host's actions; none when null.
   final ViewerChrome? chrome;
 
+  /// The players videos play on; videos show their still when null.
+  final PlayerPool? players;
+
+  /// Where chosen speeds are kept; the viewer keeps its own when null. A
+  /// host passes one instance to every viewer for a session-wide speed.
+  final ViewerSpeeds? speeds;
+
+  /// The qualities of a video item; one quality when null.
+  final List<ViewerQuality> Function(int index, GalleryItem item)? qualitiesOf;
+
+  /// The seek preview's frames; the preview shows the time only when null.
+  final ViewerPreviewFrame? previewFrame;
+
+  /// Told to put the app window into fullscreen (true) or back (false).
+  final ValueChanged<bool>? onFullscreenChanged;
+
+  /// The texts of the video controls.
+  final ViewerVideoStrings videoStrings;
+
   /// Pushes a viewer as a transparent route over [context]'s navigator and
   /// completes when it has closed.
   static Future<void> show(
@@ -109,6 +161,11 @@ class MediaViewer extends StatefulWidget {
     AssetCacheScope? scope,
     ValueChanged<double>? onBackdropScale,
     ViewerChrome? chrome,
+    PlayerPool? players,
+    ViewerSpeeds? speeds,
+    List<ViewerQuality> Function(int index, GalleryItem item)? qualitiesOf,
+    ViewerPreviewFrame? previewFrame,
+    ValueChanged<bool>? onFullscreenChanged,
   }) {
     final cache = scope ?? AssetCacheProvider.of(context);
     return Navigator.of(context).push<void>(
@@ -125,6 +182,11 @@ class MediaViewer extends StatefulWidget {
           scope: cache,
           onBackdropScale: onBackdropScale,
           chrome: chrome,
+          players: players,
+          speeds: speeds,
+          qualitiesOf: qualitiesOf,
+          previewFrame: previewFrame,
+          onFullscreenChanged: onFullscreenChanged,
           onClosed: () => Navigator.of(routeContext).pop(),
         ),
       ),
@@ -164,6 +226,21 @@ class MediaViewerState extends State<MediaViewer>
   bool _zoomed = false;
   final Set<int> _hidden = {};
 
+  // The video on screen: its lease, the quality chosen for it, and the
+  // speed a held press replaced.
+  PlayerLease? _lease;
+  int? _leaseIndex;
+  ViewerQuality? _quality;
+  double? _heldFrom;
+  bool _wasPlaying = false;
+  Timer? _autoHide;
+  Timer? _spaceHold;
+  bool _fullscreen = false;
+  Offset? _lastHover;
+  late final ViewerSpeeds _speeds = widget.speeds ?? ViewerSpeeds();
+  final FocusNode _focus = FocusNode(debugLabel: 'mpx-viewer');
+  final Map<int, GlobalKey<ViewerPhotoPageState>> _pageKeys = {};
+
   /// The index of the item shown.
   int get index => _index;
 
@@ -176,9 +253,16 @@ class MediaViewerState extends State<MediaViewer>
   /// The vertical offset of the picture from where it rests, positive down.
   double get dragOffset => _drag;
 
+  /// Whether the viewer asked the host for a fullscreen window.
+  bool get fullscreen => _fullscreen;
+
+  /// The lease of the video on screen, or null when the item is not a video
+  /// or the viewer has no players.
+  PlayerLease? get videoLease => _lease;
+
   /// The background's opacity now.
   double get backgroundOpacity => switch (_phase) {
-    _Phase.opening => _transitionT,
+    _Phase.opening => _openingBackground,
     _Phase.open => widget.policy.backgroundOpacityAt(_drag, _size.width),
     _Phase.closing => _closeFromBackground * (1 - _transitionT),
     _Phase.closed => 0,
@@ -186,6 +270,21 @@ class MediaViewerState extends State<MediaViewer>
 
   double get _transitionT =>
       widget.policy.openCurve.transform(_transition.value);
+
+  // The background fades in over its own duration when the policy has one,
+  // linearly; else it follows the open transition.
+  double get _openingBackground {
+    final policy = widget.policy;
+    final fade = policy.backgroundFadeDuration;
+    if (fade == null || fade == Duration.zero) return _transitionT;
+    final elapsed = _transition.value * policy.openDuration.inMicroseconds;
+    return math.min(1, elapsed / fade.inMicroseconds);
+  }
+
+  ViewerVideoRules get _video => widget.policy.video;
+
+  bool _isVideo(int index) =>
+      widget.source.itemAt(index)?.kind == GalleryMediaKind.video;
 
   @override
   void initState() {
@@ -195,14 +294,24 @@ class MediaViewerState extends State<MediaViewer>
       vsync: this,
       duration: widget.policy.settleDuration,
     )..addListener(_onSpringBack);
-    _controls.value = widget.policy.controlsVisibleOnOpen;
+    _speeds.beginViewer();
+    _controls
+      ..value = _isVideo(_index)
+          ? _video.controlsVisibleOnOpen
+          : widget.policy.controlsVisibleOnOpen
+      ..addListener(_scheduleAutoHide);
     widget.source.addListener(_onSource);
     widget.source.loadAround(_index);
+    _syncVideo();
     WidgetsBinding.instance.addPostFrameCallback((_) => _open());
   }
 
   @override
   void dispose() {
+    _autoHide?.cancel();
+    _spaceHold?.cancel();
+    _releaseVideo();
+    _focus.dispose();
     widget.source.removeListener(_onSource);
     for (final index in _hidden) {
       widget.bridge?.setHidden(index, hidden: false);
@@ -215,7 +324,339 @@ class MediaViewerState extends State<MediaViewer>
   }
 
   void _onSource() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    _syncVideo();
+    setState(() {});
+  }
+
+  // --- Video ----------------------------------------------------------------
+
+  // Leases the player of the item on screen when it is a video, and gives
+  // back the lease of the one before. Only the item on screen holds a lease:
+  // the pool keeps the one left warm until its budget needs it.
+  void _syncVideo({Duration? startAt, bool play = true}) {
+    final players = widget.players;
+    final item = widget.source.itemAt(_index);
+    if (players == null ||
+        item == null ||
+        item.kind != GalleryMediaKind.video) {
+      _releaseVideo();
+      return;
+    }
+    if (_leaseIndex == _index && _lease != null) return;
+    _releaseVideo();
+    final memory = _video.speed.memory;
+    final lease = players.lease(_quality?.key ?? item.key)
+      ..setSpeed(_speeds.speedFor(item.key, memory));
+    // A warm player knows its duration already; a new one gets its loop
+    // rule when the duration arrives (_onVideoState).
+    lease.setLooping(
+      looping: _video.loops(
+        lease.state.value.duration,
+        hasAudio: item.hasAudio,
+      ),
+    );
+    final from =
+        startAt ??
+        (_index == widget.initialIndex
+            ? widget.bridge?.originOf(_index)?.position
+            : null);
+    if (from != null) lease.seekTo(from);
+    if (play) {
+      lease.play();
+    } else {
+      lease.prepare();
+    }
+    _lease = lease;
+    _leaseIndex = _index;
+    _wasPlaying = lease.state.value.playing;
+    lease.state.addListener(_onVideoState);
+    _scheduleAutoHide();
+  }
+
+  void _releaseVideo() {
+    final lease = _lease;
+    if (lease == null) return;
+    lease.state.removeListener(_onVideoState);
+    lease.release();
+    _lease = null;
+    _leaseIndex = null;
+    _heldFrom = null;
+  }
+
+  void _onVideoState() {
+    final lease = _lease;
+    final item = widget.source.itemAt(_index);
+    if (!mounted || lease == null || item == null) return;
+    final state = lease.state.value;
+    final loops = _video.loops(state.duration, hasAudio: item.hasAudio);
+    if (state.duration != null && loops != state.looping) {
+      lease.setLooping(looping: loops);
+    }
+    if (state.phase == PlayerPhase.ended && !state.looping) {
+      // The end of a pass that does not loop: back to the start, paused,
+      // with the controls shown.
+      lease
+        ..pause()
+        ..seekTo(Duration.zero);
+      _controls.value = true;
+    }
+    if (state.playing != _wasPlaying) {
+      _wasPlaying = state.playing;
+      _scheduleAutoHide();
+    }
+  }
+
+  // Hides the controls after the policy's wait while a video plays with
+  // them shown; any interaction starts the wait again.
+  void _scheduleAutoHide() {
+    _autoHide?.cancel();
+    _autoHide = null;
+    final lease = _lease;
+    if (_phase != _Phase.open ||
+        !_controls.value ||
+        lease == null ||
+        !lease.state.value.playing) {
+      return;
+    }
+    _autoHide = Timer(_video.autoHide, () {
+      if (mounted) _controls.value = false;
+    });
+  }
+
+  void _interacted() {
+    if (!_controls.value) _controls.value = true;
+    _scheduleAutoHide();
+  }
+
+  void _seekBy(Duration delta) {
+    final lease = _lease;
+    if (lease == null) return;
+    final duration = lease.state.value.duration;
+    var target = lease.position + delta;
+    if (target.isNegative) target = Duration.zero;
+    if (duration != null && target > duration) target = duration;
+    lease.seekTo(target);
+    _interacted();
+  }
+
+  void _togglePlay() {
+    final lease = _lease;
+    if (lease == null) return;
+    if (lease.state.value.playing) {
+      lease.pause();
+    } else {
+      lease.play();
+    }
+    _interacted();
+  }
+
+  void _setSpeed(double speed) {
+    final lease = _lease;
+    final item = widget.source.itemAt(_index);
+    if (lease == null || item == null) return;
+    lease.setSpeed(speed);
+    _heldFrom = null;
+    _speeds.remember(item.key, speed, _video.speed.memory);
+    _interacted();
+  }
+
+  void _setQuality(ViewerQuality quality) {
+    final lease = _lease;
+    if (lease == null || quality.key == lease.key) return;
+    final position = lease.position;
+    final playing = lease.state.value.playing;
+    _releaseVideo();
+    _quality = quality;
+    _syncVideo(startAt: position, play: playing);
+    setState(() {});
+  }
+
+  bool _onVideoDoubleTap(Offset local, Size page) {
+    final lease = _lease;
+    if (lease == null) return false;
+    final seek = _video.doubleTapSeek?.seekAt(
+      local.dx,
+      page.width,
+      duration: lease.state.value.duration,
+      position: lease.position,
+    );
+    if (seek != null) {
+      _seekBy(seek);
+      return true;
+    }
+    if (_video.doubleTapFullscreen) {
+      toggleFullscreen();
+      return true;
+    }
+    return false;
+  }
+
+  void _holdStart({double? atFraction}) {
+    final lease = _lease;
+    final hold = _video.hold;
+    if (lease == null || hold == null || !lease.state.value.playing) return;
+    if (atFraction != null && atFraction < hold.zoneFrom) return;
+    final current = lease.state.value.speed;
+    _heldFrom = current;
+    lease.setSpeed(hold.heldRate(current));
+  }
+
+  void _holdEnd() {
+    final from = _heldFrom;
+    _heldFrom = null;
+    if (from != null) _lease?.setSpeed(from);
+  }
+
+  /// Asks the host to put its window into fullscreen, or back.
+  void toggleFullscreen() {
+    setState(() => _fullscreen = !_fullscreen);
+    widget.onFullscreenChanged?.call(_fullscreen);
+  }
+
+  // --- Desktop input --------------------------------------------------------
+
+  // How far the arrows seek a video in fullscreen, and J / L anywhere.
+  static const Duration _arrowSeek = Duration(seconds: 5);
+  static const Duration _keySeek = Duration(seconds: 10);
+
+  // A mouse move this far shows the controls again.
+  static const double _hoverWake = 5;
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    final key = event.logicalKey;
+    final space = key == LogicalKeyboardKey.space;
+    if (event is KeyUpEvent) {
+      if (!space) return KeyEventResult.ignored;
+      final waiting = _spaceHold;
+      _spaceHold = null;
+      if (waiting != null && waiting.isActive) {
+        waiting.cancel();
+        _togglePlay();
+      } else {
+        _holdEnd();
+      }
+      return KeyEventResult.handled;
+    }
+    if (event is! KeyDownEvent) {
+      return space ? KeyEventResult.handled : KeyEventResult.ignored;
+    }
+    final keyboard = HardwareKeyboard.instance;
+    final command = keyboard.isControlPressed || keyboard.isMetaPressed;
+    if (command) {
+      if (key == LogicalKeyboardKey.equal ||
+          key == LogicalKeyboardKey.add ||
+          key == LogicalKeyboardKey.numpadAdd) {
+        _zoomStep(zoomIn: true);
+      } else if (key == LogicalKeyboardKey.minus ||
+          key == LogicalKeyboardKey.numpadSubtract) {
+        _zoomStep(zoomIn: false);
+      } else if (key == LogicalKeyboardKey.digit0) {
+        _pageKeys[_index]?.currentState?.zoomTo(widget.policy.minZoom);
+      } else if (key == LogicalKeyboardKey.keyF) {
+        toggleFullscreen();
+      } else {
+        return KeyEventResult.ignored;
+      }
+      return KeyEventResult.handled;
+    }
+    final digit = _digits.indexOf(key);
+    if (digit >= 0) {
+      final duration = _lease?.state.value.duration;
+      if (duration == null) return KeyEventResult.ignored;
+      _lease!.seekTo(duration * (digit / 10));
+      _interacted();
+      return KeyEventResult.handled;
+    }
+    switch (key) {
+      case LogicalKeyboardKey.escape:
+        unawaited(close());
+      case LogicalKeyboardKey.arrowLeft || LogicalKeyboardKey.arrowRight:
+        final forward = key == LogicalKeyboardKey.arrowRight;
+        if (_fullscreen && _lease != null) {
+          _seekBy(forward ? _arrowSeek : -_arrowSeek);
+        } else {
+          _pageBy(forward ? 1 : -1);
+        }
+      case LogicalKeyboardKey.keyJ:
+        _seekBy(-_keySeek);
+      case LogicalKeyboardKey.keyL:
+        _seekBy(_keySeek);
+      case LogicalKeyboardKey.keyK:
+        _togglePlay();
+      case LogicalKeyboardKey.space:
+        final hold = _video.hold;
+        if (_lease == null) return KeyEventResult.ignored;
+        _spaceHold?.cancel();
+        if (hold == null) {
+          _togglePlay();
+        } else {
+          _spaceHold = Timer(hold.delay, _holdStart);
+        }
+      default:
+        return KeyEventResult.ignored;
+    }
+    return KeyEventResult.handled;
+  }
+
+  static const List<LogicalKeyboardKey> _digits = [
+    LogicalKeyboardKey.digit0,
+    LogicalKeyboardKey.digit1,
+    LogicalKeyboardKey.digit2,
+    LogicalKeyboardKey.digit3,
+    LogicalKeyboardKey.digit4,
+    LogicalKeyboardKey.digit5,
+    LogicalKeyboardKey.digit6,
+    LogicalKeyboardKey.digit7,
+    LogicalKeyboardKey.digit8,
+    LogicalKeyboardKey.digit9,
+  ];
+
+  void _pageBy(int delta) {
+    final target = _index + delta;
+    if (target < 0 || target >= widget.source.count || _zoomed) return;
+    unawaited(
+      _pages.animateToPage(
+        target,
+        duration: widget.policy.controlsDuration,
+        curve: Curves.easeOut,
+      ),
+    );
+  }
+
+  void _zoomStep({required bool zoomIn, Offset? focal}) {
+    final page = _pageKeys[_index]?.currentState;
+    if (page == null) return;
+    final fitted = _fittedRect(_index, null).size;
+    final next = widget.policy.stepZoom(
+      page.zoom,
+      fitted,
+      _size,
+      zoomIn: zoomIn,
+      pixels: widget.source.itemAt(_index)?.size,
+    );
+    if (next != null) page.zoomTo(next, focal: focal);
+  }
+
+  void _onPointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent || _phase != _Phase.open) return;
+    final keyboard = HardwareKeyboard.instance;
+    final delta = event.scrollDelta.dy != 0
+        ? event.scrollDelta.dy
+        : event.scrollDelta.dx;
+    if (delta == 0) return;
+    if (keyboard.isControlPressed || keyboard.isMetaPressed) {
+      _zoomStep(zoomIn: delta < 0, focal: event.localPosition);
+    } else {
+      _pageBy(delta > 0 ? 1 : -1);
+    }
+  }
+
+  void _onHover(PointerHoverEvent event) {
+    final last = _lastHover;
+    _lastHover = event.position;
+    if (last != null && (event.position - last).distance < _hoverWake) return;
+    if (_lease != null) _interacted();
   }
 
   void _hide(int index, {required bool hidden}) {
@@ -273,6 +714,7 @@ class MediaViewerState extends State<MediaViewer>
       ..forward(from: 0).whenComplete(() {
         if (!mounted || _phase != _Phase.opening) return;
         setState(() => _phase = _Phase.open);
+        _scheduleAutoHide();
       });
   }
 
@@ -281,6 +723,10 @@ class MediaViewerState extends State<MediaViewer>
   /// Closes the viewer on the item it shows.
   Future<void> close() async {
     if (_phase == _Phase.closing || _phase == _Phase.closed) return;
+    final lease = _lease;
+    if (lease != null) widget.bridge?.handBack(_index, lease.position);
+    if (_fullscreen) toggleFullscreen();
+    _autoHide?.cancel();
     final from = _fittedRect(_index, null).shift(Offset(0, _drag));
     final startBackground = backgroundOpacity;
     final bridge = widget.bridge;
@@ -339,11 +785,11 @@ class MediaViewerState extends State<MediaViewer>
       setState(() => _drag = offset);
       _reportBackdrop();
     },
-    onEnd: (offset) {
+    onEnd: (offset, velocity) {
       _dragging = false;
       if (_phase != _Phase.open) return;
       _drag = offset;
-      if (widget.policy.dismisses(offset, _size.height)) {
+      if (widget.policy.dismisses(offset, _size.height, velocity: velocity)) {
         unawaited(close());
       } else {
         _springFrom = offset;
@@ -413,7 +859,8 @@ class MediaViewerState extends State<MediaViewer>
     builder: (context, constraints) {
       _size = constraints.biggest;
       final background = widget.tokens.background;
-      return PopScope(
+      final desktop = widget.policy.desktopInput;
+      Widget viewer = PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, _) {
           if (!didPop) unawaited(close());
@@ -429,6 +876,25 @@ class MediaViewerState extends State<MediaViewer>
               ),
             ),
             if (_phase == _Phase.open) _pagesView() else _morph(),
+            if (_lease case final lease? when _phase == _Phase.open)
+              ValueListenableBuilder<bool>(
+                valueListenable: _controls,
+                builder: (context, visible, _) => ViewerVideoControls(
+                  lease: lease,
+                  rules: _video,
+                  tokens: widget.tokens,
+                  visible: visible,
+                  showDuration: widget.policy.controlsDuration,
+                  hideDuration: widget.policy.controlsHideDuration,
+                  onInteraction: _interacted,
+                  onSpeed: _setSpeed,
+                  qualities: _qualities(),
+                  quality: _quality,
+                  onQuality: _setQuality,
+                  previewFrame: widget.previewFrame,
+                  strings: widget.videoStrings,
+                ),
+              ),
             if (widget.chrome case final chrome? when _phase == _Phase.open)
               ViewerChromeOverlay(
                 chrome: chrome,
@@ -438,6 +904,7 @@ class MediaViewerState extends State<MediaViewer>
                 tokens: widget.tokens,
                 policy: widget.policy,
                 scope: widget.scope,
+                bottomInset: _lease == null ? 0 : ViewerVideoControls.barHeight,
                 onBack: () => unawaited(close()),
                 onSelectIndex: (index) => unawaited(
                   _pages.animateToPage(
@@ -452,8 +919,27 @@ class MediaViewerState extends State<MediaViewer>
           ],
         ),
       );
+      if (desktop) {
+        viewer = Focus(
+          focusNode: _focus,
+          autofocus: true,
+          onKeyEvent: _onKey,
+          child: Listener(
+            onPointerSignal: _onPointerSignal,
+            child: MouseRegion(onHover: _onHover, child: viewer),
+          ),
+        );
+      }
+      return viewer;
     },
   );
+
+  List<ViewerQuality> _qualities() {
+    final item = widget.source.itemAt(_index);
+    final qualitiesOf = widget.qualitiesOf;
+    if (item == null || qualitiesOf == null) return const [];
+    return qualitiesOf(_index, item);
+  }
 
   Widget _pagesView() {
     final gap = widget.policy.pageGap;
@@ -471,7 +957,11 @@ class MediaViewerState extends State<MediaViewer>
                 : const PageScrollPhysics(),
             itemCount: widget.source.count,
             onPageChanged: (index) {
-              setState(() => _index = index);
+              setState(() {
+                _index = index;
+                _quality = null;
+              });
+              _syncVideo();
               widget.source.loadAround(index);
               widget.onIndexChanged?.call(index);
             },
@@ -496,16 +986,32 @@ class MediaViewerState extends State<MediaViewer>
         ),
       );
     }
+    final policy = widget.policy;
+    final lease = _leaseIndex == index ? _lease : null;
+    final video = lease != null;
+    final still = _picture(index, item, fitted, BoxFit.contain);
     return ViewerPhotoPage(
-      key: ValueKey(('mpx-viewer-page', index)),
+      key: _pageKeys.putIfAbsent(index, GlobalKey<ViewerPhotoPageState>.new),
       contentSize: fitted,
-      policy: widget.policy,
+      policy: policy,
       drag: _dragEvents,
+      maxZoom: policy.maxZoomFor(fitted, _size, pixels: item.size),
+      doubleTapZoom: policy.doubleTapZoomFor(fitted, _size, pixels: item.size),
       onZoomedChanged: (zoomed) => setState(() => _zoomed = zoomed),
-      onTap: () => _controls.value = !_controls.value,
+      onTap: () {
+        _controls.value = !_controls.value;
+      },
+      onBackgroundTap: policy.backgroundClickCloses
+          ? () => unawaited(close())
+          : null,
+      onDoubleTap: video ? _onVideoDoubleTap : null,
+      holdDelay: video ? _video.hold?.delay : null,
+      onHoldStart: (local, page) =>
+          _holdStart(atFraction: page.width <= 0 ? 0 : local.dx / page.width),
+      onHoldEnd: _holdEnd,
       child: RepaintBoundary(
         key: _frameKeys.putIfAbsent(index, GlobalKey.new),
-        child: _picture(index, item, fitted, BoxFit.contain),
+        child: video ? PlayerView(lease: lease, standIn: still) : still,
       ),
     );
   }
@@ -540,12 +1046,56 @@ class MediaViewerState extends State<MediaViewer>
               opacity: opacity.clamp(0.0, 1.0),
               child: ClipRRect(
                 borderRadius: radius,
-                child: _picture(_index, item, fitted, fit),
+                child: widget.policy.openStyle == ViewerOpenStyle.reveal
+                    ? _revealed(from, to, t, rect, fitted, item)
+                    : _picture(_index, item, fitted, fit),
               ),
             ),
           ),
         ),
       ],
+    );
+  }
+
+  // The reveal: the picture moves from covering the origin to its fitted
+  // place on its own, and the window ([window]) it shows through grows from
+  // the origin's crop to the whole picture, so the crop opens up rather
+  // than the cropped picture scaling.
+  Widget _revealed(
+    _Frame from,
+    _Frame to,
+    double t,
+    Rect window,
+    Size fitted,
+    GalleryItem item,
+  ) {
+    Rect covering(Rect rect) {
+      if (fitted.isEmpty || rect.isEmpty) return rect;
+      final scale = math.max(
+        rect.width / fitted.width,
+        rect.height / fitted.height,
+      );
+      return Rect.fromCenter(
+        center: rect.center,
+        width: fitted.width * scale,
+        height: fitted.height * scale,
+      );
+    }
+
+    final picture = Rect.lerp(covering(from.rect), covering(to.rect), t)!;
+    return OverflowBox(
+      alignment: Alignment.topLeft,
+      minWidth: 0,
+      minHeight: 0,
+      maxWidth: double.infinity,
+      maxHeight: double.infinity,
+      child: Transform.translate(
+        offset: picture.topLeft - window.topLeft,
+        child: SizedBox.fromSize(
+          size: picture.size,
+          child: _picture(_index, item, fitted, BoxFit.contain),
+        ),
+      ),
     );
   }
 
@@ -570,7 +1120,16 @@ class MediaViewerState extends State<MediaViewer>
               preset: AssetPresets.media(
                 size: size.isEmpty ? const Size(1, 1) : size,
                 devicePixelRatio: dpr,
-                profile: const AssetProfile(animate: true),
+                profile: switch (item.kind) {
+                  // A GIF continues as a muted loop on the software path.
+                  GalleryMediaKind.animation => const AssetProfile(
+                    animate: true,
+                    loop: true,
+                  ),
+                  // A video's still; the player draws over it.
+                  GalleryMediaKind.video => const AssetProfile(),
+                  GalleryMediaKind.photo => const AssetProfile(animate: true),
+                },
               ),
               placeholder: const RectPlaceholder(),
               placeholderTint: const Color(0x00000000),

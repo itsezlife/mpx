@@ -19,6 +19,9 @@ final class FakeOriginBridge implements OriginBridge {
   /// Every index [reveal] was asked for.
   final List<int> revealed = [];
 
+  /// Every hand-back: `(index, position)`.
+  final List<(int, Duration)> handedBack = [];
+
   /// When set, [reveal] waits for it.
   Future<void>? revealing;
 
@@ -30,6 +33,10 @@ final class FakeOriginBridge implements OriginBridge {
     revealed.add(index);
     await revealing;
   }
+
+  @override
+  void handBack(int index, Duration position) =>
+      handedBack.add((index, position));
 
   @override
   void setHidden(int index, {required bool hidden}) {

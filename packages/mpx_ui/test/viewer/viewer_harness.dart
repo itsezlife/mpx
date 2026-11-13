@@ -2,6 +2,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
+import 'package:mpx_player/mpx_player.dart';
+import 'package:mpx_player/testing.dart';
 import 'package:mpx_ui/mpx_ui.dart';
 import 'package:mpx_ui/testing.dart';
 
@@ -13,24 +15,60 @@ const originRect = Rect.fromLTWH(20, 600, 120, 90);
 
 MediaKey photoKey(int index) => MediaKey.remote('photo-$index');
 
-/// A viewer over three photos, the first with an origin.
+MediaKey videoKey(int index) => MediaKey.remote('video-$index');
+
+/// A viewer over three photos (or the given [items]), the first with an
+/// origin; with [videoDuration] a fake player backend plays the videos.
 final class ViewerHarness {
-  ViewerHarness({int count = 3}) {
+  ViewerHarness({
+    int count = 3,
+    List<GalleryItem>? items,
+    Duration? videoDuration,
+    bool autoFirstFrame = true,
+    Duration? originPosition,
+  }) {
     producer = FakeAssetProducer();
     clock = PlaybackClock(ticks: ManualPlaybackTickSource());
     scope = AssetCacheScope(producer: producer, clock: clock);
-    source = FakeGallerySource([
-      for (var i = 0; i < count; i++)
-        GalleryItem(photoKey(i), size: const Size(1200, 900)),
-    ]);
+    source = FakeGallerySource(
+      items ??
+          [
+            for (var i = 0; i < count; i++)
+              GalleryItem(photoKey(i), size: const Size(1200, 900)),
+          ],
+    );
     bridge = FakeOriginBridge({
-      0: const GalleryOrigin(
+      0: GalleryOrigin(
         rect: originRect,
-        radius: BorderRadius.all(Radius.circular(12)),
-        clip: Rect.fromLTWH(0, 100, 400, 600),
+        radius: const BorderRadius.all(Radius.circular(12)),
+        clip: const Rect.fromLTWH(0, 100, 400, 600),
+        position: originPosition,
       ),
     });
+    if (videoDuration != null) {
+      backend = FakePlayerBackend(
+        duration: videoDuration,
+        autoFirstFrame: autoFirstFrame,
+      );
+      players = PlayerPool(backend: backend!);
+    }
   }
+
+  /// Videos 400 x 300 like the photos.
+  static List<GalleryItem> videos(int count, {bool hasAudio = true}) => [
+    for (var i = 0; i < count; i++)
+      GalleryItem(
+        videoKey(i),
+        kind: GalleryMediaKind.video,
+        size: const Size(1200, 900),
+        hasAudio: hasAudio,
+      ),
+  ];
+
+  FakePlayerBackend? backend;
+  PlayerPool? players;
+  final ViewerSpeeds speeds = ViewerSpeeds();
+  final List<bool> fullscreen = [];
 
   late final FakeAssetProducer producer;
   late final PlaybackClock clock;
@@ -45,6 +83,7 @@ final class ViewerHarness {
     ViewerPolicy policy = ViewerPolicy.$Android,
     ViewerChrome? chrome,
     bool open = true,
+    List<ViewerQuality> Function(int index, GalleryItem item)? qualitiesOf,
   }) async {
     tester.view.physicalSize = viewerSize;
     tester.view.devicePixelRatio = 1;
@@ -53,6 +92,7 @@ final class ViewerHarness {
       scope.dispose();
       clock.dispose();
       source.dispose();
+      players?.dispose();
     });
     await tester.pumpWidget(
       Directionality(
@@ -66,6 +106,10 @@ final class ViewerHarness {
           onClosed: () => closed++,
           onBackdropScale: backdrop.add,
           chrome: chrome,
+          players: players,
+          speeds: speeds,
+          qualitiesOf: qualitiesOf,
+          onFullscreenChanged: fullscreen.add,
         ),
       ),
     );
@@ -79,6 +123,10 @@ final class ViewerHarness {
 
   ViewerPhotoPageState page(WidgetTester tester) =>
       tester.state<ViewerPhotoPageState>(find.byType(ViewerPhotoPage));
+
+  PlayerLease lease(WidgetTester tester) => state(tester).videoLease!;
+
+  FakePlayerEngine engine(int index) => backend!.latestFor(videoKey(index))!;
 
   Rect morphRect(WidgetTester tester) =>
       tester.getRect(find.byKey(const ValueKey('mpx-viewer-morph')));

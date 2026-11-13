@@ -13,6 +13,7 @@ final class GalleryOrigin {
     this.radius = BorderRadius.zero,
     this.clip,
     this.frame,
+    this.position,
   });
 
   /// The item's picture on the surface, in global coordinates.
@@ -28,6 +29,11 @@ final class GalleryOrigin {
   /// The frame the surface shows now (a bubble's current frame), drawn by
   /// the viewer until its own picture is ready; null for none.
   final ui.Image? frame;
+
+  /// Where the surface's playback of the item is (a bubble's silent loop):
+  /// a video opens on the player from there. Null to start from the
+  /// beginning.
+  final Duration? position;
 }
 
 /// The viewer's link to the surface it opened from: where each item sits,
@@ -49,4 +55,8 @@ abstract interface class OriginBridge {
   /// Hides or shows [index]'s picture on the surface: hidden while the
   /// viewer's copy stands over it, so the two are never seen at once.
   void setHidden(int index, {required bool hidden});
+
+  /// Tells the surface where the player of [index] stands as the viewer
+  /// closes on it, so the bubble's loop continues from there.
+  void handBack(int index, Duration position);
 }

@@ -19,7 +19,7 @@ void main() {
       expect(_android.minZoom, 1);
       expect(_android.maxZoom, 3);
       expect(_android.pageGap, 15);
-      expect(_android.videoAutoHide, const Duration(milliseconds: 3000));
+      expect(_android.video.autoHide, const Duration(milliseconds: 3000));
     });
 
     test('a dismiss drag starts at 30 px, twice as vertical as wide', () {

@@ -19,7 +19,12 @@ enum GalleryMediaKind {
 @immutable
 final class GalleryItem {
   /// Creates an item.
-  const GalleryItem(this.key, {this.kind = GalleryMediaKind.photo, this.size});
+  const GalleryItem(
+    this.key, {
+    this.kind = GalleryMediaKind.photo,
+    this.size,
+    this.hasAudio = true,
+  });
 
   /// Which media.
   final MediaKey key;
@@ -31,15 +36,20 @@ final class GalleryItem {
   /// its aspect ratio, and falls back to the origin's when it is null.
   final Size? size;
 
+  /// Whether a video has a sound track; the loop rule of some policies
+  /// reads it.
+  final bool hasAudio;
+
   @override
   bool operator ==(Object other) =>
       other is GalleryItem &&
       other.key == key &&
       other.kind == kind &&
-      other.size == size;
+      other.size == size &&
+      other.hasAudio == hasAudio;
 
   @override
-  int get hashCode => Object.hash(key, kind, size);
+  int get hashCode => Object.hash(key, kind, size, hasAudio);
 
   @override
   String toString() => 'GalleryItem($key, ${kind.name}, $size)';

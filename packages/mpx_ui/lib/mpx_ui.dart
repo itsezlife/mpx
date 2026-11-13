@@ -23,3 +23,4 @@ export 'src/viewer/viewer_chrome_overlay.dart';
 export 'src/viewer/viewer_photo_page.dart';
 export 'src/viewer/viewer_policy.dart';
 export 'src/viewer/viewer_tokens.dart';
+export 'src/viewer/viewer_video.dart';
