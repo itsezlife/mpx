@@ -18,17 +18,15 @@ import androidx.media3.exoplayer.video.VideoRendererEventListener
 
 /**
  * ExoPlayer's renderers, with a video renderer that asks the decoder to
- * tone-map HDR to SDR, and a speed that applies at once.
+ * tone-map HDR to SDR.
  *
- * By default the audio sink time-stretches in software and takes a new speed
- * only once the audio already processed has played out, about half a second
- * on a device. With AudioTrack playback params (API 23+, under the package's
- * minimum SDK) the platform applies it to the track at once. Media3 offers
- * no query for the speeds the track supports: per its documentation the
- * fastest is bounded by the track's buffer, and a speed the track refuses is
- * reported to the listeners and then replaced by the one it settles at
- * rather than failing playback. The Dart playhead follows the rate it
- * measures either way.
+ * Speed stays on the audio sink's software time-stretching, which takes a
+ * new speed once the audio already processed has played out (about half a
+ * second). AudioTrack playback params would apply it at once, but on a
+ * device a quick run of speed changes left the track's clock standing
+ * still: the player reported playing and its position never moved again,
+ * with no error. The Dart playhead follows the rate it measures, so the bar
+ * shows the late change as it happens.
  *
  * Flutter's texture has no HDR path: an HDR frame shown as is looks washed
  * out. From API 31 a decoder can tone-map itself when the configuration asks
@@ -37,10 +35,6 @@ import androidx.media3.exoplayer.video.VideoRendererEventListener
  */
 @UnstableApi
 internal class MpxRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
-    init {
-        setEnableAudioTrackPlaybackParams(true)
-    }
-
     override fun buildVideoRenderers(
         context: Context,
         extensionRendererMode: Int,

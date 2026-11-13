@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android keeps speed changes on the audio sink's time-stretching: AudioTrack
+  playback params left the player's clock standing still after a quick run
+  of speed changes on a device.
 - A feed slot measures itself again when it is first painted after a measure
   found it unpainted (a route built off stage for its first frame) and when
   its route becomes the top one again, so the visible clips play without a
