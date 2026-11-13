@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- `NativePlayerBackend` in `package:mpx_player/native.dart`: Media3
+  ExoPlayer (Android) and AVPlayer (iOS, macOS) drawing into textures and
+  reading bytes through `http_bytes_cache`'s native reader. Sources come
+  from the host (`PlayerSource`, best first); a codec whose decoder failed
+  on the device is skipped. Players pause when the app is hidden unless
+  `backgroundAudio` is set.
+- Breaking for `PlayerBackend` implementers: `pictureInPicture`
+  (`PictureInPicture`, `NoPictureInPicture`). `PlayerPool` gains
+  `startPictureInPicture`, `stopPictureInPicture` and `pictureInPicture`;
+  the window counts as a view of its player.
+- `PlayerDevice` and `PlayerDecoder`: the hardware probe
+  (`NativePlayerBackend.device`) and the prepared-player gate.
+- `PictureInPictureContract` and `FakePictureInPicture` in `testing.dart`.
 - Breaking: `FeedPolicy` keeps only knobs the feed reads. Removed: the
   start buffer, forward buffer cap, resolution cap and quality rule (they
   come back with a native player backend), off-screen behaviour (with

@@ -1,9 +1,6 @@
 # mpx_player
 
-A hardware video player for mpx: a player pool with leases, one audio owner, and feed playback modes.
-
-> Early: the pool, leases and views work over a fake backend; the Media3 and
-> AVPlayer backends land next.
+A hardware video player for mpx on Media3 and AVPlayer: a player pool with leases, one audio owner, picture in picture and feed playback modes.
 
 ## Install
 
@@ -20,12 +17,48 @@ dependencies:
 ## Usage
 
 ```dart
+import 'package:http_bytes_cache/native_reader.dart';
 import 'package:mpx_player/mpx_player.dart';
+import 'package:mpx_player/native.dart';
 
-final pool = PlayerPool(backend: backend);
+final backend = NativePlayerBackend(
+  readers: NativeRangedReaders(RangedBytes(store: store, client: client)),
+  sourcesOf: (key) => [
+    PlayerSource(
+      RangedRequest(url: urlOf(key), cacheKey: BytesCacheKey('ranged-${key.encoded}')),
+    ),
+  ],
+);
+final pool = PlayerPool(
+  backend: backend,
+  budget: (await backend.device).budget,
+);
 final lease = pool.lease(const MediaKey.remote('42'))..play();
 // In the tree: PlayerView(lease: lease, standIn: thumbnail)
 lease.release();
+```
+
+Tests use `FakePlayerBackend` from `testing.dart` instead.
+
+### Platform setup
+
+- Apple plays progressive MP4 and QuickTime (no WebM, no HLS yet).
+  Background audio needs the `audio` background mode in `Info.plist`.
+- Android picture in picture needs
+  `android:supportsPictureInPicture="true"` on the activity. Background
+  audio needs the service declared in the app's manifest:
+
+```xml
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+<service
+    android:name="dev.mpx.player.MpxPlaybackService"
+    android:foregroundServiceType="mediaPlayback"
+    android:exported="true">
+  <intent-filter>
+    <action android:name="androidx.media3.session.MediaSessionService" />
+  </intent-filter>
+</service>
 ```
 
 ### A feed in your own list
@@ -60,9 +93,17 @@ warm neighbours (`state.lease`).
 - One immutable `PlayerState` per player; the playhead is read per frame
 - `PlayerBudget` of playing and prepared engines, coldest released first
 - `PlayerView` with a stand-in until the first frame
+- `NativePlayerBackend` (`native.dart`): Media3 ExoPlayer on Android,
+  AVPlayer on iOS and macOS, each into its own texture, reading bytes
+  through `http_bytes_cache`'s native reader; HDR tone-mapped to SDR
+- `PlayerDevice`: the hardware probe and the prepared-player gate
+  (`PlayerDevice.budget`); a codec whose decoder failed is skipped next time
+- Picture in picture (`PlayerPool.startPictureInPicture`) and background
+  audio
 - One sound owner app-wide: a new audible player pauses the previous;
   calls, other apps and headphones go through the backend's `AudioFocus`
-- `FakePlayerBackend` and `PlayerEngineContract` in `testing.dart`
+- `FakePlayerBackend` and the `PlayerEngine`, `AudioFocus` and
+  `PictureInPicture` contracts in `testing.dart`
 - `FeedPolicy`: the 25 feed knobs with reference defaults per mode;
   `FeedListPlanner` decides what a list plays, shows in view and preloads
 - `FeedPager`: the pager mode; the page shown plays with sound, neighbours
@@ -71,8 +112,6 @@ warm neighbours (`state.lease`).
 - `FeedController` + `FeedSlot`: the feed inside any scrollable (lists,
   grids, slivers, pagers, nested lists); each item's decision is a
   `ValueListenable<FeedItemState>`
-
-Planned: Media3 and AVPlayer backends.
 
 ## Docs
 

@@ -116,17 +116,68 @@ the bytes cache, with playlists still through the loader.
   ImageReader buffers per producer on Android; a few BGRA buffers on Apple).
 - Apple hosts serving HLS content must offer an MP4 alternative in v1.
 
+## Settled in implementation
+
+Tickets 23-26, 28, 29 (2026-11-13).
+
+- **Channel**: Pigeon (`pigeons/player_messages.dart`): ten typed commands
+  down, whole state snapshots up (on each change and about once a second
+  while playing), audio focus and picture-in-picture events up. Chosen over
+  hand-written method channels because three languages share the shapes and
+  the generator keeps them in step. The playhead is extrapolated in Dart
+  between snapshots; a seek reads at its target until a snapshot echoes its
+  id.
+- **Backend**: `NativePlayerBackend` in `package:mpx_player/native.dart`
+  (imports `dart:ffi` through the reader). The host maps a key to
+  `PlayerSource`s (a `RangedRequest`, container MIME, codec), best first;
+  the engine publishes the chosen one to `NativeRangedReaders` and hands
+  the platform player its cache key.
+- **Reader link**: Swift and the Android JNI shim mirror the `hbc_api`
+  layout and refuse another version (a published plugin cannot include a
+  sibling package's header).
+- **Apple frames**: a display link (macOS 14+ the screen's, earlier
+  `CVDisplayLink`) plus a 15 Hz backup timer whenever the link is silent
+  (a hidden or never-foregrounded window), so the first frame is still
+  reported. Rotation is baked by a video composition (`quarterTurns` 0).
+- **Android**: Media3 1.11.1, one ExoPlayer per player on its own
+  `SurfaceProducer`; `quarterTurns` from `Format.rotationDegrees` only when
+  the producer does not apply the transform (the zero-copy path). HDR asks
+  for SDR tone-mapping (`KEY_COLOR_TRANSFER_REQUEST`) on API 31+. A seek
+  cancels the reads blocked for that player. No `DefaultPreloadManager`:
+  prepared engines under `PlayerBudget` plus the feed's byte preloads cover
+  the warm neighbours without its play-on-its-own-builder rule.
+- **Texture budget**: one texture per engine, so `PlayerBudget.capacity`
+  bounds the player's textures; no separate byte budget.
+- **Audio focus**: Android `AudioFocusRequest` and the noisy-output
+  broadcast; iOS the `.playback` session's interruption and route-change
+  notifications (an interruption that ends without "should resume" is
+  `lost`); macOS none.
+- **Prepared gate**: `PlayerDevice.budget`: two prepared players on a
+  high-class device (media performance class S+, or 8 cores with a 160 MB
+  memory class, or 6 GiB) with at least 8 HEVC decoder instances; none
+  otherwise. Apple reports no instance counts and gates on class alone.
+- **Decoder failure**: Android persists the failed video codec; the engine
+  re-prepares the next source from the same position and later engines
+  skip that codec.
+- **Picture in picture**: `PictureInPicture` on `PlayerBackend`; the pool
+  counts the window as a view. Apple: a hidden one-point `AVPlayerLayer` on
+  the same player in the key window. Android: activity picture in picture
+  (`stopPictureInPicture` cannot close the system window there).
+- **Background**: without `backgroundAudio` players pause when the app is
+  hidden (not while in picture in picture). With it: Android's
+  `MpxPlaybackService` (a `MediaSessionService` the host declares); Apple
+  needs nothing native since frames go to a video output, not a layer.
+
 ## Open in implementation
 
-- The JNI shim and Swift wrapper over the reader's function table (ADR 0002
-  settles how they reach it: its address from Dart, no linking by name).
-- The player texture budget's size and how it relates to the CPU pool's.
-- How `DefaultPreloadManager`'s rule (play only on its own builder's player)
-  maps onto the pool's leases.
-- iOS background-audio rule (visible layer pauses video): unverified, verify on
-  device.
+- iOS background-audio rule (visible layer pauses video): unverified, verify
+  on device.
 - Concurrent decoder limits on Apple: undocumented, measure on device.
-- The probe ran on a simulator and macOS, not a physical iOS device.
+- HLS: not wired on either platform (Apple v1 is MP4 only; Android would
+  need an HLS media source over cached segments).
+- A pause from outside the app (a media notification, the picture-in-picture
+  window's own button) is not mirrored into the play wish yet; the next
+  snapshot shows the playhead stopped.
 - The loopback proxy for Apple HLS: design and timing.
 
 ## Provenance

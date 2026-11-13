@@ -1,4 +1,6 @@
 PODS:
+  - file_selector_ios (0.0.1):
+    - Flutter
   - Flutter (1.0.0)
   - mpx (0.0.1):
     - Flutter
@@ -6,24 +8,41 @@ PODS:
   - mpx_core (0.0.1):
     - Flutter
     - FlutterMacOS
+  - mpx_player (0.0.1):
+    - Flutter
+    - FlutterMacOS
+  - share_plus (0.0.1):
+    - Flutter
 
 DEPENDENCIES:
+  - file_selector_ios (from `.symlinks/plugins/file_selector_ios/ios`)
   - Flutter (from `Flutter`)
   - mpx (from `.symlinks/plugins/mpx/darwin`)
   - mpx_core (from `.symlinks/plugins/mpx_core/darwin`)
+  - mpx_player (from `.symlinks/plugins/mpx_player/darwin`)
+  - share_plus (from `.symlinks/plugins/share_plus/ios`)
 
 EXTERNAL SOURCES:
+  file_selector_ios:
+    :path: ".symlinks/plugins/file_selector_ios/ios"
   Flutter:
     :path: Flutter
   mpx:
     :path: ".symlinks/plugins/mpx/darwin"
   mpx_core:
     :path: ".symlinks/plugins/mpx_core/darwin"
+  mpx_player:
+    :path: ".symlinks/plugins/mpx_player/darwin"
+  share_plus:
+    :path: ".symlinks/plugins/share_plus/ios"
 
 SPEC CHECKSUMS:
+  file_selector_ios: ec57ec07954363dd730b642e765e58f199bb621a
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   mpx: ee4afd6125f6ec5d05f9bf3da39c91adde91c282
-  mpx_core: d193469d70d3951b18ca7d5eca6cf8a82b6df0a3
+  mpx_core: 9ae8d0a68d78b47367b4bb8dd47d555532abb832
+  mpx_player: ac175bf85c8d8d97bcfdff9479c3056f8a06184a
+  share_plus: eccd7beb7cea61271aeed1800e8ccb2b952c0c7f
 
 PODFILE CHECKSUM: 3889b4a9c624308af7c6fa57ab6a977d7ea3a7c7
 

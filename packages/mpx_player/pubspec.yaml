@@ -1,7 +1,7 @@
 name: mpx_player
 description: >
-  A hardware video player for mpx: a player pool with leases, one audio
-  owner, and feed playback modes.
+  A hardware video player for mpx on Media3 and AVPlayer: a player pool with
+  leases, one audio owner, picture in picture and feed playback modes.
 version: 0.0.1
 homepage: https://github.com/itsezlife/mpx
 repository: https://github.com/itsezlife/mpx/tree/main/packages/mpx_player
