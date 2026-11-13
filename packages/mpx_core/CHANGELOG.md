@@ -31,6 +31,8 @@
 - `AssetPaintable.pictureSize` and `AssetCacheScope.pictureSizeOf`: the size
   of the picture an entry draws, for a surface that places the content
   before it knows its size.
+- `AssetProfile.cornerRadius` rounds the picture as a contain fit places it
+  (`roundedArea`), not the box it is letterboxed in.
 
 ## 0.0.1
 

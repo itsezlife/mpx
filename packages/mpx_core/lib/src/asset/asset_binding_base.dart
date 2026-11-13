@@ -211,9 +211,10 @@ abstract base class AssetBindingBase
       paintable.paint(canvas, rect, context);
       return;
     }
+    final area = profile.roundedArea(rect, paintable.pictureSize);
     canvas
       ..save()
-      ..clipRRect(RRect.fromRectXY(rect, radius, radius));
+      ..clipRRect(RRect.fromRectXY(area, radius, radius));
     paintable.paint(canvas, rect, context);
     canvas.restore();
   }

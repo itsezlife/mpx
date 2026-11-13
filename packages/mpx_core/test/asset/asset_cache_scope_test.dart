@@ -322,6 +322,37 @@ void main() {
 
       expect(full.paints, hasLength(1));
     });
+
+    test('rounds the picture as the fit places it, not the box it is shown '
+        'whole in', () {
+      final contain = scope.attach(
+        _sticker,
+        _spec,
+        const AssetProfile(cornerRadius: 8),
+      );
+      producer.last.advance(AssetStage.full, pictureSize: const Size(160, 90));
+      final canvas = _ClipRecorder();
+
+      contain.paint(canvas, const Rect.fromLTWH(0, 0, 100, 100));
+
+      // The 16:9 band of the square.
+      expect(
+        canvas.clips.single,
+        RRect.fromRectXY(const Rect.fromLTWH(0, 21.875, 100, 56.25), 8, 8),
+      );
+
+      final cover = scope.attach(
+        _sticker,
+        _spec,
+        const AssetProfile(cornerRadius: 8, fit: AssetFit.cover),
+      );
+      final covered = _ClipRecorder();
+      cover.paint(covered, const Rect.fromLTWH(0, 0, 100, 100));
+      expect(
+        covered.clips.single,
+        RRect.fromRectXY(const Rect.fromLTWH(0, 0, 100, 100), 8, 8),
+      );
+    });
   });
 
   group('the scope', () {
@@ -369,4 +400,15 @@ final class _NoopTarget implements PlaybackTarget {
 
   @override
   void tick(Duration now) {}
+}
+
+/// Keeps the rounded clips a paint asks for.
+final class _ClipRecorder implements Canvas {
+  final List<RRect> clips = [];
+
+  @override
+  void clipRRect(RRect rrect, {bool doAntiAlias = true}) => clips.add(rrect);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

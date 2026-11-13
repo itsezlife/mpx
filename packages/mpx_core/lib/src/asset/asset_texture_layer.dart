@@ -55,11 +55,12 @@ abstract final class AssetTextureLayer {
 
     final radius = profile.cornerRadius;
     if (radius > 0) {
+      final area = profile.roundedArea(box, paintable.pictureSize);
       context.pushClipRRect(
         true,
         Offset.zero,
-        box,
-        RRect.fromRectXY(box, radius, radius),
+        area,
+        RRect.fromRectXY(area, radius, radius),
         clipped,
       );
     } else {

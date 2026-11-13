@@ -1,3 +1,5 @@
+import 'dart:ui' show Rect, Size;
+
 import 'package:meta/meta.dart';
 import 'package:mpx_core/src/asset/asset_fit.dart';
 
@@ -68,7 +70,20 @@ final class AssetProfile {
   final bool autoplayFirstFrame;
 
   /// Logical corner radius the binding clips what it paints to; 0 for none.
+  /// It rounds the picture as [fit] places it: a picture shown whole
+  /// ([AssetFit.contain]) in a box of another proportion is rounded at its
+  /// own corners, not the box's ([roundedArea]).
   final double cornerRadius;
+
+  /// The rectangle [cornerRadius] rounds in [box]: the picture of [picture]
+  /// pixels as a contain fit places it, else (a cover fit, or a picture of
+  /// unknown size) the box.
+  Rect roundedArea(Rect box, Size? picture) {
+    if (fit != AssetFit.contain || picture == null || picture.isEmpty) {
+      return box;
+    }
+    return fit.place(picture, box).destination;
+  }
 
   /// How the content fills the rectangle it is painted in: whole ([AssetFit.contain],
   /// the default) or filling it and cut at the edge ([AssetFit.cover]). Applies
