@@ -439,20 +439,18 @@ final class _NativePlayerEngine implements PlayerEngine {
   Duration _slew = Duration.zero;
   bool _advancing = false;
   // The rate the platform's playhead was measured to move at, from the
-  // positions and sampling times of the reports while it plays; null until
-  // two reports in a row show it moving, after a start, a pause or a seek.
-  // A player takes a new speed when it can (its audio is time-stretched a
-  // while at the old one), so the speed asked for is no measure of it.
+  // positions and sampling times of the last two reports while it plays;
+  // null until two reports after a start, a pause, a seek or a speed change
+  // show it moving. Until then the speed asked for stands in: a player takes
+  // a new speed at once where it can, and a measure from before the change
+  // would run the playhead at the old one. One that takes it late is
+  // followed from its second report on.
   double? _measured;
   // The last report's position and its sampling time, while it moves.
   ({Duration position, int at})? _sample;
 
   /// The fastest rate a measurement is believed up to.
   static const double _fastestRate = 8;
-
-  /// How much of each new measurement the rate takes: a little smoothing of
-  /// the platform's own jitter, quick to follow a change.
-  static const double _rateWeight = 0.6;
 
   // The rate the playhead moves at between reports: the measured one, or
   // the speed asked for until there is one.
@@ -557,9 +555,9 @@ final class _NativePlayerEngine implements PlayerEngine {
     final elapsed = at - last.at;
     final moved = position - last.position;
     if (elapsed <= 0 || moved.isNegative) return;
-    final rate = (moved.inMicroseconds / elapsed).clamp(0.0, _fastestRate);
-    final before = _measured;
-    _measured = before == null ? rate : before + (rate - before) * _rateWeight;
+    // The latest measure as it is: positions read with their own times
+    // jitter little, and a smoothed one lagged a speed change by reports.
+    _measured = (moved.inMicroseconds / elapsed).clamp(0.0, _fastestRate);
   }
 
   @override
@@ -816,6 +814,9 @@ final class _NativePlayerEngine implements PlayerEngine {
     if (_disposed) return;
     _reanchor();
     _speed = speed;
+    // The new speed stands in until two reports measure the rate again.
+    _measured = null;
+    _sample = null;
     _emit();
     final id = _id;
     if (id != null) {

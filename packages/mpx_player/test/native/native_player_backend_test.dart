@@ -282,6 +282,8 @@ void main() {
       final frames = <(Duration, Duration)>[];
       for (var frame = 1; frame <= 180; frame++) {
         clock.advance(const Duration(microseconds: 16667));
+        // The frame that just passed played at the rate before this one.
+        platformUs += 16667 * rate;
         if (frame == 60) {
           engine.setSpeed(to);
           changedAt = clock.elapsed;
@@ -290,7 +292,6 @@ void main() {
             clock.elapsed - changedAt >= Duration(milliseconds: lateMs)) {
           rate = to;
         }
-        platformUs += 16667 * rate;
         player.positionUs = platformUs.round();
         if (frame % 6 == 0) {
           player.report();
@@ -326,20 +327,28 @@ void main() {
             expect(moved, greaterThanOrEqualTo(Duration.zero), reason: '$i');
             expect(moved, lessThanOrEqualTo(step), reason: 'frame $i');
           }
-          // Off by what the platform moved at its new rate between the
-          // change and the report that shows it (one report interval), and
-          // by the smoothing; back on course within a few reports.
+          // A player that takes the speed late is followed from the second
+          // report after the change: off by what the two rates part by over
+          // two report intervals at most, then back on course.
           final delta = (from - to).abs();
+          final bound = lateMs == 0
+              ? Duration(milliseconds: (20 * fastest).round() + 10)
+              : Duration(
+                  milliseconds: (200 * delta + 40 * fastest).round() + 25,
+                );
           for (final (i, (shown, platform)) in frames.indexed.skip(12)) {
-            expect(
-              (shown - platform).abs(),
-              lessThan(
-                Duration(
-                  milliseconds: (100 * delta + 40 * fastest).round() + 25,
-                ),
-              ),
-              reason: 'frame $i',
-            );
+            expect((shown - platform).abs(), lessThan(bound), reason: '$i');
+          }
+          if (lateMs == 0) {
+            // At the new rate within 150 ms of the change (frame 60).
+            for (var i = 69; i < frames.length; i++) {
+              final moved = frames[i].$1 - frames[i - 1].$1;
+              expect(
+                moved.inMicroseconds,
+                closeTo(16667 * to, 16667 * to * 0.25 + 50),
+                reason: 'frame $i',
+              );
+            }
           }
           for (final (shown, platform) in frames.skip(frames.length - 12)) {
             expect(

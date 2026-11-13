@@ -18,7 +18,13 @@ import androidx.media3.exoplayer.video.VideoRendererEventListener
 
 /**
  * ExoPlayer's renderers, with a video renderer that asks the decoder to
- * tone-map HDR to SDR.
+ * tone-map HDR to SDR, and a speed that applies at once.
+ *
+ * By default the audio sink time-stretches in software and takes a new speed
+ * only once the audio already processed has played out, about half a second
+ * on a device: the picture and the playhead kept the old speed meanwhile. With
+ * AudioTrack playback params (API 23+, below the package's minimum SDK) the
+ * platform applies the speed to the track at once.
  *
  * Flutter's texture has no HDR path: an HDR frame shown as is looks washed
  * out. From API 31 a decoder can tone-map itself when the configuration asks
@@ -27,6 +33,10 @@ import androidx.media3.exoplayer.video.VideoRendererEventListener
  */
 @UnstableApi
 internal class MpxRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
+    init {
+        setEnableAudioTrackPlaybackParams(true)
+    }
+
     override fun buildVideoRenderers(
         context: Context,
         extensionRendererMode: Int,
