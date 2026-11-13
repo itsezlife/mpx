@@ -6,6 +6,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'cache/capture_cache_test.dart' as capture_cache_test;
 import 'preset/compression_preset_test.dart' as compression_preset_test;
 import 'round/fake_round_video_recorder_contract_test.dart'
     as fake_round_video_recorder_contract_test;
@@ -14,6 +15,7 @@ import 'transcode/fake_transcoder_contract_test.dart'
     as fake_transcoder_contract_test;
 
 void main() {
+  group('capture_cache_test', capture_cache_test.main);
   group('compression_preset_test', compression_preset_test.main);
   group(
     'fake_round_video_recorder_contract_test',

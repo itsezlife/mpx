@@ -77,10 +77,21 @@ final class CaptureTranscoder {
 
   // MARK: - Probe
 
+  /// An asset over the file at `path`. A file without an extension (a
+  /// payload in the bytes store) is read as MP4 where the OS lets us say so;
+  /// AVFoundation picks the container by extension otherwise.
+  static func asset(_ path: String) -> AVURLAsset {
+    let url = URL(fileURLWithPath: path)
+    if url.pathExtension.isEmpty, #available(iOS 17.0, macOS 14.0, *) {
+      return AVURLAsset(url: url, options: [AVURLAssetOverrideMIMETypeKey: "video/mp4"])
+    }
+    return AVURLAsset(url: url)
+  }
+
   /// What the Dart `SourceVideo` reads: display size, duration, codec,
   /// video bitrate and whether there is audio.
   static func probe(path: String) async throws -> [String: Any] {
-    let asset = AVURLAsset(url: URL(fileURLWithPath: path))
+    let asset = asset(path)
     let video: AVAssetTrack
     do {
       guard let track = try await asset.loadTracks(withMediaType: .video).first else {
@@ -139,7 +150,7 @@ final class CompressionJob {
   func start() {
     Task {
       do {
-        let asset = AVURLAsset(url: request.source)
+        let asset = CaptureTranscoder.asset(request.source.path)
         let video = try await asset.loadTracks(withMediaType: .video).first
         let audio = try await asset.loadTracks(withMediaType: .audio).first
         guard let video else { throw CaptureError.failed("no video track") }

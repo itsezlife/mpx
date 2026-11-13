@@ -1,6 +1,6 @@
 # mpx_capture
 
-Optional media capture for mpx: compression before send against a shared preset table, and round video messages.
+Optional media capture for mpx: compression before send against a shared preset table, round video messages, and capture output kept in the bytes cache.
 
 ## Install
 
@@ -53,6 +53,32 @@ final output = await recording.stop(); // or recording.job.cancel()
 The recording finishes by itself at `RoundVideoConfig.maxDuration`. Paused
 time is cut out of the file. The front camera is mirrored in the preview and
 in the file.
+
+### Into the cache
+
+The sender's own item plays at once from the store, before any upload:
+
+```dart
+final cache = CaptureCache(store: store); // the app's IBytesStore
+final key = cache.mintKey();              // MediaKey.local(uuid), at start
+final output = await job.output;
+await cache.put(key, output);             // moves the file into the store
+
+// After upload: the server key resolves to the same bytes, no copy.
+await cache.alias(
+  key,
+  BytesCacheFetcher.cacheKeyOf(serverKey, FetchPart.content), // package:mpx
+);
+// Once the message is confirmed:
+await cache.release(key);
+```
+
+The store keys the bytes by `CaptureCache.cacheKeyOf(key)`: the local key's
+stable form, the same cache key the mpx fetch adapter uses for content; the
+adapter's `cacheKeyOf` names the server key, so readers of the server key
+find the aliased bytes. A store that keeps ranged resources takes the file in
+one-megabyte pieces, as a complete ranged resource that a native player
+streams from.
 
 ## Presets
 
@@ -130,6 +156,7 @@ them against the platform:
 ```shell
 cd example
 flutter test integration_test/transcoder_test.dart -d macos
+flutter test integration_test/capture_cache_test.dart -d macos
 flutter test integration_test/round_video_test.dart -d macos # asks for access
 ```
 
@@ -138,3 +165,4 @@ flutter test integration_test/round_video_test.dart -d macos # asks for access
 - [Spec](../../docs/spec.md)
 - [Package topology (ADR 0001)](../../docs/adr/0001-package-topology.md)
 - [Capture (ADR 0007)](../../docs/adr/0007-capture.md)
+- [Bytes cache, local keys and alias (ADR 0002)](../../docs/adr/0002-bytes-cache.md)
