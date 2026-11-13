@@ -1,0 +1,29 @@
+name: mpx_capture_example
+description: Compresses a bundled clip against the preset table and records a round video with mpx_capture.
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+  flutter: '>=3.38.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http_bytes_cache:
+    path: ../../http_bytes_cache
+  mpx_capture:
+    path: ..
+  mpx_core:
+    path: ../../mpx_core
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/

@@ -6,8 +6,21 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'cache/capture_cache_test.dart' as capture_cache_test;
+import 'preset/compression_preset_test.dart' as compression_preset_test;
+import 'round/fake_round_video_recorder_contract_test.dart'
+    as fake_round_video_recorder_contract_test;
+import 'round/round_video_preview_test.dart' as round_video_preview_test;
+import 'transcode/fake_transcoder_contract_test.dart'
+    as fake_transcoder_contract_test;
+
 void main() {
-  // The stub has no behaviour yet; this keeps the entrypoint runnable until
-  // the first real test file replaces it.
-  test('package stub loads', () {});
+  group('capture_cache_test', capture_cache_test.main);
+  group('compression_preset_test', compression_preset_test.main);
+  group(
+    'fake_round_video_recorder_contract_test',
+    fake_round_video_recorder_contract_test.main,
+  );
+  group('round_video_preview_test', round_video_preview_test.main);
+  group('fake_transcoder_contract_test', fake_transcoder_contract_test.main);
 }
