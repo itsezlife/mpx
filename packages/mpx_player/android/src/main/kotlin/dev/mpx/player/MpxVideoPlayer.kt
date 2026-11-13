@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -287,6 +288,7 @@ internal class MpxVideoPlayer(
             playerId = id,
             phase = phase,
             positionUs = positionUs,
+            sampledAtUs = SystemClock.elapsedRealtimeNanos() / 1000,
             advancing = !failed && exo.isPlaying,
             quarterTurns = quarterTurns,
             firstFrameRendered = firstFrame && !failed,

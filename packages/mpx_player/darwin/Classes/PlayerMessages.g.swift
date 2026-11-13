@@ -392,6 +392,11 @@ struct NativePlayerSnapshot: Hashable, CustomStringConvertible {
   var phase: NativePlayerPhase
   /// The playhead when the snapshot was taken.
   var positionUs: Int64
+  /// When [positionUs] was read, on the platform's monotonic clock in
+  /// microseconds: only differences between snapshots mean anything, which
+  /// gives the rate the playhead really moves at, whatever the channel's
+  /// latency.
+  var sampledAtUs: Int64
   /// Whether the playhead moves now (playing, not buffering, not ended).
   var advancing: Bool
   var quarterTurns: Int64
@@ -415,22 +420,24 @@ struct NativePlayerSnapshot: Hashable, CustomStringConvertible {
     let playerId = pigeonVar_list[0] as! Int64
     let phase = pigeonVar_list[1] as! NativePlayerPhase
     let positionUs = pigeonVar_list[2] as! Int64
-    let advancing = pigeonVar_list[3] as! Bool
-    let quarterTurns = pigeonVar_list[4] as! Int64
-    let firstFrameRendered = pigeonVar_list[5] as! Bool
-    let buffered = pigeonVar_list[6] as! [Int64]
-    let seekId = pigeonVar_list[7] as! Int64
-    let durationUs: Int64? = nilOrValue(pigeonVar_list[8])
-    let width: Int64? = nilOrValue(pigeonVar_list[9])
-    let height: Int64? = nilOrValue(pigeonVar_list[10])
-    let textureId: Int64? = nilOrValue(pigeonVar_list[11])
-    let error: String? = nilOrValue(pigeonVar_list[12])
-    let failedCodec: String? = nilOrValue(pigeonVar_list[13])
+    let sampledAtUs = pigeonVar_list[3] as! Int64
+    let advancing = pigeonVar_list[4] as! Bool
+    let quarterTurns = pigeonVar_list[5] as! Int64
+    let firstFrameRendered = pigeonVar_list[6] as! Bool
+    let buffered = pigeonVar_list[7] as! [Int64]
+    let seekId = pigeonVar_list[8] as! Int64
+    let durationUs: Int64? = nilOrValue(pigeonVar_list[9])
+    let width: Int64? = nilOrValue(pigeonVar_list[10])
+    let height: Int64? = nilOrValue(pigeonVar_list[11])
+    let textureId: Int64? = nilOrValue(pigeonVar_list[12])
+    let error: String? = nilOrValue(pigeonVar_list[13])
+    let failedCodec: String? = nilOrValue(pigeonVar_list[14])
 
     return NativePlayerSnapshot(
       playerId: playerId,
       phase: phase,
       positionUs: positionUs,
+      sampledAtUs: sampledAtUs,
       advancing: advancing,
       quarterTurns: quarterTurns,
       firstFrameRendered: firstFrameRendered,
@@ -449,6 +456,7 @@ struct NativePlayerSnapshot: Hashable, CustomStringConvertible {
       playerId,
       phase,
       positionUs,
+      sampledAtUs,
       advancing,
       quarterTurns,
       firstFrameRendered,
@@ -466,7 +474,7 @@ struct NativePlayerSnapshot: Hashable, CustomStringConvertible {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return PlayerMessagesPigeonInternal.deepEquals(lhs.playerId, rhs.playerId) && PlayerMessagesPigeonInternal.deepEquals(lhs.phase, rhs.phase) && PlayerMessagesPigeonInternal.deepEquals(lhs.positionUs, rhs.positionUs) && PlayerMessagesPigeonInternal.deepEquals(lhs.advancing, rhs.advancing) && PlayerMessagesPigeonInternal.deepEquals(lhs.quarterTurns, rhs.quarterTurns) && PlayerMessagesPigeonInternal.deepEquals(lhs.firstFrameRendered, rhs.firstFrameRendered) && PlayerMessagesPigeonInternal.deepEquals(lhs.buffered, rhs.buffered) && PlayerMessagesPigeonInternal.deepEquals(lhs.seekId, rhs.seekId) && PlayerMessagesPigeonInternal.deepEquals(lhs.durationUs, rhs.durationUs) && PlayerMessagesPigeonInternal.deepEquals(lhs.width, rhs.width) && PlayerMessagesPigeonInternal.deepEquals(lhs.height, rhs.height) && PlayerMessagesPigeonInternal.deepEquals(lhs.textureId, rhs.textureId) && PlayerMessagesPigeonInternal.deepEquals(lhs.error, rhs.error) && PlayerMessagesPigeonInternal.deepEquals(lhs.failedCodec, rhs.failedCodec)
+    return PlayerMessagesPigeonInternal.deepEquals(lhs.playerId, rhs.playerId) && PlayerMessagesPigeonInternal.deepEquals(lhs.phase, rhs.phase) && PlayerMessagesPigeonInternal.deepEquals(lhs.positionUs, rhs.positionUs) && PlayerMessagesPigeonInternal.deepEquals(lhs.sampledAtUs, rhs.sampledAtUs) && PlayerMessagesPigeonInternal.deepEquals(lhs.advancing, rhs.advancing) && PlayerMessagesPigeonInternal.deepEquals(lhs.quarterTurns, rhs.quarterTurns) && PlayerMessagesPigeonInternal.deepEquals(lhs.firstFrameRendered, rhs.firstFrameRendered) && PlayerMessagesPigeonInternal.deepEquals(lhs.buffered, rhs.buffered) && PlayerMessagesPigeonInternal.deepEquals(lhs.seekId, rhs.seekId) && PlayerMessagesPigeonInternal.deepEquals(lhs.durationUs, rhs.durationUs) && PlayerMessagesPigeonInternal.deepEquals(lhs.width, rhs.width) && PlayerMessagesPigeonInternal.deepEquals(lhs.height, rhs.height) && PlayerMessagesPigeonInternal.deepEquals(lhs.textureId, rhs.textureId) && PlayerMessagesPigeonInternal.deepEquals(lhs.error, rhs.error) && PlayerMessagesPigeonInternal.deepEquals(lhs.failedCodec, rhs.failedCodec)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -474,6 +482,7 @@ struct NativePlayerSnapshot: Hashable, CustomStringConvertible {
     PlayerMessagesPigeonInternal.deepHash(value: playerId, hasher: &hasher)
     PlayerMessagesPigeonInternal.deepHash(value: phase, hasher: &hasher)
     PlayerMessagesPigeonInternal.deepHash(value: positionUs, hasher: &hasher)
+    PlayerMessagesPigeonInternal.deepHash(value: sampledAtUs, hasher: &hasher)
     PlayerMessagesPigeonInternal.deepHash(value: advancing, hasher: &hasher)
     PlayerMessagesPigeonInternal.deepHash(value: quarterTurns, hasher: &hasher)
     PlayerMessagesPigeonInternal.deepHash(value: firstFrameRendered, hasher: &hasher)
@@ -488,7 +497,7 @@ struct NativePlayerSnapshot: Hashable, CustomStringConvertible {
   }
 
   public var description: String {
-    return "NativePlayerSnapshot(playerId: \(String(describing: playerId)), phase: \(String(describing: phase)), positionUs: \(String(describing: positionUs)), advancing: \(String(describing: advancing)), quarterTurns: \(String(describing: quarterTurns)), firstFrameRendered: \(String(describing: firstFrameRendered)), buffered: \(String(describing: buffered)), seekId: \(String(describing: seekId)), durationUs: \(String(describing: durationUs)), width: \(String(describing: width)), height: \(String(describing: height)), textureId: \(String(describing: textureId)), error: \(String(describing: error)), failedCodec: \(String(describing: failedCodec)))"
+    return "NativePlayerSnapshot(playerId: \(String(describing: playerId)), phase: \(String(describing: phase)), positionUs: \(String(describing: positionUs)), sampledAtUs: \(String(describing: sampledAtUs)), advancing: \(String(describing: advancing)), quarterTurns: \(String(describing: quarterTurns)), firstFrameRendered: \(String(describing: firstFrameRendered)), buffered: \(String(describing: buffered)), seekId: \(String(describing: seekId)), durationUs: \(String(describing: durationUs)), width: \(String(describing: width)), height: \(String(describing: height)), textureId: \(String(describing: textureId)), error: \(String(describing: error)), failedCodec: \(String(describing: failedCodec)))"
   }
 }
 

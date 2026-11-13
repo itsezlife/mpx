@@ -420,6 +420,13 @@ data class NativePlayerSnapshot (
   val phase: NativePlayerPhase,
   /** The playhead when the snapshot was taken. */
   val positionUs: Long,
+  /**
+   * When [positionUs] was read, on the platform's monotonic clock in
+   * microseconds: only differences between snapshots mean anything, which
+   * gives the rate the playhead really moves at, whatever the channel's
+   * latency.
+   */
+  val sampledAtUs: Long,
   /** Whether the playhead moves now (playing, not buffering, not ended). */
   val advancing: Boolean,
   val quarterTurns: Long,
@@ -443,18 +450,19 @@ data class NativePlayerSnapshot (
       val playerId = pigeonVar_list[0] as Long
       val phase = pigeonVar_list[1] as NativePlayerPhase
       val positionUs = pigeonVar_list[2] as Long
-      val advancing = pigeonVar_list[3] as Boolean
-      val quarterTurns = pigeonVar_list[4] as Long
-      val firstFrameRendered = pigeonVar_list[5] as Boolean
-      val buffered = pigeonVar_list[6] as List<Long>
-      val seekId = pigeonVar_list[7] as Long
-      val durationUs = pigeonVar_list[8] as Long?
-      val width = pigeonVar_list[9] as Long?
-      val height = pigeonVar_list[10] as Long?
-      val textureId = pigeonVar_list[11] as Long?
-      val error = pigeonVar_list[12] as String?
-      val failedCodec = pigeonVar_list[13] as String?
-      return NativePlayerSnapshot(playerId, phase, positionUs, advancing, quarterTurns, firstFrameRendered, buffered, seekId, durationUs, width, height, textureId, error, failedCodec)
+      val sampledAtUs = pigeonVar_list[3] as Long
+      val advancing = pigeonVar_list[4] as Boolean
+      val quarterTurns = pigeonVar_list[5] as Long
+      val firstFrameRendered = pigeonVar_list[6] as Boolean
+      val buffered = pigeonVar_list[7] as List<Long>
+      val seekId = pigeonVar_list[8] as Long
+      val durationUs = pigeonVar_list[9] as Long?
+      val width = pigeonVar_list[10] as Long?
+      val height = pigeonVar_list[11] as Long?
+      val textureId = pigeonVar_list[12] as Long?
+      val error = pigeonVar_list[13] as String?
+      val failedCodec = pigeonVar_list[14] as String?
+      return NativePlayerSnapshot(playerId, phase, positionUs, sampledAtUs, advancing, quarterTurns, firstFrameRendered, buffered, seekId, durationUs, width, height, textureId, error, failedCodec)
     }
   }
   fun toList(): List<Any?> {
@@ -462,6 +470,7 @@ data class NativePlayerSnapshot (
       playerId,
       phase,
       positionUs,
+      sampledAtUs,
       advancing,
       quarterTurns,
       firstFrameRendered,
@@ -483,7 +492,7 @@ data class NativePlayerSnapshot (
       return true
     }
     val other = other as NativePlayerSnapshot
-    return PlayerMessagesPigeonUtils.deepEquals(this.playerId, other.playerId) && PlayerMessagesPigeonUtils.deepEquals(this.phase, other.phase) && PlayerMessagesPigeonUtils.deepEquals(this.positionUs, other.positionUs) && PlayerMessagesPigeonUtils.deepEquals(this.advancing, other.advancing) && PlayerMessagesPigeonUtils.deepEquals(this.quarterTurns, other.quarterTurns) && PlayerMessagesPigeonUtils.deepEquals(this.firstFrameRendered, other.firstFrameRendered) && PlayerMessagesPigeonUtils.deepEquals(this.buffered, other.buffered) && PlayerMessagesPigeonUtils.deepEquals(this.seekId, other.seekId) && PlayerMessagesPigeonUtils.deepEquals(this.durationUs, other.durationUs) && PlayerMessagesPigeonUtils.deepEquals(this.width, other.width) && PlayerMessagesPigeonUtils.deepEquals(this.height, other.height) && PlayerMessagesPigeonUtils.deepEquals(this.textureId, other.textureId) && PlayerMessagesPigeonUtils.deepEquals(this.error, other.error) && PlayerMessagesPigeonUtils.deepEquals(this.failedCodec, other.failedCodec)
+    return PlayerMessagesPigeonUtils.deepEquals(this.playerId, other.playerId) && PlayerMessagesPigeonUtils.deepEquals(this.phase, other.phase) && PlayerMessagesPigeonUtils.deepEquals(this.positionUs, other.positionUs) && PlayerMessagesPigeonUtils.deepEquals(this.sampledAtUs, other.sampledAtUs) && PlayerMessagesPigeonUtils.deepEquals(this.advancing, other.advancing) && PlayerMessagesPigeonUtils.deepEquals(this.quarterTurns, other.quarterTurns) && PlayerMessagesPigeonUtils.deepEquals(this.firstFrameRendered, other.firstFrameRendered) && PlayerMessagesPigeonUtils.deepEquals(this.buffered, other.buffered) && PlayerMessagesPigeonUtils.deepEquals(this.seekId, other.seekId) && PlayerMessagesPigeonUtils.deepEquals(this.durationUs, other.durationUs) && PlayerMessagesPigeonUtils.deepEquals(this.width, other.width) && PlayerMessagesPigeonUtils.deepEquals(this.height, other.height) && PlayerMessagesPigeonUtils.deepEquals(this.textureId, other.textureId) && PlayerMessagesPigeonUtils.deepEquals(this.error, other.error) && PlayerMessagesPigeonUtils.deepEquals(this.failedCodec, other.failedCodec)
   }
 
   override fun hashCode(): Int {
@@ -491,6 +500,7 @@ data class NativePlayerSnapshot (
     result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.playerId)
     result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.phase)
     result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.positionUs)
+    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.sampledAtUs)
     result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.advancing)
     result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.quarterTurns)
     result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.firstFrameRendered)
@@ -505,7 +515,7 @@ data class NativePlayerSnapshot (
     return result
   }
   override fun toString(): String {
-    return "NativePlayerSnapshot(playerId=$playerId, phase=$phase, positionUs=$positionUs, advancing=$advancing, quarterTurns=$quarterTurns, firstFrameRendered=$firstFrameRendered, buffered=$buffered, seekId=$seekId, durationUs=$durationUs, width=$width, height=$height, textureId=$textureId, error=$error, failedCodec=$failedCodec)"
+    return "NativePlayerSnapshot(playerId=$playerId, phase=$phase, positionUs=$positionUs, sampledAtUs=$sampledAtUs, advancing=$advancing, quarterTurns=$quarterTurns, firstFrameRendered=$firstFrameRendered, buffered=$buffered, seekId=$seekId, durationUs=$durationUs, width=$width, height=$height, textureId=$textureId, error=$error, failedCodec=$failedCodec)"
   }
 }
 

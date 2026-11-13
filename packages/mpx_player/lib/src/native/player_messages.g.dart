@@ -322,6 +322,7 @@ class NativePlayerSnapshot {
     required this.playerId,
     required this.phase,
     required this.positionUs,
+    required this.sampledAtUs,
     required this.advancing,
     required this.quarterTurns,
     required this.firstFrameRendered,
@@ -341,6 +342,12 @@ class NativePlayerSnapshot {
 
   /// The playhead when the snapshot was taken.
   int positionUs;
+
+  /// When [positionUs] was read, on the platform's monotonic clock in
+  /// microseconds: only differences between snapshots mean anything, which
+  /// gives the rate the playhead really moves at, whatever the channel's
+  /// latency.
+  int sampledAtUs;
 
   /// Whether the playhead moves now (playing, not buffering, not ended).
   bool advancing;
@@ -374,6 +381,7 @@ class NativePlayerSnapshot {
       playerId,
       phase,
       positionUs,
+      sampledAtUs,
       advancing,
       quarterTurns,
       firstFrameRendered,
@@ -398,17 +406,18 @@ class NativePlayerSnapshot {
       playerId: result[0]! as int,
       phase: result[1]! as NativePlayerPhase,
       positionUs: result[2]! as int,
-      advancing: result[3]! as bool,
-      quarterTurns: result[4]! as int,
-      firstFrameRendered: result[5]! as bool,
-      buffered: (result[6]! as List<Object?>).cast<int>(),
-      seekId: result[7]! as int,
-      durationUs: result[8] as int?,
-      width: result[9] as int?,
-      height: result[10] as int?,
-      textureId: result[11] as int?,
-      error: result[12] as String?,
-      failedCodec: result[13] as String?,
+      sampledAtUs: result[3]! as int,
+      advancing: result[4]! as bool,
+      quarterTurns: result[5]! as int,
+      firstFrameRendered: result[6]! as bool,
+      buffered: (result[7]! as List<Object?>).cast<int>(),
+      seekId: result[8]! as int,
+      durationUs: result[9] as int?,
+      width: result[10] as int?,
+      height: result[11] as int?,
+      textureId: result[12] as int?,
+      error: result[13] as String?,
+      failedCodec: result[14] as String?,
     );
   }
 
@@ -424,6 +433,7 @@ class NativePlayerSnapshot {
     return _deepEquals(playerId, other.playerId) &&
         _deepEquals(phase, other.phase) &&
         _deepEquals(positionUs, other.positionUs) &&
+        _deepEquals(sampledAtUs, other.sampledAtUs) &&
         _deepEquals(advancing, other.advancing) &&
         _deepEquals(quarterTurns, other.quarterTurns) &&
         _deepEquals(firstFrameRendered, other.firstFrameRendered) &&
@@ -443,7 +453,7 @@ class NativePlayerSnapshot {
 
   @override
   String toString() {
-    return 'NativePlayerSnapshot(playerId: $playerId, phase: $phase, positionUs: $positionUs, advancing: $advancing, quarterTurns: $quarterTurns, firstFrameRendered: $firstFrameRendered, buffered: $buffered, seekId: $seekId, durationUs: $durationUs, width: $width, height: $height, textureId: $textureId, error: $error, failedCodec: $failedCodec)';
+    return 'NativePlayerSnapshot(playerId: $playerId, phase: $phase, positionUs: $positionUs, sampledAtUs: $sampledAtUs, advancing: $advancing, quarterTurns: $quarterTurns, firstFrameRendered: $firstFrameRendered, buffered: $buffered, seekId: $seekId, durationUs: $durationUs, width: $width, height: $height, textureId: $textureId, error: $error, failedCodec: $failedCodec)';
   }
 }
 

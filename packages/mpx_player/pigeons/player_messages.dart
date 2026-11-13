@@ -6,8 +6,9 @@
 //
 // Commands go down as typed calls, state comes up as whole snapshots: a
 // snapshot is sent when something changes (a phase, a size, a seek, the first
-// frame) and about once a second while playing, never per frame. The Dart side
-// extrapolates the playhead between snapshots.
+// frame) and every 100 ms while playing, never per frame. The Dart side
+// extrapolates the playhead between snapshots, at the rate it measures from
+// them.
 //
 // Positional booleans: a schema mirrors the native signatures, where Kotlin and
 // Swift take them positionally.
@@ -94,6 +95,7 @@ class NativePlayerSnapshot {
     required this.playerId,
     required this.phase,
     required this.positionUs,
+    required this.sampledAtUs,
     required this.advancing,
     required this.quarterTurns,
     required this.firstFrameRendered,
@@ -112,6 +114,12 @@ class NativePlayerSnapshot {
 
   /// The playhead when the snapshot was taken.
   int positionUs;
+
+  /// When [positionUs] was read, on the platform's monotonic clock in
+  /// microseconds: only differences between snapshots mean anything, which
+  /// gives the rate the playhead really moves at, whatever the channel's
+  /// latency.
+  int sampledAtUs;
 
   /// Whether the playhead moves now (playing, not buffering, not ended).
   bool advancing;

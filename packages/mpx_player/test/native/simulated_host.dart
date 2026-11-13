@@ -26,6 +26,9 @@ final class SimulatedHost implements PlayerHostApi {
 
   late PlayerFlutterApi receiver;
 
+  /// The platform's clock in microseconds, stamped on each snapshot.
+  int Function() now = () => 0;
+
   static const int durationUs = 20 * 1000 * 1000;
 
   final Map<int, SimulatedPlayer> players = {};
@@ -200,6 +203,7 @@ final class SimulatedPlayer {
         playerId: id,
         phase: phase,
         positionUs: positionUs,
+        sampledAtUs: host.now(),
         advancing: playing && phase == NativePlayerPhase.ready,
         quarterTurns: 0,
         firstFrameRendered: !failed,

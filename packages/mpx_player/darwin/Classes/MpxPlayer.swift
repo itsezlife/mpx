@@ -1,4 +1,5 @@
 import AVFoundation
+import QuartzCore
 import CoreVideo
 import Foundation
 
@@ -367,6 +368,7 @@ final class MpxPlayer: NSObject, FlutterTexture {
       playerId: id,
       phase: phase,
       positionUs: positionUs,
+      sampledAtUs: Int64(CACurrentMediaTime() * 1_000_000),
       advancing: prepared && !failed && player.timeControlStatus == .playing,
       quarterTurns: 0,
       firstFrameRendered: firstFrame && !failed,

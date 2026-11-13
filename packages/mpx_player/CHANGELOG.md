@@ -2,9 +2,12 @@
 
 ## Unreleased
 
-- The platform players report every 100 ms while playing, and the playhead
-  slews onto each report instead of stepping, so a seek bar moves smoothly at
-  any speed; seeks, pauses and loop wraps still move it at once.
+- The platform players report every 100 ms while playing, with the time they
+  read the position (`NativePlayerSnapshot.sampledAtUs`). The playhead moves
+  at the rate measured from those reports, not at the speed asked for, and
+  slews onto each report instead of stepping, so a seek bar moves smoothly
+  through a speed change the player takes late; seeks, pauses and loop wraps
+  still move it at once.
 - Android fixes from device runs: the JNI library is 16 KB page aligned;
   the playhead reads the duration once a pass ends and holds a settled
   seek; `PictureInPicture.stop` expands the window.

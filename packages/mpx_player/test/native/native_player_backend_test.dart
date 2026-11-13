@@ -186,7 +186,10 @@ void main() {
 
     setUp(() {
       clock = _ManualClock();
-      backend = backendOver(SimulatedHost(), clock: clock);
+      backend = backendOver(
+        SimulatedHost()..now = () => clock.elapsedMicroseconds,
+        clock: clock,
+      );
     });
     tearDown(() => backend.dispose());
 
@@ -256,6 +259,93 @@ void main() {
             expect(
               (shown - platform).abs(),
               lessThan(Duration(milliseconds: (100 * speed).round() + 20)),
+            );
+          }
+        });
+      }
+    }
+
+    // A platform that takes a speed change [lateMs] after it was asked for
+    // (a player whose audio pipeline runs at the old speed a while), at
+    // [from]x then [to]x: 1 s, the change, 2 s more, reporting every 100 ms.
+    // Returns the playhead of every 60 Hz frame and the platform's position.
+    Future<List<(Duration, Duration)>> change(
+      PlayerEngine engine, {
+      required double from,
+      required double to,
+      required int lateMs,
+    }) async {
+      final player = host.live.single;
+      var platformUs = player.positionUs.toDouble();
+      var rate = from;
+      Duration? changedAt;
+      final frames = <(Duration, Duration)>[];
+      for (var frame = 1; frame <= 180; frame++) {
+        clock.advance(const Duration(microseconds: 16667));
+        if (frame == 60) {
+          engine.setSpeed(to);
+          changedAt = clock.elapsed;
+        }
+        if (changedAt != null &&
+            clock.elapsed - changedAt >= Duration(milliseconds: lateMs)) {
+          rate = to;
+        }
+        platformUs += 16667 * rate;
+        player.positionUs = platformUs.round();
+        if (frame % 6 == 0) {
+          player.report();
+          await settle();
+        }
+        frames.add((
+          engine.position,
+          Duration(microseconds: platformUs.round()),
+        ));
+      }
+      return frames;
+    }
+
+    for (final (from, to) in [(2.0, 0.2), (0.2, 2.0), (1.0, 1.5)]) {
+      for (final lateMs in [0, 500]) {
+        test('${from}x to ${to}x, taken $lateMs ms late: it follows the '
+            'player, never back, never by a step', () async {
+          final engine = await playing(speed: from);
+          final frames = await change(
+            engine,
+            from: from,
+            to: to,
+            lateMs: lateMs,
+          );
+          final fastest = from > to ? from : to;
+          // A frame at twice the fastest rate, and a hair.
+          final step = Duration(
+            microseconds: (16667 * fastest * 2).round() + 500,
+          );
+
+          for (var i = 1; i < frames.length; i++) {
+            final moved = frames[i].$1 - frames[i - 1].$1;
+            expect(moved, greaterThanOrEqualTo(Duration.zero), reason: '$i');
+            expect(moved, lessThanOrEqualTo(step), reason: 'frame $i');
+          }
+          // Off by what the platform moved at its new rate between the
+          // change and the report that shows it (one report interval), and
+          // by the smoothing; back on course within a few reports.
+          final delta = (from - to).abs();
+          for (final (i, (shown, platform)) in frames.indexed.skip(12)) {
+            expect(
+              (shown - platform).abs(),
+              lessThan(
+                Duration(
+                  milliseconds: (100 * delta + 40 * fastest).round() + 25,
+                ),
+              ),
+              reason: 'frame $i',
+            );
+          }
+          for (final (shown, platform) in frames.skip(frames.length - 12)) {
+            expect(
+              (shown - platform).abs(),
+              lessThan(Duration(milliseconds: (20 * fastest).round() + 5)),
+              reason: 'settled',
             );
           }
         });
