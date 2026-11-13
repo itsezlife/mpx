@@ -34,11 +34,11 @@ resume, the whole body buffered by design.
 | --- | --- |
 | Name | `http_bytes_cache`, without the `mpx_` prefix; `Image*` types renamed to kind-neutral names |
 | Identity | Host-supplied cache key (`MediaKey`-derived), mandatory for media; URL identity stays for plain web images |
-| Aliases | `alias(local, server)` makes the server key resolve to a local resource's bytes, no copy or move; `release(local)` drops the local key, otherwise retention does (ADR 0007) |
+| Aliases | `alias(local, server)` makes the server key resolve to a local resource's bytes, no copy or move; `release(local)` drops the local key, otherwise retention does (ADR 0007). An alias is a snapshot: rewriting the local key (a write, ranges of another representation, a reset), released or not, first hands the shared payload to a reader, so the server key keeps the bytes and length it had (amended 2026-11-15) |
 | Resource kinds | Whole (one blob, resolve ladder) and ranged (sparse file, range set) |
 | Store | One disk store, one index, one eviction by last use |
 | Quotas | Named quotas: images, video ranges, Lottie frames, glyphs. A long video cannot evict every avatar |
-| Registered quotas | Lottie frame caches and glyph pages keep their own files, formats and offset reads. Their folders register as named quotas: the store accounts total bytes and decides which quota gives back space; the owner evicts when asked, through a callback per quota. The store never touches files it does not own |
+| Registered quotas | Lottie frame caches and glyph pages keep their own files, formats and offset reads. Their folders register as named quotas: the store accounts total bytes and decides which quota gives back space; the owner evicts when asked, through a callback per quota. The store never touches files it does not own. A registration under a configured name must name the configured limits, else it is refused; an unconfigured name brings its own (amended 2026-11-15). Rows carry the quota as a `BytesQuotaName` |
 | Priorities | Every request carries visible > preload > background; the priority can change while queued or in flight. The 6-slot queue serves by priority, then arrival |
 | Stale-while-revalidate | A per-request policy serves stale bytes at once and revalidates in the background through ETag / Last-Modified. Media defaults to no revalidation (immutable); avatars and similar opt in |
 | Fit under the core | A fetch adapter in `mpx`, the composition root over the core and the cache, fills `ContentFetcher`: key to cache key, `CancellationToken` to the cache's cancel token, typed errors to transient / permanent, byte progress to `onProgress`. The core and the cache do not depend on each other |
@@ -138,6 +138,20 @@ resume, the whole body buffered by design.
   `native/include/http_bytes_cache.h`. The "range landed" signal goes from
   Dart to C over FFI (`hbc_range_landed`, a condition variable per
   resource); a missing range reaches Dart through a `NativeCallable.listener`.
+  One host per process, enforced natively: the Dart side attaches with
+  `hbc_attach`, which returns an owner token or `HBC_ERR_BUSY` while another
+  host is attached in any isolate, and detaches with `hbc_detach`, which also
+  withdraws every resource. A `NativeFinalizer` detaches a host whose isolate
+  group ends without closing (hot restart), so the next host starts clean and
+  nothing calls the dead host's callback. A key may be published more than
+  once; the native side counts the publications, and the resource is
+  withdrawn at the last `hbc_unpublish`. A read that finds bytes counted
+  present missing from the file (the store truncates before the reset is
+  signalled) waits for the next landing or reset and reads again;
+  `HBC_ERR_IO` is reserved for a failed file read or a bounded wait with
+  nothing following. Open: a truncate and rewrite that both finish before the
+  reset is signalled can hand a reader new bytes at an old offset; closing it
+  means signalling the reset before the store truncates.
 - The hook dependencies stay on `code_assets` 1.2 / `hooks` 2.0 /
   `native_toolchain_c` 0.19.2 until the pinned Flutter SDK allows `meta`
   1.19: `code_assets` 2.x needs `hooks` 2.2, which needs it.
@@ -162,7 +176,10 @@ resume, the whole body buffered by design.
 - Quota sizes and the default last-use horizon (the chat's ADR 022 uses one
   month).
 - Alias edge cases: a server key that already has bytes, chains, and release
-  while a reader is open.
+  while a reader is open. Settled 2026-11-15: rewriting the local key never
+  changes the server key; when no reader can take the payload over (its own
+  key names a payload a third key reads), the readers miss rather than
+  serve other bytes.
 - Encrypted-at-rest media: out unless DRM lands.
 
 ## Provenance

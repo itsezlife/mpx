@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- An alias is a snapshot: rewriting or resetting the local key, before or
+  after `release`, leaves the server key with the bytes and length it had.
+- `registerQuota` refuses limits that differ from the configured quota of
+  the same name, instead of dropping them silently.
+- Breaking: `BytesRecord.quota` and `BytesQuota.name` are a
+  `BytesQuotaName`.
+- Native reader: a key published twice stays readable until each of its
+  publications closes.
+- Native reader: a read that races a ranges reset waits for the bytes to
+  land again instead of failing with `HBC_ERR_IO`.
+- Native reader: one `NativeRangedReaders` per process, enforced natively;
+  a second one in any isolate throws `StateError`. `hbc_set_fetch_callback`
+  is replaced by `hbc_attach` / `hbc_detach`; `HBC_ABI_VERSION` is 2.
+- Native reader: an instance dropped by a hot restart is detached and its
+  resources withdrawn as its isolate group shuts down.
+- Ranged resources: a long-lived cancel token no longer keeps a listener
+  per landing.
 - Download progress reaches every caller sharing one GET, not only the first.
   A caller that joins mid-body hears the last value at once, and every
   transfer reports `0` when its response starts. Cache hits stay silent.
