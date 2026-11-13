@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A feed slot measures itself again when it is first painted after a measure
+  found it unpainted (a route built off stage for its first frame) and when
+  its route becomes the top one again, so the visible clips play without a
+  scroll.
 - The platform players report every 100 ms while playing, with the time they
   read the position (`NativePlayerSnapshot.sampledAtUs`). The playhead moves
   at a new speed at once and then at the rate measured from those reports,

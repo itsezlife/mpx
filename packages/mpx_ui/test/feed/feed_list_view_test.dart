@@ -1,5 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
@@ -94,6 +96,129 @@ void main() {
       expect(attempts.single.demand.distance, index - 2);
     }
     expect(attemptsFor(6), isEmpty);
+  });
+
+  group('without a scroll', () {
+    late ManualPlaybackTickSource ticks;
+
+    setUp(() {
+      scope.dispose();
+      clock.dispose();
+      ticks = ManualPlaybackTickSource();
+      clock = PlaybackClock(ticks: ticks);
+      scope = AssetCacheScope(producer: producer, clock: clock);
+    });
+
+    // Gives every clip that asked for its media a playing stage.
+    Future<void> decodeAll(WidgetTester tester) async {
+      for (final attempt in List.of(producer.attempts)) {
+        if (attempt.isCancelled || attempt.paintables.isNotEmpty) continue;
+        attempt.advance(
+          AssetStage.full,
+          tier: AssetTier.animated,
+          frames: List.filled(4, const Duration(milliseconds: 100)),
+        );
+      }
+      await tester.pump();
+    }
+
+    testWidgets('the visible clips play after the first frames', (
+      tester,
+    ) async {
+      await pumpList(tester);
+      await decodeAll(tester);
+
+      expect(ticks.isRunning, isTrue, reason: 'nothing plays');
+    });
+
+    testWidgets('the visible clips play once their route comes on stage', (
+      tester,
+    ) async {
+      // A route is built off stage for its first frame while heroes are
+      // measured: nothing of it is painted then, and nothing lays out again
+      // when it comes on stage.
+      tester.view.physicalSize = _viewport;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final navigator = GlobalKey<NavigatorState>();
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Navigator(
+            key: navigator,
+            onGenerateRoute: (_) => PageRouteBuilder<void>(
+              pageBuilder: (_, _, _) => const SizedBox.expand(),
+            ),
+          ),
+        ),
+      );
+      final route = PageRouteBuilder<void>(
+        transitionDuration: Duration.zero,
+        pageBuilder: (_, _, _) => FeedListView(
+          itemCount: 30,
+          itemExtent: _extent,
+          itemOf: (index) => FeedItem(_key(index)),
+          presetOf: preset,
+          scope: scope,
+        ),
+      );
+      unawaited(navigator.currentState!.push(route));
+      route.offstage = true;
+      await tester.pump();
+      await tester.pump();
+
+      route.offstage = false;
+      await tester.pump();
+      await tester.pump();
+      await decodeAll(tester);
+      await tester.pump();
+
+      expect(ticks.isRunning, isTrue, reason: 'nothing plays');
+    });
+
+    for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+      testWidgets('the visible clips play once a ${platform.name} page route '
+          'has come in', (tester) async {
+        tester.view.physicalSize = _viewport;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final navigator = GlobalKey<NavigatorState>();
+        await tester.pumpWidget(
+          MaterialApp(
+            navigatorKey: navigator,
+            theme: ThemeData(platform: platform),
+            home: const SizedBox.expand(),
+          ),
+        );
+        unawaited(
+          navigator.currentState!.push(
+            MaterialPageRoute<void>(
+              builder: (_) => FeedListView(
+                itemCount: 30,
+                itemExtent: _extent,
+                itemOf: (index) => FeedItem(_key(index)),
+                presetOf: preset,
+                scope: scope,
+              ),
+            ),
+          ),
+        );
+        for (var i = 0; i < 20; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        await decodeAll(tester);
+        await tester.pump(const Duration(milliseconds: 50));
+
+        for (final index in [0, 1]) {
+          expect(
+            scope.isAttached(_key(index), preset(0, const AssetProfile()).spec),
+            isTrue,
+            reason: 'item $index',
+          );
+        }
+        expect(ticks.isRunning, isTrue, reason: 'nothing plays');
+      });
+    }
   });
 
   testWidgets('scrolling moves the window and cancels what left it', (

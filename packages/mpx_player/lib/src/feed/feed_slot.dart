@@ -98,6 +98,11 @@ class _FeedSlotState extends State<FeedSlot> {
     super.didChangeDependencies();
     _register();
     _follow();
+    // The route's status is a dependency: a route that becomes the top one
+    // again (a route over it popped) shows its slots anew without laying
+    // them out or scrolling, so they are measured again here.
+    ModalRoute.of(context);
+    _registration?.markNeedsMeasure();
   }
 
   @override
@@ -158,12 +163,25 @@ class _FeedSlotState extends State<FeedSlot> {
 
   void _moved() => _registration?.markNeedsMeasure();
 
+  // Whether the last measure found the slot not painted at all (off stage,
+  // under a zero opacity): the first paint after it measures again, since
+  // coming into view that way lays nothing out and scrolls nothing (a route
+  // built off stage for its first frame while heroes are measured).
+  bool _unpainted = false;
+
+  void _painted() {
+    if (!_unpainted) return;
+    _unpainted = false;
+    _registration?.markNeedsMeasure();
+  }
+
   FeedVisibility _measure() {
     final box = _box.currentContext?.findRenderObject();
     if (box is! RenderBox || !box.attached || !box.hasSize) {
       return FeedVisibility.hidden;
     }
     final seen = ViewportVisibility.of(box);
+    _unpainted = seen.viewportsAway.isInfinite;
     if (!seen.shows) {
       return seen.viewportsAway.isInfinite
           ? FeedVisibility.hidden
@@ -180,7 +198,12 @@ class _FeedSlotState extends State<FeedSlot> {
     slot: _registration,
     index: widget.index,
     item: widget.item,
-    child: _LayoutReporter(key: _box, onLayout: _moved, child: widget.child),
+    child: _LayoutReporter(
+      key: _box,
+      onLayout: _moved,
+      onPaint: _painted,
+      child: widget.child,
+    ),
   );
 }
 
@@ -204,35 +227,47 @@ class _FeedSlotScope extends InheritedWidget {
 }
 
 /// Calls [onLayout] after every layout of its child: a slot that resizes or
-/// is laid out anew may show a different share of itself.
+/// is laid out anew may show a different share of itself. Calls [onPaint]
+/// on every paint, for a slot that waits to be painted.
 class _LayoutReporter extends SingleChildRenderObjectWidget {
   const _LayoutReporter({
     required this.onLayout,
+    required this.onPaint,
     required super.child,
     super.key,
   });
 
   final VoidCallback onLayout;
+  final VoidCallback onPaint;
 
   @override
   RenderObject createRenderObject(BuildContext context) =>
-      _RenderLayoutReporter(onLayout);
+      _RenderLayoutReporter(onLayout, onPaint);
 
   @override
   void updateRenderObject(
     BuildContext context,
     _RenderLayoutReporter renderObject,
-  ) => renderObject.onLayout = onLayout;
+  ) => renderObject
+    ..onLayout = onLayout
+    ..onPaint = onPaint;
 }
 
 class _RenderLayoutReporter extends RenderProxyBox {
-  _RenderLayoutReporter(this.onLayout);
+  _RenderLayoutReporter(this.onLayout, this.onPaint);
 
   VoidCallback onLayout;
+  VoidCallback onPaint;
 
   @override
   void performLayout() {
     super.performLayout();
     onLayout();
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    super.paint(context, offset);
+    onPaint();
   }
 }
