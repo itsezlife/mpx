@@ -127,10 +127,8 @@ void main() {
     bool animate = true,
     double opacity = 1,
     bool halfFrameRate = false,
-    AssetPlaybackPhase? phase,
   }) => AssetPaintContext(
     halfFrameRate: halfFrameRate,
-    phase: phase,
     time: Duration(milliseconds: ms),
     loop: loop,
     restFrame: rest,
@@ -450,89 +448,6 @@ void main() {
 
       await paintAndSettle(p, at(1500)); // 100 ms on: frame 6
       expect(renderer.batches.last, [7]);
-    });
-
-    group('the shared phase', () {
-      late AssetPlaybackPhase phase;
-      final other = Object();
-
-      setUp(() => phase = AssetPlaybackPhase());
-
-      test(
-        'starts at the frame another playback of the content is at',
-        () async {
-          phase.report(
-            other,
-            const Duration(milliseconds: 200),
-            const Duration(seconds: 5),
-          );
-          final p = make();
-
-          await paintAndSettle(p, at(5000, phase: phase));
-
-          expect(renderer.batches.single, [7], reason: 'frame 6, ahead 7');
-        },
-      );
-
-      test('reports how far into its pass it is', () async {
-        final p = make();
-        await paintAndSettle(p, at(1000, phase: phase));
-        await paintAndSettle(p, at(1400, phase: phase));
-
-        // 400 ms played of a 333 ms pass.
-        expect(
-          phase.positionFor(other, const Duration(milliseconds: 1400)),
-          const Duration(microseconds: 400000 - 333333),
-        );
-      });
-
-      test(
-        'painted again after the clock ran on without it, takes the phase',
-        () async {
-          final p = make();
-          await paintAndSettle(p, at(1000, phase: phase));
-          await paintAndSettle(p, at(1100, phase: phase));
-          expect(renderer.batches.last, [4]);
-
-          phase.report(
-            other,
-            const Duration(milliseconds: 200),
-            const Duration(seconds: 3),
-          );
-          await paintAndSettle(p, at(3000, phase: phase));
-
-          expect(renderer.batches.last, [7]);
-        },
-      );
-
-      test('resumed by its binding, goes on from its own frame', () async {
-        final p = make();
-        await paintAndSettle(p, at(1000, phase: phase));
-        await paintAndSettle(p, at(1100, phase: phase));
-
-        phase.report(
-          other,
-          const Duration(milliseconds: 200),
-          const Duration(seconds: 3),
-        );
-        p.playbackResumed();
-        await paintAndSettle(p, at(3000, phase: phase));
-
-        expect(renderer.batches, hasLength(2), reason: 'same frame as before');
-      });
-
-      test('rewound, plays its own pass', () async {
-        phase.report(
-          other,
-          const Duration(milliseconds: 200),
-          const Duration(seconds: 5),
-        );
-        final p = make()..rewind();
-
-        await paintAndSettle(p, at(5000, phase: phase));
-
-        expect(renderer.batches.single, [1]);
-      });
     });
 
     test('a paint that does not animate asks for nothing', () async {

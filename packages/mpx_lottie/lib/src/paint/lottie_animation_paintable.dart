@@ -45,16 +45,6 @@ import 'package:mpx_lottie/src/renderer/lottie_source.dart';
 /// backwards, adds nothing either: the surface did not paint the animation for
 /// that long (it was off screen), and it goes on from where it stopped.
 ///
-/// ## Shared phase
-///
-/// The first paint that steps it, and one after a step larger than
-/// [resumeGap] (drawn over while the clock ran on), take the position another
-/// playback of the content reported (`AssetPaintContext.phase`) as their
-/// played time, so the same animation at two sizes shows the same frame. Any
-/// frame renders on its own, so it is there at once. After [playbackResumed]
-/// or [rewind] it goes on from its own frame. Each paint that steps it
-/// reports how far into its pass it is.
-///
 /// ## Half frame rate
 ///
 /// A paint whose context plays at half rate (`AssetPaintContext.frameStepFor`
@@ -106,13 +96,7 @@ final class LottieAnimationPaintable extends AssetPaintable {
        _still = LottieStillPaintable(firstFrame),
        _scheduler = scheduler,
        _onDispose = onDispose,
-       _size = LottieFrameSize.fitting(info, renderEdge),
-       _passLength = info.frameRate > 0
-           ? Duration(
-               microseconds: (info.frameCount * 1000000 / info.frameRate)
-                   .round(),
-             )
-           : null;
+       _size = LottieFrameSize.fitting(info, renderEdge);
 
   /// The largest step of the clock between two paints that counts as time
   /// played; a longer one is a pause that ended.
@@ -126,8 +110,6 @@ final class LottieAnimationPaintable extends AssetPaintable {
   final LottieFrameScheduler _scheduler;
   final VoidCallback? _onDispose;
   final LottieFrameSize _size;
-  // How long one pass plays; null for an animation that declares no rate.
-  final Duration? _passLength;
 
   LottieFrameLease? _lease;
   Duration _played = Duration.zero;
@@ -138,8 +120,6 @@ final class LottieAnimationPaintable extends AssetPaintable {
   bool _holding = false;
   bool _failed = false;
   bool _disposed = false;
-  // No paint has stepped it yet: its first may take the shared phase.
-  bool _fresh = true;
 
   @override
   AtlasSprite? get sprite => _lease?.sprite;
@@ -180,7 +160,6 @@ final class LottieAnimationPaintable extends AssetPaintable {
   // entry is idle, and the pool evicts it when it wants the room.
   @override
   void rewind() {
-    _fresh = false;
     _beginPass();
     _lease?.release();
     _lease = null;
@@ -263,47 +242,18 @@ final class LottieAnimationPaintable extends AssetPaintable {
     if (_holding) return _restFrame(context.restFrame);
     final last = _lastTime;
     _lastTime = context.time;
-    if (last == null) {
-      if (_fresh) _join(context);
-    } else if (context.time - last case final step when !step.isNegative) {
-      if (step <= resumeGap) {
-        _played += step;
-      } else {
-        _join(context);
-      }
+    if (last != null) {
+      final step = context.time - last;
+      if (!step.isNegative && step <= resumeGap) _played += step;
     }
-    _fresh = false;
     final index = _played.inMicroseconds * _info.frameRate ~/ 1000000;
     final step = context.frameStepFor(_info.frameRate);
-    if (context.loop) {
-      _report(context);
-      return _onStep((index % count + 1) % count, step);
-    }
+    if (context.loop) return _onStep((index % count + 1) % count, step);
     if (index >= count) {
       _holding = true;
       return _restFrame(context.restFrame);
     }
-    _report(context);
     return _onStep(math.min(index + 1, count - 1), step);
-  }
-
-  // Takes the position another playback of the content reported as the
-  // time played.
-  void _join(AssetPaintContext context) {
-    final pass = _passLength;
-    final position = context.phase?.positionFor(this, context.time);
-    if (pass == null || position == null) return;
-    _played = AssetPlaybackPhase.within(position, pass);
-  }
-
-  void _report(AssetPaintContext context) {
-    final pass = _passLength;
-    if (pass == null) return;
-    context.phase?.report(
-      this,
-      AssetPlaybackPhase.within(_played, pass),
-      context.time,
-    );
   }
 
   // At half rate only every second frame is asked for, counted from the
