@@ -194,7 +194,9 @@ final class FakeAssetPaintable extends AssetPaintable {
   void _join(AssetPlaybackPhase? phase, Duration now) {
     final position = phase?.positionFor(this, now);
     if (position == null) return;
-    _played = AssetPlaybackPhase.within(position, _passLength);
+    _played = Duration(
+      microseconds: position.inMicroseconds % _passLength.inMicroseconds,
+    );
   }
 
   void _beginPass() {

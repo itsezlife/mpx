@@ -28,16 +28,6 @@
 ///
 /// Single-threaded, like the scope.
 final class AssetPlaybackPhase {
-  /// [position] wrapped into a pass of [passLength], which is positive: how
-  /// far into its pass a playback that has played [position] is, or how far
-  /// ahead a position is when [position] is a difference. Never negative.
-  static Duration within(Duration position, Duration passLength) {
-    assert(passLength > Duration.zero, 'a pass has a length');
-    return Duration(
-      microseconds: position.inMicroseconds % passLength.inMicroseconds,
-    );
-  }
-
   Object? _reporter;
   Duration _position = Duration.zero;
   Duration _at = Duration.zero;
