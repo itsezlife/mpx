@@ -10,6 +10,7 @@ workspace:
   - packages/mpx_lottie
   - packages/mpx_video_decoder
   - packages/mpx_player
+  - packages/mpx_player/example
   - packages/mpx_ui
   - packages/mpx_capture
   - packages/mpx

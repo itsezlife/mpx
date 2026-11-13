@@ -1,0 +1,36 @@
+PODS:
+  - Flutter (1.0.0)
+  - integration_test (0.0.1):
+    - Flutter
+  - mpx_core (0.0.1):
+    - Flutter
+    - FlutterMacOS
+  - mpx_player (0.0.1):
+    - Flutter
+    - FlutterMacOS
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - integration_test (from `.symlinks/plugins/integration_test/ios`)
+  - mpx_core (from `.symlinks/plugins/mpx_core/darwin`)
+  - mpx_player (from `.symlinks/plugins/mpx_player/darwin`)
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  integration_test:
+    :path: ".symlinks/plugins/integration_test/ios"
+  mpx_core:
+    :path: ".symlinks/plugins/mpx_core/darwin"
+  mpx_player:
+    :path: ".symlinks/plugins/mpx_player/darwin"
+
+SPEC CHECKSUMS:
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
+  mpx_core: 9ae8d0a68d78b47367b4bb8dd47d555532abb832
+  mpx_player: 5f51fa303d5e35856e26f87f069ed380d7b19c05
+
+PODFILE CHECKSUM: 3889b4a9c624308af7c6fa57ab6a977d7ea3a7c7
+
+COCOAPODS: 1.16.2

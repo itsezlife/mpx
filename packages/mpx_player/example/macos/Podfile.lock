@@ -1,0 +1,30 @@
+PODS:
+  - FlutterMacOS (1.0.0)
+  - mpx_core (0.0.1):
+    - Flutter
+    - FlutterMacOS
+  - mpx_player (0.0.1):
+    - Flutter
+    - FlutterMacOS
+
+DEPENDENCIES:
+  - FlutterMacOS (from `Flutter/ephemeral`)
+  - mpx_core (from `Flutter/ephemeral/.symlinks/plugins/mpx_core/darwin`)
+  - mpx_player (from `Flutter/ephemeral/.symlinks/plugins/mpx_player/darwin`)
+
+EXTERNAL SOURCES:
+  FlutterMacOS:
+    :path: Flutter/ephemeral
+  mpx_core:
+    :path: Flutter/ephemeral/.symlinks/plugins/mpx_core/darwin
+  mpx_player:
+    :path: Flutter/ephemeral/.symlinks/plugins/mpx_player/darwin
+
+SPEC CHECKSUMS:
+  FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
+  mpx_core: 9ae8d0a68d78b47367b4bb8dd47d555532abb832
+  mpx_player: 5f51fa303d5e35856e26f87f069ed380d7b19c05
+
+PODFILE CHECKSUM: 43a2f10921de2f868c5c2551cd688e5b14a6b9c4
+
+COCOAPODS: 1.16.2

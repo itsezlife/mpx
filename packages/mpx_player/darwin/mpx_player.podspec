@@ -1,8 +1,8 @@
 Pod::Spec.new do |s|
   s.name             = 'mpx_player'
   s.version          = '0.0.1'
-  s.summary          = 'Native side of mpx_player.'
-  s.description      = 'Native side of mpx_player; a stub until its tickets land.'
+  s.summary          = 'AVPlayer backend of mpx_player.'
+  s.description      = 'AVPlayer drawing into Flutter textures, reading bytes through the http_bytes_cache native reader.'
   s.homepage         = 'https://github.com/itsezlife/mpx'
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'mpx' => 'noreply@example.com' }
@@ -10,6 +10,7 @@ Pod::Spec.new do |s|
   s.source_files     = 'Classes/**/*'
   s.ios.dependency 'Flutter'
   s.osx.dependency 'FlutterMacOS'
+  s.frameworks       = 'AVFoundation', 'CoreVideo', 'QuartzCore'
   # iOS 15 and macOS 12 are the set's floor (spec, minimum versions).
   s.ios.deployment_target = '15.0'
   s.osx.deployment_target = '12.0'

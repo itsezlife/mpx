@@ -5,12 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_bytes_cache/http_bytes_cache.dart';
+import 'package:http_bytes_cache/native_reader.dart';
 import 'package:mpx/mpx.dart';
 import 'package:mpx_core/frame_pool.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_example/feed_page.dart';
 import 'package:mpx_example/gallery.dart';
 import 'package:mpx_lottie/mpx_lottie.dart';
+import 'package:mpx_player/mpx_player.dart';
+import 'package:mpx_player/native.dart';
 import 'package:mpx_ui/mpx_ui.dart';
 import 'package:mpx_video_decoder/mpx_video_decoder.dart';
 
@@ -31,7 +34,11 @@ const List<(MediaKey, MediaKind, String, String)> _media = [
     'Lottie',
   ),
   (MediaKey.remote('loop'), MediaKind.video, 'loop.webm', 'Video loop'),
+  (MediaKey.remote('clip'), MediaKind.video, 'clip.mp4', 'Video with sound'),
 ];
+
+/// The key whose viewer page plays with sound on the platform player.
+const MediaKey _soundClip = MediaKey.remote('clip');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -59,7 +66,35 @@ Future<void> main() async {
       MediaDescriptor(key: key, kind: kind, animated: kind != MediaKind.still),
     );
   }
-  runApp(MediaApp(stack: stack));
+  runApp(MediaApp(stack: stack, players: await _players(stack)));
+}
+
+/// The platform player over the stack's cache: the viewer plays videos with
+/// sound on it, reading their bytes through the cache's native reader. Null
+/// where there is no native reader (the viewer then shows stills).
+Future<PlayerPool?> _players(MpxStack stack) async {
+  if (!NativeRangedReaders.isAvailable) return null;
+  final ranged = RangedBytes(store: stack.store, client: stack.client);
+  if (!ranged.isSupported) return null;
+  final backend = NativePlayerBackend(
+    readers: NativeRangedReaders(ranged),
+    sourcesOf: (key) => switch (_fileOf(key)) {
+      final file? => [
+        PlayerSource(
+          RangedRequest(
+            url: Uri.parse('https://media.example/$file'),
+            // Its own entry: the player reads a sparse file of ranges, the
+            // software decoder the whole body.
+            cacheKey: BytesCacheKey('ranged-${key.encoded}'),
+          ),
+          mimeType: file.endsWith('.webm') ? 'video/webm' : 'video/mp4',
+        ),
+      ],
+      null => const [],
+    },
+  );
+  // Prepared players only where the device can hold them.
+  return PlayerPool(backend: backend, budget: (await backend.device).budget);
 }
 
 String? _fileOf(MediaKey key) => [
@@ -142,28 +177,48 @@ Future<Map<MediaKind, Decoder>> _decoders(
   return decoders;
 }
 
-/// Serves `https://media.example/<file>` from `assets/media/<file>`.
+/// Serves `https://media.example/<file>` from `assets/media/<file>`,
+/// answering a single-range request with its bytes as a CDN would.
 final class _BundleOrigin extends http.BaseClient {
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final Uint8List bytes;
     try {
       final data = await rootBundle.load(
         'assets/media/${request.url.pathSegments.last}',
       );
-      final bytes = data.buffer.asUint8List(
-        data.offsetInBytes,
-        data.lengthInBytes,
-      );
-      return http.StreamedResponse(
-        Stream.value(bytes),
-        200,
-        contentLength: bytes.length,
-        request: request,
-      );
+      bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
     } on Object {
       // Not in the bundle: the origin has no such file.
       return http.StreamedResponse(const Stream.empty(), 404, request: request);
     }
+    final range = RegExp(
+      r'^bytes=(\d+)-(\d*)$',
+    ).firstMatch(request.headers['range'] ?? '');
+    if (range == null || int.parse(range.group(1)!) >= bytes.length) {
+      return http.StreamedResponse(
+        Stream.value(bytes),
+        200,
+        contentLength: bytes.length,
+        headers: {'accept-ranges': 'bytes'},
+        request: request,
+      );
+    }
+    final start = int.parse(range.group(1)!);
+    final last = switch (int.tryParse(range.group(2)!)) {
+      final end? when end < bytes.length => end,
+      _ => bytes.length - 1,
+    };
+    return http.StreamedResponse(
+      Stream.value(bytes.sublist(start, last + 1)),
+      206,
+      contentLength: last - start + 1,
+      headers: {
+        'accept-ranges': 'bytes',
+        'content-range': 'bytes $start-$last/${bytes.length}',
+      },
+      request: request,
+    );
   }
 }
 
@@ -171,9 +226,12 @@ final class _BundleOrigin extends http.BaseClient {
 /// fullscreen viewer with save and share; a feed list gated by the device
 /// signals; and the signals themselves.
 class MediaApp extends StatefulWidget {
-  const MediaApp({required this.stack, super.key});
+  const MediaApp({required this.stack, this.players, super.key});
 
   final MpxStack stack;
+
+  /// The players the viewer plays videos with sound on.
+  final PlayerPool? players;
 
   @override
   State<MediaApp> createState() => _MediaAppState();
@@ -186,15 +244,18 @@ class _MediaAppState extends State<MediaApp> {
         key,
         // The silent video loop, the WebP and the Lottie all loop muted on
         // the software path, as animations do in the viewer.
-        kind: kind == MediaKind.still
-            ? GalleryMediaKind.photo
-            : GalleryMediaKind.animation,
+        kind: switch (kind) {
+          MediaKind.still => GalleryMediaKind.photo,
+          _ when key == _soundClip => GalleryMediaKind.video,
+          _ => GalleryMediaKind.animation,
+        },
       ),
   ]);
 
   @override
   void dispose() {
     _gallery.dispose();
+    widget.players?.dispose();
     widget.stack.dispose();
     super.dispose();
   }
@@ -205,6 +266,7 @@ class _MediaAppState extends State<MediaApp> {
     context,
     source: _gallery,
     initialIndex: index,
+    players: widget.players,
     onFullscreenChanged: (on) => setWindowFullscreen(fullscreen: on),
     chrome: ViewerChrome(
       title: (context, index, item) => Text(_media[index].$4),

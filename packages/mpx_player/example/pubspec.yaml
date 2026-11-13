@@ -1,0 +1,31 @@
+name: mpx_player_example
+description: Plays a video with sound through mpx_player's platform backend, reading its bytes through the bytes cache.
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+  flutter: '>=3.38.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http_bytes_cache:
+    path: ../../http_bytes_cache
+  mpx_core:
+    path: ../../mpx_core
+  mpx_player:
+    path: ..
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+  assets:
+    # 12 s, 256x144 H.264 with a mono AAC tone; generated with ffmpeg's test
+    # sources.
+    - assets/clip.mp4
