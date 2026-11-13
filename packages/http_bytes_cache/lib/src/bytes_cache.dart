@@ -969,7 +969,8 @@ abstract interface class IRangedBytesStore implements IBytesStore {
   /// payload file, so readers can open it before any byte lands and eviction
   /// leaves it alone until the lease is released. [quota] defaults to
   /// [BytesQuota.videoRanges]. A whole resource at [key] is kept when
-  /// complete bytes are already there.
+  /// complete bytes are already there; so is an alias ([IBytesStore.alias])
+  /// of complete bytes, which is read in place and leases their payload.
   Future<FileLease> openRanged(BytesCacheKey key, {BytesQuota? quota});
 
   /// Writes [bytes] at [offset] of [key]'s sparse payload and adds them to
@@ -1529,8 +1530,28 @@ final class IndexedBytesCache implements IRangedBytesStore {
     _ensureOpen();
     return switch (_index.peek(key)) {
       final record? when record.payload == key => _stateOf(record),
+      final alias? => switch (_completePayload(alias, _index.peek)) {
+        final owner? => _stateOf(owner),
+        null => null,
+      },
       _ => null,
     };
+  }
+
+  /// The row owning the payload [alias] reads, when that payload is complete:
+  /// an alias of a captured file is ranged-readable where it is, so a player
+  /// opening the server key reads the local bytes instead of fetching them
+  /// again. Null for a row that owns its payload or reads an incomplete one.
+  static BytesRecord? _completePayload(
+    BytesRecord alias,
+    BytesRecord? Function(BytesCacheKey key) rowOf,
+  ) {
+    if (alias.payload == alias.key) return null;
+    final owner = rowOf(alias.payload);
+    if (owner == null || owner.payload != owner.key || !owner.isWhole) {
+      return null;
+    }
+    return owner;
   }
 
   /// A whole resource reads as a complete ranged one.
@@ -1546,7 +1567,14 @@ final class IndexedBytesCache implements IRangedBytesStore {
     return _runExclusive(() async {
       _ensureOpen();
       final previous = await _index.get(key);
-      final keepsBytes = previous != null && previous.payload == key;
+      // A complete payload another row owns (this key is its alias) is read
+      // in place: the lease holds that payload, and nothing is copied.
+      final owner = previous == null
+          ? null
+          : _completePayload(previous, _index.peek);
+      final payload = owner?.key ?? key;
+      final keepsBytes =
+          previous != null && (previous.payload == key || owner != null);
       if (!keepsBytes) {
         final preEpoch = await _captureIndexSnapshot();
         await _flushPendingAccess();
@@ -1561,14 +1589,14 @@ final class IndexedBytesCache implements IRangedBytesStore {
         await _commitOrRollback(preEpoch);
       }
       _pendingAccess[key] = _clock();
-      _leases.update(key, (n) => n + 1, ifAbsent: () => 1);
+      _leases.update(payload, (n) => n + 1, ifAbsent: () => 1);
       return FileLease(
         key: key,
         path: switch (blobs) {
-          final IBytesFileBlobStore files => files.pathOf(key),
+          final IBytesFileBlobStore files => files.pathOf(payload),
           _ => '',
         },
-        onRelease: () => _releaseLease(key),
+        onRelease: () => _releaseLease(payload),
       );
     });
   }
@@ -1665,10 +1693,14 @@ final class IndexedBytesCache implements IRangedBytesStore {
     return _runShared(() async {
       _ensureOpen();
       final record = await _index.get(key);
-      if (record == null || record.payload != key) return null;
-      if (!_stateOf(record).ranges.covers(range.start, end)) return null;
+      if (record == null) return null;
+      final owner = record.payload == key
+          ? record
+          : _completePayload(record, _index.peek);
+      if (owner == null) return null;
+      if (!_stateOf(owner).ranges.covers(range.start, end)) return null;
       _pendingAccess[key] = _clock();
-      return blobs.readAt(key, range.start, end - range.start);
+      return blobs.readAt(owner.key, range.start, end - range.start);
     });
   }
 

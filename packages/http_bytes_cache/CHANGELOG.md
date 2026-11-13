@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Ranged resources: opening an alias of complete bytes (a captured file
+  aliased to its server key) reads them in place instead of fetching the
+  server's copy; `readRange` and `rangesOf` follow the alias too.
 - An alias is a snapshot: rewriting or resetting the local key, before or
   after `release`, leaves the server key with the bytes and length it had.
 - `registerQuota` refuses limits that differ from the configured quota of

@@ -134,8 +134,14 @@ resume, the whole body buffered by design.
   threads and `pread`). Players do not link it by name: the Dart side hands
   them the address of its `hbc_api` function table
   (`NativeRangedReaders.apiAddress`), and their Kotlin (through a JNI shim)
-  or Swift code calls through it, compiled against
-  `native/include/http_bytes_cache.h`. The "range landed" signal goes from
+  or Swift code calls through it. They mirror the table's layout from
+  `native/include/http_bytes_cache.h` rather than include it (a published
+  plugin cannot reach a sibling package's header) and refuse a table of
+  another `version` (ticket 23, 24).
+- A ranged open of a key that is an alias of complete bytes (the server key
+  of a captured file) reads the aliased payload in place and leases it;
+  nothing is fetched or copied. An alias of incomplete bytes, or a ranged
+  write to the alias, still gives the key its own payload (tickets 24, 44). The "range landed" signal goes from
   Dart to C over FFI (`hbc_range_landed`, a condition variable per
   resource); a missing range reaches Dart through a `NativeCallable.listener`.
   One host per process, enforced natively: the Dart side attaches with

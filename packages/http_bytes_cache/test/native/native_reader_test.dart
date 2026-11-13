@@ -70,6 +70,18 @@ void main() {
       expect(server.requests, hasLength(requests));
     });
 
+    test('an alias of a captured file reads the local bytes', () async {
+      const local = BytesCacheKey('native-local');
+      await store.write(local, body);
+      await store.alias(local, key);
+      await publish();
+
+      final bytes = await readElsewhere(9000, 1000);
+
+      expect(bytes, body.sublist(9000));
+      expect(server.requests, isEmpty);
+    });
+
     test('miss: the read asks Dart, blocks, and wakes when the range '
         'lands', () async {
       await publish();
