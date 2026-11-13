@@ -41,7 +41,7 @@ SPEC CHECKSUMS:
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
   mpx: ee4afd6125f6ec5d05f9bf3da39c91adde91c282
   mpx_core: 9ae8d0a68d78b47367b4bb8dd47d555532abb832
-  mpx_player: 5f51fa303d5e35856e26f87f069ed380d7b19c05
+  mpx_player: ac175bf85c8d8d97bcfdff9479c3056f8a06184a
   share_plus: 510bf0af1a42cd602274b4629920c9649c52f4cc
 
 PODFILE CHECKSUM: 43a2f10921de2f868c5c2551cd688e5b14a6b9c4
