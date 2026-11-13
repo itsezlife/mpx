@@ -158,6 +158,81 @@ void main() {
     });
   });
 
+  group('policy knobs', () {
+    test('a pausing layer of the policy stops what plays', () {
+      final controller = FeedController(
+        policy: const FeedPolicy.list(
+          pausingLayers: {PlaybackPauseLayer.lowPower},
+        ),
+        scope: scope,
+      );
+      addTearDown(controller.dispose);
+      slots(controller, {0: 1});
+      controller.measure();
+      expect(controller.stateOf(0).value.playing, isTrue);
+
+      clock.setPaused(PlaybackPauseLayer.lowPower, paused: true);
+      expect(controller.stateOf(0).value.playing, isFalse);
+
+      clock.setPaused(PlaybackPauseLayer.lowPower, paused: false);
+      expect(controller.stateOf(0).value.playing, isTrue);
+    });
+
+    test('a back-off layer of the policy starts no preloads', () {
+      final controller = FeedController(
+        policy: const FeedPolicy.list(
+          preloadBackOffLayers: {PlaybackPauseLayer.meteredNetwork},
+        ),
+        itemCount: 20,
+        itemOf: _item,
+        presetOf: _preset,
+        scope: scope,
+      );
+      addTearDown(controller.dispose);
+      clock.setPaused(PlaybackPauseLayer.meteredNetwork, paused: true);
+      slots(controller, {0: 1});
+      controller.measure();
+      expect(attemptsFor(1), isEmpty);
+
+      clock.setPaused(PlaybackPauseLayer.meteredNetwork, paused: false);
+      expect(attemptsFor(1).single.demand.preloadStage, isNotNull);
+    });
+
+    test('an item further than the unload distance is released', () {
+      final controller = FeedController(
+        policy: const FeedPolicy.list(heavyUnloadViewports: 2),
+      );
+      addTearDown(controller.dispose);
+      for (final (index, away) in [(0, 0.0), (1, 1.5), (2, 3.0)]) {
+        controller.register(
+          index,
+          item: _item(index),
+          measure: () =>
+              FeedVisibility(fraction: away == 0 ? 1 : 0, viewportsAway: away),
+        );
+      }
+      controller.measure();
+
+      expect(
+        [for (var i = 0; i < 3; i++) controller.stateOf(i).value.released],
+        [false, false, true],
+      );
+    });
+
+    test('a decision nobody listens to or registers is dropped and freed', () {
+      final controller = FeedController();
+      addTearDown(controller.dispose);
+      final unheard = controller.stateOf(9) as ChangeNotifier;
+
+      controller.measure();
+
+      expect(
+        () => ChangeNotifier.debugAssertNotDisposed(unheard),
+        throwsFlutterError,
+      );
+    });
+  });
+
   group('pager mode', () {
     late FakePlayerBackend backend;
     late PlayerPool pool;
@@ -223,7 +298,7 @@ void main() {
       slots(controller, {0: 1});
       controller.measure();
 
-      controller.muted = true;
+      controller.pager!.muted = true;
 
       expect(controller.stateOf(0).value.muted, isTrue);
       expect(pool.soundOwner, isNull);

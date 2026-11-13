@@ -7,10 +7,11 @@ import 'package:mpx_player/mpx_player.dart';
 ///
 /// While the item holds a player (a pager's page and its warm neighbours) it
 /// shows a `PlayerView`, with [poster] as the stand-in until the first
-/// frame. Otherwise it shows the item through the asset cache: a list clip
-/// that plays attaches with the policy's clip profile (looping, advancing
-/// only above the advance floor) and its visible fraction; one that does not
-/// shows its first frame; a pager page without a player shows its [poster].
+/// frame. Otherwise, when the controller gives the item a clip profile (list
+/// mode: looping, advancing only above the advance floor, held on its frame
+/// while it does not play), it attaches the item through the asset cache
+/// with it and its visible fraction; else it shows its [poster]. A released
+/// item (far from view) shows only the [poster], holding no decoder.
 ///
 /// The preset comes from [preset], else the controller's `presetOf`; the
 /// cache from [scope], else the controller's, else the closest
@@ -55,7 +56,10 @@ class FeedClip extends StatelessWidget {
         Widget still() {
           final poster = this.poster;
           if (poster != null) return poster;
-          if (item == null || presetOf == null || scope == null) {
+          if (state.released ||
+              item == null ||
+              presetOf == null ||
+              scope == null) {
             return const SizedBox.expand();
           }
           return ContentView(
@@ -69,25 +73,13 @@ class FeedClip extends StatelessWidget {
         if (lease != null) {
           return PlayerView(lease: lease, fit: fit, standIn: still());
         }
-        if (controller.policy.mode == FeedMode.pager ||
-            item == null ||
-            presetOf == null ||
-            scope == null) {
+        final clip = state.clip;
+        if (clip == null || item == null || presetOf == null || scope == null) {
           return still();
         }
-        final clip = controller.policy.clipProfile();
         return ContentView(
           content: item.key,
-          preset: presetOf(
-            state.playing
-                ? clip
-                : AssetProfile(
-                    loop: clip.loop,
-                    cornerRadius: clip.cornerRadius,
-                    fit: clip.fit,
-                    advanceFloor: clip.advanceFloor,
-                  ),
-          ),
+          preset: presetOf(clip),
           scope: scope,
           visibleFraction: state.fraction,
         );

@@ -1,5 +1,6 @@
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
+import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_player/src/feed/feed_controller.dart';
 import 'package:mpx_player/src/feed/feed_item.dart';
 
@@ -27,10 +28,11 @@ class FeedScope extends InheritedWidget {
 /// Wraps one item of any host scrollable so a [FeedController] plays it.
 ///
 /// The slot registers [index] and [item] with [controller] (or the closest
-/// [FeedScope]'s) and measures how much of itself shows: its box is
-/// transformed into the closest enclosing viewport and clipped by it, then
-/// by every viewport around that one, so a slot in a horizontal list inside
-/// a vertical one is clipped by both. It needs no extent, axis or viewport
+/// [FeedScope]'s) and measures how much of itself shows
+/// (`ViewportVisibility`): its box is clipped by the closest enclosing
+/// viewport, then by every viewport around that one, so a slot in a
+/// horizontal list inside a vertical one is clipped by both; a slot laid out
+/// out of view reports how many viewports away it is. It needs no extent, axis or viewport
 /// type: any `RenderAbstractViewport` clips it (lists, grids, slivers,
 /// pagers, a host's own viewport), and a slot its parents do not paint (a
 /// cell kept alive off screen, an offstage page) counts as hidden.
@@ -161,7 +163,16 @@ class _FeedSlotState extends State<FeedSlot> {
     if (box is! RenderBox || !box.attached || !box.hasSize) {
       return FeedVisibility.hidden;
     }
-    return _measureAgainstViewports(box);
+    final seen = ViewportVisibility.of(box);
+    if (!seen.shows) {
+      return seen.viewportsAway.isInfinite
+          ? FeedVisibility.hidden
+          : FeedVisibility(fraction: 0, viewportsAway: seen.viewportsAway);
+    }
+    return FeedVisibility(
+      fraction: seen.fraction,
+      centreDistance: seen.centreDistance,
+    );
   }
 
   @override
@@ -171,56 +182,6 @@ class _FeedSlotState extends State<FeedSlot> {
     item: widget.item,
     child: _LayoutReporter(key: _box, onLayout: _moved, child: widget.child),
   );
-}
-
-// How much of [box] its enclosing viewports show: the box is transformed
-// into the closest viewport, clipped by its bounds, then carried out to every
-// viewport around it and clipped again. The centre distance is measured in
-// the closest viewport. A box with no viewport around it shows whole; one a
-// parent does not paint shows nothing.
-FeedVisibility _measureAgainstViewports(RenderBox box) {
-  final whole = box.size.width * box.size.height;
-  if (whole <= 0) return FeedVisibility.hidden;
-  RenderObject inner = box;
-  var rect = Offset.zero & box.size;
-  var fraction = 1.0;
-  double? centreDistance;
-  var viewport = RenderAbstractViewport.maybeOf(box.parent);
-  while (viewport != null) {
-    if (!_paintedUpTo(inner, viewport)) return FeedVisibility.hidden;
-    final transformed = MatrixUtils.transformRect(
-      inner.getTransformTo(viewport),
-      rect,
-    );
-    final bounds = viewport.paintBounds;
-    centreDistance ??= (transformed.center - bounds.center).distance;
-    final area = transformed.width * transformed.height;
-    if (area <= 0) return FeedVisibility.hidden;
-    final clipped = transformed.intersect(bounds);
-    if (clipped.width <= 0 || clipped.height <= 0) {
-      return FeedVisibility.hidden;
-    }
-    // Each step's share, multiplied: exact under the scale and translate a
-    // viewport applies, whatever units the outer viewport uses.
-    fraction *= clipped.width * clipped.height / area;
-    rect = clipped;
-    inner = viewport;
-    viewport = RenderAbstractViewport.maybeOf(viewport.parent);
-  }
-  return FeedVisibility(
-    fraction: fraction.clamp(0.0, 1.0),
-    centreDistance: centreDistance ?? 0,
-  );
-}
-
-bool _paintedUpTo(RenderObject child, RenderObject ancestor) {
-  var node = child;
-  while (!identical(node, ancestor)) {
-    final parent = node.parent;
-    if (parent == null || !parent.paintsChild(node)) return false;
-    node = parent;
-  }
-  return true;
 }
 
 class _FeedSlotScope extends InheritedWidget {

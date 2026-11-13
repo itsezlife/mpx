@@ -32,7 +32,7 @@ class FeedPagerView extends StatefulWidget {
     this.policy = const FeedPolicy.pager(),
     this.conditions,
     this.initialIndex = 0,
-    this.muted = false,
+    this.muted,
     this.scrollDirection = Axis.vertical,
     this.fit = BoxFit.contain,
     this.presetOf,
@@ -62,8 +62,9 @@ class FeedPagerView extends StatefulWidget {
   final int initialIndex;
 
   /// Whether the pager plays without sound; applies to every player it
-  /// holds.
-  final bool muted;
+  /// holds. Null leaves it to the policy's initial mute and the user's
+  /// toggle on [FeedPagerViewState.pager].
+  final bool? muted;
 
   /// The swipe axis.
   final Axis scrollDirection;
@@ -129,8 +130,9 @@ class FeedPagerViewState extends State<FeedPagerView> {
   @override
   void didUpdateWidget(FeedPagerView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final muted = widget.muted;
+    if (muted != null && muted != oldWidget.muted) pager.muted = muted;
     _feed
-      ..muted = widget.muted
       ..itemCount = widget.itemCount
       ..scope = widget.scope ?? AssetCacheProvider.maybeOf(context);
   }

@@ -85,7 +85,7 @@ void main() {
       FeedPolicy policy = const FeedPolicy.pager(),
       ValueListenable<FeedConditions>? conditions,
       ValueChanged<int>? onAdvance,
-      bool muted = false,
+      bool? muted = false,
     }) {
       final pager = FeedPager(
         pool: pool,
@@ -179,6 +179,40 @@ void main() {
       pager.muted = false;
       expect(pool.soundOwner, keyOf(3));
       expect(pager.leaseOf(4)!.state.value.volume, 1);
+    });
+
+    test(
+      'without a mute given, the initial mute of the policy decides',
+      () async {
+        final muted = makePager(
+          muted: null,
+          policy: const FeedPolicy.pager(initialMute: FeedInitialMute.muted),
+        );
+        expect(muted.muted, isTrue);
+
+        final unmuted = makePager(
+          muted: null,
+          policy: const FeedPolicy.pager(initialMute: FeedInitialMute.unmuted),
+        );
+        expect(unmuted.muted, isFalse);
+      },
+    );
+
+    test('following the ringer mutes with it until the user toggles', () {
+      final silenced = ValueNotifier(true);
+      addTearDown(silenced.dispose);
+      final signals = FeedSignals(silenced: silenced);
+      addTearDown(signals.dispose);
+      final pager = makePager(muted: null, conditions: signals);
+      expect(pager.muted, isTrue);
+
+      silenced.value = false;
+      expect(pager.muted, isFalse);
+
+      pager.muted = true;
+      silenced.value = true;
+      silenced.value = false;
+      expect(pager.muted, isTrue);
     });
 
     test('an item that ends asks for the next one', () async {

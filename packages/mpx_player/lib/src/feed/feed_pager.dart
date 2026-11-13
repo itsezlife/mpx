@@ -117,9 +117,11 @@ final class FeedPagerPlanner {
 /// budget, which the host sets from the device's class.
 ///
 /// Mute is session-wide: it applies to the active player and the prepared
-/// ones. An item that ends asks for the next one ([onAdvance]) when the
+/// ones. Without a mute of the host's it starts as the policy's initial mute
+/// says, following the ringer ([FeedConditions.silenced]) until [muted] is
+/// set. An item that ends asks for the next one ([onAdvance]) when the
 /// policy's auto-advance allows; an item the pager comes back to restarts or
-/// resumes as the policy says.
+/// resumes as the policy says. While [held] nothing plays.
 ///
 /// Listeners hear when the leases or the active page change.
 final class FeedPager extends ChangeNotifier {
@@ -131,15 +133,24 @@ final class FeedPager extends ChangeNotifier {
     this.policy = const FeedPolicy.pager(),
     ValueListenable<FeedConditions>? conditions,
     int initialIndex = 0,
-    bool muted = false,
+    bool? muted,
     this.onAdvance,
   }) : assert(policy.mode == FeedMode.pager, 'A pager takes a pager policy.'),
        _pool = pool,
        _itemCount = itemCount,
        _conditions = conditions,
        _index = initialIndex,
-       _muted = muted {
-    _conditions?.addListener(_apply);
+       _followsRinger =
+           muted == null && policy.initialMute == FeedInitialMute.followRinger,
+       _muted =
+           muted ??
+           switch (policy.initialMute) {
+             FeedInitialMute.muted => true,
+             FeedInitialMute.unmuted => false,
+             FeedInitialMute.followRinger =>
+               conditions?.value.silenced ?? false,
+           } {
+    _conditions?.addListener(_onConditions);
     _apply();
   }
 
@@ -170,6 +181,9 @@ final class FeedPager extends ChangeNotifier {
   int _index;
   int? _activated;
   bool _muted;
+  // Mute follows the ringer until the host or the user sets it.
+  bool _followsRinger;
+  bool _held = false;
   bool _disposed = false;
   FeedPagerPlan? _plan;
   PlayerLease? _watched;
@@ -180,9 +194,30 @@ final class FeedPager extends ChangeNotifier {
   /// The plan applied last.
   FeedPagerPlan get plan => _plan!;
 
-  /// Whether the pager plays without sound.
+  /// Whether the pager plays without sound. Setting it is the user's choice:
+  /// the ringer no longer moves it.
   bool get muted => _muted;
   set muted(bool value) {
+    _followsRinger = false;
+    _setMuted(value);
+  }
+
+  /// Whether nothing plays: the page shown pauses and stays leased, and plays
+  /// again when released. The feed holds it while a pausing layer of the
+  /// policy is set.
+  bool get held => _held;
+  set held(bool value) {
+    if (value == _held || _disposed) return;
+    _held = value;
+    _apply();
+  }
+
+  void _onConditions() {
+    if (_followsRinger) _setMuted(_conditions!.value.silenced);
+    _apply();
+  }
+
+  void _setMuted(bool value) {
     if (value == _muted || _disposed) return;
     _muted = value;
     for (final lease in _leases.values) {
@@ -233,7 +268,7 @@ final class FeedPager extends ChangeNotifier {
       if (arrived && policy.resume == FeedResume.restart) {
         active.seekTo(Duration.zero);
       }
-      if (plan.autoplay == FeedAutoplay.full) {
+      if (plan.autoplay == FeedAutoplay.full && !_held) {
         active.play();
       } else {
         active.pause();
@@ -287,7 +322,7 @@ final class FeedPager extends ChangeNotifier {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
-    _conditions?.removeListener(_apply);
+    _conditions?.removeListener(_onConditions);
     _watched?.state.removeListener(_onActiveState);
     _watched = null;
     for (final lease in _leases.values) {

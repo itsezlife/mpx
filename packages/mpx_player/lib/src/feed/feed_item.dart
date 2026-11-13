@@ -1,9 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:mpx_core/mpx_core.dart';
 
-/// What the feed policy knows about one item: enough to gate its autoplay,
-/// size its prefix and pick its off-screen behaviour. The host fills it from
-/// its own model.
+/// What the feed policy knows about one item: enough to gate its autoplay
+/// and size its prefix. The host fills it from its own model.
 @immutable
 final class FeedItem {
   /// Creates the facts of [key].
@@ -86,11 +85,12 @@ enum FeedThermal {
   critical,
 }
 
-/// The device's conditions when the feed decides: network, power and heat.
+/// The device's conditions when the feed decides: network, power, heat and
+/// the ringer.
 ///
 /// A snapshot; `FeedSignals` produces it from the host's live signals. The
 /// default is what a host without signals assumes: unmetered, not saving
-/// power, nominal.
+/// power, nominal, not silenced.
 @immutable
 final class FeedConditions {
   /// Creates a snapshot.
@@ -98,6 +98,7 @@ final class FeedConditions {
     this.network = FeedNetwork.unmetered,
     this.powerSaving = false,
     this.thermal = FeedThermal.nominal,
+    this.silenced = false,
   });
 
   /// The network class.
@@ -109,6 +110,10 @@ final class FeedConditions {
   /// How hot the device runs.
   final FeedThermal thermal;
 
+  /// Whether the ringer or silent switch silences the device: a pager whose
+  /// policy follows the ringer (`FeedInitialMute.followRinger`) starts muted.
+  final bool silenced;
+
   /// Whether the device is under stress the feed backs off for: hot enough
   /// that the system throttles.
   bool get stressed => thermal.index >= FeedThermal.serious.index;
@@ -118,13 +123,14 @@ final class FeedConditions {
       other is FeedConditions &&
       other.network == network &&
       other.powerSaving == powerSaving &&
-      other.thermal == thermal;
+      other.thermal == thermal &&
+      other.silenced == silenced;
 
   @override
-  int get hashCode => Object.hash(network, powerSaving, thermal);
+  int get hashCode => Object.hash(network, powerSaving, thermal, silenced);
 
   @override
   String toString() =>
       'FeedConditions(${network.name}, powerSaving: $powerSaving, '
-      'thermal: ${thermal.name})';
+      'thermal: ${thermal.name}, silenced: $silenced)';
 }

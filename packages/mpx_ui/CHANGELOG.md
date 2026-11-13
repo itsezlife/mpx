@@ -9,6 +9,10 @@
 - `ViewerController` tells its listeners after the frame when the viewer
   mounts or unmounts, instead of during the build.
 - `MediaViewer` moves to a new `source` or `bridge` when rebuilt with one.
+- `FeedClip` draws what the controller decides (`FeedItemState.clip`,
+  `released`) instead of branching on the mode; `FeedPagerView.muted` is
+  null by default, leaving the policy's initial mute.
+- `ViewerOrigin` measures through `ViewportVisibility` (mpx_core).
 - `OriginBridgeContract` in `testing.dart`, run against
   `ViewerOriginScope` and `FakeOriginBridge`.
 - Breaking: `MediaViewer.show` takes the platform's policy when none is

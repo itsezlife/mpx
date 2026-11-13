@@ -328,41 +328,18 @@ class _ViewerOriginState extends State<ViewerOrigin> {
     return box;
   }
 
-  // The rectangle on screen clipped by every viewport around it, or null
-  // when no part shows or a parent does not paint it.
+  // The rectangle on screen and the clip of every viewport around it, or
+  // null when no part shows or a parent does not paint it.
   _Place? _place() {
     final box = _outer.currentContext?.findRenderObject();
-    if (box is! RenderBox || !box.attached || !box.hasSize) return null;
-    if (box.size.isEmpty) return null;
-    final rect = MatrixUtils.transformRect(
-      box.getTransformTo(null),
-      Offset.zero & box.size,
-    );
-    Rect? clip;
-    RenderObject inner = box;
-    var viewport = RenderAbstractViewport.maybeOf(box.parent);
-    while (viewport != null) {
-      if (!_painted(inner, viewport)) return null;
-      final bounds = MatrixUtils.transformRect(
-        viewport.getTransformTo(null),
-        viewport.paintBounds,
-      );
-      clip = clip == null ? bounds : clip.intersect(bounds);
-      inner = viewport;
-      viewport = RenderAbstractViewport.maybeOf(viewport.parent);
-    }
-    if (clip != null) {
-      final shown = rect.intersect(clip);
-      if (shown.width <= 0 || shown.height <= 0) return null;
-    }
-    return (rect: rect, clip: clip);
+    if (box is! RenderBox) return null;
+    final seen = ViewportVisibility.of(box);
+    return seen.shows ? (rect: seen.rect, clip: seen.clip) : null;
   }
 
   bool _showsWhole() {
-    final place = _place();
-    if (place == null) return false;
-    final clip = place.clip;
-    return clip == null || clip.intersect(place.rect) == place.rect;
+    final box = _outer.currentContext?.findRenderObject();
+    return box is RenderBox && ViewportVisibility.of(box).showsWhole;
   }
 
   ui.Image? _captureFrame() {
@@ -381,14 +358,4 @@ class _ViewerOriginState extends State<ViewerOrigin> {
     opacity: _hidden ? 0 : 1,
     child: RepaintBoundary(key: _boundary, child: widget.child),
   );
-}
-
-bool _painted(RenderObject child, RenderObject ancestor) {
-  var node = child;
-  while (!identical(node, ancestor)) {
-    final parent = node.parent;
-    if (parent == null || !parent.paintsChild(node)) return false;
-    node = parent;
-  }
-  return true;
 }

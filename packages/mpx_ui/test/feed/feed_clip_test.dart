@@ -110,4 +110,35 @@ void main() {
     expect(find.byType(PlayerView), findsOneWidget);
     expect(pool.soundOwner, _key(0));
   });
+
+  testWidgets('a clip laid out far ahead holds no decoder', (tester) async {
+    final feed = FeedController(
+      presetOf: preset,
+      policy: const FeedPolicy.list(heavyUnloadViewports: 1),
+    );
+    addTearDown(feed.dispose);
+    await pump(
+      tester,
+      FeedScope(
+        controller: feed,
+        child: ListView.builder(
+          cacheExtent: 3000,
+          itemCount: 10,
+          itemBuilder: (context, index) => FeedSlot(
+            index: index,
+            item: _item(index),
+            child: SizedBox(
+              height: 500,
+              child: FeedClip(poster: index == 4 ? const Text('far') : null),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // Item 4 starts at 2000: three viewports below the 500-high one.
+    expect(feed.stateOf(4).value.released, isTrue);
+    expect(find.text('far', skipOffstage: false), findsOneWidget);
+    expect(feed.stateOf(1).value.released, isFalse);
+  });
 }

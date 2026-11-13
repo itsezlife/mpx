@@ -167,29 +167,19 @@ final class FeedSizeLimits {
   int get hashCode => Object.hash(unmetered, metered, roaming);
 }
 
-/// Knob 7: whether an item that takes sound starts muted.
+/// Knob 7: whether a pager starts muted, when the host gives no mute of its
+/// own.
 enum FeedInitialMute {
   /// Always muted until the user unmutes.
   muted,
 
-  /// Muted when the ringer or silent switch says so; the user's toggle then
-  /// holds for the session.
+  /// Muted while the ringer or silent switch silences the device
+  /// ([FeedConditions.silenced]); the user's toggle then holds for the
+  /// session.
   followRinger,
 
   /// With sound.
   unmuted,
-}
-
-/// Knob 8: what the sound owner does when it leaves the screen.
-enum FeedOffScreen {
-  /// Stops.
-  stop,
-
-  /// Moves to picture in picture and plays on.
-  pip,
-
-  /// Keeps its audio without a picture.
-  keepAudio,
 }
 
 /// Knob 9: whether [next] starts on its own when [ended] finishes.
@@ -252,63 +242,6 @@ final class FeedOversizePrefix {
   int get hashCode => Object.hash(duration, maxBytes);
 }
 
-/// Knob 18: the largest frame area a clip plays at inline, and at all.
-@immutable
-final class FeedResolutionCap {
-  /// Creates caps, in pixels of area.
-  const FeedResolutionCap({
-    this.inlineArea = 1920 * 1080,
-    this.absoluteArea = 3840 * 2160,
-  });
-
-  /// Above this a clip steps down a quality or does not play inline.
-  final int inlineArea;
-
-  /// Above this a clip does not play at all.
-  final int absoluteArea;
-
-  @override
-  bool operator ==(Object other) =>
-      other is FeedResolutionCap &&
-      other.inlineArea == inlineArea &&
-      other.absoluteArea == absoluteArea;
-
-  @override
-  int get hashCode => Object.hash(inlineArea, absoluteArea);
-}
-
-/// Knob 19: which quality a clip starts at and when it steps up.
-@immutable
-final class FeedQualityRule {
-  /// Creates a rule.
-  const FeedQualityRule({
-    this.preferLower = false,
-    this.stepUpAfterBuffered = const Duration(seconds: 4),
-    this.stepUpSpeed = 1.2,
-  });
-
-  /// Whether a lower-quality alternative is chosen unless the host asks for
-  /// the higher one.
-  final bool preferLower;
-
-  /// How much must be buffered before the quality steps up.
-  final Duration stepUpAfterBuffered;
-
-  /// At what download speed, in multiples of playback, the step up happens.
-  final double stepUpSpeed;
-
-  @override
-  bool operator ==(Object other) =>
-      other is FeedQualityRule &&
-      other.preferLower == preferLower &&
-      other.stepUpAfterBuffered == stepUpAfterBuffered &&
-      other.stepUpSpeed == stepUpSpeed;
-
-  @override
-  int get hashCode =>
-      Object.hash(preferLower, stepUpAfterBuffered, stepUpSpeed);
-}
-
 /// Knob 22: where a clip starts when it plays again on a surface.
 enum FeedResume {
   /// From where it stopped.
@@ -318,39 +251,18 @@ enum FeedResume {
   restart,
 }
 
-/// Knob 25: the hooks a host listens to.
-@immutable
-final class FeedDiagnostics {
-  /// Creates hooks; each may be null.
-  const FeedDiagnostics({
-    this.onPreloadCompleted,
-    this.onPreloadFailed,
-    this.onStartLatency,
-    this.skipAutoplayAfterFailedPreload = true,
-  });
-
-  /// A preload reached its stage.
-  final void Function(FeedItem item, AssetPreloadStage stage)?
-  onPreloadCompleted;
-
-  /// A preload failed.
-  final void Function(FeedItem item, Object error)? onPreloadFailed;
-
-  /// The time from asking an item to play to its first frame.
-  final void Function(FeedItem item, Duration latency)? onStartLatency;
-
-  /// Whether an item whose preload failed does not autoplay; it plays when
-  /// the user asks.
-  final bool skipAutoplayAfterFailedPreload;
-}
-
 /// The rules of one feed surface: what plays, with sound or not, and what
 /// preloads. Pure values and functions: it reads no platform state; the
 /// device's conditions come in through [FeedConditions].
 ///
 /// One knob set serves both modes, with per-mode defaults taken from the
 /// reference clients and the platform guidance; a host overrides any knob.
-/// The numbering of the knobs follows the feed decision (ADR 0005).
+/// The numbering of the knobs follows the feed decision (ADR 0005). Every
+/// knob here is read by the feed; the ones only a native player backend or a
+/// later consumer can honour (start buffer, forward buffer cap, resolution
+/// cap, quality step-up, off-screen behaviour, tray preload, diagnostics
+/// hooks) join it with that consumer, and the one sound owner is the player
+/// pool's rule, not a knob.
 @immutable
 final class FeedPolicy {
   /// The list mode's defaults: every visible clip plays muted and loops.
@@ -359,26 +271,18 @@ final class FeedPolicy {
     this.autoplayGate = referenceAutoplayGate,
     this.sizeLimits = const FeedSizeLimits(),
     this.mutedAutoplay = true,
-    this.exclusiveSound = true,
     this.initialMute = FeedInitialMute.muted,
-    this.offScreen = roundToPip,
     this.autoAdvance = roundsAdvance,
     this.preloadWindow = const FeedPreloadWindow(ahead: 3, behind: 0),
     this.preloadStaging = listStaging,
     this.oversizePrefix = const FeedOversizePrefix(),
     this.cancelOnLeave = true,
     this.preparedPlayers = 0,
-    this.startBuffer = const Duration(milliseconds: 100),
-    this.forwardBufferCap,
     this.heavyUnloadViewports = 2,
-    this.resolutionCap = const FeedResolutionCap(),
-    this.quality = const FeedQualityRule(),
     this.preloadBackOffLayers = AssetCacheScope.standardPreloadPausingLayers,
     this.pausingLayers = PlaybackPolicy.standardPausingLayers,
     this.resume = FeedResume.resume,
     this.loop = true,
-    this.trayPreload = 10,
-    this.diagnostics = const FeedDiagnostics(),
   }) : mode = FeedMode.list;
 
   /// The pager mode's defaults: one item with sound, its neighbours warm.
@@ -387,26 +291,18 @@ final class FeedPolicy {
     this.autoplayGate = referenceAutoplayGate,
     this.sizeLimits = const FeedSizeLimits(),
     this.mutedAutoplay = false,
-    this.exclusiveSound = true,
     this.initialMute = FeedInitialMute.followRinger,
-    this.offScreen = stopOffScreen,
     this.autoAdvance = alwaysAdvance,
     this.preloadWindow = const FeedPreloadWindow(ahead: 1, behind: 1),
     this.preloadStaging = pagerStaging,
     this.oversizePrefix = const FeedOversizePrefix(),
     this.cancelOnLeave = true,
     this.preparedPlayers = 2,
-    this.startBuffer = const Duration(milliseconds: 1000),
-    this.forwardBufferCap,
     this.heavyUnloadViewports = 2,
-    this.resolutionCap = const FeedResolutionCap(),
-    this.quality = const FeedQualityRule(preferLower: true),
     this.preloadBackOffLayers = AssetCacheScope.standardPreloadPausingLayers,
     this.pausingLayers = PlaybackPolicy.standardPausingLayers,
     this.resume = FeedResume.restart,
     this.loop = false,
-    this.trayPreload = 10,
-    this.diagnostics = const FeedDiagnostics(),
   }) : mode = FeedMode.pager;
 
   /// 1. The surface mode.
@@ -425,15 +321,9 @@ final class FeedPolicy {
   /// role that takes no audio focus).
   final bool mutedAutoplay;
 
-  /// 6. Whether at most one item has sound, app-wide; starting one silences
-  /// the previous. The player pool's audio owner applies it.
-  final bool exclusiveSound;
-
-  /// 7. Whether an item that takes sound starts muted.
+  /// 7. Whether a pager starts muted when its host gives no mute
+  /// (`FeedPager.muted`, `FeedController`'s pager).
   final FeedInitialMute initialMute;
-
-  /// 8. What the sound owner does when it leaves the screen.
-  final FeedOffScreen Function(FeedItem item) offScreen;
 
   /// 9. Whether the next item starts when one ends; null for never.
   final FeedAutoAdvance? autoAdvance;
@@ -454,29 +344,21 @@ final class FeedPolicy {
   /// class and decoder-instance count bound it further.
   final int preparedPlayers;
 
-  /// 15. How much is buffered before the first frame plays.
-  final Duration startBuffer;
-
-  /// 16. How far ahead a playing player buffers; null for the platform's
-  /// own choice.
-  final Duration? forwardBufferCap;
-
-  /// 17. Beyond how many viewport heights a clip's decoder and frames are
-  /// released.
+  /// 17. How many viewports away from view (`FeedVisibility.viewportsAway`)
+  /// an item's cell is released (`FeedItemState.released`): it drops its
+  /// decoder and frames and shows its poster. Cells a list keeps laid out
+  /// ahead or alive past this cost nothing.
   final double heavyUnloadViewports;
 
-  /// 18. The inline and absolute frame area caps.
-  final FeedResolutionCap resolutionCap;
-
-  /// 19. Which quality a clip starts at and when it steps up.
-  final FeedQualityRule quality;
-
-  /// 20. The pause layers under which staged preloads back off (low power, a
-  /// fast scroll, a metered network, thermal stress); the asset cache scope
-  /// is created with them (`AssetCacheScope.preloadPausingLayers`).
+  /// 20. The pause layers under which the feed starts no preloads (low power,
+  /// a fast scroll, a metered network, thermal stress), read from the asset
+  /// cache scope's clock. The scope's own `preloadPausingLayers` hold the
+  /// preloads already running.
   final Set<PlaybackPauseLayer> preloadBackOffLayers;
 
-  /// 21. The pause layers that stop playback (`PlaybackPolicy.pausingLayers`).
+  /// 21. The pause layers under which nothing of the feed plays, read from
+  /// the asset cache scope's clock: no item is `playing` and the pager
+  /// pauses its page.
   final Set<PlaybackPauseLayer> pausingLayers;
 
   /// 22. Where a clip starts when it plays again.
@@ -484,13 +366,6 @@ final class FeedPolicy {
 
   /// 23. Whether a clip loops.
   final bool loop;
-
-  /// 24. How many items of a tray (the first unseen item of each source) are
-  /// warmed ahead.
-  final int trayPreload;
-
-  /// 25. The hooks a host listens to.
-  final FeedDiagnostics diagnostics;
 
   /// The player budget this policy asks the pool for: one playing, and
   /// [preparedPlayers] warm.
@@ -569,13 +444,6 @@ final class FeedPolicy {
     }
     return FeedAutoplay.none;
   }
-
-  /// A round video moves to picture in picture; anything else stops.
-  static FeedOffScreen roundToPip(FeedItem item) =>
-      item.round ? FeedOffScreen.pip : FeedOffScreen.stop;
-
-  /// Everything stops.
-  static FeedOffScreen stopOffScreen(FeedItem item) => FeedOffScreen.stop;
 
   /// A round video that ends starts the next round video.
   static bool roundsAdvance(FeedItem ended, FeedItem next) =>

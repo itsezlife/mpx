@@ -1,13 +1,14 @@
 import 'package:flutter/foundation.dart';
 import 'package:mpx_player/src/feed/feed_item.dart';
 
-/// The host seam through which the device's network, power and heat reach the
-/// feed: plain [ValueListenable]s in, one [FeedConditions] snapshot out.
+/// The host seam through which the device's network, power, heat and ringer
+/// reach the feed: plain [ValueListenable]s in, one [FeedConditions] snapshot
+/// out.
 ///
 /// The feed reads no platform state. A host passes whatever it already tracks
 /// (the device signals of the `mpx` package, its own plugin, a settings
 /// toggle); an input left out keeps its neutral value (unmetered, not saving,
-/// nominal). The snapshot is what the autoplay gate and the list planner
+/// nominal, not silenced). The snapshot is what the autoplay gate and the list planner
 /// weigh, and [metered] and [stressed] are the inputs the core's
 /// `PlaybackActivity` takes to hold staged preloads back
 /// (`meteredNetwork`, `thermalStress`, with [powerSaving] as `lowPower`).
@@ -21,10 +22,12 @@ final class FeedSignals extends ChangeNotifier
     ValueListenable<FeedNetwork>? network,
     ValueListenable<bool>? powerSaving,
     ValueListenable<FeedThermal>? thermal,
+    ValueListenable<bool>? silenced,
   }) : _network = network,
        _powerSaving = powerSaving,
        _thermal = thermal,
-       _value = _read(network, powerSaving, thermal);
+       _silenced = silenced,
+       _value = _read(network, powerSaving, thermal, silenced);
 
   /// Creates a seam over inputs of the host's own types, mapped with
   /// [toNetwork] and [toThermal]: for signals whose enums mirror these (the
@@ -35,6 +38,7 @@ final class FeedSignals extends ChangeNotifier
     ValueListenable<bool>? powerSaving,
     ValueListenable<T>? thermal,
     FeedThermal Function(T value)? toThermal,
+    ValueListenable<bool>? silenced,
   }) {
     assert(
       network == null || toNetwork != null,
@@ -48,12 +52,14 @@ final class FeedSignals extends ChangeNotifier
       network: network == null ? null : _Mapped(network, toNetwork!),
       powerSaving: powerSaving,
       thermal: thermal == null ? null : _Mapped(thermal, toThermal!),
+      silenced: silenced,
     );
   }
 
   final ValueListenable<FeedNetwork>? _network;
   final ValueListenable<bool>? _powerSaving;
   final ValueListenable<FeedThermal>? _thermal;
+  final ValueListenable<bool>? _silenced;
   FeedConditions _value;
   bool _following = false;
 
@@ -61,17 +67,19 @@ final class FeedSignals extends ChangeNotifier
     ValueListenable<FeedNetwork>? network,
     ValueListenable<bool>? powerSaving,
     ValueListenable<FeedThermal>? thermal,
+    ValueListenable<bool>? silenced,
   ) => FeedConditions(
     network: network?.value ?? FeedNetwork.unmetered,
     powerSaving: powerSaving?.value ?? false,
     thermal: thermal?.value ?? FeedThermal.nominal,
+    silenced: silenced?.value ?? false,
   );
 
   /// The conditions now. Read fresh while nobody listens, so a snapshot taken
   /// without a listener is never stale.
   @override
   FeedConditions get value =>
-      _following ? _value : _read(_network, _powerSaving, _thermal);
+      _following ? _value : _read(_network, _powerSaving, _thermal, _silenced);
 
   /// Whether the network costs the user (metered or roaming), as a listenable
   /// for the core's `meteredNetwork` pause layer.
@@ -110,18 +118,23 @@ final class FeedSignals extends ChangeNotifier
   void _follow(bool on) {
     if (on == _following) return;
     _following = on;
-    for (final input in <Listenable?>[_network, _powerSaving, _thermal]) {
+    for (final input in <Listenable?>[
+      _network,
+      _powerSaving,
+      _thermal,
+      _silenced,
+    ]) {
       if (on) {
         input?.addListener(_changed);
       } else {
         input?.removeListener(_changed);
       }
     }
-    if (on) _value = _read(_network, _powerSaving, _thermal);
+    if (on) _value = _read(_network, _powerSaving, _thermal, _silenced);
   }
 
   void _changed() {
-    final next = _read(_network, _powerSaving, _thermal);
+    final next = _read(_network, _powerSaving, _thermal, _silenced);
     if (next == _value) return;
     _value = next;
     notifyListeners();

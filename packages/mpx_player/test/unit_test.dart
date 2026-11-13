@@ -6,6 +6,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'audio/audio_focus_contract_test.dart' as audio_focus_contract_test;
 import 'audio/audio_owner_test.dart' as audio_owner_test;
 import 'backend/fake_player_engine_contract_test.dart'
     as fake_player_engine_contract_test;
@@ -19,6 +20,7 @@ import 'pool/player_pool_test.dart' as player_pool_test;
 import 'widget/player_view_test.dart' as player_view_test;
 
 void main() {
+  group('audio_focus_contract_test', audio_focus_contract_test.main);
   group('audio_owner_test', audio_owner_test.main);
   group(
     'fake_player_engine_contract_test',

@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- Breaking: `FeedPolicy` keeps only knobs the feed reads. Removed: the
+  start buffer, forward buffer cap, resolution cap and quality rule (they
+  come back with a native player backend), off-screen behaviour (with
+  picture in picture), tray preload and diagnostics hooks (with their
+  consumers), and exclusive sound (the player pool's own rule).
+- `FeedPolicy.initialMute` sets a pager's starting mute; following the
+  ringer reads `FeedConditions.silenced` (`FeedSignals.silenced`) until
+  the user toggles.
+- `FeedPolicy.pausingLayers` and `preloadBackOffLayers` are read from the
+  scope's clock: nothing plays, or no preload starts, while one is set.
+  `FeedPager.held` pauses the page shown.
+- `FeedPolicy.heavyUnloadViewports`: a cell further from view
+  (`FeedVisibility.viewportsAway`) is `FeedItemState.released`.
+- Breaking: `FeedController.muted` is gone; a pager's mute is
+  `FeedController.pager.muted`, and only a pager takes a start page, mute
+  or advance callback. `FeedItemState.clip` is the profile a list clip
+  attaches with.
+- `FeedController` frees the decisions it drops, and finds an item's facts
+  by index without scanning every registration.
+- `AudioFocusContract` in `testing.dart`, run against `NoAudioFocus` and
+  `FakeAudioFocus`.
 - `FeedController` and `FeedSlot`: feed playback inside any host
   scrollable. Slots measure their own visible share against every enclosing
   viewport; the controller plans per frame, holds the preloads and the
