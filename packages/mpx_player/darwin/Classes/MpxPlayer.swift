@@ -2,6 +2,7 @@ import AVFoundation
 import QuartzCore
 import CoreVideo
 import Foundation
+import os.log
 
 #if os(iOS)
   import Flutter
@@ -21,6 +22,16 @@ import Foundation
 /// Every method runs on the main thread. State goes to Dart as whole
 /// snapshots through [report] on each change and every 100 ms while playing;
 /// Dart extrapolates the playhead in between and slews it onto each report.
+/// The players' lifecycle in the system log, at debug level, under the
+/// `mpx_player` category: what a failure seen only on a device is traced by.
+enum MpxPlayerLog {
+  static let log = OSLog(subsystem: "dev.mpx.player", category: "mpx_player")
+
+  static func debug(_ message: String) {
+    os_log("%{public}@", log: log, type: .debug, message)
+  }
+}
+
 final class MpxPlayer: NSObject, FlutterTexture {
   let id: Int64
   private(set) var textureId: Int64 = 0
@@ -102,6 +113,7 @@ final class MpxPlayer: NSObject, FlutterTexture {
   // --- Commands --------------------------------------------------------------
 
   func play() {
+    MpxPlayerLog.debug("player \(id) play")
     playing = true
     guard prepared, failure == nil else { return report(snapshot()) }
     if ended {
@@ -114,6 +126,7 @@ final class MpxPlayer: NSObject, FlutterTexture {
   }
 
   func pause() {
+    MpxPlayerLog.debug("player \(id) pause")
     playing = false
     player.pause()
     wake()
@@ -121,6 +134,7 @@ final class MpxPlayer: NSObject, FlutterTexture {
   }
 
   func seek(toUs us: Int64, id: Int64) {
+    MpxPlayerLog.debug("player \(self.id) seek \(us / 1000) ms")
     guard prepared else {
       // Not ready yet: the start seek takes it.
       startAtUs = max(0, us)
@@ -131,6 +145,7 @@ final class MpxPlayer: NSObject, FlutterTexture {
   }
 
   func setSpeed(_ value: Double) {
+    MpxPlayerLog.debug("player \(id) speed \(value)")
     speed = value
     if prepared && playing && failure == nil { player.rate = Float(value) }
     report(snapshot())
@@ -146,6 +161,7 @@ final class MpxPlayer: NSObject, FlutterTexture {
   }
 
   func dispose() {
+    MpxPlayerLog.debug("player \(id) release")
     if disposed { return }
     disposed = true
     link.stop()

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_player/src/audio/audio_focus.dart';
 import 'package:mpx_player/src/backend/player_backend.dart';
+import 'package:mpx_player/src/player/player_diagnostics.dart';
 import 'package:mpx_player/src/player/player_state.dart';
 
 /// How many players may hold an engine at once: [active] that play and
@@ -487,7 +488,10 @@ final class _Player {
     if (current != null && current.state.value.phase != PlayerPhase.failed) {
       return current;
     }
-    if (current != null) _dropEngine(current);
+    if (current != null) {
+      PlayerDiagnostics.log('pool: $key drops its failed engine for a new one');
+      _dropEngine(current);
+    }
     final wish = state.value;
     final engine = pool._backend.create(key)
       ..setSpeed(wish.speed)
@@ -575,6 +579,10 @@ final class _Player {
   void releaseEngine() {
     final engine = _engine;
     if (engine == null) return;
+    PlayerDiagnostics.log(
+      'pool: the budget releases the engine of $key '
+      '(leases $leases, views $views, playing $isPlaying)',
+    );
     _resumeAt = engine.position;
     _dropEngine(engine);
     if (!disposed) state.value = state.value.released();

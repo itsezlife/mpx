@@ -12,6 +12,7 @@ import 'package:mpx_player/src/backend/player_backend.dart';
 import 'package:mpx_player/src/budget/player_device.dart';
 import 'package:mpx_player/src/native/player_messages.g.dart';
 import 'package:mpx_player/src/native/player_source.dart';
+import 'package:mpx_player/src/player/player_diagnostics.dart';
 import 'package:mpx_player/src/player/player_state.dart';
 
 /// Publishes one ranged resource to the native reader and returns what
@@ -95,7 +96,11 @@ final class NativePlayerBackend implements PlayerBackend {
     bool backgroundAudio = false,
     bool receive = true,
     Stopwatch? clock,
+    Timer Function(void Function() check)? startWatchdog,
   }) : _clock = clock ?? (Stopwatch()..start()),
+       _startWatchdog =
+           startWatchdog ??
+           ((check) => Timer.periodic(_watchdogPeriod, (_) => check())),
        _host = host,
        _publish = publish,
        _readerApi = readerApi,
@@ -119,6 +124,36 @@ final class NativePlayerBackend implements PlayerBackend {
 
   // The wall clock the playheads move by between reports; a test's own.
   final Stopwatch _clock;
+
+  /// How often the watchdog looks at the players that play.
+  static const Duration _watchdogPeriod = Duration(seconds: 1);
+
+  /// How long a player that reports playing may go without a report or
+  /// without moving before the watchdog fails it.
+  static const Duration stallTimeout = Duration(seconds: 3);
+
+  final Timer Function(void Function() check) _startWatchdog;
+  Timer? _watchdog;
+
+  // Runs the watchdog while a player plays, and only then.
+  void _watchAdvancing() {
+    final any = _engines.values.any((engine) => engine._advancing);
+    if (any && _watchdog == null && !_disposed) {
+      _watchdog = _startWatchdog(_checkStalls);
+    } else if (!any) {
+      _watchdog?.cancel();
+      _watchdog = null;
+    }
+  }
+
+  void _checkStalls() {
+    if (_disposed) return;
+    final now = _clock.elapsed;
+    for (final engine in List.of(_engines.values)) {
+      engine._checkStall(now);
+    }
+  }
+
   final PlayerHostApi _host;
   final PlayerBytesPublisher _publish;
   final int _readerApi;
@@ -166,6 +201,8 @@ final class NativePlayerBackend implements PlayerBackend {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _watchdog?.cancel();
+    _watchdog = null;
     _lifecycle.dispose();
     for (final engine in _engines.values.toList()) {
       engine.dispose();
@@ -448,6 +485,11 @@ final class _NativePlayerEngine implements PlayerEngine {
   double? _measured;
   // The last report's position and its sampling time, while it moves.
   ({Duration position, int at})? _sample;
+  // For the watchdog: when the last report came, and when the reported
+  // position last moved (or the player last started), on this clock.
+  Duration _reportedAt = Duration.zero;
+  Duration _movedAt = Duration.zero;
+  Duration? _lastReported;
 
   /// The fastest rate a measurement is believed up to.
   static const double _fastestRate = 8;
@@ -562,6 +604,29 @@ final class _NativePlayerEngine implements PlayerEngine {
     return position + Duration(microseconds: (late * _velocity).round());
   }
 
+  // Fails a player that reports playing but stopped: its position has not
+  // moved, or no report came, for [NativePlayerBackend.stallTimeout]. A
+  // platform player whose decoders went away without an error keeps saying
+  // it plays; this makes that a failure the viewer shows and can retry.
+  void _checkStall(Duration now) {
+    if (_disposed || !_advancing || _id == null) return;
+    const timeout = NativePlayerBackend.stallTimeout;
+    if (now - _reportedAt > timeout) {
+      _log('watchdog: no report for ${timeout.inSeconds} s');
+      return _fail(
+        'The platform player of $key stopped: no report for '
+        '${timeout.inSeconds} s while it plays',
+      );
+    }
+    if (now - _movedAt > timeout) {
+      _log('watchdog: position stands still');
+      _fail(
+        'The platform player of $key stopped: it reports playing, but its '
+        'position has not moved for ${timeout.inSeconds} s',
+      );
+    }
+  }
+
   // Takes the rate between the last report and this one, [position] read at
   // [at] on the platform's clock. A wrap (it went back) measures nothing.
   void _measure(Duration position, int at) {
@@ -629,6 +694,7 @@ final class _NativePlayerEngine implements PlayerEngine {
       // engine; the platform player is all that is left.
       if (_disposed) return backend._send(backend._host.dispose(id));
       _id = id;
+      _log('created on the platform (${source.mimeType})');
       _catchUp(id, sent);
       backend._register(id, this);
     } on Object catch (error) {
@@ -700,23 +766,32 @@ final class _NativePlayerEngine implements PlayerEngine {
     _sample = snapshot.advancing
         ? (position: reported, at: snapshot.sampledAtUs)
         : null;
+    final now = _backend._clock.elapsed;
+    _reportedAt = now;
+    if (!continuous || reported != _lastReported) _movedAt = now;
+    _lastReported = reported;
     _advancing = snapshot.advancing;
     _phase = phase;
     if (_phase == PlayerPhase.failed) {
       _error =
           'The platform player failed playing $key: '
           '${snapshot.error ?? 'it gave no reason'}';
-      _closeNative();
+      _log('$_error');
+      _advancing = false;
+      _closeNative('the platform player failed');
     }
     _emit();
+    _backend._watchAdvancing();
   }
 
   // The decoder of the chosen source's codec failed: that codec is not
   // tried again on this device, and the next source prepares from where
   // this one was.
   void _retryAfterDecoderFailure() {
+    _log('decoder ${_codec ?? '-'} failed; trying the next source');
     _seekTarget ??= position;
-    _closeNative();
+    _advancing = false;
+    _closeNative('its decoder failed');
     _phase = PlayerPhase.preparing;
     _last = null;
     _emit();
@@ -724,16 +799,24 @@ final class _NativePlayerEngine implements PlayerEngine {
   }
 
   void _fail(Object error) {
+    _log('failed: $error');
     _phase = PlayerPhase.failed;
     _error = error;
-    _closeNative();
+    _advancing = false;
+    _closeNative('failed');
     _emit();
+    _backend._watchAdvancing();
   }
 
+  void _log(String message) =>
+      PlayerDiagnostics.log('engine ${_id ?? '-'} ($key): $message');
+
   // Lets go of the platform player and the publication, keeping this
-  // engine's state.
-  void _closeNative() {
+  // engine's state. [reason] goes to the diagnostics: a platform player that
+  // went away while shown is traced to who let it go.
+  void _closeNative(String reason) {
     final id = _id;
+    if (id != null) _log('releasing the platform player: $reason');
     final unpublish = _unpublish;
     final stream = _stream;
     _id = null;
@@ -872,8 +955,10 @@ final class _NativePlayerEngine implements PlayerEngine {
   @override
   void dispose() {
     if (_disposed) return;
-    _closeNative();
+    _closeNative('the engine was disposed');
     _disposed = true;
+    _advancing = false;
+    _backend._watchAdvancing();
   }
 }
 

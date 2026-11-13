@@ -117,6 +117,32 @@ void main() {
     });
   });
 
+  group('a viewer opened and closed in quick turns', () {
+    test('keeps one engine, attached and playing, through every turn and '
+        'speed change', () async {
+      PlayerLease? open;
+      for (var turn = 0; turn < 6; turn++) {
+        final lease = pool.lease(a)
+          ..setSpeed(turn.isEven ? 2 : 0.5)
+          ..seekTo(Duration(seconds: turn))
+          ..play();
+        // The last viewer lets go after the next one took the player.
+        open?.release();
+        open = lease;
+        await settle();
+        lease.setSpeed(1.5);
+        await settle();
+      }
+
+      expect(backend.created, hasLength(1));
+      final engine = backend.created.single;
+      expect(engine.isDisposed, isFalse);
+      expect(open!.state.value.playing, isTrue);
+      expect(open.state.value.phase, PlayerPhase.ready);
+      open.release();
+    });
+  });
+
   group('a failed player', () {
     test('keeps its error through a pause, a speed change and the release '
         'of its last lease', () async {

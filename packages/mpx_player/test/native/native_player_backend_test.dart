@@ -37,6 +37,7 @@ void main() {
     Map<MediaKey, List<PlayerSource>>? sources,
     bool backgroundAudio = false,
     Stopwatch? clock,
+    void Function()? Function(void Function() check)? watchdog,
   }) {
     host = simulated;
     final made = NativePlayerBackend.over(
@@ -61,6 +62,12 @@ void main() {
       backgroundAudio: backgroundAudio,
       receive: false,
       clock: clock,
+      startWatchdog: watchdog == null
+          ? null
+          : (check) {
+              watchdog(check);
+              return _NoTimer();
+            },
     );
     simulated.receiver = made.receiver;
     return made;
@@ -444,6 +451,68 @@ void main() {
       expect(engine.state.value.phase, PlayerPhase.ready);
       expect(engine.state.value.error, isNull);
       expect(engine.state.value.speed, 0.5);
+    });
+
+    group('a player that stops without a word', () {
+      late void Function() check;
+
+      setUp(() {
+        backend.dispose();
+        backend = backendOver(
+          SimulatedHost()..now = () => clock.elapsedMicroseconds,
+          clock: clock,
+          watchdog: (run) {
+            check = run;
+            return null;
+          },
+        );
+      });
+
+      test('reporting playing while its position stands still fails, saying '
+          'so', () async {
+        final engine = await playing();
+        final player = host.live.single;
+        for (var i = 0; i < 40; i++) {
+          clock.advance(const Duration(milliseconds: 100));
+          player.report();
+          await settle();
+          check();
+        }
+
+        expect(engine.state.value.phase, PlayerPhase.failed);
+        expect(
+          '${engine.state.value.error}',
+          allOf(contains('stopped'), contains('$clip')),
+        );
+      });
+
+      test('falling silent while it plays fails too', () async {
+        final engine = await playing();
+        clock.advance(const Duration(seconds: 4));
+        check();
+
+        expect(engine.state.value.phase, PlayerPhase.failed);
+        expect('${engine.state.value.error}', contains('no report'));
+      });
+
+      test('a paused player, or one that moves, is left alone', () async {
+        final engine = await playing();
+        final player = host.live.single;
+        for (var i = 0; i < 40; i++) {
+          clock.advance(const Duration(milliseconds: 100));
+          player
+            ..positionUs += 100000
+            ..report();
+          await settle();
+          check();
+        }
+        engine.pause();
+        await settle();
+        clock.advance(const Duration(seconds: 10));
+        check();
+
+        expect(engine.state.value.phase, PlayerPhase.ready);
+      });
     });
 
     test('a seek still jumps, back as well', () async {
@@ -997,4 +1066,16 @@ final class _ManualClock implements Stopwatch {
 
   @override
   void stop() {}
+}
+
+/// A timer that never fires: the test runs the watchdog's check itself.
+final class _NoTimer implements Timer {
+  @override
+  void cancel() {}
+
+  @override
+  bool get isActive => true;
+
+  @override
+  int get tick => 0;
 }

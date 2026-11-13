@@ -21,6 +21,13 @@
 - A failure says where it came from (the platform player and its reason, no
   playable source with the decoders that failed, opening the player), and
   the platform players log the whole error.
+- A watchdog fails a player that reports playing but stops: no report, or a
+  position that does not move, for 3 s (`NativePlayerBackend.stallTimeout`).
+- `PlayerDiagnostics`: an opt-in lifecycle log (engines made, platform
+  players released and why, the budget, the watchdog); the platform players
+  log create, surface, play, pause, seek, speed and release at debug level.
+- Android clears only the surface it holds when the engine takes one back,
+  so a late cleanup never clears a newer surface.
 - Android fixes from device runs: the JNI library is 16 KB page aligned;
   the playhead reads the duration once a pass ends and holds a settled
   seek; `PictureInPicture.stop` expands the window.

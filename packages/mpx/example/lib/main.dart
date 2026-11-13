@@ -76,6 +76,9 @@ Future<PlayerPool?> _players(MpxStack stack) async {
   if (!NativeRangedReaders.isAvailable) return null;
   final ranged = RangedBytes(store: stack.store, client: stack.client);
   if (!ranged.isSupported) return null;
+  // The example logs the players' lifecycle, so a problem seen on a device
+  // can be traced in its log.
+  PlayerDiagnostics.enabled = true;
   final backend = NativePlayerBackend(
     readers: NativeRangedReaders(ranged),
     sourcesOf: (key) => switch (_fileOf(key)) {

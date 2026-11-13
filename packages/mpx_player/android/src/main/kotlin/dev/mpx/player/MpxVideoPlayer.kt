@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.Surface
 import android.os.SystemClock
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -67,7 +68,12 @@ internal class MpxVideoPlayer(
             }
         }
 
+    // The surface the player draws into now; null while the engine has taken
+    // it back. Declared before init, which attaches the first one.
+    private var surface: Surface? = null
+
     init {
+        Log.d(TAG, "player $id create")
         val mediaSource = mediaSourceOf(source, parts)
         exo =
             ExoPlayer.Builder(context, renderers)
@@ -91,17 +97,23 @@ internal class MpxVideoPlayer(
         producer.setCallback(
             object : TextureRegistry.SurfaceProducer.Callback {
                 override fun onSurfaceAvailable() {
-                    if (!disposed) exo.setVideoSurface(producer.surface)
+                    if (!disposed) attachSurface("available")
                 }
 
                 // Under memory pressure the engine drops the surface and hands
                 // a new one over on resume; the player must let go meanwhile.
+                // Only the surface it holds is cleared: a cleanup that comes
+                // after a newer surface was attached never clears that one.
                 override fun onSurfaceCleanup() {
-                    if (!disposed) exo.setVideoSurface(null)
+                    if (disposed) return
+                    val held = surface ?: return
+                    Log.d(TAG, "player $id clears surface $held")
+                    exo.clearVideoSurface(held)
+                    surface = null
                 }
             },
         )
-        exo.setVideoSurface(producer.surface)
+        attachSurface("create")
         exo.setMediaSource(mediaSource, settings.startAtUs / 1000)
         exo.prepare()
         send()
@@ -132,8 +144,17 @@ internal class MpxVideoPlayer(
             )
     }
 
+    private fun attachSurface(reason: String) {
+        val next = producer.surface
+        if (next === surface) return
+        Log.d(TAG, "player $id surface $next ($reason), texture ${producer.id()}")
+        surface = next
+        exo.setVideoSurface(next)
+    }
+
     fun play() {
         if (disposed) return
+        Log.d(TAG, "player $id play")
         // Playing at the end of a pass that does not loop starts it again.
         if (exo.playbackState == Player.STATE_ENDED) exo.seekTo(0)
         exo.playWhenReady = true
@@ -142,6 +163,7 @@ internal class MpxVideoPlayer(
 
     fun pause() {
         if (disposed) return
+        Log.d(TAG, "player $id pause")
         exo.playWhenReady = false
         send()
     }
@@ -152,12 +174,14 @@ internal class MpxVideoPlayer(
         // loader until they land.
         readers.cancelAll()
         seekId = id
+        Log.d(TAG, "player ${this.id} seek ${positionUs / 1000} ms")
         exo.seekTo(positionUs / 1000)
         send()
     }
 
     fun setSpeed(speed: Double) {
         if (disposed) return
+        Log.d(TAG, "player $id speed $speed")
         exo.playbackParameters = PlaybackParameters(speed.toFloat())
         send()
     }
@@ -194,6 +218,7 @@ internal class MpxVideoPlayer(
 
     fun dispose() {
         if (disposed) return
+        Log.d(TAG, "player $id release")
         disposed = true
         handler.removeCallbacks(tick)
         // Wake the loader before release waits for it.
@@ -206,6 +231,7 @@ internal class MpxVideoPlayer(
     // --- Player.Listener ---------------------------------------------------
 
     override fun onPlaybackStateChanged(playbackState: Int) {
+        Log.d(TAG, "player $id state $playbackState")
         if (playbackState == Player.STATE_READY) prepared = true
         send()
     }
