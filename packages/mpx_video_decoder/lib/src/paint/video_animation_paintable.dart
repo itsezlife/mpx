@@ -35,6 +35,17 @@ import 'package:mpx_video_decoder/src/playback/video_frame_scheduler.dart';
 /// step larger than [resumeGap], or backwards, adds nothing: the surface did
 /// not paint it for that long ("freeze and continue").
 ///
+/// ## Shared phase
+///
+/// The first paint that steps the clip, and one after a step larger than
+/// [resumeGap] (drawn over while the clock ran on), move the clip to the
+/// position another playback of the content reported
+/// (`AssetPaintContext.phase`, [VideoFrameLease.skipTo]), so the same clip
+/// at two sizes shows the same frame; the frames before it are decoded and
+/// dropped, and the frame on show stays until it is there. After
+/// [playbackResumed] or [rewind] it goes on from its own frame. Each paint
+/// that steps it reports where its clip is.
+///
 /// ## Half frame rate
 ///
 /// A paint at half rate (`AssetPaintContext.frameStepFor` is 2 for the clip's
@@ -92,6 +103,8 @@ final class VideoAnimationPaintable extends AssetPaintable {
   bool _holding = false;
   bool _failed = false;
   bool _disposed = false;
+  // No paint has stepped it yet: its first may take the shared phase.
+  bool _fresh = true;
 
   @override
   AtlasSprite? get sprite => _lease?.sprite;
@@ -127,7 +140,10 @@ final class VideoAnimationPaintable extends AssetPaintable {
 
   // A new lease rewinds the clip (see _beginPass).
   @override
-  void rewind() => _beginPass();
+  void rewind() {
+    _fresh = false;
+    _beginPass();
+  }
 
   @override
   void playbackResumed() => _lastTime = null;
@@ -200,10 +216,13 @@ final class VideoAnimationPaintable extends AssetPaintable {
     }
     _scheduler.want(
       lease,
-      _playedAt(context.time),
+      _playedAt(context, lease),
       onCanvas: onCanvas,
       frameStep: context.frameStepFor(_clip.info.frameRate),
     );
+    if (context.loop || !lease.isPassComplete) {
+      context.phase?.report(this, lease.passPosition, context.time);
+    }
     if (!context.loop && lease.isPassComplete) {
       _holding = true;
       if (context.restFrame == AssetRestFrame.last) {
@@ -216,14 +235,27 @@ final class VideoAnimationPaintable extends AssetPaintable {
     }
   }
 
-  Duration _playedAt(Duration time) {
+  Duration _playedAt(AssetPaintContext context, VideoFrameLease lease) {
+    final time = context.time;
     final last = _lastTime;
     _lastTime = time;
-    if (last != null) {
-      final step = time - last;
-      if (!step.isNegative && step <= resumeGap) _played += step;
+    if (last == null) {
+      if (_fresh) _join(context, lease);
+    } else if (time - last case final step when !step.isNegative) {
+      if (step <= resumeGap) {
+        _played += step;
+      } else {
+        _join(context, lease);
+      }
     }
+    _fresh = false;
     return _played;
+  }
+
+  // Moves the clip to the position another playback of the content reported.
+  void _join(AssetPaintContext context, VideoFrameLease lease) {
+    final position = context.phase?.positionFor(this, context.time);
+    if (position != null) lease.skipTo(position);
   }
 
   @override

@@ -281,6 +281,97 @@ void main() {
       return (left: left, after: writer.indices.skip(posted).toList());
     }
 
+    group('the shared phase', () {
+      late AssetPlaybackPhase phase;
+      final other = Object();
+
+      setUp(() => phase = AssetPlaybackPhase());
+
+      Future<void> playIn(VideoAnimationPaintable p, int from, int to) async {
+        for (var ms = from; ms < to; ms += 16) {
+          p.advancePlayback(
+            AssetPaintContext(
+              time: Duration(milliseconds: ms),
+              phase: phase,
+            ),
+          );
+          await tick();
+        }
+      }
+
+      test('a clip that starts takes the position another playback of the '
+          'content is at, showing none of the frames before it', () async {
+        // Another playback of the clip is at its frame 6.
+        phase.report(other, const Duration(milliseconds: 200), Duration.zero);
+        final p = paintable();
+        addTearDown(p.dispose);
+
+        await playIn(p, 0, 150);
+
+        expect(writer.indices, isNotEmpty);
+        expect(writer.indices.first, 6);
+        for (var i = 1; i < writer.indices.length; i++) {
+          expect(
+            writer.indices[i],
+            greaterThanOrEqualTo(writer.indices[i - 1]),
+          );
+        }
+      });
+
+      test('it reports how far into its pass its clip is', () async {
+        final p = paintable();
+        addTearDown(p.dispose);
+
+        await playIn(p, 0, 200);
+
+        expect(
+          phase.positionFor(other, const Duration(milliseconds: 192)),
+          const Duration(milliseconds: 192),
+        );
+      });
+
+      test('painted again after the clock ran on without it, it takes the '
+          'phase', () async {
+        final p = paintable();
+        addTearDown(p.dispose);
+        await playIn(p, 0, 200);
+        expect(writer.indices.last, lessThan(7));
+
+        // Drawn over for 1.8 s; another playback is in frame 9 now.
+        for (var i = 0; i < 1800 ~/ 16; i++) {
+          await tick();
+        }
+        phase.report(
+          other,
+          const Duration(milliseconds: 320),
+          const Duration(milliseconds: 2000),
+        );
+        final posted = writer.indices.length;
+        await playIn(p, 2000, 2100);
+
+        // Frame 9, or 10 when the clock passed 9 while it was decoded.
+        expect(writer.indices.skip(posted).first, inInclusiveRange(9, 10));
+      });
+
+      test('resumed by its binding, it goes on from its own frame', () async {
+        final p = paintable();
+        addTearDown(p.dispose);
+        await playIn(p, 0, 200);
+        final left = writer.indices.last;
+
+        phase.report(
+          other,
+          const Duration(milliseconds: 300),
+          const Duration(milliseconds: 2000),
+        );
+        p.playbackResumed();
+        final posted = writer.indices.length;
+        await playIn(p, 2000, 2100);
+
+        expect(writer.indices.skip(posted).first, left + 1);
+      });
+    });
+
     test('shows the frame it left on at once and plays on from the next '
         'one, frame by frame', () async {
       final p = paintable();
@@ -488,8 +579,8 @@ void main() {
       expect(first.draws.single.image.width, 16);
     });
 
-    // A sibling binding borrows the first frame, never the frame
-    // the clip is at.
+    // A foreground sibling binding borrows the first frame, never the
+    // frame the clip is at.
     test('lends its first frame as a still once frames are drawn', () async {
       final p = paintable();
       addTearDown(p.dispose);
