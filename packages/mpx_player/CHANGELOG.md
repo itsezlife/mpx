@@ -17,6 +17,10 @@
   once.
 - A failed player keeps its error through a pause or a speed change: a
   copied state stays failed with its error, never failed without one.
+- Android applies a speed change at once (AudioTrack playback params).
+- A failure says where it came from (the platform player and its reason, no
+  playable source with the decoders that failed, opening the player), and
+  the platform players log the whole error.
 - Android fixes from device runs: the JNI library is 16 KB page aligned;
   the playhead reads the duration once a pass ends and holds a settled
   seek; `PictureInPicture.stop` expands the window.

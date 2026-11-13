@@ -228,6 +228,15 @@ final class MpxPlayer: NSObject, FlutterTexture {
       startPlaying()
     case .failed:
       failure = item.error?.localizedDescription ?? "The player item failed"
+      // The whole error and its underlying one go to the log: the snapshot
+      // carries one line to Dart, and a failure seen only on a device needs
+      // its cause.
+      let error = item.error as NSError?
+      let underlying = error?.userInfo[NSUnderlyingErrorKey] as? NSError
+      NSLog(
+        "mpx_player: player %lld failed: %@ (underlying: %@)",
+        id, String(describing: error), String(describing: underlying)
+      )
       link.stop()
       report(snapshot())
     default:

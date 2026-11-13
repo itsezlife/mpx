@@ -35,6 +35,10 @@ final class SimulatedHost implements PlayerHostApi {
   final List<String> calls = [];
   final Completer<void> _hold = Completer<void>()..complete();
   Completer<void>? createGate;
+
+  /// Thrown by the next create calls, standing for a platform that cannot
+  /// make a player; null for none.
+  Error? createError;
   int _nextId = 1;
   bool pictureInPictureSupported = true;
   bool? backgroundAudio;
@@ -58,6 +62,8 @@ final class SimulatedHost implements PlayerHostApi {
     NativePlayerSettings settings,
   ) async {
     await (createGate?.future ?? _hold.future);
+    final error = createError;
+    if (error != null) throw error;
     final id = _nextId++;
     final player = SimulatedPlayer(this, id, source, settings);
     players[id] = player;

@@ -603,7 +603,75 @@ void main() {
       }
 
       expect(engine.state.value.phase, PlayerPhase.failed);
-      expect(engine.state.value.error, isNotNull);
+      expect(
+        '${engine.state.value.error}',
+        allOf(contains('No source'), contains('$clip')),
+      );
+    });
+
+    test('a failure the platform reports says it came from the platform '
+        'player, with its reason', () async {
+      backend = backendOver(SimulatedHost(unplayable: {'clip'}));
+      addTearDown(backend.dispose);
+      final engine = backend.create(clip)..prepare();
+      for (var i = 0; i < 10; i++) {
+        await settle();
+      }
+
+      expect(engine.state.value.phase, PlayerPhase.failed);
+      expect(
+        '${engine.state.value.error}',
+        allOf(
+          contains('platform player'),
+          contains('$clip'),
+          contains('cannot open'),
+        ),
+      );
+    });
+
+    test('a platform that cannot make a player fails the engine, saying '
+        'so', () async {
+      backend = backendOver(
+        SimulatedHost()..createError = StateError('no surface'),
+      );
+      addTearDown(backend.dispose);
+      final engine = backend.create(clip)..prepare();
+      for (var i = 0; i < 10; i++) {
+        await settle();
+      }
+
+      expect(engine.state.value.phase, PlayerPhase.failed);
+      expect(
+        '${engine.state.value.error}',
+        allOf(contains('Opening'), contains('$clip'), contains('no surface')),
+      );
+    });
+
+    test('a decoder that fails on every source ends in a failure naming '
+        'them', () async {
+      backend = backendOver(
+        SimulatedHost(
+          codecOf: {'clip-a': 'avc', 'clip-b': 'hevc'},
+          brokenCodecs: {'avc', 'hevc'},
+        ),
+        sources: {
+          clip: [
+            sourceOf('clip-a', codec: 'avc'),
+            sourceOf('clip-b', codec: 'hevc'),
+          ],
+        },
+      );
+      addTearDown(backend.dispose);
+      final engine = backend.create(clip)..prepare();
+      for (var i = 0; i < 20; i++) {
+        await settle();
+      }
+
+      expect(engine.state.value.phase, PlayerPhase.failed);
+      expect(
+        '${engine.state.value.error}',
+        allOf(contains('No source'), contains('avc'), contains('hevc')),
+      );
     });
   });
 

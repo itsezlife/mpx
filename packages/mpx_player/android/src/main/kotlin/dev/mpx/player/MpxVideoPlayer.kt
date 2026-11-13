@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.os.SystemClock
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -236,6 +237,9 @@ internal class MpxVideoPlayer(
     }
 
     override fun onPlayerError(error: PlaybackException) {
+        // The whole throwable goes to the log: the snapshot carries one line
+        // to Dart, and a failure seen only on a device needs its cause chain.
+        Log.e(TAG, "player $id failed: ${error.errorCodeName}: ${error.message}", error)
         this.error = "${error.errorCodeName}: ${error.message}"
         failedCodec = failedCodecOf(error, exo.videoFormat?.sampleMimeType)
         send()
@@ -313,6 +317,7 @@ internal class MpxVideoPlayer(
 
     companion object {
         const val SCHEME = "mpx-hbc"
+        private const val TAG = "mpx_player"
         private const val TICK_MS = 100L
     }
 }

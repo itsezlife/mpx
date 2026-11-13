@@ -591,7 +591,11 @@ final class _NativePlayerEngine implements PlayerEngine {
       final source = backend._choose(backend._sourcesOf(key), device);
       if (_disposed) return;
       if (source == null) {
-        return _fail(StateError('$key has no source this device plays'));
+        final failed = backend._failedCodecs;
+        return _fail(
+          'No source of $key plays on this device'
+          '${failed.isEmpty ? '' : ' (decoders that failed: ${failed.join(', ')})'}',
+        );
       }
       _codec = source.codec;
       final hls = source.kind == PlayerSourceKind.hls;
@@ -628,7 +632,8 @@ final class _NativePlayerEngine implements PlayerEngine {
       _catchUp(id, sent);
       backend._register(id, this);
     } on Object catch (error) {
-      if (!_disposed) _fail(error);
+      if (!_disposed)
+        _fail('Opening $key on the platform player failed: $error');
     }
   }
 
@@ -698,7 +703,9 @@ final class _NativePlayerEngine implements PlayerEngine {
     _advancing = snapshot.advancing;
     _phase = phase;
     if (_phase == PlayerPhase.failed) {
-      _error = snapshot.error ?? 'The platform player failed';
+      _error =
+          'The platform player failed playing $key: '
+          '${snapshot.error ?? 'it gave no reason'}';
       _closeNative();
     }
     _emit();
