@@ -22,6 +22,9 @@
   layers fed through `PlaybackActivity`, which hold back staged preloads.
 - `AssetFetcherContract` watches the failing fetch before awaiting the
   served one, so a fetcher that fails it first passes.
+- Entries of one content that play at once share their phase
+  (`AssetPlaybackPhase`, `AssetPaintContext.phase`): the same animation at two
+  sizes shows the same frame, and a playing sibling lends its live playback.
 
 ## 0.0.1
 

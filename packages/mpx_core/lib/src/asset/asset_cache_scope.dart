@@ -7,6 +7,7 @@ import 'package:mpx_core/src/asset/asset_binding_base.dart';
 import 'package:mpx_core/src/asset/asset_cache_budgets.dart';
 import 'package:mpx_core/src/asset/asset_paintable.dart';
 import 'package:mpx_core/src/asset/asset_playback.dart';
+import 'package:mpx_core/src/asset/asset_playback_phase.dart';
 import 'package:mpx_core/src/asset/asset_preload.dart';
 import 'package:mpx_core/src/asset/asset_producer.dart';
 import 'package:mpx_core/src/asset/asset_profile.dart';
@@ -43,12 +44,25 @@ import 'package:mpx_core/src/texture/frame_texture_pool.dart';
 /// mode at another size) has reached, placed by the binding's own profile,
 /// instead of a placeholder (see [AssetBinding.paintable]). It borrows that
 /// sibling, which pins it like a binding would, until its own entry catches
-/// up or it detaches. A sibling that plays lends its first-frame still
-/// ([AssetPaintable.firstFrame]), never its live frame, and one with no still
-/// lends nothing: the binding's own entry starts from frame 0, and a frame
-/// from the middle of the sibling's loop would jump back when it arrives. A
-/// clip picked from a grid cell is drawn in a list item at once, at the
-/// cell's pixels, until the item's own decode arrives.
+/// up or it detaches. A sibling that plays lends its live playback: the
+/// entries of a key share their phase (below), so the borrower's own entry
+/// goes on from the frame the sibling showed. A foreground binding
+/// (`AssetProfile.foreground`) plays its own pass from frame 0, so a playing
+/// sibling lends it its first-frame still ([AssetPaintable.firstFrame]), or
+/// nothing when it has none. A clip picked from a grid cell is drawn in a
+/// list item at once, at the cell's pixels, until the item's own decode
+/// arrives.
+///
+/// ## Shared phase
+///
+/// The entries of one key that play at once show the same frame: the scope
+/// keeps an [AssetPlaybackPhase] per key and hands it to every paint that
+/// animates (`AssetPaintContext.phase`). An entry that starts to play while
+/// another of its key plays starts at that one's position, and one its
+/// surfaces stopped painting while it stayed on the clock (drawn over) comes
+/// back at it. One its bindings stopped (held, hidden, off screen) goes on
+/// from its own frame when they play it again. When the last binding of the
+/// entry that set the phase stops playing, the phase stays where it got to.
 ///
 /// An entry with a live binding is pinned: neither the budget, [clearAll] nor
 /// the memory-pressure signal evicts it, so eviction can never invalidate a
@@ -171,6 +185,11 @@ final class AssetCacheScope {
   // Every entry of a key, whatever its spec: the siblings a binding below its
   // first frame borrows a stage from.
   final Map<MediaKey, Set<_Entry>> _byKey = {};
+  // The phase the entries of a key share, while the key has entries.
+  final Map<MediaKey, AssetPlaybackPhase> _phases = {};
+
+  AssetPlaybackPhase _phaseOf(MediaKey key) =>
+      _phases[key] ??= AssetPlaybackPhase();
   // Entries nobody is bound to, per tier, least recently used first.
   final Map<AssetTier, LinkedHashSet<_Entry>> _unpinned = {
     for (final tier in AssetTier.values) tier: LinkedHashSet<_Entry>.identity(),
@@ -265,22 +284,25 @@ final class AssetCacheScope {
     return binding;
   }
 
-  // The sibling of [entry] with the best stage beyond [above], the larger
-  // decode on a tie, or null. A template decode is alpha only, so only an
-  // entry of the same decode mode draws the same picture.
-  _Entry? _siblingOf(_Entry entry, AssetStage above) {
+  // The sibling of [entry] with the best stage beyond [above] as it lends to
+  // [profile], the larger decode on a tie, or null. A template decode is
+  // alpha only, so only an entry of the same decode mode draws the same
+  // picture.
+  _Entry? _siblingOf(_Entry entry, AssetStage above, AssetProfile profile) {
     _Entry? best;
+    AssetStage? bestStage;
     for (final sibling in _byKey[entry.key] ?? const <_Entry>{}) {
+      final stage = sibling.lentStageTo(profile);
       if (identical(sibling, entry) ||
-          sibling.lent == null ||
+          sibling.lentTo(profile) == null ||
           sibling.spec.decodeMode != entry.spec.decodeMode ||
-          sibling.lentStage.index <= above.index) {
+          stage.index <= above.index) {
         continue;
       }
       if (best == null ||
-          sibling.lentStage.index > best.lentStage.index ||
-          (sibling.lentStage == best.lentStage &&
-              _area(sibling) > _area(best))) {
+          stage.index > bestStage!.index ||
+          (stage == bestStage && _area(sibling) > _area(best))) {
+        bestStage = stage;
         best = sibling;
       }
     }
@@ -530,6 +552,7 @@ final class AssetCacheScope {
     final siblings = _byKey[entry.key];
     if (siblings != null && siblings.remove(entry) && siblings.isEmpty) {
       _byKey.remove(entry.key);
+      _phases.remove(entry.key);
     }
     if (entry.paintable != null) {
       _bytes[entry.tier] = _bytes[entry.tier]! - entry.bytes;
@@ -581,17 +604,22 @@ final class _Entry {
   bool get isPinned =>
       bindings.isNotEmpty || preloads.isNotEmpty || borrowers > 0;
 
-  // What a binding of a sibling entry may show of this one. A paintable that
-  // plays may be in the middle of a loop, and the borrower's own entry starts
-  // from frame 0: it is lent as its first-frame still, or not at all.
-  AssetPaintable? get lent => switch (paintable) {
-    final playing? when playing.isAnimated => playing.firstFrame,
+  // What a binding of a sibling entry with [profile] may show of this one:
+  // its paintable, playing or not, since the entries of a key share their
+  // phase. A foreground surface plays its own pass from frame 0, so a
+  // playing paintable lends it its first-frame still, or nothing.
+  AssetPaintable? lentTo(AssetProfile profile) => switch (paintable) {
+    final playing? when playing.isAnimated && profile.foreground =>
+      playing.firstFrame,
     final other => other,
   };
 
-  // The stage of what is lent: a playing paintable's still is a first frame.
-  AssetStage get lentStage =>
-      (paintable?.isAnimated ?? false) ? AssetStage.firstFrame : stage;
+  // The stage of what is lent to [profile]: a still of a playing paintable is
+  // a first frame.
+  AssetStage lentStageTo(AssetProfile profile) =>
+      profile.foreground && (paintable?.isAnimated ?? false)
+      ? AssetStage.firstFrame
+      : stage;
 
   // Whether the paintable keeps its frame: some binding holds it on screen.
   void syncKeep() =>
@@ -601,12 +629,20 @@ final class _Entry {
   bool _playing = false;
 
   // Tells the paintable when its playback goes on after a stop: the first
-  // binding that plays again after none did.
-  void syncPlaying() {
+  // binding that plays again after none did. When the last one stops, the
+  // content's phase stays where this entry got to, if it set it: nothing
+  // plays it on.
+  void syncPlaying(AssetCacheScope scope) {
     final playing = bindings.any((binding) => binding._registered);
     if (playing == _playing) return;
     _playing = playing;
-    if (playing) paintable?.playbackResumed();
+    final shown = paintable;
+    if (shown == null) return;
+    if (playing) {
+      shown.playbackResumed();
+    } else {
+      scope._phases[key]?.stop(shown, scope.clock.now);
+    }
   }
 
   // Whether a binding shows the entry: one is attached and visible.
@@ -800,6 +836,8 @@ final class _EntryBinding extends AssetBindingBase {
   // per attach and paintable, so a hold or a hide in between goes on from
   // the frame it was at.
   AssetPaintable? _rewound;
+  // The paintable this binding plays, while it is registered.
+  AssetPaintable? _playingOn;
   late final _PlaybackTarget _target = _PlaybackTarget(
     clock.policy.frameIntervalFor(spec),
     _onTick,
@@ -842,7 +880,7 @@ final class _EntryBinding extends AssetBindingBase {
     // The sibling's stage as this binding would show it (a profile that does
     // not autoplay waits for the full asset there too) must beat its own.
     if (!isDetached && own.index < AssetStage.firstFrame.index) {
-      if (_scope._siblingOf(entry, own) case final sibling?
+      if (_scope._siblingOf(entry, own, profile) case final sibling?
           when _lentStageOf(sibling).index > own.index) {
         next = sibling;
       }
@@ -856,7 +894,7 @@ final class _EntryBinding extends AssetBindingBase {
 
   // What this binding paints: its entry's paintable, or the borrowed one.
   AssetPaintable? get _shown => switch (_borrowed) {
-    final sibling? => sibling.lent,
+    final sibling? => sibling.lentTo(profile),
     null => entry.paintable,
   };
 
@@ -872,6 +910,9 @@ final class _EntryBinding extends AssetBindingBase {
 
   @override
   bool get animates => profile.animate || _replayed;
+
+  @override
+  AssetPlaybackPhase? get playbackPhase => _scope._phaseOf(key);
 
   @override
   AssetPlayback get playback {
@@ -922,11 +963,11 @@ final class _EntryBinding extends AssetBindingBase {
       ? AssetStage.placeholder
       : of.stage;
 
-  // A sibling's stage as this binding shows what it lends: a playing
-  // sibling lends a first frame.
+  // A sibling's stage as this binding shows what it lends.
   AssetStage _lentStageOf(_Entry sibling) {
     final stage = _stageOf(sibling);
-    return stage.index > sibling.lentStage.index ? sibling.lentStage : stage;
+    final lent = sibling.lentStageTo(profile);
+    return stage.index > lent.index ? lent : stage;
   }
 
   // The entry's own stage as this binding paints it, borrowing aside.
@@ -934,7 +975,7 @@ final class _EntryBinding extends AssetBindingBase {
 
   @override
   AssetPaintable get livePaintable {
-    if (_borrowed case _Entry(:final lent?)) return lent;
+    if (_borrowed?.lentTo(profile) case final lent?) return lent;
     final paintable = entry.paintable;
     if (paintable == null || _ownStage != entry.stage) {
       return _scope.placeholder;
@@ -1003,15 +1044,14 @@ final class _EntryBinding extends AssetBindingBase {
         animates &&
         !_ended &&
         (_shown?.isAnimated ?? false);
-    if (wanted == _registered) return;
-    _registered = wanted;
-    if (wanted) {
-      final shown = _shown;
-      // A foreground surface plays its own pass from the first frame (a
-      // borrowed sibling only lends a still, and never plays).
+    // What starts to play here: on registering, and when the entry's own
+    // paintable takes over from a borrowed one while registered.
+    final shown = wanted ? _shown : null;
+    if (shown != null && !identical(shown, _playingOn)) {
+      // A foreground surface plays its own pass from the first frame; a
+      // borrowed sibling's playback is the sibling's, and is not rewound.
       if (profile.foreground &&
           _borrowed == null &&
-          shown != null &&
           !identical(shown, _rewound)) {
         _rewound = shown;
         shown.rewind();
@@ -1019,13 +1059,18 @@ final class _EntryBinding extends AssetBindingBase {
         // A binding that starts to play wakes a playback another binding of
         // the entry left holding its rest frame; a running one is left
         // alone.
-        shown?.restart();
+        shown.restart();
       }
+    }
+    _playingOn = shown;
+    if (wanted == _registered) return;
+    _registered = wanted;
+    if (wanted) {
       clock.register(_target);
     } else {
       clock.unregister(_target);
     }
-    entry.syncPlaying();
+    entry.syncPlaying(_scope);
   }
 
   @override
@@ -1038,7 +1083,7 @@ final class _EntryBinding extends AssetBindingBase {
     if (_registered) {
       _registered = false;
       clock.unregister(_target);
-      entry.syncPlaying();
+      entry.syncPlaying(_scope);
     }
     _scope._detached(this);
   }

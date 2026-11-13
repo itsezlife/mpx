@@ -123,6 +123,7 @@ Future<ui.Color> _centreAt(
   bool animate = true,
   bool loop = true,
   AssetRestFrame rest = AssetRestFrame.first,
+  AssetPlaybackPhase? phase,
 }) async {
   final recorder = ui.PictureRecorder();
   paintable.paint(
@@ -133,6 +134,7 @@ Future<ui.Color> _centreAt(
       animate: animate,
       loop: loop,
       restFrame: rest,
+      phase: phase,
     ),
   );
   final image = await recorder.endRecording().toImage(16, 16);
@@ -155,10 +157,25 @@ Future<ui.Color> _settledAt(
   bool animate = true,
   bool loop = true,
   AssetRestFrame rest = AssetRestFrame.first,
+  AssetPlaybackPhase? phase,
 }) async {
-  await _centreAt(paintable, time, animate: animate, loop: loop, rest: rest);
+  await _centreAt(
+    paintable,
+    time,
+    animate: animate,
+    loop: loop,
+    rest: rest,
+    phase: phase,
+  );
   await Future<void>.delayed(const Duration(milliseconds: 20));
-  return _centreAt(paintable, time, animate: animate, loop: loop, rest: rest);
+  return _centreAt(
+    paintable,
+    time,
+    animate: animate,
+    loop: loop,
+    rest: rest,
+    phase: phase,
+  );
 }
 
 const ui.Color _red = ui.Color(0xFFFF0000);
@@ -262,6 +279,7 @@ void main() {
             animate = true,
             loop = false,
             rest = AssetRestFrame.first,
+            phase,
           }) async {
             final colour = await _settledAt(
               paintable,
@@ -269,6 +287,7 @@ void main() {
               animate: animate,
               loop: loop,
               rest: rest,
+              phase: phase,
             );
             return [_red, _blue, _green].indexOf(colour);
           },

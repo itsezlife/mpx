@@ -17,6 +17,7 @@ void main() {
             animate = true,
             loop = false,
             rest = AssetRestFrame.first,
+            phase,
           }) async {
             AssetPlaybackContract.paintOnce(
               fake,
@@ -24,6 +25,7 @@ void main() {
               animate: animate,
               loop: loop,
               rest: rest,
+              phase: phase,
             );
             return fake.frameShown;
           },

@@ -131,6 +131,11 @@ final class PlayingImagePaintable extends AssetPaintable {
   /// What a frame at or under [_shortestFrame] is shown for.
   static const Duration _defaultFrame = Duration(milliseconds: 100);
 
+  /// The largest step of the clock between two paints after which the image
+  /// goes on from its own frame; after a longer one it takes the shared
+  /// phase, as the other playing paintables do.
+  static const Duration resumeGap = Duration(milliseconds: 500);
+
   final ui.Codec _codec;
   final int _frameCount;
   // The index of the frame the codec decodes next: it wraps after the last.
@@ -159,6 +164,16 @@ final class PlayingImagePaintable extends AssetPaintable {
   int _index = 0;
   bool _holding = false;
   bool _heldOnLast = false;
+  // Where each frame shown so far begins within the pass, by index, and the
+  // pass's length once its last frame was shown: the position it reports.
+  final List<Duration> _offsets = [Duration.zero];
+  Duration? _passLength;
+  // No paint has stepped it yet: its first may take the shared phase.
+  bool _fresh = true;
+  // How much playback is left to decode and drop to reach the shared phase,
+  // and the frame shown meanwhile; null when it is not catching up.
+  Duration? _skip;
+  ui.Image? _cover;
 
   @override
   AtlasSprite? get sprite => null;
@@ -194,6 +209,8 @@ final class PlayingImagePaintable extends AssetPaintable {
       _shownBefore = at - since;
     }
     _shownSince = null;
+    // Not a gap to take the shared phase over: it goes on from its frame.
+    _playedAt = null;
   }
 
   // Plays another pass: from the held first frame, or from the first frame
@@ -204,10 +221,7 @@ final class PlayingImagePaintable extends AssetPaintable {
     if (_heldOnLast) {
       final first = _ahead!;
       _ahead = null;
-      _shown.dispose();
-      _shown = first.image;
-      _shownFor = _durationOf(first);
-      _index = 0;
+      _step(first);
     }
     _shownSince = null;
     _shownBefore = Duration.zero;
@@ -221,7 +235,13 @@ final class PlayingImagePaintable extends AssetPaintable {
   /// the first stays up, as a late decode keeps any frame up.
   @override
   void rewind() {
+    _fresh = false;
+    _toFirst();
+  }
+
+  void _toFirst() {
     if (_disposed) return;
+    _endSkip();
     _holding = false;
     _heldOnLast = false;
     _ahead?.image.dispose();
@@ -238,7 +258,8 @@ final class PlayingImagePaintable extends AssetPaintable {
   @override
   void paint(Canvas canvas, Rect rect, AssetPaintContext context) {
     if (context.animate) _advanceTo(context);
-    _ImagePainter.paint(canvas, rect, _shown, context, template: _template);
+    final image = _cover ?? _shown;
+    _ImagePainter.paint(canvas, rect, image, context, template: _template);
   }
 
   void _advanceTo(AssetPaintContext context) {
@@ -246,7 +267,26 @@ final class PlayingImagePaintable extends AssetPaintable {
       if (!context.loop) return;
       _resume();
     }
-    final now = _playedAt = context.time;
+    final now = context.time;
+    final last = _playedAt;
+    final phase = context.phase;
+    if (last == null) {
+      if (_fresh) _join(phase, now, now);
+    } else if (now - last case final step when !step.isNegative) {
+      // While catching up the phase moves on with the clock; a longer step
+      // than a frame's lateness is the image drawn over while the clock ran.
+      if (_skip case final skip?) {
+        _skip = skip + step;
+      } else if (step > resumeGap) {
+        _join(phase, now, last);
+      }
+    }
+    _fresh = false;
+    _playedAt = now;
+    if (_skip != null) {
+      _catchUp();
+      if (_skip != null) return;
+    }
     // A clock started again is behind the time the frame went up at: the
     // frame counts from now, rather than freezing until the clock catches up.
     // After a stop it counts from now less the time it was up before.
@@ -263,14 +303,91 @@ final class PlayingImagePaintable extends AssetPaintable {
         return;
       }
       _ahead = null;
-      _shown.dispose();
-      _shown = ahead.image;
-      _index = passOver ? 0 : _index + 1;
       final due = since + _shownFor;
-      _shownFor = _durationOf(ahead);
+      _step(ahead);
       _shownSince = now - due < _shownFor ? due : now;
     }
     _decodeAhead();
+    if (_shownSince case final shown?) {
+      phase?.report(this, _offsets[_index] + (now - shown), now);
+    }
+  }
+
+  // Shows [next], the frame after the one shown, noting where the shown one
+  // ended within the pass.
+  void _step(ui.FrameInfo next) {
+    final end = _offsets[_index] + _shownFor;
+    if (_index == _frameCount - 1) {
+      _passLength ??= end;
+    } else if (_offsets.length == _index + 1) {
+      _offsets.add(end);
+    }
+    _shown.dispose();
+    _shown = next.image;
+    _shownFor = _durationOf(next);
+    _index = (_index + 1) % _frameCount;
+  }
+
+  // Takes the shared phase: the playback left to catch up to it from the
+  // position the image was at by [stoppedAt], its last paint.
+  void _join(AssetPlaybackPhase? phase, Duration now, Duration stoppedAt) {
+    final target = phase?.positionFor(this, now);
+    if (target == null) return;
+    final since = _shownSince;
+    final shownFor = since == null
+        ? _shownBefore
+        : _clamp(stoppedAt - since, _shownFor);
+    var skip = target - (_offsets[_index] + shownFor);
+    final cover = _shown.clone();
+    if (_passLength case final pass?) {
+      skip = Duration(microseconds: skip.inMicroseconds % pass.inMicroseconds);
+      _shownBefore = shownFor;
+    } else if (skip.isNegative) {
+      // Behind, with the pass's end not seen yet: from the first frame.
+      _toFirst();
+      skip = target;
+    } else {
+      _shownBefore = shownFor;
+    }
+    _shownSince = null;
+    _cover?.dispose();
+    _cover = cover;
+    _skip = skip;
+  }
+
+  static Duration _clamp(Duration value, Duration max) => value.isNegative
+      ? Duration.zero
+      : value > max
+      ? max
+      : value;
+
+  // Decodes and drops frames until the one the shared phase is in shows;
+  // goes on from each decode that lands.
+  void _catchUp() {
+    for (var skip = _skip; skip != null; skip = _skip) {
+      final left = _shownFor - _shownBefore;
+      if (skip < left) {
+        _shownBefore += skip;
+        _endSkip();
+        return;
+      }
+      final ahead = _ahead;
+      if (ahead == null) {
+        _decodeAhead();
+        return;
+      }
+      _ahead = null;
+      _skip = skip - left;
+      _step(ahead);
+      _shownBefore = Duration.zero;
+    }
+  }
+
+  void _endSkip() {
+    _skip = null;
+    _cover?.dispose();
+    _cover = null;
+    _shownSince = null;
   }
 
   // Ends the pass: [first] is the decoded frame after the last, the first.
@@ -279,10 +396,7 @@ final class PlayingImagePaintable extends AssetPaintable {
     _heldOnLast = rest == AssetRestFrame.last;
     if (_heldOnLast) return;
     _ahead = null;
-    _shown.dispose();
-    _shown = first.image;
-    _shownFor = _durationOf(first);
-    _index = 0;
+    _step(first);
   }
 
   void _decodeAhead() {
@@ -303,6 +417,7 @@ final class PlayingImagePaintable extends AssetPaintable {
           _decodeAhead();
         } else {
           _ahead = frame;
+          if (_skip != null) _catchUp();
         }
       },
       onError: (Object error, StackTrace stackTrace) {
@@ -331,6 +446,8 @@ final class PlayingImagePaintable extends AssetPaintable {
     if (_disposed) return;
     _disposed = true;
     _shown.dispose();
+    _cover?.dispose();
+    _cover = null;
     _first.dispose();
     _ahead?.image.dispose();
     _ahead = null;

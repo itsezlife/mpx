@@ -30,6 +30,7 @@ export 'src/asset/asset_cache_scope.dart';
 export 'src/asset/asset_fit.dart';
 export 'src/asset/asset_paintable.dart';
 export 'src/asset/asset_playback.dart';
+export 'src/asset/asset_playback_phase.dart';
 export 'src/asset/asset_preload.dart';
 export 'src/asset/asset_preset.dart';
 export 'src/asset/asset_producer.dart';

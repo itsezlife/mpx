@@ -5,6 +5,7 @@ import 'package:meta/meta.dart';
 import 'package:mpx_core/src/asset/asset_binding.dart';
 import 'package:mpx_core/src/asset/asset_paintable.dart';
 import 'package:mpx_core/src/asset/asset_playback.dart';
+import 'package:mpx_core/src/asset/asset_playback_phase.dart';
 import 'package:mpx_core/src/asset/asset_profile.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_spec.dart';
@@ -75,6 +76,11 @@ abstract base class AssetBindingBase
   /// asked it to.
   @protected
   bool get animates => profile.animate;
+
+  /// The phase the entries of this binding's content share, or null where
+  /// there is none to share.
+  @protected
+  AssetPlaybackPhase? get playbackPhase => null;
 
   @override
   AssetPlayback get playback => AssetPlayback.idle;
@@ -184,6 +190,8 @@ abstract base class AssetBindingBase
         restFrame: profile.restFrame,
         fit: profile.fit,
         halfFrameRate: profile.halfFrameRate,
+        // A held paint steps nothing, so it has no position to give.
+        phase: animates && !holdsFrame ? playbackPhase : null,
       );
 
   @override
