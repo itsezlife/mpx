@@ -12,8 +12,11 @@ import AVFoundation
 public class MpxCapturePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   private var eventSink: FlutterEventSink?
   private let transcoder = CaptureTranscoder()
+  private let textures: FlutterTextureRegistry
+  private var recorders: [Int: RoundVideoRecorder] = [:]
 
-  override init() {
+  init(textures: FlutterTextureRegistry) {
+    self.textures = textures
     super.init()
     transcoder.emit = { [weak self] event in self?.emit(event) }
   }
@@ -21,10 +24,12 @@ public class MpxCapturePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   public static func register(with registrar: FlutterPluginRegistrar) {
     #if os(iOS)
       let messenger = registrar.messenger()
+      let textures = registrar.textures()
     #else
       let messenger = registrar.messenger
+      let textures = registrar.textures
     #endif
-    let instance = MpxCapturePlugin()
+    let instance = MpxCapturePlugin(textures: textures)
     let methods = FlutterMethodChannel(
       name: "dev.mpx.capture/methods", binaryMessenger: messenger)
     registrar.addMethodCallDelegate(instance, channel: methods)
@@ -82,10 +87,59 @@ public class MpxCapturePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     case "cancel":
       if let job = args["job"] as? Int {
         transcoder.cancel(job: job)
+        recorders.removeValue(forKey: job)?.cancel()
       }
+      result(nil)
+    case "permissions":
+      RoundVideoRecorder.requestPermissions { granted in
+        DispatchQueue.main.async { result(granted) }
+      }
+    case "roundStart":
+      startRound(args, result: result)
+    case "roundPause":
+      recorder(args)?.pause()
+      result(nil)
+    case "roundResume":
+      recorder(args)?.resume()
+      result(nil)
+    case "roundSwitchCamera":
+      guard let recorder = recorder(args) else { return result(nil) }
+      recorder.switchCamera { facing in DispatchQueue.main.async { result(facing) } }
+    case "roundStop":
+      recorder(args)?.stop()
       result(nil)
     default:
       result(FlutterMethodNotImplemented)
+    }
+  }
+
+  private func recorder(_ args: [String: Any]) -> RoundVideoRecorder? {
+    guard let job = args["job"] as? Int else { return nil }
+    return recorders[job]
+  }
+
+  private func startRound(_ args: [String: Any], result: @escaping FlutterResult) {
+    let config: RoundVideoRecorder.Config
+    do {
+      config = try RoundVideoRecorder.Config(args)
+    } catch {
+      return result(CaptureError.wrap(error).flutter)
+    }
+    let recorder = RoundVideoRecorder(config: config, textures: textures)
+    recorder.emit = { [weak self] event in self?.emit(event) }
+    recorder.onFinish = { [weak self] in
+      DispatchQueue.main.async { self?.recorders.removeValue(forKey: config.job) }
+    }
+    recorders[config.job] = recorder
+    recorder.start { outcome in
+      DispatchQueue.main.async {
+        switch outcome {
+        case .success(let info):
+          result(info)
+        case .failure(let error):
+          result(CaptureError.wrap(error).flutter)
+        }
+      }
     }
   }
 }

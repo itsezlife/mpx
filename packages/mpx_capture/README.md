@@ -1,6 +1,6 @@
 # mpx_capture
 
-Optional media capture for mpx: compression before send against a shared preset table.
+Optional media capture for mpx: compression before send against a shared preset table, and round video messages.
 
 ## Install
 
@@ -34,6 +34,26 @@ job.progress.listen((p) => print('${p.bytesWritten} B, ${p.fraction}'));
 final output = await job.output; // or job.cancel()
 ```
 
+### Round video
+
+```dart
+const recorder = PlatformRoundVideoRecorder();
+if (!await recorder.requestPermission()) return;
+final recording = await recorder.start(
+  outputPath: '${tempDir.path}/round.mp4',
+  config: const RoundVideoConfig(), // 384 px, ~1 Mbps, 30 fps, 64 kbps, 60 s
+);
+// In the tree: RoundVideoPreview(recording: recording)
+await recording.pause();
+await recording.resume();
+await recording.switchCamera();
+final output = await recording.stop(); // or recording.job.cancel()
+```
+
+The recording finishes by itself at `RoundVideoConfig.maxDuration`. Paused
+time is cut out of the file. The front camera is mirrored in the preview and
+in the file.
+
 ## Presets
 
 | Preset | Max side | Video kbps | Audio kbps / channels |
@@ -63,21 +83,49 @@ H.264 source that would not change is remuxed instead of re-encoded
 
 ## Platforms
 
-| Platform | Compression |
-| --- | --- |
-| Android (API 24+) | Media3 Transformer |
-| iOS 15+, macOS 12+ | AVAssetReader into AVAssetWriter; an export session for a remux |
+| Platform | Compression | Round video |
+| --- | --- | --- |
+| Android (API 24+) | Media3 Transformer | not yet |
+| iOS 15+, macOS 12+ | AVAssetReader into AVAssetWriter; an export session for a remux | AVCaptureSession into AVAssetWriter |
 
-One compression runs at a time; jobs started together queue.
+One compression runs at a time; jobs started together queue. On a Mac the
+first camera counts as front, a second one as back.
+
+## Permissions
+
+Compression needs none. Round video needs the camera and the microphone;
+`requestPermission()` asks for both, and `start` fails with
+`CapturePermissionDenied` without them. The host declares them:
+
+**iOS and macOS** (`Info.plist`):
+
+```xml
+<key>NSCameraUsageDescription</key>
+<string>Records round video messages.</string>
+<key>NSMicrophoneUsageDescription</key>
+<string>Records the sound of round video messages.</string>
+```
+
+**macOS** sandbox entitlements (`DebugProfile.entitlements`,
+`Release.entitlements`):
+
+```xml
+<key>com.apple.security.device.camera</key>
+<true/>
+<key>com.apple.security.device.audio-input</key>
+<true/>
+```
 
 ## Testing
 
-`package:mpx_capture/testing.dart` has `FakeTranscoder` and
-`TranscoderContract`. The example app runs the contract against the
-platform transcoder:
+`package:mpx_capture/testing.dart` has `FakeTranscoder`,
+`FakeRoundVideoRecorder` and their contract suites. The example app runs
+them against the platform:
 
 ```shell
-cd example && flutter test integration_test/transcoder_test.dart -d macos
+cd example
+flutter test integration_test/transcoder_test.dart -d macos
+flutter test integration_test/round_video_test.dart -d macos # asks for access
 ```
 
 ## Docs
