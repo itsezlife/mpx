@@ -19,6 +19,14 @@ void main() {
   });
   tearDown(() => pool.dispose());
 
+  group('NoPictureInPicture', () {
+    PictureInPictureContract.run(NoPictureInPicture.new);
+  });
+
+  group('FakePictureInPicture', () {
+    PictureInPictureContract.run(FakePictureInPicture.new);
+  });
+
   group('picture in picture', () {
     test('a player with an engine moves into it', () async {
       pool.lease(a).play();

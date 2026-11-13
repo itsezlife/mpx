@@ -10,7 +10,7 @@ Pod::Spec.new do |s|
   s.source_files     = 'Classes/**/*'
   s.ios.dependency 'Flutter'
   s.osx.dependency 'FlutterMacOS'
-  s.frameworks       = 'AVFoundation', 'CoreVideo', 'QuartzCore'
+  s.frameworks       = 'AVFoundation', 'AVKit', 'CoreVideo', 'QuartzCore', 'VideoToolbox'
   # iOS 15 and macOS 12 are the set's floor (spec, minimum versions).
   s.ios.deployment_target = '15.0'
   s.osx.deployment_target = '12.0'

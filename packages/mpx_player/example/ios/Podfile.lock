@@ -29,7 +29,7 @@ SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
   mpx_core: 9ae8d0a68d78b47367b4bb8dd47d555532abb832
-  mpx_player: 5f51fa303d5e35856e26f87f069ed380d7b19c05
+  mpx_player: ac175bf85c8d8d97bcfdff9479c3056f8a06184a
 
 PODFILE CHECKSUM: 3889b4a9c624308af7c6fa57ab6a977d7ea3a7c7
 

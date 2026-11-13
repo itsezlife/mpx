@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import VideoToolbox
 
 #if os(iOS)
   import Flutter
@@ -14,11 +15,24 @@ public class MpxPlayerPlugin: NSObject, FlutterPlugin, PlayerHostApi {
   private let flutter: PlayerFlutterApi
   private var players: [Int64: MpxPlayer] = [:]
   private var nextId: Int64 = 1
+  private var audioSession: MpxAudioSession!
+  private var pictureInPicture: MpxPictureInPicture!
+  // Whether the host keeps sound in the background. Nothing native follows
+  // from it: frames go to a video output, not a layer, so AVFoundation does
+  // not pause a backgrounded player for showing video; the host declares
+  // the audio background mode, and the Dart side pauses on hide without it.
+  private var backgroundAudio = false
 
   init(registry: FlutterTextureRegistry, messenger: FlutterBinaryMessenger) {
     self.registry = registry
     flutter = PlayerFlutterApi(binaryMessenger: messenger)
     super.init()
+    audioSession = MpxAudioSession { [weak self] change in
+      self?.flutter.onAudioFocusChange(change: change) { _ in }
+    }
+    pictureInPicture = MpxPictureInPicture { [weak self] id, active in
+      self?.flutter.onPictureInPictureChange(playerId: id, active: active) { _ in }
+    }
   }
 
   public static func register(with registrar: FlutterPluginRegistrar) {
@@ -41,8 +55,10 @@ public class MpxPlayerPlugin: NSObject, FlutterPlugin, PlayerHostApi {
   // --- Players ---------------------------------------------------------------
 
   func reset() throws {
+    pictureInPicture.stop()
     for player in players.values { player.dispose() }
     players = [:]
+    audioSession.abandon()
   }
 
   func create(source: NativePlayerSource, settings: NativePlayerSettings) throws -> Int64 {
@@ -81,35 +97,51 @@ public class MpxPlayerPlugin: NSObject, FlutterPlugin, PlayerHostApi {
   func setVolume(playerId: Int64, volume: Double) throws { players[playerId]?.setVolume(volume) }
 
   func dispose(playerId: Int64) throws {
+    pictureInPicture.playerDisposed(playerId)
     players.removeValue(forKey: playerId)?.dispose()
   }
 
   // --- Audio session ---------------------------------------------------------
 
-  func requestAudioFocus() throws {}
+  func requestAudioFocus() throws { audioSession.request() }
 
-  func abandonAudioFocus() throws {}
+  func abandonAudioFocus() throws { audioSession.abandon() }
 
   // --- Probe -----------------------------------------------------------------
 
+  /// Apple names no decoder-instance limit, so the counts stay 0 (unknown)
+  /// and the budget gates on the device class alone. AVPlayer opens
+  /// progressive MP4 and QuickTime only here (no WebM, no HLS through the
+  /// cache).
   func probe() throws -> NativeDeviceProbe {
-    NativeDeviceProbe(
-      lowRam: false,
-      totalMemoryBytes: Int64(ProcessInfo.processInfo.physicalMemory),
+    let codecs: [(String, CMVideoCodecType)] = [
+      ("video/avc", kCMVideoCodecType_H264),
+      ("video/hevc", kCMVideoCodecType_HEVC),
+      ("video/av01", kCMVideoCodecType_AV1),
+    ]
+    let memory = ProcessInfo.processInfo.physicalMemory
+    return NativeDeviceProbe(
+      lowRam: memory < 2 << 30,
+      totalMemoryBytes: Int64(memory),
       cpuCount: Int64(ProcessInfo.processInfo.activeProcessorCount),
       memoryClassMb: 0,
-      decoders: [],
+      decoders: codecs.map { mime, type in
+        NativeDecoderInfo(
+          mimeType: mime, hardware: VTIsHardwareDecodeSupported(type), maxInstances: 0)
+      },
       containers: ["video/mp4", "video/quicktime", "video/x-m4v"],
       failedCodecs: [])
   }
 
   // --- Picture in picture and background -------------------------------------
 
-  func isPictureInPictureSupported() throws -> Bool { false }
+  func isPictureInPictureSupported() throws -> Bool { MpxPictureInPicture.isSupported }
 
-  func startPictureInPicture(playerId: Int64) throws {}
+  func startPictureInPicture(playerId: Int64) throws {
+    if let player = players[playerId] { pictureInPicture.start(player) }
+  }
 
-  func stopPictureInPicture() throws {}
+  func stopPictureInPicture() throws { pictureInPicture.stop() }
 
-  func setBackgroundAudio(enabled: Bool) throws {}
+  func setBackgroundAudio(enabled: Bool) throws { backgroundAudio = enabled }
 }

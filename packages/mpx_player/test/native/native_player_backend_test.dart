@@ -289,6 +289,8 @@ void main() {
 
     AudioFocusContract.run(() => backend.audioFocus);
 
+    PictureInPictureContract.run(() => backend.pictureInPicture);
+
     test('focus changes arrive as AudioFocusChange', () async {
       final heard = <AudioFocusChange>[];
       final listening = backend.audioFocus.changes.listen(heard.add);

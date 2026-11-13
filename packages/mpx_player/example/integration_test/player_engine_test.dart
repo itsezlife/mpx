@@ -26,6 +26,8 @@ void main() {
 
     AudioFocusContract.run(() => media.backend.audioFocus);
 
+    PictureInPictureContract.run(() => media.backend.pictureInPicture);
+
     Future<PlayerEngine> ready() async {
       final engine = media.backend.create(LocalMedia.clip)..prepare();
       addTearDown(engine.dispose);
@@ -94,6 +96,28 @@ void main() {
             engine.state.value.phase == PlayerPhase.ready &&
             engine.position < const Duration(seconds: 3),
       );
+    });
+
+    testWidgets('the probe lists the decoders and containers', (_) async {
+      final device = await media.backend.device;
+
+      expect(device.canDecode('video/avc'), isTrue);
+      expect(device.opensContainer('video/mp4'), isTrue);
+      expect(device.opensContainer('video/webm'), isFalse);
+      expect(device.instanceCountsKnown, isFalse);
+    });
+
+    testWidgets('picture in picture opens and closes', (_) async {
+      final pip = media.backend.pictureInPicture;
+      final engine = await ready();
+      engine.play();
+      await until(engine, () => engine.position > Duration.zero);
+      expect(pip.isSupported, isTrue);
+
+      pip.start(engine);
+      await until(engine, () => pip.active.value == engine);
+      pip.stop();
+      await until(engine, () => pip.active.value == null);
     });
   });
 }
