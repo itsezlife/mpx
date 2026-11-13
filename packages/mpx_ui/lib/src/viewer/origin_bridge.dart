@@ -31,8 +31,9 @@ final class GalleryOrigin {
   /// The morph starts and ends on the picture as the surface shows it.
   final BoxFit fit;
 
-  /// Where the surface's playback of the item is (a bubble's silent loop):
-  /// a video opens on the player from there. Null to start from the
+  /// Where the surface's playback of the item is (a bubble's silent loop),
+  /// or null. A video's player starts there only under a policy that starts
+  /// at the origin (`ViewerVideoStart.origin`); by default it starts at the
   /// beginning.
   final Duration? position;
 }

@@ -278,7 +278,8 @@ class ViewerOrigin extends StatefulWidget {
   final bool captureFrame;
 
   /// Where the thumbnail's own playback is (a looping clip), read as the
-  /// viewer opens: a video continues from there.
+  /// viewer opens ([GalleryOrigin.position]): a video continues from there
+  /// under a policy that starts at the origin.
   final Duration Function()? position;
 
   /// Told where the viewer's player stood as it closed on this item, so the

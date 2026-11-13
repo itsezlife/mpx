@@ -86,6 +86,8 @@ final class ViewerHarness {
     List<ViewerQuality> Function(int index, GalleryItem item)? qualitiesOf,
     ViewerController? controller,
     TextStyle? hostTextStyle,
+    Duration? Function(int index, GalleryItem item)? videoStartOf,
+    void Function(int index, GalleryItem item, Duration position)? onVideoLeft,
   }) async {
     tester.view.physicalSize = viewerSize;
     tester.view.devicePixelRatio = 1;
@@ -115,6 +117,8 @@ final class ViewerHarness {
             qualitiesOf: qualitiesOf,
             onFullscreenChanged: fullscreen.add,
             controller: controller,
+            videoStartOf: videoStartOf,
+            onVideoLeft: onVideoLeft,
           ),
         ),
       ),
@@ -126,6 +130,19 @@ final class ViewerHarness {
 
   static Widget _hostStyle(TextStyle? style, Widget child) =>
       style == null ? child : DefaultTextStyle(style: style, child: child);
+
+  /// [ViewerPolicy.$Android] with its video choices changed as given.
+  static ViewerPolicy android({
+    ViewerVideoStart? start,
+    ViewerOriginReturn? originReturn,
+    ViewerLoopOpen? loopOpen,
+  }) => ViewerPolicy.$Android.copyWith(
+    video: ViewerPolicy.$Android.video.copyWith(
+      start: start,
+      originReturn: originReturn,
+      loopOpen: loopOpen,
+    ),
+  );
 
   /// The binding [cardLoop] attached last.
   late AssetBinding card;

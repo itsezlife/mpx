@@ -79,6 +79,23 @@ pages in its own screens. `MediaViewer` stays the assembled default.
 | `ViewerPhotoPage` | Embeddable: dismiss drag, max zoom, content size and the zoom callback are optional; a host pager stops paging while it reports a zoom |
 | `ViewerVideoSession`, `ViewerVideoPage` | The session is the video logic (lease, loop and end rules, auto-hide, seek, speed, quality, double-tap seek, held press) that `MediaViewer` and the page share; the page is a photo page over the player with the policy's controls, playing only while `active` |
 
+### Configuration
+
+Every behaviour is a field of `ViewerPolicy`, a full value per platform
+(`$Android`, `$IOS`, `$Desktop`). A host changes one with `copyWith`, which
+the policy and every value in it have, and sets it for the viewers below a
+`ViewerPolicyScope`, whose function receives the platform's reference and
+returns the policy: a change relative to the platform, or a whole
+replacement. A viewer follows its own `policy`, else the closest scope's,
+else the reference of the theme's platform (`ThemeData.platform`, so a theme
+that overrides the platform gets that viewer). Anything a host does not set
+stays the platform's.
+
+Rejected: a mirror class of nullable fields merged over the platform's
+policy. It is a second copy of every field to keep in step with the first,
+and a second place a value could come from; with `copyWith` the policy stays
+the one source of truth.
+
 ### macOS form
 
 | Area | Decision |
@@ -102,29 +119,47 @@ the package's own actions.
 ### Playback
 
 Video plays through the player pool and the audio owner (ADR 0004); opening
-from a bubble is the hand-off there. GIFs loop muted with no controls and
-continue the bubble's animation (software path), as on every reference client.
+from a bubble is the hand-off there. GIFs loop muted with no controls on the
+software path.
 
-The continuation is one playback drawn twice (ADR 0003): the page of an
-animation binds the spec the bubble binds (`AssetPresets.animation`), so it
-draws the bubble's own entry, at the bubble's frame, and the bubble goes on
-from the viewer's frame when the viewer closes. An item whose bubble is gone
-gets its own entry at the same spec.
+An animation's page binds the spec the bubble binds (`AssetPresets.animation`,
+ADR 0003), so it draws the bubble's own entry: one playback in two places.
+An item whose bubble is gone gets its own entry at the same spec.
 
-While the player plays a video with sound, the bubble's loop of it stands
-still on its frame (`AssetCacheScope.holdPlayback`): one decode of the
-content at a time. The page shows that frame until the player's first, and
-the morph carries the player's picture both ways. Two choices differ between
-the references and are policy values (`ViewerVideoRules`):
+While the player plays a video with sound, the bubble's loop of it never
+plays underneath: it stands still on its frame
+(`AssetCacheScope.holdPlayback`), one decode of the content at a time, as on
+every reference. The page shows that frame until the player's first, and the
+morph carries the player's picture both ways. The references differ on the
+rest, so these are policy values (`ViewerVideoRules`):
 
-| Value | `$Android`, `$IOS` | `$Desktop` |
-| --- | --- | --- |
-| `start`: where the player starts | `origin`: the origin's `GalleryOrigin.position`, else the loop's position in the cache (`AssetCacheScope.playbackPosition`) | `beginning` |
-| `originReturn`: the loop on close | `atPlayer`: the player's position goes back (`OriginBridge.handBack`) and the loop seeks there (`AssetCacheScope.seekPlayback`), showing the player's last picture until its own frame there is drawn | `whereItPaused`: the loop plays on from its frame |
+| Value | `$Android` | `$IOS` | `$Desktop` |
+| --- | --- | --- | --- |
+| `start`: where the player of a video with sound starts | `beginning` | `beginning` | `beginning` |
+| `originReturn`: the bubble's loop on close | `atPlayer` | `restart` | `atPlayer` (unconfirmed in the reference) |
+| `loopOpen`: an animation on open | `continues` | `restart` | `continues` |
 
-The iOS value follows Android until the iOS reference is pinned down. The
-silent clip seeks for real (ADR 0003): back to the keyframe before the
-position, then forward on the decoder's side.
+- `start`: no reference starts a video with sound at the bubble's position;
+  each starts at the beginning or at a place it saved. `origin` (the
+  origin's `GalleryOrigin.position`, else the loop's position in the cache)
+  stays an option. A saved place is the host's data, not policy:
+  `MediaViewer.videoStartOf` gives one, `onVideoLeft` reports where the
+  viewer left the item.
+- `originReturn`: `atPlayer` hands the player's position back
+  (`OriginBridge.handBack`) and seeks the loop there
+  (`AssetCacheScope.seekPlayback`), showing the player's last picture until
+  the loop's own frame there is drawn; the silent clip seeks for real (ADR
+  0003). `restart` plays the loop from its first frame; `whereItPaused`
+  goes on from its frame.
+- `loopOpen`: `continues` shares the bubble's playback; `restart` shares it
+  and starts it over as the viewer opens and closes; `own` plays an entry of
+  the page's own from its first frame.
+
+The web has no policy of its own yet: `ViewerPolicy.forPlatform` takes the
+platform the browser runs on. Its reference behaves like the desktop for
+input and differs elsewhere (speeds up to 5x, loops under 60 s, a drag that
+pauses and seeks live, its own playback of an animation from frame 0); it
+needs a policy of its own.
 
 The morph runs between the picture as the origin shows it (`GalleryOrigin.fit`:
 the origin's box when it covers it, the part it fills when it shows the

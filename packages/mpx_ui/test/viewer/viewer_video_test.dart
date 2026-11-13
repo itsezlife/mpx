@@ -32,15 +32,18 @@ Future<void> _settle(WidgetTester tester) async {
 
 void main() {
   group('opening a video', () {
-    testWidgets('starts at the origin position; the bubble frame stays '
-        'until the first frame', (tester) async {
+    testWidgets('with start at the origin, starts at the origin position; '
+        'the bubble frame stays until the first frame', (tester) async {
       final harness = ViewerHarness(
         items: ViewerHarness.videos(1),
         videoDuration: const Duration(seconds: 60),
         autoFirstFrame: false,
         originPosition: const Duration(seconds: 12),
       );
-      await harness.pump(tester);
+      await harness.pump(
+        tester,
+        policy: ViewerHarness.android(start: ViewerVideoStart.origin),
+      );
 
       final engine = harness.engine(0);
       expect(engine.preparedFrom, const Duration(seconds: 12));
@@ -61,7 +64,10 @@ void main() {
         videoDuration: const Duration(seconds: 60),
         originPosition: const Duration(seconds: 12),
       );
-      await harness.pump(tester);
+      await harness.pump(
+        tester,
+        policy: ViewerHarness.android(start: ViewerVideoStart.origin),
+      );
       harness.engine(0).advance(const Duration(seconds: 3));
 
       unawaited(harness.state(tester).close());
@@ -118,7 +124,24 @@ void main() {
   group('the surface\'s own loop of the content', () {
     final seconds = List.filled(60, const Duration(seconds: 1));
 
-    testWidgets('the player starts where the loop is', (tester) async {
+    testWidgets('by default the player starts at the beginning, wherever '
+        'the origin and its loop are', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+        originPosition: const Duration(seconds: 12),
+      );
+      harness
+          .cardLoop(videoKey(0), seconds)
+          .seekPlayback(const Duration(seconds: 4));
+
+      await harness.pump(tester);
+
+      expect(harness.engine(0).preparedFrom, anyOf(isNull, Duration.zero));
+    });
+
+    testWidgets('with start at the origin and no origin position, the '
+        'player starts where the loop is', (tester) async {
       final harness = ViewerHarness(
         items: ViewerHarness.videos(1),
         videoDuration: const Duration(seconds: 60),
@@ -127,12 +150,61 @@ void main() {
           .cardLoop(videoKey(0), seconds)
           .seekPlayback(const Duration(seconds: 4));
 
-      await harness.pump(tester);
+      await harness.pump(
+        tester,
+        policy: ViewerHarness.android(start: ViewerVideoStart.origin),
+      );
 
       expect(harness.engine(0).preparedFrom, const Duration(seconds: 4));
     });
 
-    testWidgets('closing moves the loop to where the player stood', (
+    testWidgets('the host\'s record of where the item was left wins, and '
+        'hears where it is left again', (tester) async {
+      final left = <(int, Duration)>[];
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+      );
+      await harness.pump(
+        tester,
+        videoStartOf: (index, item) => const Duration(seconds: 9),
+        onVideoLeft: (index, item, position) => left.add((index, position)),
+      );
+      expect(harness.engine(0).preparedFrom, const Duration(seconds: 9));
+      harness.engine(0).advance(const Duration(seconds: 3));
+
+      unawaited(harness.state(tester).close());
+      await _settle(tester);
+
+      expect(left, [(0, const Duration(seconds: 12))]);
+    });
+
+    testWidgets('closing at the player moves the loop to where the player '
+        'stood, with its last picture', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+      );
+      final loop = harness.cardLoop(videoKey(0), seconds);
+      await harness.pump(
+        tester,
+        policy: ViewerHarness.android(
+          originReturn: ViewerOriginReturn.atPlayer,
+        ),
+      );
+      harness.engine(0).advance(const Duration(seconds: 3));
+
+      unawaited(harness.state(tester).close());
+      await _settle(tester);
+
+      expect(loop.seeks.last, const Duration(seconds: 3));
+      expect(harness.bridge.handedBack, [(0, const Duration(seconds: 3))]);
+      final picture = loop.seekPictures.last;
+      expect(picture, isNotNull);
+      picture!.dispose();
+    });
+
+    testWidgets('closing with a restart plays the loop from its first frame', (
       tester,
     ) async {
       final harness = ViewerHarness(
@@ -141,18 +213,42 @@ void main() {
       );
       final loop = harness.cardLoop(videoKey(0), seconds)
         ..seekPlayback(const Duration(seconds: 4));
-      await harness.pump(tester);
+      await harness.pump(
+        tester,
+        policy: ViewerHarness.android(originReturn: ViewerOriginReturn.restart),
+      );
       harness.engine(0).advance(const Duration(seconds: 3));
 
       unawaited(harness.state(tester).close());
       await _settle(tester);
 
-      expect(loop.seeks.last, const Duration(seconds: 7));
-      // The player's last picture, which the loop shows until its frame there
-      // is drawn.
-      final picture = loop.seekPictures.last;
-      expect(picture, isNotNull);
-      picture!.dispose();
+      expect(loop.seeks, [const Duration(seconds: 4), Duration.zero]);
+      expect(harness.bridge.handedBack, isEmpty);
+      expect(harness.card.isPlaying, isTrue);
+    });
+
+    testWidgets('closing where it paused leaves the loop to go on from its '
+        'frame', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+      );
+      final loop = harness.cardLoop(videoKey(0), seconds)
+        ..seekPlayback(const Duration(seconds: 4));
+      await harness.pump(
+        tester,
+        policy: ViewerHarness.android(
+          originReturn: ViewerOriginReturn.whereItPaused,
+        ),
+      );
+      harness.engine(0).advance(const Duration(seconds: 3));
+
+      unawaited(harness.state(tester).close());
+      await _settle(tester);
+
+      expect(loop.seeks, [const Duration(seconds: 4)]);
+      expect(harness.bridge.handedBack, isEmpty);
+      expect(harness.card.isPlaying, isTrue);
     });
 
     testWidgets('the loop stands still while the player plays the item, and '
@@ -175,30 +271,6 @@ void main() {
       for (final picture in loop.seekPictures) {
         picture?.dispose();
       }
-    });
-
-    testWidgets('a policy that starts from the beginning leaves the loop to '
-        'go on from where it paused', (tester) async {
-      final harness = ViewerHarness(
-        items: ViewerHarness.videos(1),
-        videoDuration: const Duration(seconds: 60),
-        originPosition: const Duration(seconds: 12),
-      );
-      final loop = harness.cardLoop(videoKey(0), seconds)
-        ..seekPlayback(const Duration(seconds: 4));
-      await harness.pump(tester, policy: ViewerPolicy.$Desktop);
-
-      expect(harness.engine(0).preparedFrom, isNot(const Duration(seconds: 4)));
-      expect(harness.engine(0).preparedFrom, anyOf(isNull, Duration.zero));
-      expect(harness.card.isPlaying, isFalse);
-      harness.engine(0).advance(const Duration(seconds: 3));
-
-      unawaited(harness.state(tester).close());
-      await _settle(tester);
-
-      expect(loop.seeks, [const Duration(seconds: 4)]);
-      expect(harness.bridge.handedBack, isEmpty);
-      expect(harness.card.isPlaying, isTrue);
     });
 
     testWidgets('the close morph shows the player\'s picture', (tester) async {

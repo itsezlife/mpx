@@ -77,8 +77,28 @@ ViewerOriginScope(
 `MediaViewer.show` also takes a `ViewerController`, `players` (a
 `PlayerPool`) for videos, `chrome` (bars, caption, host actions such as save
 and share) and a `policy` (`ViewerPolicy.$Android`, `$IOS`, `$Desktop`; the
-platform's by default). `ViewerPhotoPage` and `ViewerVideoPage` work alone
-inside a host's own pager.
+theme's platform's by default). `ViewerPhotoPage` and `ViewerVideoPage` work
+alone inside a host's own pager.
+
+## Configuring the viewer
+
+Every behaviour is a field of `ViewerPolicy`; what a host does not set stays
+the platform's. A `ViewerPolicyScope` above the viewers changes the
+platform's policy (`copyWith` on the policy and each value in it), or
+replaces it with `(_) => mine`:
+
+```dart
+ViewerPolicyScope(
+  policy: (platform) => platform.copyWith(
+    video: platform.video.copyWith(start: ViewerVideoStart.origin),
+  ),
+  child: app,
+)
+```
+
+A `policy` passed to `MediaViewer.show` wins over the scope. A saved place
+in a video is the host's: `videoStartOf` gives one, `onVideoLeft` reports
+where the viewer left it.
 
 ## Features
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
@@ -224,6 +225,49 @@ void main() {
 
       expect(harness.producer.attempts, hasLength(1));
       expect(card.paints, isNotEmpty);
+    });
+
+    GalleryItem animation() => GalleryItem(
+      photoKey(0),
+      kind: GalleryMediaKind.animation,
+      size: const Size(1200, 900),
+    );
+
+    testWidgets('with a restart, the shared playback starts over as the '
+        'viewer opens and as it closes', (tester) async {
+      final harness = ViewerHarness(items: [animation()]);
+      final card = harness.cardLoop(
+        photoKey(0),
+        List.filled(10, const Duration(milliseconds: 100)),
+      );
+
+      await harness.pump(
+        tester,
+        policy: ViewerHarness.android(loopOpen: ViewerLoopOpen.restart),
+      );
+      expect(harness.producer.attempts, hasLength(1));
+      expect(card.seeks, [Duration.zero]);
+
+      unawaited(harness.state(tester).close());
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(card.seeks, [Duration.zero, Duration.zero]);
+    });
+
+    testWidgets('with its own playback, the page decodes one of its own and '
+        'leaves the origin\'s alone', (tester) async {
+      final harness = ViewerHarness(items: [animation()]);
+      final card = harness.cardLoop(
+        photoKey(0),
+        List.filled(10, const Duration(milliseconds: 100)),
+      );
+
+      await harness.pump(
+        tester,
+        policy: ViewerHarness.android(loopOpen: ViewerLoopOpen.own),
+      );
+
+      expect(harness.producer.attempts, hasLength(2));
+      expect(card.seeks, isEmpty);
     });
   });
 

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
@@ -17,6 +16,7 @@ import 'package:mpx_ui/src/viewer/viewer_chrome_overlay.dart';
 import 'package:mpx_ui/src/viewer/viewer_origin.dart';
 import 'package:mpx_ui/src/viewer/viewer_photo_page.dart';
 import 'package:mpx_ui/src/viewer/viewer_policy.dart';
+import 'package:mpx_ui/src/viewer/viewer_policy_scope.dart';
 import 'package:mpx_ui/src/viewer/viewer_tokens.dart';
 import 'package:mpx_ui/src/viewer/viewer_video.dart';
 import 'package:mpx_ui/src/viewer/viewer_video_session.dart';
@@ -173,7 +173,7 @@ class MediaViewer extends StatefulWidget {
     required this.initialIndex,
     super.key,
     this.bridge,
-    this.policy = ViewerPolicy.$Android,
+    this.policy,
     this.tokens = const ViewerTokens(),
     this.scope,
     this.onClosed,
@@ -187,6 +187,8 @@ class MediaViewer extends StatefulWidget {
     this.onFullscreenChanged,
     this.videoStrings = const ViewerVideoStrings(),
     this.controller,
+    this.videoStartOf,
+    this.onVideoLeft,
   });
 
   /// The items.
@@ -199,8 +201,10 @@ class MediaViewer extends StatefulWidget {
   /// without a morph.
   final OriginBridge? bridge;
 
-  /// The gestures, transitions and timings.
-  final ViewerPolicy policy;
+  /// The gestures, transitions, timings and playback choices. Null takes the
+  /// closest [ViewerPolicyScope]'s, else the reference of the platform the
+  /// theme names ([ViewerPolicyScope.resolve]).
+  final ViewerPolicy? policy;
 
   /// The colours and type.
   final ViewerTokens tokens;
@@ -244,13 +248,25 @@ class MediaViewer extends StatefulWidget {
   /// Drives and observes the viewer from the host; none when null.
   final ViewerController? controller;
 
+  /// Where a video with sound starts, from the host's own record (a
+  /// position it saved when the viewer last left the item), or null to start
+  /// as the policy says (`ViewerVideoRules.start`). The viewer keeps no
+  /// record of its own.
+  final Duration? Function(int index, GalleryItem item)? videoStartOf;
+
+  /// Told where the player of a video with sound stood as the viewer left
+  /// the item (closed, or paged away), for a host that keeps a record for
+  /// [videoStartOf].
+  final void Function(int index, GalleryItem item, Duration position)?
+  onVideoLeft;
+
   /// Pushes a viewer as a transparent route over [context]'s navigator and
   /// completes when it has closed.
   ///
   /// Without a [bridge] the viewer opens from and closes to the
   /// `ViewerOrigin`s of the closest `ViewerOriginScope` above [context], if
-  /// any. Without a [policy] it takes the platform's
-  /// ([ViewerPolicy.forPlatform]).
+  /// any. Without a [policy] it takes the one [ViewerPolicyScope.resolve]
+  /// gives for [context].
   static Future<void> show(
     BuildContext context, {
     required GallerySource source,
@@ -267,11 +283,13 @@ class MediaViewer extends StatefulWidget {
     List<ViewerQuality> Function(int index, GalleryItem item)? qualitiesOf,
     ViewerPreviewFrame? previewFrame,
     ValueChanged<bool>? onFullscreenChanged,
+    Duration? Function(int index, GalleryItem item)? videoStartOf,
+    void Function(int index, GalleryItem item, Duration position)? onVideoLeft,
   }) {
     final cache = scope ?? AssetCacheProvider.of(context);
     final origins =
         bridge ?? ViewerOriginScope.maybeOf(context)?.bridgeFor(source);
-    final rules = policy ?? ViewerPolicy.forPlatform(defaultTargetPlatform);
+    final rules = ViewerPolicyScope.resolve(context, policy: policy);
     return Navigator.of(context).push<void>(
       PageRouteBuilder<void>(
         opaque: false,
@@ -292,6 +310,8 @@ class MediaViewer extends StatefulWidget {
           qualitiesOf: qualitiesOf,
           previewFrame: previewFrame,
           onFullscreenChanged: onFullscreenChanged,
+          videoStartOf: videoStartOf,
+          onVideoLeft: onVideoLeft,
           onClosed: () => Navigator.of(routeContext).pop(),
         ),
       ),
@@ -336,6 +356,8 @@ class MediaViewerState extends State<MediaViewer>
   int? _sessionIndex;
   // Holds the origin's loop of the video the player plays.
   AssetPlaybackHold? _loopHold;
+  // Whether the close already told the host where the player stood.
+  bool _leftReported = false;
   Timer? _spaceHold;
   bool _fullscreen = false;
   Offset? _lastHover;
@@ -349,6 +371,10 @@ class MediaViewerState extends State<MediaViewer>
 
   /// The index of the item shown.
   int get index => _index;
+
+  /// The policy the viewer follows: its own, else its scope's, else the
+  /// platform's ([ViewerPolicyScope.resolve]).
+  ViewerPolicy get policy => _policy;
 
   /// Whether the open transition has finished and the close has not begun.
   bool get isOpen => _phase == _Phase.open;
@@ -369,25 +395,24 @@ class MediaViewerState extends State<MediaViewer>
   /// The background's opacity now.
   double get backgroundOpacity => switch (_phase) {
     _Phase.opening => _openingBackground,
-    _Phase.open => widget.policy.backgroundOpacityAt(_drag, _size.width),
+    _Phase.open => _policy.backgroundOpacityAt(_drag, _size.width),
     _Phase.closing => _closeFromBackground * (1 - _transitionT),
     _Phase.closed => 0,
   };
 
-  double get _transitionT =>
-      widget.policy.openCurve.transform(_transition.value);
+  double get _transitionT => _policy.openCurve.transform(_transition.value);
 
   // The background fades in over its own duration when the policy has one,
   // linearly; else it follows the open transition.
   double get _openingBackground {
-    final policy = widget.policy;
+    final policy = _policy;
     final fade = policy.backgroundFadeDuration;
     if (fade == null || fade == Duration.zero) return _transitionT;
     final elapsed = _transition.value * policy.openDuration.inMicroseconds;
     return math.min(1, elapsed / fade.inMicroseconds);
   }
 
-  ViewerVideoRules get _video => widget.policy.video;
+  ViewerVideoRules get _video => _policy.video;
 
   bool _isVideo(int index) =>
       widget.source.itemAt(index)?.kind == GalleryMediaKind.video;
@@ -396,20 +421,36 @@ class MediaViewerState extends State<MediaViewer>
   void initState() {
     super.initState();
     _transition = AnimationController(vsync: this)..addListener(_onTransition);
-    _springBack = AnimationController(
-      vsync: this,
-      duration: widget.policy.settleDuration,
-    )..addListener(_onSpringBack);
+    _springBack = AnimationController(vsync: this)..addListener(_onSpringBack);
     _speeds.beginViewer();
-    _controls.value = _isVideo(_index)
-        ? _video.controlsVisibleOnOpen
-        : widget.policy.controlsVisibleOnOpen;
     _controls.addListener(_notifyController);
     widget.controller?._attach(this);
     widget.source.addListener(_onSource);
     widget.source.loadAround(_index);
+  }
+
+  // The policy reads the theme and the scope, so the viewer starts here, on
+  // its first dependencies, rather than in initState.
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _resolvePolicy();
+    if (_started) return;
+    _started = true;
+    _controls.value = _isVideo(_index)
+        ? _video.controlsVisibleOnOpen
+        : _policy.controlsVisibleOnOpen;
     _syncVideo();
     WidgetsBinding.instance.addPostFrameCallback((_) => _open());
+  }
+
+  late ViewerPolicy _policy;
+
+  void _resolvePolicy() {
+    _policy = ViewerPolicyScope.resolve(context, policy: widget.policy);
+    _springBack.duration = _policy.settleDuration;
   }
 
   @override
@@ -433,6 +474,7 @@ class MediaViewerState extends State<MediaViewer>
   @override
   void didUpdateWidget(MediaViewer oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(widget.policy, oldWidget.policy)) _resolvePolicy();
     if (!identical(widget.controller, oldWidget.controller)) {
       oldWidget.controller?._detach(this);
       widget.controller?._attach(this);
@@ -487,7 +529,7 @@ class MediaViewerState extends State<MediaViewer>
       unawaited(
         _pages.animateToPage(
           index,
-          duration: widget.policy.controlsDuration,
+          duration: _policy.controlsDuration,
           curve: Curves.easeOut,
         ),
       );
@@ -496,8 +538,7 @@ class MediaViewerState extends State<MediaViewer>
     }
   }
 
-  void _resetZoom() =>
-      _pageKeys[_index]?.currentState?.zoomTo(widget.policy.minZoom);
+  void _resetZoom() => _pageKeys[_index]?.currentState?.zoomTo(_policy.minZoom);
 
   void _onSource() {
     if (!mounted) return;
@@ -525,14 +566,16 @@ class MediaViewerState extends State<MediaViewer>
     // Where the origin's loop is: the host's word for it, else the loop of
     // the content the surface plays through the cache, which the page draws
     // too.
-    final loopAt = switch (_video.start) {
-      ViewerVideoStart.origin =>
-        (_index == widget.initialIndex
-                ? widget.bridge?.originOf(_index)?.position
-                : null) ??
-            cache?.playbackPosition(item.key, _loopSpec),
-      ViewerVideoStart.beginning => null,
-    };
+    final startAt =
+        widget.videoStartOf?.call(_index, item) ??
+        switch (_video.start) {
+          ViewerVideoStart.origin =>
+            (_index == widget.initialIndex
+                    ? widget.bridge?.originOf(_index)?.position
+                    : null) ??
+                cache?.playbackPosition(item.key, _loopSpec),
+          ViewerVideoStart.beginning => null,
+        };
     // The loop stands still while the player plays the item: one decode of
     // the content at a time.
     _loopHold = cache?.holdPlayback(item.key, _loopSpec);
@@ -542,7 +585,7 @@ class MediaViewerState extends State<MediaViewer>
       rules: _video,
       controls: _controls,
       speeds: _speeds,
-      startAt: loopAt,
+      startAt: startAt,
       autoHide: _phase == _Phase.open,
     )..addListener(_onSession);
     _sessionIndex = _index;
@@ -559,6 +602,11 @@ class MediaViewerState extends State<MediaViewer>
     _loopHold = null;
     final session = _session;
     if (session == null) return;
+    if (widget.source.itemAt(_sessionIndex!) case final item?
+        when !_leftReported) {
+      widget.onVideoLeft?.call(_sessionIndex!, item, session.lease.position);
+    }
+    _leftReported = false;
     session
       ..removeListener(_onSession)
       ..dispose();
@@ -611,7 +659,7 @@ class MediaViewerState extends State<MediaViewer>
           key == LogicalKeyboardKey.numpadSubtract) {
         _zoomStep(zoomIn: false);
       } else if (key == LogicalKeyboardKey.digit0) {
-        _pageKeys[_index]?.currentState?.zoomTo(widget.policy.minZoom);
+        _pageKeys[_index]?.currentState?.zoomTo(_policy.minZoom);
       } else if (key == LogicalKeyboardKey.keyF) {
         toggleFullscreen();
       } else {
@@ -679,7 +727,7 @@ class MediaViewerState extends State<MediaViewer>
     unawaited(
       _pages.animateToPage(
         target,
-        duration: widget.policy.controlsDuration,
+        duration: _policy.controlsDuration,
         curve: Curves.easeOut,
       ),
     );
@@ -689,7 +737,7 @@ class MediaViewerState extends State<MediaViewer>
     final page = _pageKeys[_index]?.currentState;
     if (page == null) return;
     final fitted = _fittedRect(_index, null).size;
-    final next = widget.policy.stepZoom(
+    final next = _policy.stepZoom(
       page.zoom,
       fitted,
       _size,
@@ -752,6 +800,18 @@ class MediaViewerState extends State<MediaViewer>
     }
   }
 
+  // An animation the policy restarts as the viewer opens and closes
+  // ([ViewerLoopOpen.restart]): the shared playback goes back to its first
+  // frame.
+  void _restartLoop() {
+    final item = widget.source.itemAt(_index);
+    if (item?.kind != GalleryMediaKind.animation ||
+        _video.loopOpen != ViewerLoopOpen.restart) {
+      return;
+    }
+    _cache?.seekPlayback(item!.key, _loopSpec, Duration.zero);
+  }
+
   // The page's picture as it shows now, the player's included, or null when
   // the page has none painted.
   ui.Image? _pictureNow(int index) {
@@ -772,6 +832,7 @@ class MediaViewerState extends State<MediaViewer>
 
   void _open() {
     if (!mounted) return;
+    _restartLoop();
     final origin = widget.bridge?.originOf(_index);
     final fitted = _fittedRect(_index, origin);
     _hide(_index, hidden: true);
@@ -784,7 +845,7 @@ class MediaViewerState extends State<MediaViewer>
           );
     _to = _Frame(fitted);
     _transition
-      ..duration = widget.policy.openDuration
+      ..duration = _policy.openDuration
       ..forward(from: 0).whenComplete(() {
         if (!mounted || _phase != _Phase.opening) return;
         setState(() => _phase = _Phase.open);
@@ -800,25 +861,34 @@ class MediaViewerState extends State<MediaViewer>
     if (_phase == _Phase.closing || _phase == _Phase.closed) return;
     final session = _session;
     if (session != null) {
-      if (_video.originReturn == ViewerOriginReturn.atPlayer) {
-        final position = session.lease.position;
-        widget.bridge?.handBack(_index, position);
-        // The surface's loop of the content goes to the player's place,
-        // showing the player's last picture until its own frame there is
-        // drawn.
-        if (widget.source.itemAt(_index) case final item?) {
-          _cache?.seekPlayback(
-            item.key,
-            _loopSpec,
-            position,
-            picture: _pictureNow(_index),
-          );
+      final position = session.lease.position;
+      final item = widget.source.itemAt(_index);
+      if (item != null) {
+        widget.onVideoLeft?.call(_index, item, position);
+        _leftReported = true;
+        switch (_video.originReturn) {
+          case ViewerOriginReturn.atPlayer:
+            widget.bridge?.handBack(_index, position);
+            // The surface's loop of the content goes to the player's place,
+            // showing the player's last picture until its own frame there
+            // is drawn.
+            _cache?.seekPlayback(
+              item.key,
+              _loopSpec,
+              position,
+              picture: _pictureNow(_index),
+            );
+          case ViewerOriginReturn.restart:
+            _cache?.seekPlayback(item.key, _loopSpec, Duration.zero);
+          case ViewerOriginReturn.whereItPaused:
+            break;
         }
       }
       _loopHold?.release();
       _loopHold = null;
       session.autoHide = false;
     }
+    _restartLoop();
     if (_fullscreen) toggleFullscreen();
     final from = _fittedRect(_index, null).shift(Offset(0, _drag));
     final startBackground = backgroundOpacity;
@@ -830,7 +900,7 @@ class MediaViewerState extends State<MediaViewer>
       _hide(_index, hidden: true);
     }
     final origin = bridge?.originOf(_index);
-    final policy = widget.policy;
+    final policy = _policy;
     _transition.stop();
     _springBack.stop();
     setState(() {
@@ -888,7 +958,7 @@ class MediaViewerState extends State<MediaViewer>
       _dragging = false;
       if (_phase != _Phase.open) return;
       _drag = offset;
-      if (widget.policy.dismisses(offset, _size.height, velocity: velocity)) {
+      if (_policy.dismisses(offset, _size.height, velocity: velocity)) {
         unawaited(close());
       } else {
         _springFrom = offset;
@@ -898,7 +968,7 @@ class MediaViewerState extends State<MediaViewer>
   );
 
   void _onSpringBack() {
-    final t = widget.policy.settleCurve.transform(_springBack.value);
+    final t = _policy.settleCurve.transform(_springBack.value);
     setState(() => _drag = _springFrom * (1 - t));
     _reportBackdrop();
   }
@@ -920,7 +990,7 @@ class MediaViewerState extends State<MediaViewer>
       _Phase.closed => 0.0,
     };
     final pulled = math.min(1, _drag.abs() / (_size.height / 2));
-    report(1 + widget.policy.backdropScale * opened * (1 - pulled));
+    report(1 + _policy.backdropScale * opened * (1 - pulled));
   }
 
   // --- Layout ---------------------------------------------------------------
@@ -992,7 +1062,7 @@ class MediaViewerState extends State<MediaViewer>
     builder: (context, constraints) {
       _size = constraints.biggest;
       final background = widget.tokens.background;
-      final desktop = widget.policy.desktopInput;
+      final desktop = _policy.desktopInput;
       Widget viewer = PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, _) {
@@ -1017,8 +1087,8 @@ class MediaViewerState extends State<MediaViewer>
                   rules: _video,
                   tokens: widget.tokens,
                   visible: visible,
-                  showDuration: widget.policy.controlsDuration,
-                  hideDuration: widget.policy.controlsHideDuration,
+                  showDuration: _policy.controlsDuration,
+                  hideDuration: _policy.controlsHideDuration,
                   onInteraction: session.interacted,
                   onSpeed: session.setSpeed,
                   qualities: _qualities(),
@@ -1035,7 +1105,7 @@ class MediaViewerState extends State<MediaViewer>
                 source: widget.source,
                 controls: _controls,
                 tokens: widget.tokens,
-                policy: widget.policy,
+                policy: _policy,
                 scope: widget.scope,
                 bottomInset: _session == null
                     ? 0
@@ -1044,7 +1114,7 @@ class MediaViewerState extends State<MediaViewer>
                 onSelectIndex: (index) => unawaited(
                   _pages.animateToPage(
                     index,
-                    duration: widget.policy.controlsDuration,
+                    duration: _policy.controlsDuration,
                     curve: Curves.easeOut,
                   ),
                 ),
@@ -1077,7 +1147,7 @@ class MediaViewerState extends State<MediaViewer>
   }
 
   Widget _pagesView() {
-    final gap = widget.policy.pageGap;
+    final gap = _policy.pageGap;
     return Transform.translate(
       offset: Offset(0, _drag),
       child: ClipRect(
@@ -1120,7 +1190,7 @@ class MediaViewerState extends State<MediaViewer>
         ),
       );
     }
-    final policy = widget.policy;
+    final policy = _policy;
     final session = _sessionIndex == index ? _session : null;
     final video = session != null;
     final still = _picture(index, item, fitted, BoxFit.contain);
@@ -1184,7 +1254,7 @@ class MediaViewerState extends State<MediaViewer>
               opacity: opacity.clamp(0.0, 1.0),
               child: ClipRRect(
                 borderRadius: radius,
-                child: widget.policy.openStyle == ViewerOpenStyle.reveal
+                child: _policy.openStyle == ViewerOpenStyle.reveal
                     ? _revealed(from, to, t, rect, fitted, item)
                     : _morphPicture(item, fitted, fit),
               ),
@@ -1299,11 +1369,17 @@ class MediaViewerState extends State<MediaViewer>
           content: item.key,
           scope: widget.scope,
           preset: switch (item.kind) {
-            // A GIF continues as a muted loop on the software path.
-            GalleryMediaKind.animation => AssetPresets.animation(
-              size: box,
-              profile: loops,
-            ),
+            // A GIF loops muted on the software path: the origin's own
+            // playback, or one of the page's own at the page's size.
+            GalleryMediaKind.animation => switch (_video.loopOpen) {
+              ViewerLoopOpen.continues || ViewerLoopOpen.restart =>
+                AssetPresets.animation(size: box, profile: loops),
+              ViewerLoopOpen.own => AssetPresets.media(
+                size: box,
+                devicePixelRatio: dpr,
+                profile: loops,
+              ),
+            },
             // A video's loop shows the frame it stands on until the player
             // has one: the player is the one playback of it meanwhile.
             GalleryMediaKind.video => AssetPresets.animation(

@@ -6,10 +6,16 @@
   drawn under transparent content.
 - An animation's page draws the surface's own playback
   (`AssetPresets.animation`). While a video with sound plays, the surface's
-  loop of it stands still; the player starts where the loop is and the loop
-  goes to the player's place on close, or both start over and resume, as
-  `ViewerVideoRules.start` and `originReturn` say (`$Desktop`: from the
-  beginning, resuming). The morph shows the player both ways.
+  loop of it stands still. `ViewerVideoRules` says where the player starts
+  (`start`: the beginning by default), what the loop does on close
+  (`originReturn`: to the player's place, from its start, or where it
+  paused) and what an animation does on open (`loopOpen`: goes on, starts
+  over, or plays its own); each platform's policy has its own. The morph
+  shows the player both ways.
+- `ViewerPolicyScope` and `copyWith` on the policy and every value in it: a
+  host changes a field and keeps the platform's others. With no policy the
+  viewer takes the scope's, else the reference of the theme's platform.
+  `MediaViewer.videoStartOf` and `onVideoLeft` for a host's saved place.
 - The morph keeps the content's proportion from end to end
   (`GalleryOrigin.fit`, `ViewerOrigin.fit` for a tile that shows the picture
   whole).

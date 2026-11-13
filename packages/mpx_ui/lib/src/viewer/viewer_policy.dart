@@ -144,6 +144,46 @@ final class ViewerChromeMetrics {
 
   /// The overflow menu's narrowest width.
   final double menuMinWidth;
+
+  /// These metrics with the given fields changed.
+  ///
+  /// A field passed as null keeps its value: a nullable field cannot be
+  /// cleared here, only set.
+  ViewerChromeMetrics copyWith({
+    double? topBarHeight,
+    double? counterGap,
+    double? counterHeight,
+    double? counterPadding,
+    double? counterRadius,
+    EdgeInsets? captionPadding,
+    int? captionMaxLines,
+    double? stripHeight,
+    Size? thumbSize,
+    double? thumbTop,
+    double? thumbSpacing,
+    double? thumbRadius,
+    double? currentThumbMaxWidth,
+    double? currentThumbPadding,
+    double? menuItemHeight,
+    double? menuMinWidth,
+  }) => ViewerChromeMetrics(
+    topBarHeight: topBarHeight ?? this.topBarHeight,
+    counterGap: counterGap ?? this.counterGap,
+    counterHeight: counterHeight ?? this.counterHeight,
+    counterPadding: counterPadding ?? this.counterPadding,
+    counterRadius: counterRadius ?? this.counterRadius,
+    captionPadding: captionPadding ?? this.captionPadding,
+    captionMaxLines: captionMaxLines ?? this.captionMaxLines,
+    stripHeight: stripHeight ?? this.stripHeight,
+    thumbSize: thumbSize ?? this.thumbSize,
+    thumbTop: thumbTop ?? this.thumbTop,
+    thumbSpacing: thumbSpacing ?? this.thumbSpacing,
+    thumbRadius: thumbRadius ?? this.thumbRadius,
+    currentThumbMaxWidth: currentThumbMaxWidth ?? this.currentThumbMaxWidth,
+    currentThumbPadding: currentThumbPadding ?? this.currentThumbPadding,
+    menuItemHeight: menuItemHeight ?? this.menuItemHeight,
+    menuMinWidth: menuMinWidth ?? this.menuMinWidth,
+  );
 }
 
 /// How the picture gets from its origin to its place when the viewer opens,
@@ -236,6 +276,24 @@ final class ViewerDoubleTapSeek {
     }
     return null;
   }
+
+  /// This rule with the given fields changed.
+  ///
+  /// A field passed as null keeps its value: a nullable field cannot be
+  /// cleared here, only set.
+  ViewerDoubleTapSeek copyWith({
+    Duration? step,
+    double? backwardBefore,
+    double? forwardFrom,
+    Duration? minDuration,
+    bool? forwardNeedsRoom,
+  }) => ViewerDoubleTapSeek(
+    step: step ?? this.step,
+    backwardBefore: backwardBefore ?? this.backwardBefore,
+    forwardFrom: forwardFrom ?? this.forwardFrom,
+    minDuration: minDuration ?? this.minDuration,
+    forwardNeedsRoom: forwardNeedsRoom ?? this.forwardNeedsRoom,
+  );
 }
 
 /// A press held on a playing video that plays it faster until release.
@@ -269,6 +327,24 @@ final class ViewerHoldSpeed {
 
   /// The speed while held, from the [current] one.
   double heldRate(double current) => math.min(maxRate, rate ?? current + step);
+
+  /// This rule with the given fields changed.
+  ///
+  /// A field passed as null keeps its value: a nullable field cannot be
+  /// cleared here, only set.
+  ViewerHoldSpeed copyWith({
+    Duration? delay,
+    double? rate,
+    double? step,
+    double? maxRate,
+    double? zoneFrom,
+  }) => ViewerHoldSpeed(
+    delay: delay ?? this.delay,
+    rate: rate ?? this.rate,
+    step: step ?? this.step,
+    maxRate: maxRate ?? this.maxRate,
+    zoneFrom: zoneFrom ?? this.zoneFrom,
+  );
 }
 
 /// The playback speeds the viewer offers and where a choice applies.
@@ -298,26 +374,64 @@ final class ViewerSpeedRule {
   /// it.
   double settle(double speed) =>
       (speed.clamp(min, max) * 10).roundToDouble() / 10;
+
+  /// This rule with the given fields changed.
+  ///
+  /// A field passed as null keeps its value: a nullable field cannot be
+  /// cleared here, only set.
+  ViewerSpeedRule copyWith({
+    double? min,
+    double? max,
+    List<double>? presets,
+    ViewerSpeedMemory? memory,
+  }) => ViewerSpeedRule(
+    min: min ?? this.min,
+    max: max ?? this.max,
+    presets: presets ?? this.presets,
+    memory: memory ?? this.memory,
+  );
 }
 
-/// Where the player starts as the viewer opens on a video.
+/// Where the player starts as the viewer opens on a video with sound, when
+/// the host gives no start of its own (`MediaViewer.videoStartOf`).
 enum ViewerVideoStart {
-  /// Where the origin's own loop of the video is: the video goes on.
-  origin,
-
   /// At the beginning.
   beginning,
+
+  /// Where the origin's own loop of the video is: the video goes on from
+  /// the frame the origin showed.
+  origin,
 }
 
-/// What the origin's own loop of a video does as the viewer closes. While
-/// the player plays the item the loop stands still on its frame, whichever.
+/// What the origin's own loop of a video with sound does as the viewer
+/// closes. While the player plays the item the loop stands still on its
+/// frame, whichever this is.
 enum ViewerOriginReturn {
   /// It goes to where the player stood and plays on from there, showing the
   /// player's last picture until its own frame there is drawn.
   atPlayer,
 
+  /// It plays again from its first frame.
+  restart,
+
   /// It plays on from the frame it stood on.
   whereItPaused,
+}
+
+/// What an animation (an animated image, a vector animation, a silent loop)
+/// does as the viewer opens on it from an origin that plays it.
+enum ViewerLoopOpen {
+  /// The page draws the origin's own playback and it goes on: one playback
+  /// in two places, the same frame in both.
+  continues,
+
+  /// The page draws the origin's own playback, which starts again from its
+  /// first frame as the viewer opens and as it closes.
+  restart,
+
+  /// The page plays a playback of its own, from its first frame; the
+  /// origin's goes on by itself.
+  own,
 }
 
 /// The video rules of a viewer policy: controls, seek, speed and loop.
@@ -333,15 +447,20 @@ final class ViewerVideoRules {
     this.doubleTapFullscreen = false,
     this.hold,
     this.seekPreviewBox,
-    this.start = ViewerVideoStart.origin,
+    this.start = ViewerVideoStart.beginning,
     this.originReturn = ViewerOriginReturn.atPlayer,
+    this.loopOpen = ViewerLoopOpen.continues,
   });
 
-  /// Where the player starts as the viewer opens on a video.
+  /// Where the player starts as the viewer opens on a video with sound.
   final ViewerVideoStart start;
 
-  /// What the origin's own loop of the video does as the viewer closes.
+  /// What the origin's own loop of a video with sound does as the viewer
+  /// closes.
   final ViewerOriginReturn originReturn;
+
+  /// What an animation does as the viewer opens on it.
+  final ViewerLoopOpen loopOpen;
 
   /// Whether the controls show when a video opens.
   final bool controlsVisibleOnOpen;
@@ -379,6 +498,36 @@ final class ViewerVideoRules {
   /// Loops a video without sound.
   static bool loopSilent(Duration? duration, {required bool hasAudio}) =>
       !hasAudio;
+
+  /// These rules with the given fields changed.
+  ///
+  /// A field passed as null keeps its value: a nullable field cannot be
+  /// cleared here, only set.
+  ViewerVideoRules copyWith({
+    ViewerVideoStart? start,
+    ViewerOriginReturn? originReturn,
+    ViewerLoopOpen? loopOpen,
+    bool? controlsVisibleOnOpen,
+    Duration? autoHide,
+    ViewerSpeedRule? speed,
+    bool Function(Duration? duration, {required bool hasAudio})? loops,
+    ViewerDoubleTapSeek? doubleTapSeek,
+    bool? doubleTapFullscreen,
+    ViewerHoldSpeed? hold,
+    Size? seekPreviewBox,
+  }) => ViewerVideoRules(
+    start: start ?? this.start,
+    originReturn: originReturn ?? this.originReturn,
+    loopOpen: loopOpen ?? this.loopOpen,
+    controlsVisibleOnOpen: controlsVisibleOnOpen ?? this.controlsVisibleOnOpen,
+    autoHide: autoHide ?? this.autoHide,
+    speed: speed ?? this.speed,
+    loops: loops ?? this.loops,
+    doubleTapSeek: doubleTapSeek ?? this.doubleTapSeek,
+    doubleTapFullscreen: doubleTapFullscreen ?? this.doubleTapFullscreen,
+    hold: hold ?? this.hold,
+    seekPreviewBox: seekPreviewBox ?? this.seekPreviewBox,
+  );
 }
 
 /// A critically damped spring as a curve: it starts fast and settles
@@ -571,6 +720,8 @@ final class ViewerPolicy {
         memory: ViewerSpeedMemory.shared,
       ),
       loops: ViewerVideoRules.loopShort,
+      originReturn: ViewerOriginReturn.restart,
+      loopOpen: ViewerLoopOpen.restart,
       doubleTapSeek: ViewerDoubleTapSeek(
         step: Duration(seconds: 15),
         backwardBefore: 0.3,
@@ -635,8 +786,7 @@ final class ViewerPolicy {
         memory: ViewerSpeedMemory.global,
       ),
       loops: ViewerVideoRules.loopSilent,
-      start: ViewerVideoStart.beginning,
-      originReturn: ViewerOriginReturn.whereItPaused,
+
       doubleTapFullscreen: true,
       hold: ViewerHoldSpeed(delay: Duration(milliseconds: 200), rate: 2),
     ),
@@ -858,4 +1008,83 @@ final class ViewerPolicy {
   /// policy's [maxZoom] when null).
   double settleZoom(double zoom, {double? max}) =>
       zoom.clamp(minZoom, max ?? maxZoom).toDouble();
+
+  /// This policy with the given fields changed, so a host adjusts a
+  /// platform's reference in one place and keeps the rest of it.
+  ///
+  /// A field passed as null keeps its value: a nullable field cannot be
+  /// cleared here, only set.
+  ViewerPolicy copyWith({
+    ViewerOpenStyle? openStyle,
+    Duration? openDuration,
+    Curve? openCurve,
+    Duration? closeDuration,
+    Duration? backgroundFadeDuration,
+    double? backdropScale,
+    bool? dismissDrag,
+    double? dismissSlop,
+    double? dismissFraction,
+    bool? dismissDownOnly,
+    double? dismissVelocity,
+    double? backgroundOpacityFloor,
+    double? backgroundFadeWidthFraction,
+    double? backgroundFadeDistance,
+    bool? backgroundClickCloses,
+    Duration? settleDuration,
+    Curve? settleCurve,
+    Duration? slideOffDuration,
+    double? plainCloseScale,
+    ViewerZoomRule? zoomRule,
+    double? doubleTapZoom,
+    double? minZoom,
+    double? maxZoom,
+    double? overPanDamping,
+    double? doubleTapEdgeInset,
+    double? pageGap,
+    bool? controlsVisibleOnOpen,
+    Duration? controlsDuration,
+    Duration? controlsHideDuration,
+    double? controlsSlide,
+    bool? desktopInput,
+    ViewerVideoRules? video,
+    ViewerChromeMetrics? chrome,
+  }) => ViewerPolicy(
+    openStyle: openStyle ?? this.openStyle,
+    openDuration: openDuration ?? this.openDuration,
+    openCurve: openCurve ?? this.openCurve,
+    closeDuration: closeDuration ?? this.closeDuration,
+    backgroundFadeDuration:
+        backgroundFadeDuration ?? this.backgroundFadeDuration,
+    backdropScale: backdropScale ?? this.backdropScale,
+    dismissDrag: dismissDrag ?? this.dismissDrag,
+    dismissSlop: dismissSlop ?? this.dismissSlop,
+    dismissFraction: dismissFraction ?? this.dismissFraction,
+    dismissDownOnly: dismissDownOnly ?? this.dismissDownOnly,
+    dismissVelocity: dismissVelocity ?? this.dismissVelocity,
+    backgroundOpacityFloor:
+        backgroundOpacityFloor ?? this.backgroundOpacityFloor,
+    backgroundFadeWidthFraction:
+        backgroundFadeWidthFraction ?? this.backgroundFadeWidthFraction,
+    backgroundFadeDistance:
+        backgroundFadeDistance ?? this.backgroundFadeDistance,
+    backgroundClickCloses: backgroundClickCloses ?? this.backgroundClickCloses,
+    settleDuration: settleDuration ?? this.settleDuration,
+    settleCurve: settleCurve ?? this.settleCurve,
+    slideOffDuration: slideOffDuration ?? this.slideOffDuration,
+    plainCloseScale: plainCloseScale ?? this.plainCloseScale,
+    zoomRule: zoomRule ?? this.zoomRule,
+    doubleTapZoom: doubleTapZoom ?? this.doubleTapZoom,
+    minZoom: minZoom ?? this.minZoom,
+    maxZoom: maxZoom ?? this.maxZoom,
+    overPanDamping: overPanDamping ?? this.overPanDamping,
+    doubleTapEdgeInset: doubleTapEdgeInset ?? this.doubleTapEdgeInset,
+    pageGap: pageGap ?? this.pageGap,
+    controlsVisibleOnOpen: controlsVisibleOnOpen ?? this.controlsVisibleOnOpen,
+    controlsDuration: controlsDuration ?? this.controlsDuration,
+    controlsHideDuration: controlsHideDuration ?? this.controlsHideDuration,
+    controlsSlide: controlsSlide ?? this.controlsSlide,
+    desktopInput: desktopInput ?? this.desktopInput,
+    video: video ?? this.video,
+    chrome: chrome ?? this.chrome,
+  );
 }
