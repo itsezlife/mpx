@@ -159,9 +159,12 @@ abstract class AssetPaintable {
   ///
   /// [picture], the frame at [position] as the other surface showed it, is
   /// this paintable's from now on: one that cannot show its own frame there
-  /// at once draws it until it can, then disposes it. Does nothing by
-  /// default but dispose [picture].
-  void seekPlayback(Duration position, {Image? picture}) => picture?.dispose();
+  /// at once draws it until it can, then disposes it. By default a seek to
+  /// zero is a [rewind] and any other does nothing; [picture] is disposed.
+  void seekPlayback(Duration position, {Image? picture}) {
+    picture?.dispose();
+    if (position == Duration.zero) rewind();
+  }
 
   /// Lets a paintable that plays advance before a surface reads [sprite], for
   /// a surface that draws the sprite itself and so never calls [paint].
