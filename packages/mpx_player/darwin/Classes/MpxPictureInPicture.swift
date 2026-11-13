@@ -16,13 +16,16 @@ import Foundation
 /// possible for a layer in one), one point large and transparent, and
 /// leaves it when the window closes.
 final class MpxPictureInPicture: NSObject, AVPictureInPictureControllerDelegate {
-  private let report: (Int64, Bool) -> Void
+  private let report: (Int64, Bool, Bool) -> Void
   private var playerId: Int64?
+  // Whether the window ends by the app's stop or the user's way back to
+  // the app; any other end is the user closing it.
+  private var returning = false
   private var layer: AVPlayerLayer?
   private var controller: AVPictureInPictureController?
   private var possible: NSKeyValueObservation?
 
-  init(report: @escaping (Int64, Bool) -> Void) {
+  init(report: @escaping (Int64, Bool, Bool) -> Void) {
     self.report = report
   }
 
@@ -60,6 +63,7 @@ final class MpxPictureInPicture: NSObject, AVPictureInPictureControllerDelegate 
   }
 
   func stop() {
+    returning = true
     if let controller, controller.isPictureInPictureActive {
       controller.stopPictureInPicture()
     } else {
@@ -75,7 +79,16 @@ final class MpxPictureInPicture: NSObject, AVPictureInPictureControllerDelegate 
   func pictureInPictureControllerWillStartPictureInPicture(
     _ pictureInPictureController: AVPictureInPictureController
   ) {
-    if let playerId { report(playerId, true) }
+    if let playerId { report(playerId, true, false) }
+  }
+
+  func pictureInPictureController(
+    _ pictureInPictureController: AVPictureInPictureController,
+    restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler:
+      @escaping (Bool) -> Void
+  ) {
+    returning = true
+    completionHandler(true)
   }
 
   func pictureInPictureControllerDidStopPictureInPicture(
@@ -88,6 +101,7 @@ final class MpxPictureInPicture: NSObject, AVPictureInPictureControllerDelegate 
     _ pictureInPictureController: AVPictureInPictureController,
     failedToStartPictureInPictureWithError error: Error
   ) {
+    returning = true
     finish()
   }
 
@@ -97,9 +111,11 @@ final class MpxPictureInPicture: NSObject, AVPictureInPictureControllerDelegate 
     layer?.removeFromSuperlayer()
     layer = nil
     controller = nil
+    let dismissed = !returning
+    returning = false
     if let id = playerId {
       playerId = nil
-      report(id, false)
+      report(id, false, dismissed)
     }
   }
 

@@ -1090,13 +1090,17 @@ class PlayerFlutterApi(private val binaryMessenger: BinaryMessenger, private val
       } 
     }
   }
-  /** Picture in picture started ([active]) or ended for [playerId]. */
-  fun onPictureInPictureChange(playerIdArg: Long, activeArg: Boolean, callback: (Result<Unit>) -> Unit)
+  /**
+   * Picture in picture started ([active]) or ended for [playerId];
+   * [dismissed] when the user closed the window rather than returning to
+   * the app.
+   */
+  fun onPictureInPictureChange(playerIdArg: Long, activeArg: Boolean, dismissedArg: Boolean, callback: (Result<Unit>) -> Unit)
 {
     val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
     val channelName = "dev.flutter.pigeon.mpx_player.PlayerFlutterApi.onPictureInPictureChange$separatedMessageChannelSuffix"
     val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
-    channel.send(listOf(playerIdArg, activeArg)) {
+    channel.send(listOf(playerIdArg, activeArg, dismissedArg)) {
       if (it is List<*>) {
         if (it.size > 1) {
           callback(Result.failure(FlutterError(it[0] as String, it[1] as String, it[2] as String?)))

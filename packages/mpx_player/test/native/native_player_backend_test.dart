@@ -502,6 +502,29 @@ void main() {
       expect(backend.pictureInPicture.active.value, isNull);
     });
 
+    test('closing the window pauses its player; returning does not', () async {
+      await settle();
+      final engine = backend.create(clip)..prepare();
+      for (var i = 0; i < 10; i++) {
+        await settle();
+      }
+      engine.play();
+      final pip = backend.pictureInPicture;
+
+      pip
+        ..start(engine)
+        ..stop();
+      await settle();
+      expect(engine.state.value.playing, isTrue);
+
+      pip.start(engine);
+      await settle();
+      host.dismissPictureInPicture(host.live.single.id);
+      await settle();
+      expect(pip.active.value, isNull);
+      expect(engine.state.value.playing, isFalse);
+    });
+
     test('the probe becomes the device', () async {
       final device = await backend.device;
 

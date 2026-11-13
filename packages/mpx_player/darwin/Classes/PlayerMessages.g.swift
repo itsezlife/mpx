@@ -978,8 +978,10 @@ class PlayerHostApiSetup {
 protocol PlayerFlutterApiProtocol {
   func onSnapshot(snapshot snapshotArg: NativePlayerSnapshot, completion: @escaping (Result<Void, PigeonError>) -> Void)
   func onAudioFocusChange(change changeArg: NativeAudioFocusChange, completion: @escaping (Result<Void, PigeonError>) -> Void)
-  /// Picture in picture started ([active]) or ended for [playerId].
-  func onPictureInPictureChange(playerId playerIdArg: Int64, active activeArg: Bool, completion: @escaping (Result<Void, PigeonError>) -> Void)
+  /// Picture in picture started ([active]) or ended for [playerId];
+  /// [dismissed] when the user closed the window rather than returning to
+  /// the app.
+  func onPictureInPictureChange(playerId playerIdArg: Int64, active activeArg: Bool, dismissed dismissedArg: Bool, completion: @escaping (Result<Void, PigeonError>) -> Void)
   /// Opens the part at [url] of stream [streamId]: a [playlist] (resolved
   /// through the cache, revalidated by HTTP rules) or a segment (published
   /// to the native reader under a key of its own). Fails once the stream is
@@ -1034,11 +1036,13 @@ class PlayerFlutterApi: PlayerFlutterApiProtocol {
       }
     }
   }
-  /// Picture in picture started ([active]) or ended for [playerId].
-  func onPictureInPictureChange(playerId playerIdArg: Int64, active activeArg: Bool, completion: @escaping (Result<Void, PigeonError>) -> Void) {
+  /// Picture in picture started ([active]) or ended for [playerId];
+  /// [dismissed] when the user closed the window rather than returning to
+  /// the app.
+  func onPictureInPictureChange(playerId playerIdArg: Int64, active activeArg: Bool, dismissed dismissedArg: Bool, completion: @escaping (Result<Void, PigeonError>) -> Void) {
     let channelName: String = "dev.flutter.pigeon.mpx_player.PlayerFlutterApi.onPictureInPictureChange\(messageChannelSuffix)"
     let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
-    channel.sendMessage([playerIdArg, activeArg] as [Any?]) { response in
+    channel.sendMessage([playerIdArg, activeArg, dismissedArg] as [Any?]) { response in
       guard let listResponse = response as? [Any?] else {
         completion(.failure(createConnectionError(withChannelName: channelName)))
         return

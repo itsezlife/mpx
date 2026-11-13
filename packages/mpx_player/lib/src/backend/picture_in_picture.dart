@@ -15,7 +15,8 @@ abstract interface class PictureInPicture {
   bool get isSupported;
 
   /// The engine shown in the window, or null when none is. Becomes null when
-  /// the user closes the window or returns to the app from it.
+  /// the user closes the window (which pauses the engine) or returns to the
+  /// app from it.
   ValueListenable<PlayerEngine?> get active;
 
   /// Moves [engine]'s picture into the window. Does nothing when

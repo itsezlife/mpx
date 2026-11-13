@@ -16,19 +16,19 @@ import android.view.ViewTreeObserver
  * shrinks into the window and the player's texture keeps playing in it.
  *
  * The host's activity must declare `android:supportsPictureInPicture="true"`
- * (and `android:resizeableActivity="true"`). Leaving the window (the user
- * expands or closes it) shows on the activity's layout and lifecycle: an
- * activity no longer in picture in picture means the window is gone. [stop] expands the window by bringing the activity to the front.
+ * (and `android:resizeableActivity="true"`). The user expanding the window
+ * shows on the activity's layout and resume; closing it stops the activity.
+ * [stop] expands the window by bringing the activity to the front.
  */
 internal class MpxPictureInPicture(
-    private val report: (playerId: Long, active: Boolean) -> Unit,
+    private val report: (playerId: Long, active: Boolean, dismissed: Boolean) -> Unit,
 ) : Application.ActivityLifecycleCallbacks {
     private var activity: Activity? = null
     private var shown: Long? = null
 
     // Entering and leaving the window always resizes it; a resumed activity
     // may stay resumed through both, so the layout is the reliable signal.
-    private val onLayout = ViewTreeObserver.OnGlobalLayoutListener { activity?.let(::checkLeft) }
+    private val onLayout = ViewTreeObserver.OnGlobalLayoutListener { activity?.let(::checkExpanded) }
 
     fun attach(activity: Activity) {
         detach()
@@ -66,7 +66,7 @@ internal class MpxPictureInPicture(
             }
         if (!entered) return
         shown = playerId
-        report(playerId, true)
+        report(playerId, true, false)
     }
 
     /**
@@ -77,36 +77,42 @@ internal class MpxPictureInPicture(
         val current = activity ?: return
         if (shown == null) return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !current.isInPictureInPictureMode) {
-            return end()
+            return end(dismissed = false)
         }
         current.startActivity(
             Intent(current, current.javaClass).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
         )
-        end()
+        end(dismissed = false)
     }
 
     /** The player that left the engine while in the window. */
     fun forget(playerId: Long) {
-        if (shown == playerId) end()
+        if (shown == playerId) end(dismissed = false)
     }
 
-    private fun end() {
+    private fun end(dismissed: Boolean) {
         val id = shown ?: return
         shown = null
-        report(id, false)
+        report(id, false, dismissed)
     }
 
-    private fun checkLeft(activity: Activity) {
+    // Expanding the window shows on the layout (the activity may stay
+    // resumed throughout).
+    private fun checkExpanded(activity: Activity) {
         if (activity !== this.activity || shown == null) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && activity.isInPictureInPictureMode) {
             return
         }
-        end()
+        end(dismissed = false)
     }
 
-    override fun onActivityResumed(activity: Activity) = checkLeft(activity)
+    override fun onActivityResumed(activity: Activity) = checkExpanded(activity)
 
-    override fun onActivityStopped(activity: Activity) = checkLeft(activity)
+    // An activity in the window stops only when the window closes (or the
+    // screen goes off): it still reads as in picture in picture then.
+    override fun onActivityStopped(activity: Activity) {
+        if (activity === this.activity) end(dismissed = true)
+    }
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
 

@@ -80,6 +80,7 @@ final class LocalMedia {
     final origin = Uri.parse('http://127.0.0.1:${server.port}');
     final backend = NativePlayerBackend(
       readers: readers,
+      backgroundAudio: true,
       playlists: BytesResolver(cache: store, client: client),
       sourcesOf: (key) => switch (key) {
         MediaKey$Remote(id: 'stream') => [

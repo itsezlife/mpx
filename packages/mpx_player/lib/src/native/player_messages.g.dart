@@ -1008,8 +1008,10 @@ abstract class PlayerFlutterApi {
 
   void onAudioFocusChange(NativeAudioFocusChange change);
 
-  /// Picture in picture started ([active]) or ended for [playerId].
-  void onPictureInPictureChange(int playerId, bool active);
+  /// Picture in picture started ([active]) or ended for [playerId];
+  /// [dismissed] when the user closed the window rather than returning to
+  /// the app.
+  void onPictureInPictureChange(int playerId, bool active, bool dismissed);
 
   /// Opens the part at [url] of stream [streamId]: a [playlist] (resolved
   /// through the cache, revalidated by HTTP rules) or a segment (published
@@ -1097,8 +1099,13 @@ abstract class PlayerFlutterApi {
           final List<Object?> args = message! as List<Object?>;
           final int arg_playerId = args[0]! as int;
           final bool arg_active = args[1]! as bool;
+          final bool arg_dismissed = args[2]! as bool;
           try {
-            api.onPictureInPictureChange(arg_playerId, arg_active);
+            api.onPictureInPictureChange(
+              arg_playerId,
+              arg_active,
+              arg_dismissed,
+            );
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);

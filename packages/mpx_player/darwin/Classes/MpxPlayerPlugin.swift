@@ -30,8 +30,10 @@ public class MpxPlayerPlugin: NSObject, FlutterPlugin, PlayerHostApi {
     audioSession = MpxAudioSession { [weak self] change in
       self?.flutter.onAudioFocusChange(change: change) { _ in }
     }
-    pictureInPicture = MpxPictureInPicture { [weak self] id, active in
-      self?.flutter.onPictureInPictureChange(playerId: id, active: active) { _ in }
+    pictureInPicture = MpxPictureInPicture { [weak self] id, active, dismissed in
+      self?.flutter.onPictureInPictureChange(
+        playerId: id, active: active, dismissed: dismissed
+      ) { _ in }
     }
   }
 

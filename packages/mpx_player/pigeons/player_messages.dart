@@ -226,8 +226,10 @@ abstract class PlayerFlutterApi {
   void onSnapshot(NativePlayerSnapshot snapshot);
   void onAudioFocusChange(NativeAudioFocusChange change);
 
-  /// Picture in picture started ([active]) or ended for [playerId].
-  void onPictureInPictureChange(int playerId, bool active);
+  /// Picture in picture started ([active]) or ended for [playerId];
+  /// [dismissed] when the user closed the window rather than returning to
+  /// the app.
+  void onPictureInPictureChange(int playerId, bool active, bool dismissed);
 
   /// Opens the part at [url] of stream [streamId]: a [playlist] (resolved
   /// through the cache, revalidated by HTTP rules) or a segment (published

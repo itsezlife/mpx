@@ -115,14 +115,18 @@ final class SimulatedHost implements PlayerHostApi {
 
   @override
   Future<void> startPictureInPicture(int playerId) async =>
-      receiver.onPictureInPictureChange(playerId, true);
+      receiver.onPictureInPictureChange(playerId, true, false);
 
   @override
   Future<void> stopPictureInPicture() async {
     for (final player in live) {
-      receiver.onPictureInPictureChange(player.id, false);
+      receiver.onPictureInPictureChange(player.id, false, false);
     }
   }
+
+  /// The user closes the window of [playerId].
+  void dismissPictureInPicture(int playerId) =>
+      receiver.onPictureInPictureChange(playerId, false, true);
 
   @override
   Future<void> setBackgroundAudio(bool enabled) async =>

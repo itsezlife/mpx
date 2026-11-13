@@ -32,7 +32,9 @@ class MpxPlayerPlugin : FlutterPlugin, ActivityAware, PlayerHostApi {
         parts = StreamParts(flutter)
         device = MpxDeviceProbe(context)
         pictureInPicture =
-            MpxPictureInPicture { id, active -> flutter.onPictureInPictureChange(id, active) {} }
+            MpxPictureInPicture { id, active, dismissed ->
+                flutter.onPictureInPictureChange(id, active, dismissed) {}
+            }
         background = MpxBackgroundAudio(context)
         // Focus callbacks and the noisy broadcast arrive on the main thread,
         // where Pigeon's Flutter API must be called.

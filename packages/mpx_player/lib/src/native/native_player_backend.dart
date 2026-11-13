@@ -316,15 +316,20 @@ final class _Receiver implements PlayerFlutterApi {
   void closeStreamPart(int partId) => _backend._closePart(partId);
 
   @override
-  void onPictureInPictureChange(int playerId, bool active) {
+  void onPictureInPictureChange(int playerId, bool active, bool dismissed) {
     if (_backend._disposed) return;
     final pip = _backend._pictureInPicture;
     final engine = _backend._engines[playerId];
     if (active) {
       pip._active.value = engine;
-    } else if (identical(pip._active.value, engine) || engine == null) {
+      return;
+    }
+    if (identical(pip._active.value, engine) || engine == null) {
       pip._active.value = null;
     }
+    // Closing the window stops the video, as background sound would
+    // otherwise play on with nothing to show it.
+    if (dismissed) engine?.pause();
   }
 }
 
