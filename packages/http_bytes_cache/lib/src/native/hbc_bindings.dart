@@ -16,12 +16,19 @@ final class HbcReader extends Opaque {}
 @Native<Int32 Function()>(symbol: 'hbc_abi_version')
 external int hbcAbiVersion();
 
-@Native<Void Function(Pointer<NativeFunction<HbcFetchNative>>)>(
-  symbol: 'hbc_set_fetch_callback',
+/// `HBC_ERR_BUSY`: [hbcAttach] found another host attached.
+const int hbcErrBusy = -5;
+
+@Native<Int64 Function(Pointer<NativeFunction<HbcFetchNative>>)>(
+  symbol: 'hbc_attach',
 )
-external void hbcSetFetchCallback(
-  Pointer<NativeFunction<HbcFetchNative>> fetch,
-);
+external int hbcAttach(Pointer<NativeFunction<HbcFetchNative>> fetch);
+
+@Native<Void Function(Int64)>(symbol: 'hbc_detach')
+external void hbcDetach(int owner);
+
+@Native<Void Function(Pointer<Void>)>(symbol: 'hbc_detach_finalizer')
+external void hbcDetachFinalizer(Pointer<Void> owner);
 
 @Native<Int64 Function(Pointer<Char>, Pointer<Char>, Int64)>(
   symbol: 'hbc_publish',

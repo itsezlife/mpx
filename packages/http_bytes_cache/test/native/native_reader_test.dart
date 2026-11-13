@@ -140,6 +140,94 @@ void main() {
       expect(await messages.moveNext(), isTrue);
       expect(messages.current, -3);
     });
+
+    test('a key published twice stays readable until both publications '
+        'close', () async {
+      final first = await publish();
+      final second = await publish();
+      await second.resource.ensure(const ByteRange(0, 1000));
+
+      await first.close();
+
+      expect(await readElsewhere(0, 100), body.sublist(0, 100));
+      await second.close();
+      expect(NativeRangedReader.open(key), isNull);
+    });
+
+    test('a read that finds its bytes truncated away waits for them to '
+        'land again', () async {
+      final publication = await publish();
+      await publication.resource.ensure(const ByteRange(0, 2000));
+      // The store drops the spans and truncates the file before the reset
+      // reaches the native side: a reader there still counts the bytes as
+      // present, and its file read comes back short.
+      await store.resetRanges(key);
+      final replies = ReceivePort();
+      addTearDown(replies.close);
+      final messages = StreamIterator(replies);
+
+      await Isolate.spawn(_blockedRead, (replies.sendPort, key.value, 100));
+      expect(await messages.moveNext(), isTrue);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await publication.resource.ensure(const ByteRange(0, 2000));
+
+      expect(await messages.moveNext(), isTrue);
+      expect(messages.current, 10);
+    });
+
+    test('a second instance in this isolate is refused', () {
+      expect(
+        () => NativeRangedReaders(RangedBytes(store: MemoryBytesCache())),
+        throwsStateError,
+      );
+    });
+
+    test('an instance in another isolate is refused while one is '
+        'attached', () async {
+      expect(await _attachElsewhere(), 'refused');
+    });
+  });
+
+  group('Native reader without its owner', () {
+    test('an owner whose isolate group ends without closing leaves no '
+        'resources and no attachment behind', () async {
+      const orphan = BytesCacheKey('abandoned-video');
+      final dir = await Directory.systemTemp.createTemp('native_owner_');
+      addTearDown(() => dir.delete(recursive: true));
+      final replies = ReceivePort();
+      addTearDown(replies.close);
+      final messages = StreamIterator(replies);
+
+      // Its own isolate group, as after a hot restart: the package's
+      // statics start fresh there, the native library's do not.
+      final child = await Isolate.spawnUri(
+        Directory.current.uri.resolve(
+          'test/native/support/abandoned_owner.dart',
+        ),
+        [dir.path, orphan.value],
+        replies.sendPort,
+      );
+      expect(await messages.moveNext(), isTrue);
+      expect(messages.current, 'ready');
+      NativeRangedReader.open(orphan)!.close();
+
+      child.kill(priority: Isolate.immediate);
+
+      final deadline = DateTime.now().add(const Duration(seconds: 10));
+      for (
+        var reader = NativeRangedReader.open(orphan);
+        reader != null;
+        reader = NativeRangedReader.open(orphan)
+      ) {
+        reader.close();
+        if (DateTime.now().isAfter(deadline)) {
+          fail('The abandoned resource is still published');
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      final next = NativeRangedReaders(RangedBytes(store: MemoryBytesCache()));
+      await next.close();
+    });
   });
 }
 
@@ -159,6 +247,21 @@ Future<Object> _readElsewhere(String key, int offset, int length) =>
         reader.close();
       }
     });
+
+/// Tries to serve the native reader from a helper isolate: `refused` when
+/// another instance is attached, else `attached` (then closed again).
+Future<String> _attachElsewhere() => Isolate.run(() async {
+  try {
+    final readers = NativeRangedReaders(
+      RangedBytes(store: MemoryBytesCache()),
+    );
+    await readers.close();
+    return 'attached';
+  } on Object catch (error) {
+    if (error is StateError) return 'refused';
+    rethrow;
+  }
+});
 
 /// The length a reader on [key] waits for, on a helper isolate.
 Future<int> _waitedLengthElsewhere(String key) => Isolate.run(() {

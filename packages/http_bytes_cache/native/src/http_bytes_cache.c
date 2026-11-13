@@ -16,7 +16,15 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
+
+/* How long a read whose present bytes came back short from the file waits
+ * for the change that explains it (the reset, or the bytes landing again)
+ * before it reports HBC_ERR_IO. The store truncates before it signals the
+ * reset, so a short read is a reset still on its way, not a fault, unless
+ * nothing follows. */
+#define HBC_STALE_WAIT_SECONDS 10
 
 typedef struct hbc_span {
   int64_t start;
@@ -33,8 +41,10 @@ typedef struct hbc_resource {
   size_t capacity;
   pthread_cond_t changed;
   int published;
+  int publications; /* hbc_publish calls not yet withdrawn */
   int readers;
   uint64_t reset_seq;
+  uint64_t change_seq; /* bumped by every landing and reset */
   uint64_t fail_seq;
   int64_t fail_start;
   int64_t fail_end;
@@ -52,6 +62,10 @@ static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static hbc_resource *g_resources = NULL;
 static int64_t g_next_id = 1;
 static hbc_fetch_fn g_fetch = NULL;
+/* The attached host (hbc_attach), 0 when none. Owners are never reused, so
+ * a late detach of an owner that is gone cannot detach its successor. */
+static int64_t g_owner = 0;
+static int64_t g_next_owner = 1;
 
 /* --- Registry (g_lock held) --------------------------------------------- */
 
@@ -149,11 +163,6 @@ static void request_fetch(const hbc_resource *r, int64_t offset,
 
 int32_t hbc_abi_version(void) { return HBC_ABI_VERSION; }
 
-void hbc_set_fetch_callback(hbc_fetch_fn fetch) {
-  pthread_mutex_lock(&g_lock);
-  g_fetch = fetch;
-  pthread_mutex_unlock(&g_lock);
-}
 
 int64_t hbc_publish(const char *key, const char *path, int64_t total_length) {
   if (key == NULL || path == NULL) return 0;
@@ -166,6 +175,7 @@ int64_t hbc_publish(const char *key, const char *path, int64_t total_length) {
       r->path = copy;
     }
     if (total_length >= 0) r->total = total_length;
+    r->publications++;
     int64_t id = r->id;
     pthread_cond_broadcast(&r->changed);
     pthread_mutex_unlock(&g_lock);
@@ -189,6 +199,7 @@ int64_t hbc_publish(const char *key, const char *path, int64_t total_length) {
   r->id = g_next_id++;
   r->total = total_length >= 0 ? total_length : -1;
   r->published = 1;
+  r->publications = 1;
   r->next = g_resources;
   g_resources = r;
   int64_t id = r->id;
@@ -211,6 +222,7 @@ void hbc_range_landed(int64_t id, int64_t start, int64_t end) {
   hbc_resource *r = find_by_id(id);
   if (r != NULL) {
     add_span(r, start, end);
+    r->change_seq++;
     pthread_cond_broadcast(&r->changed);
   }
   pthread_mutex_unlock(&g_lock);
@@ -222,6 +234,7 @@ void hbc_ranges_reset(int64_t id) {
   if (r != NULL) {
     r->count = 0;
     r->reset_seq++;
+    r->change_seq++;
     pthread_cond_broadcast(&r->changed);
   }
   pthread_mutex_unlock(&g_lock);
@@ -239,16 +252,51 @@ void hbc_fetch_failed(int64_t id, int64_t offset, int64_t length) {
   pthread_mutex_unlock(&g_lock);
 }
 
+/* Unlinks [r] and wakes its readers as closed; frees it once no reader
+ * holds it (the last hbc_reader_close frees it otherwise). */
+static void withdraw(hbc_resource *r) {
+  unlink_resource(r);
+  r->published = 0;
+  r->publications = 0;
+  pthread_cond_broadcast(&r->changed);
+  if (r->readers == 0) free_resource(r);
+}
+
 void hbc_unpublish(int64_t id) {
   pthread_mutex_lock(&g_lock);
   hbc_resource *r = find_by_id(id);
-  if (r != NULL) {
-    unlink_resource(r);
-    r->published = 0;
-    pthread_cond_broadcast(&r->changed);
-    if (r->readers == 0) free_resource(r);
+  /* One publication of a shared key never withdraws another's. */
+  if (r != NULL && --r->publications <= 0) withdraw(r);
+  pthread_mutex_unlock(&g_lock);
+}
+
+int64_t hbc_attach(hbc_fetch_fn fetch) {
+  if (fetch == NULL) return HBC_ERR_BUSY;
+  pthread_mutex_lock(&g_lock);
+  int64_t owner = HBC_ERR_BUSY;
+  if (g_owner == 0) {
+    owner = g_next_owner++;
+    g_owner = owner;
+    g_fetch = fetch;
   }
   pthread_mutex_unlock(&g_lock);
+  return owner;
+}
+
+void hbc_detach(int64_t owner) {
+  pthread_mutex_lock(&g_lock);
+  if (owner > 0 && owner == g_owner) {
+    g_owner = 0;
+    g_fetch = NULL;
+    /* Everything published belongs to the host that leaves: a host gone
+     * with its isolate group (a hot restart) never unpublishes its own. */
+    while (g_resources != NULL) withdraw(g_resources);
+  }
+  pthread_mutex_unlock(&g_lock);
+}
+
+void hbc_detach_finalizer(void *owner) {
+  hbc_detach((int64_t)(intptr_t)owner);
 }
 
 /* --- Reader side -------------------------------------------------------- */
@@ -320,8 +368,13 @@ int64_t hbc_reader_read(hbc_reader *reader, int64_t offset, uint8_t *buffer,
   uint64_t reset = r->reset_seq;
   uint64_t failures = r->fail_seq;
   int asked = 0;
-  int64_t available = 0;
-  int64_t result = 0;
+  /* Set once a file read of present bytes came back short (or raced a
+   * reset): the read then waits for the next landing or reset, at most
+   * until [deadline], instead of reading the same stale span again. */
+  int stale = 0;
+  uint64_t stale_change = 0;
+  struct timespec deadline = {0, 0};
+  int64_t result;
   for (;;) {
     if (!r->published) {
       result = HBC_ERR_CLOSED;
@@ -336,9 +389,39 @@ int64_t hbc_reader_read(hbc_reader *reader, int64_t offset, uint8_t *buffer,
       break;
     }
     int64_t end = contiguous_from(r, offset);
+    if (end > offset && stale && r->change_seq == stale_change) {
+      if (pthread_cond_timedwait(&r->changed, &g_lock, &deadline) ==
+          ETIMEDOUT) {
+        result = HBC_ERR_IO;
+        break;
+      }
+      continue;
+    }
     if (end > offset) {
-      available = end - offset;
-      break;
+      int64_t want = length < end - offset ? length : end - offset;
+      uint64_t read_reset = r->reset_seq;
+      pthread_mutex_unlock(&g_lock);
+      ssize_t got;
+      do {
+        got = pread(reader->fd, buffer, (size_t)want, (off_t)offset);
+      } while (got < 0 && errno == EINTR);
+      pthread_mutex_lock(&g_lock);
+      if (got < 0) {
+        result = HBC_ERR_IO;
+        break;
+      }
+      /* Bytes read across a reset may belong to either representation. */
+      if (got > 0 && r->reset_seq == read_reset) {
+        result = (int64_t)got;
+        break;
+      }
+      if (!stale) {
+        stale = 1;
+        clock_gettime(CLOCK_REALTIME, &deadline);
+        deadline.tv_sec += HBC_STALE_WAIT_SECONDS;
+      }
+      stale_change = r->change_seq;
+      continue;
     }
     if (r->fail_seq != failures) {
       failures = r->fail_seq;
@@ -359,16 +442,7 @@ int64_t hbc_reader_read(hbc_reader *reader, int64_t offset, uint8_t *buffer,
     pthread_cond_wait(&r->changed, &g_lock);
   }
   pthread_mutex_unlock(&g_lock);
-  if (available == 0) return result;
-
-  int64_t want = length < available ? length : available;
-  ssize_t got;
-  do {
-    got = pread(reader->fd, buffer, (size_t)want, (off_t)offset);
-  } while (got < 0 && errno == EINTR);
-  /* Present bytes are in the file, so a short file is an IO fault. */
-  if (got <= 0) return HBC_ERR_IO;
-  return (int64_t)got;
+  return result;
 }
 
 void hbc_reader_set_priority(hbc_reader *reader, int32_t priority) {
