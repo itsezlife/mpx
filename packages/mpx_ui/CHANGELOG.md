@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Breaking: `MediaViewer.show` takes the platform's policy when none is
+  given (was `ViewerPolicy.$Android`) and, without a bridge, the closest
+  `ViewerOriginScope`.
+- `ViewerOrigin` and `ViewerOriginScope`: origins in any list, grid or
+  bubble, registered by gallery index or media key; the scope is the
+  `OriginBridge`, so a host writes none.
+- `ViewerController` (`MediaViewer.controller`, `MediaViewer.show`):
+  index, open state, controls, zoom reset, the video's lease, close.
+- `ViewerPolicy.forPlatform`.
+- Embeddable pages: `ViewerPhotoPage`'s dismiss drag, max zoom, content size
+  and zoom callback are optional; `ViewerVideoPage` plays one video with the
+  policy's gestures and controls, over `ViewerVideoSession`, the video logic
+  `MediaViewer` uses too.
 - `FeedClip`: the closest `FeedSlot`'s media, a `PlayerView` while it holds
   a player, else the cached clip at its visible fraction.
 - `FeedListView` and `FeedPagerView` are built on `FeedController`,

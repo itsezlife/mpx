@@ -35,16 +35,20 @@ typedef ViewerDoubleTapHandler = bool Function(Offset local, Size page);
 /// vertically to dismiss while it is not zoomed. A video page passes
 /// [onDoubleTap] to seek instead of zooming, and [onHoldStart] /
 /// [onHoldEnd] for a held press.
+///
+/// It works on its own inside a host's pager or screen with the policy's
+/// gestures: without [drag] there is no dismiss drag, and a host pager
+/// stops paging while [onZoomedChanged] says the picture is zoomed.
 class ViewerPhotoPage extends StatefulWidget {
   /// Creates a page drawing [child] in a box of [contentSize], centred.
   const ViewerPhotoPage({
     required this.child,
-    required this.contentSize,
     required this.policy,
-    required this.drag,
-    required this.onZoomedChanged,
-    required this.maxZoom,
     super.key,
+    this.contentSize,
+    this.drag,
+    this.onZoomedChanged,
+    this.maxZoom,
     this.doubleTapZoom,
     this.onTap,
     this.onBackgroundTap,
@@ -57,21 +61,23 @@ class ViewerPhotoPage extends StatefulWidget {
   /// The picture.
   final Widget child;
 
-  /// The size the picture is drawn at when not zoomed.
-  final Size contentSize;
+  /// The size the picture is drawn at when not zoomed; the page's size when
+  /// null.
+  final Size? contentSize;
 
   /// The rules.
   final ViewerPolicy policy;
 
-  /// Where dismiss drags go.
-  final ViewerDragEvents drag;
+  /// Where dismiss drags go; no dismiss drag when null.
+  final ViewerDragEvents? drag;
 
-  /// Told when the page leaves or returns to its resting zoom, so the viewer
-  /// stops paging while a picture is zoomed.
-  final ValueChanged<bool> onZoomedChanged;
+  /// Told when the page leaves or returns to its resting zoom, so the pager
+  /// around it stops paging while a picture is zoomed.
+  final ValueChanged<bool>? onZoomedChanged;
 
-  /// The largest zoom.
-  final double maxZoom;
+  /// The largest zoom; the policy's for the picture and the page
+  /// (`ViewerPolicy.maxZoomFor`) when null.
+  final double? maxZoom;
 
   /// The zoom a double tap goes to; null for none.
   final double? doubleTapZoom;
@@ -130,6 +136,11 @@ class ViewerPhotoPageState extends State<ViewerPhotoPage>
 
   bool get _zoomed => _zoom != 1 || _pan != Offset.zero;
 
+  Size get _contentSize => widget.contentSize ?? _pageSize;
+
+  double get _maxZoom =>
+      widget.maxZoom ?? widget.policy.maxZoomFor(_contentSize, _pageSize);
+
   @override
   void initState() {
     super.initState();
@@ -151,12 +162,12 @@ class ViewerPhotoPageState extends State<ViewerPhotoPage>
       _zoom = zoom;
       _pan = pan;
     });
-    if (wasZoomed != _zoomed) widget.onZoomedChanged(_zoomed);
+    if (wasZoomed != _zoomed) widget.onZoomedChanged?.call(_zoomed);
   }
 
   // How far the picture may move from the centre at [zoom], per axis.
   Offset _bounds(double zoom) {
-    final size = widget.contentSize;
+    final size = _contentSize;
     return Offset(
       math.max(0, (size.width * zoom - _pageSize.width) / 2),
       math.max(0, (size.height * zoom - _pageSize.height) / 2),
@@ -224,7 +235,7 @@ class ViewerPhotoPageState extends State<ViewerPhotoPage>
   /// Zooms to [zoom] around [focal] (local to the page; its centre when
   /// null), animated: what the keyboard and the wheel do.
   void zoomTo(double zoom, {Offset? focal}) {
-    final target = zoom.clamp(widget.policy.minZoom, widget.maxZoom);
+    final target = zoom.clamp(widget.policy.minZoom, _maxZoom);
     final around = focal == null ? Offset.zero : _fromCentre(focal);
     final pan = target == widget.policy.minZoom
         ? Offset.zero
@@ -234,7 +245,7 @@ class ViewerPhotoPageState extends State<ViewerPhotoPage>
 
   // Whether [local] falls on the picture as it is drawn now.
   bool _onPicture(Offset local) {
-    final size = widget.contentSize * _zoom;
+    final size = _contentSize * _zoom;
     final centre = Offset(_pageSize.width / 2, _pageSize.height / 2) + _pan;
     return Rect.fromCenter(
       center: centre,
@@ -266,12 +277,15 @@ class ViewerPhotoPageState extends State<ViewerPhotoPage>
     final moved = focal - _startFocal;
     final policy = widget.policy;
     if (details.pointerCount < 2 && _startZoom == 1 && !_zoomed) {
-      if (!_dismissing && policy.startsDismiss(moved.dx, moved.dy)) {
+      final drag = widget.drag;
+      if (drag != null &&
+          !_dismissing &&
+          policy.startsDismiss(moved.dx, moved.dy)) {
         _dismissing = true;
         _dismissFrom = moved.dy;
-        widget.drag.onStart();
+        drag.onStart();
       }
-      if (_dismissing) widget.drag.onUpdate(moved.dy - _dismissFrom);
+      if (_dismissing) drag?.onUpdate(moved.dy - _dismissFrom);
       _lastFocal = focal;
       return;
     }
@@ -294,13 +308,13 @@ class ViewerPhotoPageState extends State<ViewerPhotoPage>
   void _onScaleEnd(ScaleEndDetails details) {
     if (_dismissing) {
       _dismissing = false;
-      widget.drag.onEnd(
+      widget.drag?.onEnd(
         _lastFocal.dy - _startFocal.dy - _dismissFrom,
         details.velocity.pixelsPerSecond.dy,
       );
       return;
     }
-    final zoom = widget.policy.settleZoom(_zoom, max: widget.maxZoom);
+    final zoom = widget.policy.settleZoom(_zoom, max: _maxZoom);
     final pan = zoom == 1 ? Offset.zero : _clampPan(_pan, zoom);
     if (zoom != _zoom || pan != _pan) _animateTo(zoom, pan);
   }
@@ -322,10 +336,7 @@ class ViewerPhotoPageState extends State<ViewerPhotoPage>
             alignment: Alignment.center,
             transform: Matrix4.translationValues(_pan.dx, _pan.dy, 0)
               ..scaleByDouble(_zoom, _zoom, 1, 1),
-            child: SizedBox.fromSize(
-              size: widget.contentSize,
-              child: widget.child,
-            ),
+            child: SizedBox.fromSize(size: _contentSize, child: widget.child),
           ),
         ),
       );

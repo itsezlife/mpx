@@ -174,31 +174,20 @@ class _MediaAppState extends State<MediaApp> {
             : GalleryMediaKind.animation,
       ),
   ]);
-  late final TileOrigins _origins = TileOrigins(_media.length);
 
   @override
   void dispose() {
     _gallery.dispose();
-    _origins.hidden.dispose();
     widget.stack.dispose();
     super.dispose();
   }
 
-  // Each platform gets its own reference viewer.
-  static ViewerPolicy get _policy => switch (defaultTargetPlatform) {
-    TargetPlatform.iOS => ViewerPolicy.$IOS,
-    TargetPlatform.macOS ||
-    TargetPlatform.windows ||
-    TargetPlatform.linux => ViewerPolicy.$Desktop,
-    _ => ViewerPolicy.$Android,
-  };
-
+  // The platform's reference viewer, opening from the tile's `ViewerOrigin`
+  // through the closest `ViewerOriginScope`: no bridge to write.
   void _open(BuildContext context, int index) => MediaViewer.show(
     context,
     source: _gallery,
     initialIndex: index,
-    bridge: _origins,
-    policy: _policy,
     onFullscreenChanged: (on) => setWindowFullscreen(fullscreen: on),
     chrome: ViewerChrome(
       title: (context, index, item) => Text(_media[index].$4),
@@ -220,19 +209,21 @@ class _MediaAppState extends State<MediaApp> {
             builder: (context) => ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                ValueListenableBuilder<Set<int>>(
-                  valueListenable: _origins.hidden,
-                  builder: (context, hidden, _) => Wrap(
-                    spacing: 16,
-                    runSpacing: 16,
+                ViewerOriginScope(
+                  child: GridView.extent(
+                    maxCrossAxisExtent: 180,
+                    childAspectRatio: 160 / 190,
+                    mainAxisSpacing: 16,
+                    crossAxisSpacing: 16,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
                     children: [
                       for (final (index, (key, _, _, label)) in _media.indexed)
-                        GestureDetector(
-                          onTap: () => _open(context, index),
-                          child: Opacity(
-                            opacity: hidden.contains(index) ? 0 : 1,
+                        Builder(
+                          builder: (context) => GestureDetector(
+                            onTap: () => _open(context, index),
                             child: _MediaTile(
-                              tileKey: _origins.keys[index],
+                              index: index,
                               content: key,
                               label: label,
                             ),
@@ -276,13 +267,13 @@ class _MediaAppState extends State<MediaApp> {
 
 class _MediaTile extends StatelessWidget {
   const _MediaTile({
-    required this.tileKey,
+    required this.index,
     required this.content,
     required this.label,
   });
 
-  /// Marks the picture, so the viewer finds where it sits.
-  final GlobalKey tileKey;
+  /// The tile's gallery index: its picture is the viewer's origin.
+  final int index;
 
   static const double _extent = 160;
 
@@ -293,13 +284,16 @@ class _MediaTile extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     mainAxisSize: MainAxisSize.min,
     children: [
-      ContentView(
-        key: tileKey,
-        content: content,
-        preset: AssetPresets.square(
-          extent: _extent,
-          devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
-          profile: const AssetProfile(animate: true),
+      ViewerOrigin(
+        index: index,
+        borderRadius: const BorderRadius.all(Radius.circular(12)),
+        child: ContentView(
+          content: content,
+          preset: AssetPresets.square(
+            extent: _extent,
+            devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+            profile: const AssetProfile(animate: true),
+          ),
         ),
       ),
       const SizedBox(height: 8),

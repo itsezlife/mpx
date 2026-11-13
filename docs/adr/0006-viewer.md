@@ -11,6 +11,7 @@ On macOS the viewer is an in-app overlay over the whole app window.
 
 **Status**: Accepted (decided with the maintainer 2026-11-10)
 **Relates to**: 0001, 0004
+**Amended**: 2026-11-14, composable pieces (ticket 50)
 
 ## Context
 
@@ -64,6 +65,19 @@ Constants with file and line: research `04-viewer-anatomy`.
 | Backdrop | The viewer reports the scale the host draws its surface at (`onBackdropScale`); it cannot reach the surface itself |
 
 The viewer knows nothing about chats or messages.
+
+### Composable pieces
+
+A host opens the viewer from any list without writing a bridge, and uses its
+pages in its own screens. `MediaViewer` stays the assembled default.
+
+| Piece | Contract |
+| --- | --- |
+| `ViewerOrigin`, `ViewerOriginScope` | An origin wraps a thumbnail anywhere and registers by gallery index or `MediaKey`; the scope implements `OriginBridge` for them (`bridgeFor(source)` resolves keys through the viewer's gallery). Rect from the origin's own box in global coordinates; clip = the intersection of every enclosing `RenderAbstractViewport`; no place when fully clipped or not painted, so the viewer falls back to the fade; the frame is the origin's `RepaintBoundary` read synchronously on first ask and kept until the viewer shows it again; hidden = opacity 0 while laid out; `reveal` = `Scrollable.ensureVisible` (centred) for a built origin, else the host's `onReveal(index)`, then one frame; hand-back and start position are callbacks on the origin. A host may still pass its own bridge |
+| `ViewerController` | Attached while a viewer is mounted: `index`, `isOpen`, `controlsVisible` (settable), `videoLease`; `jumpTo`, `animateTo`, `resetZoom`, `close`. Notifies on item, open state, controls and lease changes |
+| `MediaViewer.show` | Pushes the transparent route; without a bridge it uses the closest `ViewerOriginScope`, without a policy `ViewerPolicy.forPlatform` |
+| `ViewerPhotoPage` | Embeddable: dismiss drag, max zoom, content size and the zoom callback are optional; a host pager stops paging while it reports a zoom |
+| `ViewerVideoSession`, `ViewerVideoPage` | The session is the video logic (lease, loop and end rules, auto-hide, seek, speed, quality, double-tap seek, held press) that `MediaViewer` and the page share; the page is a photo page over the player with the policy's controls, playing only while `active` |
 
 ### macOS form
 

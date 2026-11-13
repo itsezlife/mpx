@@ -26,43 +26,6 @@ final class ListGallery extends ChangeNotifier implements GallerySource {
   void loadAround(int index) {}
 }
 
-/// Where each tile sits: read from its render box. Hidden tiles fade out
-/// while the viewer's copy covers them.
-final class TileOrigins implements OriginBridge {
-  TileOrigins(int count) : keys = List.generate(count, (_) => GlobalKey());
-
-  final List<GlobalKey> keys;
-
-  /// The indexes the viewer covers now.
-  final ValueNotifier<Set<int>> hidden = ValueNotifier(const {});
-
-  @override
-  GalleryOrigin? originOf(int index) {
-    final box = keys[index].currentContext?.findRenderObject();
-    if (box is! RenderBox || !box.hasSize) return null;
-    return GalleryOrigin(
-      rect: box.localToGlobal(Offset.zero) & box.size,
-      radius: const BorderRadius.all(Radius.circular(12)),
-    );
-  }
-
-  // Every tile is on screen in the example: nothing to scroll to.
-  @override
-  Future<void> reveal(int index) async {}
-
-  @override
-  void setHidden(int index, {required bool hidden}) {
-    this.hidden.value = {
-      ...this.hidden.value.where((i) => i != index),
-      if (hidden) index,
-    };
-  }
-
-  // The tiles loop on their own clock; nothing to continue from.
-  @override
-  void handBack(int index, Duration position) {}
-}
-
 /// The bytes cache's file lease as the viewer's file handle.
 final class _LeasedFile implements ViewerFile {
   _LeasedFile(this._lease);

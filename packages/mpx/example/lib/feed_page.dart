@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mpx/mpx.dart';
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_example/gallery.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_ui/mpx_ui.dart';
 
@@ -31,8 +32,18 @@ class _FeedPageState extends State<FeedPage> {
     toThermal: (value) => FeedThermal.values.byName(value.name),
   );
 
+  // The feed's clips as the viewer's gallery: silent loops.
+  late final ListGallery _gallery = ListGallery([
+    for (var i = 0; i < _count; i++)
+      GalleryItem(
+        widget.clips[i % widget.clips.length],
+        kind: GalleryMediaKind.animation,
+      ),
+  ]);
+
   @override
   void dispose() {
+    _gallery.dispose();
     _conditions.dispose();
     super.dispose();
   }
@@ -50,19 +61,32 @@ class _FeedPageState extends State<FeedPage> {
           ),
         ),
       ),
-      body: FeedListView(
-        itemCount: _count,
-        itemExtent: _extent,
-        conditions: _conditions,
-        itemOf: (index) => FeedItem(widget.clips[index % widget.clips.length]),
-        presetOf: (index, profile) => AssetPresets.media(
-          size: const Size(360, _extent - 20),
-          devicePixelRatio: dpr,
-          profile: profile,
-        ),
-        cellBuilder: (context, index, clip) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Center(child: clip),
+      // Each clip is a viewer origin: a tap opens the viewer from it.
+      body: ViewerOriginScope(
+        child: FeedListView(
+          itemCount: _count,
+          itemExtent: _extent,
+          conditions: _conditions,
+          itemOf: (index) =>
+              FeedItem(widget.clips[index % widget.clips.length]),
+          presetOf: (index, profile) => AssetPresets.media(
+            size: const Size(360, _extent - 20),
+            devicePixelRatio: dpr,
+            profile: profile,
+          ),
+          cellBuilder: (context, index, clip) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Center(
+              child: GestureDetector(
+                onTap: () => MediaViewer.show(
+                  context,
+                  source: _gallery,
+                  initialIndex: index,
+                ),
+                child: ViewerOrigin(index: index, child: clip),
+              ),
+            ),
+          ),
         ),
       ),
     );

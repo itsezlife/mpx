@@ -417,6 +417,17 @@ final class ViewerPolicy {
     this.desktopInput = false,
   });
 
+  /// The reference policy of [platform]: [$IOS] on iOS, [$Desktop] on
+  /// macOS, Windows and Linux, [$Android] elsewhere.
+  static ViewerPolicy forPlatform(TargetPlatform platform) =>
+      switch (platform) {
+        TargetPlatform.iOS => $IOS,
+        TargetPlatform.macOS ||
+        TargetPlatform.windows ||
+        TargetPlatform.linux => $Desktop,
+        TargetPlatform.android || TargetPlatform.fuchsia => $Android,
+      };
+
   /// The Android reference: the picture morphs from its origin in 200 ms
   /// while the surface behind grows to 1.1; a drag down past a sixth of
   /// the height closes it, with no velocity term; double tap zooms to 3x

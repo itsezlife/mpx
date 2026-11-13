@@ -55,33 +55,30 @@ FeedScope(
 );
 ```
 
-Open the viewer from a list:
+Open the viewer from a grid thumbnail: mark each with a `ViewerOrigin`
+under a `ViewerOriginScope`, and the viewer opens from and closes back to
+it, clipped by the grid, with no bridge to write:
 
 ```dart
-MediaViewer.show(
-  context,
-  source: gallery, // your GallerySource
-  initialIndex: 4,
-  bridge: origins, // your OriginBridge: where each item sits on screen
-  policy: ViewerPolicy.$IOS, // or $Android, $Desktop
-  players: pool, // a PlayerPool, for video items
-  onFullscreenChanged: (on) => window.setFullscreen(on), // your window API
-  tokens: ViewerTokens(background: theme.colorScheme.scrim),
-  chrome: ViewerChrome(
-    title: (context, i, item) => Text(authorOf(i)),
-    openFile: (key) async => leaseFromYourCache(key), // a ViewerFile
-    actions: (i, item) => [
-      ViewerAction(
-        label: 'Save',
-        onSelected: (request) async {
-          final file = await request.file();
-          if (file != null) await saveToGallery(file.path);
-        },
-      ),
-    ],
+ViewerOriginScope(
+  child: GridView.builder(
+    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: 3,
+    ),
+    itemCount: gallery.count, // your GallerySource
+    itemBuilder: (context, i) => GestureDetector(
+      onTap: () => MediaViewer.show(context, source: gallery, initialIndex: i),
+      child: ViewerOrigin(index: i, child: MyThumbnail(i)),
+    ),
   ),
 );
 ```
+
+`MediaViewer.show` also takes a `ViewerController`, `players` (a
+`PlayerPool`) for videos, `chrome` (bars, caption, host actions such as save
+and share) and a `policy` (`ViewerPolicy.$Android`, `$IOS`, `$Desktop`; the
+platform's by default). `ViewerPhotoPage` and `ViewerVideoPage` work alone
+inside a host's own pager.
 
 ## Features
 
@@ -91,6 +88,7 @@ MediaViewer.show(
   player
 - `FeedPagerView`: the page shown plays with sound, its neighbours keep
   prepared players, a swipe takes one over
+- `ViewerOrigin`: thumbnails in any list become the viewer's origins
 - `MediaViewer`: photos and videos open from and close to their origin;
   dismiss drag, zoom and paging per `ViewerPolicy.$Android`, `$IOS` or
   `$Desktop` (an in-app overlay with keyboard, wheel and step zoom)

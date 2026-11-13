@@ -13,6 +13,7 @@ import 'viewer/media_viewer_test.dart' as media_viewer_test;
 import 'viewer/viewer_chrome_test.dart' as viewer_chrome_test;
 import 'viewer/viewer_desktop_policy_test.dart' as viewer_desktop_policy_test;
 import 'viewer/viewer_ios_policy_test.dart' as viewer_ios_policy_test;
+import 'viewer/viewer_origin_test.dart' as viewer_origin_test;
 import 'viewer/viewer_video_test.dart' as viewer_video_test;
 
 void main() {
@@ -23,5 +24,6 @@ void main() {
   group('viewer_chrome_test', viewer_chrome_test.main);
   group('viewer_desktop_policy_test', viewer_desktop_policy_test.main);
   group('viewer_ios_policy_test', viewer_ios_policy_test.main);
+  group('viewer_origin_test', viewer_origin_test.main);
   group('viewer_video_test', viewer_video_test.main);
 }

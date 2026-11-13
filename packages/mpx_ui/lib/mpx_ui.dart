@@ -4,13 +4,17 @@
 /// `MediaViewer` pages through a host's `GallerySource`, opening from and
 /// closing to each item's place on the host's surface through an
 /// `OriginBridge`, with the gestures of a `ViewerPolicy` (`$Android`) and
-/// the colours of the host's `ViewerTokens`.
+/// the colours of the host's `ViewerTokens`. `ViewerOrigin`s under a
+/// `ViewerOriginScope` are that bridge for thumbnails in any list; a
+/// `ViewerController` drives the viewer, and its photo and video pages work
+/// alone in a host's own pager.
 ///
 /// `FeedListView` plays every visible clip of a list muted, as a list-mode
 /// `FeedPolicy` of `mpx_player` says, and preloads the items ahead through
 /// the core's asset cache scope. `FeedPagerView` plays the page shown with
 /// sound and keeps its neighbours' players prepared, as a pager-mode policy
-/// says.
+/// says. Both are built on `mpx_player`'s `FeedController` and `FeedSlot`;
+/// `FeedClip` draws a slot's media in a host's own scrollable.
 library;
 
 export 'src/feed/feed_clip.dart';
@@ -21,7 +25,10 @@ export 'src/viewer/media_viewer.dart';
 export 'src/viewer/origin_bridge.dart';
 export 'src/viewer/viewer_actions.dart';
 export 'src/viewer/viewer_chrome_overlay.dart';
+export 'src/viewer/viewer_origin.dart';
 export 'src/viewer/viewer_photo_page.dart';
 export 'src/viewer/viewer_policy.dart';
 export 'src/viewer/viewer_tokens.dart';
 export 'src/viewer/viewer_video.dart';
+export 'src/viewer/viewer_video_page.dart';
+export 'src/viewer/viewer_video_session.dart';
