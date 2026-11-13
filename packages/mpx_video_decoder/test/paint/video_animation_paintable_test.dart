@@ -281,6 +281,72 @@ void main() {
       return (left: left, after: writer.indices.skip(posted).toList());
     }
 
+    group('position and seek', () {
+      test('it says how far into its pass its clip is', () async {
+        final p = paintable();
+        addTearDown(p.dispose);
+        expect(p.playbackPosition, Duration.zero);
+
+        await play(p, 0, 200);
+
+        expect(p.playbackPosition, const Duration(milliseconds: 192));
+      });
+
+      test('a seek moves the clip there and shows none of the frames before '
+          'it', () async {
+        final p = paintable();
+        addTearDown(p.dispose);
+        await play(p, 0, 100);
+        final posted = writer.indices.length;
+
+        p.seekPlayback(const Duration(milliseconds: 320));
+        await play(p, 100, 160);
+
+        final after = writer.indices.skip(posted).toList();
+        // Frame 9, or 10 when the clock passed 9 while it was decoded.
+        expect(after.first, inInclusiveRange(9, 10));
+        for (var i = 1; i < after.length; i++) {
+          expect(after[i], greaterThanOrEqualTo(after[i - 1]));
+        }
+      });
+
+      test(
+        'a seek behind the clip goes round to it in the next pass',
+        () async {
+          final p = paintable();
+          addTearDown(p.dispose);
+          await play(p, 0, 250);
+          final posted = writer.indices.length;
+
+          p.seekPlayback(const Duration(milliseconds: 120));
+          await play(p, 250, 350);
+
+          expect(writer.indices.skip(posted).first, inInclusiveRange(3, 4));
+        },
+      );
+
+      test('a seek while it has no lease applies to the next one', () async {
+        final p = paintable();
+        addTearDown(p.dispose);
+        await play(p, 0, 100);
+        p.leftScreen();
+        timers.elapse(Duration.zero);
+        expect(scheduler.leaseCount, 0);
+
+        p
+          ..seekPlayback(const Duration(milliseconds: 320))
+          ..playbackResumed();
+        final posted = writer.indices.length;
+        await play(p, 500, 550);
+
+        expect(writer.indices.skip(posted).first, inInclusiveRange(9, 10));
+        expect(
+          p.playbackPosition,
+          greaterThanOrEqualTo(const Duration(milliseconds: 320)),
+        );
+      });
+    });
+
     test('shows the frame it left on at once and plays on from the next '
         'one, frame by frame', () async {
       final p = paintable();

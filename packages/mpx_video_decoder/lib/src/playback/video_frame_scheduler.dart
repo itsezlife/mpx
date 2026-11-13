@@ -110,6 +110,17 @@ final class VideoFrameLease {
   /// that declares no duration, before the stream first ends).
   bool get isPassComplete => _player.isPassComplete;
 
+  /// How far into its pass the clip's time is.
+  Duration get passPosition => _player.passPosition;
+
+  /// Moves the clip's time forward to [position] into its pass, into the
+  /// next pass when [position] is behind it. Decoding is sequential: the
+  /// frames before it are decoded and dropped unseen, and the frame on show
+  /// stays up until the one at [position] is decoded. Does nothing when
+  /// [position] is behind and the pass's length is not known yet (a
+  /// container that declares no duration, before the stream first ends).
+  void skipTo(Duration position) => _player.skipTo(position);
+
   /// Where the current frame is, or null while there is none to draw. Read it
   /// when painting and never keep it, as [FrameHandle.sprite] says.
   AtlasSprite? get sprite => _released || _shown ? null : _slot?.sprite;
@@ -1203,6 +1214,33 @@ final class _ClipPlayer implements VideoFrameSource {
     return length != null && _clipTime >= length;
   }
 
+  // Whether the clip time jumped ahead (skipTo) and the frames before the
+  // one it names are dropped, not shown.
+  bool _catchingUp = false;
+
+  Duration get passPosition => switch (_passLength) {
+    final length? => _within(_clipTime, length),
+    null => _clipTime,
+  };
+
+  void skipTo(Duration position) {
+    final at = passPosition;
+    final Duration ahead;
+    if (_passLength case final length?) {
+      ahead = _within(position - at, length);
+    } else if (position >= at) {
+      ahead = position - at;
+    } else {
+      return;
+    }
+    if (ahead == Duration.zero) return;
+    _clipTime += ahead;
+    _catchingUp = true;
+  }
+
+  static Duration _within(Duration time, Duration length) =>
+      Duration(microseconds: time.inMicroseconds % length.inMicroseconds);
+
   /// Takes the paintable's played time: its steps are clip time while this
   /// clip advances.
   void note(Duration played) {
@@ -1240,6 +1278,16 @@ final class _ClipPlayer implements VideoFrameSource {
       if (_ring[i].time <= _clipTime) best = i;
     }
     if (best < 0) return;
+    // Catching up: a frame the clip time is a whole frame past would show
+    // for a tick only; it goes unseen, and the frame on show stays.
+    if (_catchingUp && _ring[best].time + _frameInterval() <= _clipTime) {
+      for (var i = 0; i <= best; i++) {
+        _recycle(_ring[i].pixels);
+      }
+      _ring.removeRange(0, best + 1);
+      return;
+    }
+    _catchingUp = false;
     for (var i = 0; i < best; i++) {
       _recycle(_ring[i].pixels);
     }

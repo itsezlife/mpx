@@ -35,6 +35,13 @@ import 'package:mpx_video_decoder/src/playback/video_frame_scheduler.dart';
 /// step larger than [resumeGap], or backwards, adds nothing: the surface did
 /// not paint it for that long ("freeze and continue").
 ///
+/// ## Position and seek
+///
+/// [playbackPosition] is how far into its pass the clip is. [seekPlayback]
+/// moves the clip there ([VideoFrameLease.skipTo]), at once or, without a
+/// lease, on the next one: a player that played the same clip hands its
+/// position back so the loop goes on from it.
+///
 /// ## Half frame rate
 ///
 /// A paint at half rate (`AssetPaintContext.frameStepFor` is 2 for the clip's
@@ -92,6 +99,24 @@ final class VideoAnimationPaintable extends AssetPaintable {
   bool _holding = false;
   bool _failed = false;
   bool _disposed = false;
+  // Where the clip was at the last paint, or was sought to, and a seek that
+  // waits for a lease.
+  Duration _position = Duration.zero;
+  Duration? _seek;
+
+  @override
+  Duration? get playbackPosition => _position;
+
+  @override
+  void seekPlayback(Duration position) {
+    _position = position;
+    final lease = _lease;
+    if (lease == null || lease.isReleased) {
+      _seek = position;
+    } else {
+      lease.skipTo(position);
+    }
+  }
 
   @override
   AtlasSprite? get sprite => _lease?.sprite;
@@ -197,6 +222,10 @@ final class VideoAnimationPaintable extends AssetPaintable {
       );
       if (lease == null) return;
       lease.kept = _keep;
+      if (_seek case final seek?) {
+        _seek = null;
+        lease.skipTo(seek);
+      }
     }
     _scheduler.want(
       lease,
@@ -204,6 +233,7 @@ final class VideoAnimationPaintable extends AssetPaintable {
       onCanvas: onCanvas,
       frameStep: context.frameStepFor(_clip.info.frameRate),
     );
+    _position = lease.passPosition;
     if (!context.loop && lease.isPassComplete) {
       _holding = true;
       if (context.restFrame == AssetRestFrame.last) {
