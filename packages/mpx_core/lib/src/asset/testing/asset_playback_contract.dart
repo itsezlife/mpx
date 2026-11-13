@@ -3,7 +3,6 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/src/asset/asset_paintable.dart';
-import 'package:mpx_core/src/asset/asset_playback_phase.dart';
 import 'package:mpx_core/src/asset/asset_profile.dart';
 
 /// What an [AssetPlaybackContract] run needs besides the paintable: the
@@ -27,20 +26,17 @@ final class AssetPlaybackHarness {
   /// index of the frame that was drawn. An adapter that decodes ahead settles
   /// before it answers. The flags default to a surface that animates, does not
   /// loop and rests on the first frame; the contract names every other flag.
-  /// [phase] is the content's shared phase the paint carries, or null.
   final Future<int> Function(
     Duration time, {
     bool animate,
     bool loop,
     AssetRestFrame rest,
-    AssetPlaybackPhase? phase,
   })
   frameAt;
 }
 
 /// The playback contract every animated [AssetPaintable] meets: one pass,
-/// holding a rest frame when it does not loop, a restart, and the phase it
-/// shares with the other playbacks of its content.
+/// holding a rest frame when it does not loop, and a restart.
 ///
 /// Frames are probed only at their boundaries, in order, as a clock delivers
 /// them: a sequence that decodes one frame at a time shows one frame per
@@ -184,84 +180,6 @@ abstract final class AssetPlaybackContract {
         expect(h.paintable.isHolding, isFalse);
       });
 
-      group('the shared phase', () {
-        late AssetPlaybackPhase phase;
-        final other = Object();
-
-        setUp(() => phase = AssetPlaybackPhase());
-
-        test('a playback that starts takes the phase another one is at, '
-            'and plays on in step', () async {
-          final at = boundaries();
-          // Another playback of the content entered frame 2 a moment ago.
-          phase.report(other, at[2] - start, start);
-
-          expect(await h.frameAt(start, loop: true, phase: phase), 2);
-          expect(
-            await h.frameAt(
-              start + h.frameDurations[2],
-              loop: true,
-              phase: phase,
-            ),
-            0,
-            reason: 'its pass ends where the other one\'s does',
-          );
-        });
-
-        test('it reports where it is in its pass', () async {
-          final at = boundaries();
-          await h.frameAt(start, loop: true, phase: phase);
-          await h.frameAt(at[1], loop: true, phase: phase);
-
-          expect(phase.positionFor(other, at[1]), at[1] - start);
-        });
-
-        test('a playback painted again after the clock ran on without it '
-            'takes the phase', () async {
-          final at = boundaries();
-          await h.frameAt(start, loop: true, phase: phase);
-          expect(await h.frameAt(at[1], loop: true, phase: phase), 1);
-
-          // Drawn over for a while; another playback went on meanwhile.
-          final back = at[1] + const Duration(seconds: 5);
-          phase.report(other, at[2] - start, back);
-
-          expect(await h.frameAt(back, loop: true, phase: phase), 2);
-        });
-
-        test(
-          'a playback its binding resumed goes on from its own frame',
-          () async {
-            final at = boundaries();
-            await h.frameAt(start, loop: true, phase: phase);
-            expect(await h.frameAt(at[1], loop: true, phase: phase), 1);
-
-            final back = at[1] + const Duration(seconds: 5);
-            phase.report(other, at[2] - start, back);
-            h.paintable.playbackResumed();
-
-            expect(await h.frameAt(back, loop: true, phase: phase), 1);
-          },
-        );
-
-        test('a rewound playback plays its own pass', () async {
-          final at = boundaries();
-          phase.report(other, at[2] - start, start);
-          h.paintable.rewind();
-
-          expect(await h.frameAt(start, loop: true, phase: phase), 0);
-        });
-
-        test(
-          'with nobody else to follow it starts from its first frame',
-          () async {
-            final at = boundaries();
-            expect(await h.frameAt(start, loop: true, phase: phase), 0);
-            expect(await h.frameAt(at[1], loop: true, phase: phase), 1);
-          },
-        );
-      });
-
       test(
         'a paint that does not animate neither starts nor ends a pass',
         () async {
@@ -286,7 +204,6 @@ abstract final class AssetPlaybackContract {
     bool animate = true,
     bool loop = true,
     AssetRestFrame rest = AssetRestFrame.first,
-    AssetPlaybackPhase? phase,
   }) {
     final recorder = PictureRecorder();
     paintable.paint(
@@ -297,7 +214,6 @@ abstract final class AssetPlaybackContract {
         animate: animate,
         loop: loop,
         restFrame: rest,
-        phase: phase,
       ),
     );
     recorder.endRecording().dispose();

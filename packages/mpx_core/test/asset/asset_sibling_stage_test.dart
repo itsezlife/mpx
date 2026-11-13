@@ -135,50 +135,39 @@ void main() {
       );
     });
 
-    test('a playing sibling lends its live frame: the entries share their '
-        'phase', () {
+    test('a playing sibling lends its first frame, never its live frame', () {
       scope.attach(_gif, _cell, _profile).visible = false;
       final cell = producer.last.advance(AssetStage.full, animated: true);
 
       final chat = scope.attach(_gif, _chat, const AssetProfile(animate: true));
 
-      expect(chat.paintable, same(cell));
-      expect(chat.readiness, const AssetReadiness(AssetStage.full));
-      expect(chat.isPlaying, isTrue);
+      expect(chat.paintable, same(cell.firstFrame));
+      expect(chat.paintable, isNot(same(cell)));
+      expect(chat.readiness, const AssetReadiness(AssetStage.firstFrame));
+      expect(chat.isPlaying, isFalse);
     });
 
-    test('a foreground binding plays its own pass: a playing sibling lends '
-        'it its first frame, or nothing without a still', () {
+    test('a playing sibling with no still is not borrowed', () {
       scope.attach(_gif, _cell, _profile).visible = false;
-      final cell = producer.last.advance(AssetStage.full, animated: true);
-      const foreground = AssetProfile(animate: true, foreground: true);
-
-      final preview = scope.attach(_gif, _chat, foreground);
-
-      expect(preview.paintable, same(cell.firstFrame));
-      expect(preview.readiness, const AssetReadiness(AssetStage.firstFrame));
-      expect(preview.isPlaying, isFalse);
-
-      const other = MediaKey.remote('gif-3');
-      scope.attach(other, _cell, _profile).visible = false;
       producer.last.advance(
         AssetStage.full,
         animated: true,
         firstFrameStill: false,
       );
-      expect(
-        scope.attach(other, _chat, foreground).paintable,
-        same(scope.placeholder),
-      );
+
+      final chat = scope.attach(_gif, _chat, const AssetProfile(animate: true));
+
+      expect(chat.paintable, same(scope.placeholder));
+      expect(chat.readiness, const AssetReadiness(AssetStage.none));
     });
 
-    test('the borrowed playback stays until the entry has its own frame', () {
+    test('the borrowed still stays until the entry has its own frame', () {
       scope.attach(_gif, _cell, _profile).visible = false;
       final cell = producer.last.advance(AssetStage.full, animated: true);
       final chat = scope.attach(_gif, _chat, const AssetProfile(animate: true));
       final chatAttempt = producer.last;
       chatAttempt.advance(AssetStage.placeholder);
-      expect(chat.paintable, same(cell));
+      expect(chat.paintable, same(cell.firstFrame));
 
       final own = chatAttempt.advance(AssetStage.firstFrame);
 

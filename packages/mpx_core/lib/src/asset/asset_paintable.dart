@@ -2,7 +2,6 @@ import 'dart:ui';
 
 import 'package:meta/meta.dart';
 import 'package:mpx_core/src/asset/asset_fit.dart';
-import 'package:mpx_core/src/asset/asset_playback_phase.dart';
 import 'package:mpx_core/src/asset/asset_profile.dart';
 import 'package:mpx_core/src/asset/asset_texture.dart';
 import 'package:mpx_core/src/asset/atlas_sprite.dart';
@@ -21,7 +20,6 @@ final class AssetPaintContext {
     this.restFrame = AssetRestFrame.first,
     this.fit = AssetFit.contain,
     this.halfFrameRate = false,
-    this.phase,
   }) : assert(opacity >= 0 && opacity <= 1, 'opacity must be within 0..1');
 
   /// Colour a template asset (`AssetDecodeMode.template`) is drawn in, and the
@@ -59,12 +57,6 @@ final class AssetPaintContext {
   /// Whether the surface plays at half rate (`AssetProfile.halfFrameRate`).
   /// A paintable that plays a frame sequence reads it through [frameStepFor].
   final bool halfFrameRate;
-
-  /// Where the other entries of the content are in their pass, for a
-  /// paintable that plays to report to and take its start from; null for a
-  /// paint that steps nothing (a held surface, one that does not animate) or
-  /// a surface outside a cache scope. See [AssetPlaybackPhase].
-  final AssetPlaybackPhase? phase;
 
   /// How many source frames a playing paintable moves by between the frames
   /// it shows, for a source authored at [sourceFrameRate] fps: 2 at half rate
@@ -147,11 +139,9 @@ abstract class AssetPaintable {
   /// (`AssetProfile.foreground`): a content preview starts at frame 0 as it
   /// opens. The next paint that animates starts the pass, and until its first
   /// frame lands the paintable draws its first frame, never the frame it was
-  /// at. Every surface of the entry sees it. A rewound playback does not take
-  /// the shared phase (`AssetPaintContext.phase`) at its next paint. Does
-  /// nothing by default, which is right for a still; a paintable that cannot
-  /// seek its source (a codec that decodes forward only) leaves it at that
-  /// and goes on from its frame.
+  /// at. Every surface of the entry sees it. Does nothing by default, which is
+  /// right for a still; a paintable that cannot seek its source (a codec that
+  /// decodes forward only) leaves it at that and goes on from its frame.
   void rewind() {}
 
   /// Lets a paintable that plays advance before a surface reads [sprite], for
@@ -178,12 +168,12 @@ abstract class AssetPaintable {
   /// The first frame of this animation as a still, or null.
   ///
   /// Owned by this paintable and alive until its [dispose]; whoever paints it
-  /// never disposes it. A foreground binding (`AssetProfile.foreground`) that
-  /// borrows a sibling entry's stage paints it instead of the playing
-  /// paintable: its own entry plays its own pass from frame 0, so the live
+  /// never disposes it. A binding that borrows a sibling entry's stage paints
+  /// it instead of the playing paintable: the sibling may be in the middle of
+  /// a loop, and the borrower's own entry starts from frame 0, so the live
   /// frame would show a jump back when the entry's own frame arrives. Null by
   /// default, which is right for a still and for an animation that keeps no
-  /// still of its first frame (it is then not lent to a foreground binding).
+  /// still of its first frame (it is then not lent at all).
   AssetPaintable? get firstFrame => null;
 
   /// Keeps the frame on show while [keep] is true, though no surface paints
@@ -208,9 +198,8 @@ abstract class AssetPaintable {
   /// at its next paint and jump ahead by it: a surface hidden for 300 ms
   /// came back 20 frames on. One that keeps its playback takes the next paint
   /// as the start of its timing instead, and goes on from the frame it is at
-  /// ("freeze and continue"), even when another entry of its content plays
-  /// on (`AssetPaintContext.phase`). Does nothing by default, which is right
-  /// for a still or a paintable whose frame follows the time alone.
+  /// ("freeze and continue"). Does nothing by default, which is right for a
+  /// still or a paintable whose frame follows the time alone.
   void playbackResumed() {}
 
   /// Says that no surface shows this paintable any more: every binding of its

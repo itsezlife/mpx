@@ -9,7 +9,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'asset/asset_cache_budget_test.dart' as asset_cache_budget_test;
 import 'asset/asset_cache_demand_test.dart' as asset_cache_demand_test;
 import 'asset/asset_cache_failure_test.dart' as asset_cache_failure_test;
-import 'asset/asset_cache_phase_test.dart' as asset_cache_phase_test;
 import 'asset/asset_cache_playback_test.dart' as asset_cache_playback_test;
 import 'asset/asset_cache_scope_test.dart' as asset_cache_scope_test;
 import 'asset/asset_download_progress_test.dart'
@@ -83,7 +82,6 @@ void main() {
   group('asset_cache_budget_test', asset_cache_budget_test.main);
   group('asset_cache_demand_test', asset_cache_demand_test.main);
   group('asset_cache_failure_test', asset_cache_failure_test.main);
-  group('asset_cache_phase_test', asset_cache_phase_test.main);
   group('asset_cache_playback_test', asset_cache_playback_test.main);
   group('asset_cache_scope_test', asset_cache_scope_test.main);
   group('asset_download_progress_test', asset_download_progress_test.main);

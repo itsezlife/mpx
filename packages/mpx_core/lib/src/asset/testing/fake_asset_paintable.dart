@@ -1,7 +1,6 @@
 import 'dart:ui';
 
 import 'package:mpx_core/src/asset/asset_paintable.dart';
-import 'package:mpx_core/src/asset/asset_playback_phase.dart';
 import 'package:mpx_core/src/asset/asset_profile.dart';
 import 'package:mpx_core/src/asset/asset_texture.dart';
 import 'package:mpx_core/src/asset/atlas_sprite.dart';
@@ -20,12 +19,6 @@ import 'package:mpx_core/src/asset/atlas_sprite.dart';
 /// [resumeGap] (or backwards) adds nothing, and after [playbackResumed] the
 /// next paint adds nothing ("freeze and continue"). A playback that stopped
 /// goes on from its frame, not from where the clock went meanwhile.
-///
-/// It shares its phase as the decoders' paintables do
-/// (`AssetPaintContext.phase`): it reports its position at each paint that
-/// steps it, and takes another playback's position at its first such paint
-/// and at one after a step over [resumeGap], unless [rewind] or
-/// [playbackResumed] came first.
 final class FakeAssetPaintable extends AssetPaintable {
   /// Creates a paintable called [label] (shown in failures).
   FakeAssetPaintable({
@@ -105,8 +98,6 @@ final class FakeAssetPaintable extends AssetPaintable {
   Duration? _lastTime;
   bool _holding = false;
   int _frame = 0;
-  // No paint has stepped it yet: its first may join the shared phase.
-  bool _fresh = true;
 
   /// The index of the frame the last paint drew (0 before any).
   int get frameShown => _frame;
@@ -128,7 +119,6 @@ final class FakeAssetPaintable extends AssetPaintable {
   @override
   void rewind() {
     _beginPass();
-    _fresh = false;
     rewinds++;
   }
 
@@ -157,20 +147,12 @@ final class FakeAssetPaintable extends AssetPaintable {
       if (!context.loop) return;
       _beginPass();
     }
-    final phase = context.phase;
     final last = _lastTime;
     _lastTime = context.time;
-    if (last == null) {
-      if (_fresh) _join(phase, context.time);
-    } else if (context.time - last case final step when !step.isNegative) {
-      // A longer step: drawn over while the clock ran on.
-      if (step <= resumeGap) {
-        _played += step;
-      } else {
-        _join(phase, context.time);
-      }
+    if (last != null) {
+      final step = context.time - last;
+      if (!step.isNegative && step <= resumeGap) _played += step;
     }
-    _fresh = false;
     final elapsed = _played;
     final total = _passLength;
     if (elapsed >= total && !context.loop) {
@@ -183,20 +165,11 @@ final class FakeAssetPaintable extends AssetPaintable {
     var left = Duration(
       microseconds: elapsed.inMicroseconds % total.inMicroseconds,
     );
-    phase?.report(this, left, context.time);
     _frame = 0;
     while (left >= frameDurations[_frame]) {
       left -= frameDurations[_frame];
       _frame++;
     }
-  }
-
-  void _join(AssetPlaybackPhase? phase, Duration now) {
-    final position = phase?.positionFor(this, now);
-    if (position == null) return;
-    _played = Duration(
-      microseconds: position.inMicroseconds % _passLength.inMicroseconds,
-    );
   }
 
   void _beginPass() {
