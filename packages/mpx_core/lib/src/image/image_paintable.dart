@@ -340,7 +340,7 @@ final class PlayingImagePaintable extends AssetPaintable {
     var skip = target - (_offsets[_index] + shownFor);
     final cover = _shown.clone();
     if (_passLength case final pass?) {
-      skip = Duration(microseconds: skip.inMicroseconds % pass.inMicroseconds);
+      skip = AssetPlaybackPhase.within(skip, pass);
       _shownBefore = shownFor;
     } else if (skip.isNegative) {
       // Behind, with the pass's end not seen yet: from the first frame.
