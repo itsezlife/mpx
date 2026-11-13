@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A Lottie animation takes the playback phase its content shares, so it shows
+  the same frame as the same animation drawn at another size.
 - `FrameCache.evict(bytes)`: frees files least recently used first, never one
   in use, so the folder registers as a store quota
   (`MpxStack.registeredQuotas`); `FrameCache.diskBytes` and `scan()` give the
