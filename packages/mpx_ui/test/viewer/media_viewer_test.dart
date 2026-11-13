@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_ui/mpx_ui.dart';
 import 'package:mpx_ui/testing.dart';
 
@@ -200,6 +201,94 @@ void main() {
       expect(
         tester.getSize(find.byType(ContentView)).aspectRatio,
         closeTo(16 / 9, 0.01),
+      );
+    });
+  });
+
+  group('the morph\'s layers', () {
+    testWidgets('a video\'s picture and its player share one box and one '
+        'fit, opening and closing', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+      );
+      await harness.pump(tester, open: false);
+
+      void sameBox() {
+        final content = tester.getRect(find.byType(ContentView));
+        final player = tester.getRect(find.byType(PlayerView));
+        expect(player.topLeft.dx, closeTo(content.left, 0.01));
+        expect(player.topLeft.dy, closeTo(content.top, 0.01));
+        expect(player.size.width, closeTo(content.width, 0.01));
+        expect(player.size.height, closeTo(content.height, 0.01));
+        expect(
+          tester.widget<PlayerView>(find.byType(PlayerView)).fit,
+          BoxFit.cover,
+        );
+      }
+
+      await tester.pump(const Duration(milliseconds: 100));
+      sameBox();
+      await tester.pump(const Duration(milliseconds: 150));
+      sameBox();
+
+      // The player plays on: it moves from frame to frame.
+      for (var i = 0; i < 5; i++) {
+        harness.engine(0).advance(const Duration(milliseconds: 50));
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      await tester.pump(const Duration(milliseconds: 200));
+      unawaited(harness.state(tester).close());
+      await tester.pump(const Duration(milliseconds: 100));
+      sameBox();
+      // Only the player is painted once it shows: one layer at the edge.
+      final picture = tester.widget<Opacity>(
+        find
+            .ancestor(
+              of: find.byType(ContentView),
+              matching: find.byType(Opacity),
+            )
+            .first,
+      );
+      expect(picture.opacity, 0);
+    });
+
+    testWidgets('a tile that shows the picture whole gives the morph only '
+        'the picture part of its frame', (tester) async {
+      final harness = ViewerHarness(
+        items: [
+          GalleryItem(
+            photoKey(0),
+            kind: GalleryMediaKind.animation,
+            size: const Size(1600, 900),
+          ),
+        ],
+      );
+      harness.bridge.origins[0] = const GalleryOrigin(
+        rect: Rect.fromLTWH(20, 600, 100, 100),
+        fit: BoxFit.contain,
+      );
+      final frame = _square(100);
+      addTearDown(frame.dispose);
+      harness.bridge.frames[0] = frame;
+      await harness.pump(tester, open: false);
+
+      final box = tester.getSize(find.byType(ContentView));
+      expect(
+        find.byType(ContentView),
+        paints..something((method, arguments) {
+          if (method != #drawImageRect) return false;
+          final image = arguments[0] as ui.Image;
+          if (!image.isCloneOf(frame)) return false;
+          final source = arguments[1] as Rect;
+          final destination = arguments[2] as Rect;
+          // The 16:9 band of the square frame, onto the whole box.
+          return (source.top - 21.875).abs() < 0.01 &&
+              (source.height - 56.25).abs() < 0.01 &&
+              source.width == 100 &&
+              (destination.width - box.width).abs() < 0.01 &&
+              (destination.height - box.height).abs() < 0.01;
+        }),
       );
     });
   });
@@ -550,6 +639,15 @@ final class _SpySource implements GallerySource {
 
   @override
   void removeListener(VoidCallback listener) => listeners.remove(listener);
+}
+
+ui.Image _square(int side) {
+  final recorder = ui.PictureRecorder();
+  Canvas(recorder).drawPaint(Paint());
+  final picture = recorder.endRecording();
+  final image = picture.toImageSync(side, side);
+  picture.dispose();
+  return image;
 }
 
 ui.Image _image() {

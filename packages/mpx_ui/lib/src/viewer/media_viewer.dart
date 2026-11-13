@@ -1196,7 +1196,13 @@ class MediaViewerState extends State<MediaViewer>
     final policy = _policy;
     final session = _sessionIndex == index ? _session : null;
     final video = session != null;
-    final still = _picture(index, item, fitted, BoxFit.contain);
+    final still = _picture(
+      index,
+      item,
+      fitted,
+      BoxFit.contain,
+      session: session,
+    );
     return ViewerPhotoPage(
       key: _pageKeys.putIfAbsent(index, GlobalKey<ViewerPhotoPageState>.new),
       contentSize: fitted,
@@ -1222,7 +1228,7 @@ class MediaViewerState extends State<MediaViewer>
       onHoldEnd: () => session?.holdEnd(),
       child: RepaintBoundary(
         key: _frameKeys.putIfAbsent(index, GlobalKey.new),
-        child: video ? _withPlayer(still, session) : still,
+        child: still,
       ),
     );
   }
@@ -1326,31 +1332,14 @@ class MediaViewerState extends State<MediaViewer>
     profile: const AssetProfile(),
   ).spec;
 
-  // The picture of a video under its player: the player's picture once it
-  // has one, the content's loop (the frame the surface showed) until then.
-  // The loop goes on under the player, so the surface it hands back to is
-  // where the player started, a step from where it stands.
-  Widget _withPlayer(
-    Widget picture,
-    ViewerVideoSession session, {
-    BoxFit fit = BoxFit.contain,
-  }) => _PlayerOverPicture(
-    lease: session.lease,
-    picture: picture,
-    fit: fit,
-    shown: identical(_movingSession, session),
-    onMoving: () => _movingSession = session,
-  );
-
   // The picture the morph moves: a video's player over its picture, so the
   // close shows where the player stands.
   Widget _morphPicture(GalleryItem item, Size size, BoxFit fit) {
-    final picture = _picture(_index, item, size, fit);
     // Closed, the viewer stops showing the player, which lets it pause.
     final session = _sessionIndex == _index && _phase != _Phase.closed
         ? _session
         : null;
-    return session == null ? picture : _withPlayer(picture, session, fit: fit);
+    return _picture(_index, item, size, fit, session: session);
   }
 
   // The picture of [item]: the item's own content, with the origin's frame
@@ -1358,44 +1347,65 @@ class MediaViewerState extends State<MediaViewer>
   // through the morph so the morph never attaches again. Content that plays
   // (an animation, the loop of a video) binds the spec every surface binds
   // it at, so the page draws the surface's own playback, not a second one.
-  Widget _picture(int index, GalleryItem item, Size size, BoxFit fit) {
+  //
+  // With [session], the video's player goes over the picture in the same box
+  // and with the same fit, so the two never part by a pixel at the edge.
+  Widget _picture(
+    int index,
+    GalleryItem item,
+    Size size,
+    BoxFit fit, {
+    ViewerVideoSession? session,
+  }) {
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
     final box = size.isEmpty ? const Size(1, 1) : size;
     const loops = AssetProfile(animate: true, loop: true);
+    final picture = _OriginContent(
+      frame: _originFrame(index),
+      originFit: widget.bridge?.originOf(index)?.fit ?? BoxFit.cover,
+      content: item.key,
+      scope: widget.scope,
+      preset: switch (item.kind) {
+        // A GIF loops muted on the software path: the origin's own
+        // playback, or one of the page's own at the page's size.
+        GalleryMediaKind.animation => switch (_video.loopOpen) {
+          ViewerLoopOpen.continues || ViewerLoopOpen.restart =>
+            AssetPresets.animation(size: box, profile: loops),
+          ViewerLoopOpen.own => AssetPresets.media(
+            size: box,
+            devicePixelRatio: dpr,
+            profile: loops,
+          ),
+        },
+        // A video's loop shows the frame it stands on until the player
+        // has one: the player is the one playback of it meanwhile.
+        GalleryMediaKind.video => AssetPresets.animation(
+          size: box,
+          profile: const AssetProfile(),
+        ),
+        GalleryMediaKind.photo => AssetPresets.media(
+          size: box,
+          devicePixelRatio: dpr,
+          profile: const AssetProfile(animate: true),
+        ),
+      },
+    );
     return FittedBox(
       fit: fit,
       clipBehavior: Clip.hardEdge,
       child: SizedBox.fromSize(
         size: box,
-        child: _OriginContent(
-          frame: _originFrame(index),
-          content: item.key,
-          scope: widget.scope,
-          preset: switch (item.kind) {
-            // A GIF loops muted on the software path: the origin's own
-            // playback, or one of the page's own at the page's size.
-            GalleryMediaKind.animation => switch (_video.loopOpen) {
-              ViewerLoopOpen.continues || ViewerLoopOpen.restart =>
-                AssetPresets.animation(size: box, profile: loops),
-              ViewerLoopOpen.own => AssetPresets.media(
-                size: box,
-                devicePixelRatio: dpr,
-                profile: loops,
+        child: session == null
+            ? picture
+            // The player fills the box the picture fills: the box has the
+            // content's proportion, so covering it crops nothing visible.
+            : _PlayerOverPicture(
+                lease: session.lease,
+                picture: picture,
+                fit: BoxFit.cover,
+                shown: identical(_movingSession, session),
+                onMoving: () => _movingSession = session,
               ),
-            },
-            // A video's loop shows the frame it stands on until the player
-            // has one: the player is the one playback of it meanwhile.
-            GalleryMediaKind.video => AssetPresets.animation(
-              size: box,
-              profile: const AssetProfile(),
-            ),
-            GalleryMediaKind.photo => AssetPresets.media(
-              size: box,
-              devicePixelRatio: dpr,
-              profile: const AssetProfile(animate: true),
-            ),
-          },
-        ),
       ),
     );
   }
@@ -1410,12 +1420,16 @@ class MediaViewerState extends State<MediaViewer>
 class _OriginContent extends StatefulWidget {
   const _OriginContent({
     required this.frame,
+    required this.originFit,
     required this.content,
     required this.scope,
     required this.preset,
   });
 
   final ui.Image? frame;
+
+  /// How the origin fitted the picture into its box, which [frame] shows.
+  final BoxFit originFit;
   final MediaKey content;
   final AssetCacheScope? scope;
   final AssetPreset preset;
@@ -1430,15 +1444,18 @@ class _OriginContentState extends State<_OriginContent> {
   @override
   void initState() {
     super.initState();
-    _standIn = _standInFor(widget.frame);
+    _standIn = _standInFor(widget.frame, widget.originFit);
   }
 
   @override
   void didUpdateWidget(_OriginContent oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (identical(widget.frame, oldWidget.frame)) return;
+    if (identical(widget.frame, oldWidget.frame) &&
+        widget.originFit == oldWidget.originFit) {
+      return;
+    }
     _standIn?.dispose();
-    _standIn = _standInFor(widget.frame);
+    _standIn = _standInFor(widget.frame, widget.originFit);
   }
 
   @override
@@ -1447,8 +1464,8 @@ class _OriginContentState extends State<_OriginContent> {
     super.dispose();
   }
 
-  static _OriginFrame? _standInFor(ui.Image? frame) =>
-      frame == null ? null : _OriginFrame(frame.clone());
+  static _OriginFrame? _standInFor(ui.Image? frame, BoxFit fit) =>
+      frame == null ? null : _OriginFrame(frame.clone(), fit);
 
   @override
   Widget build(BuildContext context) => ContentView(
@@ -1460,13 +1477,20 @@ class _OriginContentState extends State<_OriginContent> {
   );
 }
 
-/// The origin's frame as a placeholder: it covers the box in its own colours,
-/// as the origin showed it.
+/// The origin's frame as a placeholder: the part of it that shows the
+/// picture, placed where that part of the picture lies in the box, in its own
+/// colours.
+///
+/// The frame is the origin's box: a picture it fitted whole (letterboxed) or
+/// cropped. Drawn whole over the box it would place the picture at another
+/// scale than the content drawn over it, and the two would part at the edge.
 final class _OriginFrame extends AssetPaintable {
-  /// Draws [image], which it owns from now on.
-  _OriginFrame(this._image);
+  /// Draws [image], which it owns from now on, an origin's box that fitted
+  /// the picture as [fit] says.
+  _OriginFrame(this._image, this._fit);
 
   final ui.Image _image;
+  final BoxFit _fit;
 
   @override
   AtlasSprite? get sprite => null;
@@ -1480,15 +1504,23 @@ final class _OriginFrame extends AssetPaintable {
   @override
   bool restart() => false;
 
+  // [rect] has the picture's proportion: fitting it into the frame as the
+  // origin did gives the part of the frame that is the picture
+  // (destination) and the part of the picture it shows (source).
   @override
-  void paint(Canvas canvas, Rect rect, AssetPaintContext context) => paintImage(
-    canvas: canvas,
-    rect: rect,
-    image: _image,
-    fit: BoxFit.cover,
-    opacity: context.opacity,
-    filterQuality: FilterQuality.medium,
-  );
+  void paint(Canvas canvas, Rect rect, AssetPaintContext context) {
+    if (rect.isEmpty) return;
+    final frame = Size(_image.width.toDouble(), _image.height.toDouble());
+    final fitted = applyBoxFit(_fit, rect.size, frame);
+    canvas.drawImageRect(
+      _image,
+      Alignment.center.inscribe(fitted.destination, Offset.zero & frame),
+      Alignment.center.inscribe(fitted.source, rect),
+      Paint()
+        ..filterQuality = FilterQuality.medium
+        ..color = Color.fromRGBO(0, 0, 0, context.opacity),
+    );
+  }
 
   @override
   void dispose() => _image.dispose();
@@ -1567,12 +1599,15 @@ class _PlayerOverPictureState extends State<_PlayerOverPicture>
   // Where the player stood when its first frame was seen; null before.
   Duration? _firstAt;
   bool _moving = false;
+  // Whether the player shows fully, over a picture no longer painted.
+  bool _covered = false;
 
   @override
   void initState() {
     super.initState();
     _watch = createTicker(_check);
     _moving = widget.shown;
+    _covered = widget.shown;
     if (!_moving) _watch.start();
   }
 
@@ -1582,6 +1617,7 @@ class _PlayerOverPictureState extends State<_PlayerOverPicture>
     if (identical(widget.lease, oldWidget.lease)) return;
     _firstAt = null;
     _moving = widget.shown;
+    _covered = widget.shown;
     if (!_moving && !_watch.isActive) _watch.start();
   }
 
@@ -1603,16 +1639,23 @@ class _PlayerOverPictureState extends State<_PlayerOverPicture>
   }
 
   // The player's view is there from the start, transparent: it counts as a
-  // view of the player for the pool, and its texture is ready to show.
+  // view of the player for the pool, and its texture is ready to show. Once
+  // it is opaque the picture under it is not painted: two layers inside one
+  // rounded clip each blend their edge, and the lower one shows as a rim.
   @override
   Widget build(BuildContext context) => Stack(
     fit: StackFit.expand,
     children: [
-      widget.picture,
+      Opacity(opacity: _covered ? 0 : 1, child: widget.picture),
       TweenAnimationBuilder<double>(
         key: const ValueKey('mpx-viewer-player'),
-        tween: Tween(begin: 0, end: _moving ? 1 : 0),
+        tween: Tween(begin: widget.shown ? 1 : 0, end: _moving ? 1 : 0),
         duration: widget.shown ? Duration.zero : _fadeIn,
+        // A fade that ends inside a build (a zero one) cannot rebuild
+        // there: the picture goes on the next frame.
+        onEnd: () => SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (_moving && !_covered && mounted) setState(() => _covered = true);
+        }),
         builder: (context, opacity, child) =>
             Opacity(opacity: opacity, child: child),
         child: PlayerView(lease: widget.lease, fit: widget.fit),
