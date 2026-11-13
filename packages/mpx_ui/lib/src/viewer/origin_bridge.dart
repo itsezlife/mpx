@@ -19,7 +19,10 @@ final class GalleryOrigin {
   /// The item's picture on the surface, in global coordinates.
   final Rect rect;
 
-  /// The corners of the picture there.
+  /// The corners of the picture as the surface shows it: with [fit]
+  /// contain, the corners of the picture fitted in [rect], not of [rect].
+  /// The morph starts and ends on them, so a surface that shows square
+  /// corners declares none.
   final BorderRadius radius;
 
   /// The part of the surface the picture shows through (a list's visible

@@ -362,6 +362,17 @@ class _MediaTile extends StatelessWidget {
 
   static const double _extent = 160;
 
+  /// The picture's corners, as the tile draws them and declares them to the
+  /// viewer.
+  static const double _radius = 12;
+
+  // The picture shown whole, its own corners rounded: what the origin
+  // declares (contain, radius 12) is what the tile shows.
+  static const AssetProfile _profile = AssetProfile(
+    animate: true,
+    cornerRadius: _radius,
+  );
+
   final MediaKey content;
 
   /// Whether the content plays: it then binds the one spec every surface
@@ -375,7 +386,7 @@ class _MediaTile extends StatelessWidget {
     children: [
       ViewerOrigin(
         index: index,
-        borderRadius: const BorderRadius.all(Radius.circular(12)),
+        borderRadius: const BorderRadius.all(Radius.circular(_radius)),
         // The tile shows the picture whole, letterboxed in its square.
         fit: BoxFit.contain,
         child: ContentView(
@@ -383,12 +394,12 @@ class _MediaTile extends StatelessWidget {
           preset: plays
               ? AssetPresets.animation(
                   size: const Size.square(_extent),
-                  profile: const AssetProfile(animate: true),
+                  profile: _profile,
                 )
               : AssetPresets.square(
                   extent: _extent,
                   devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
-                  profile: const AssetProfile(animate: true),
+                  profile: _profile,
                 ),
         ),
       ),

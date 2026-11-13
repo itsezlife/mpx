@@ -267,7 +267,10 @@ class ViewerOrigin extends StatefulWidget {
   /// The item's media, for a surface that does not know gallery indexes.
   final MediaKey? media;
 
-  /// The thumbnail's corners.
+  /// The corners of the picture as the thumbnail shows it: with [fit]
+  /// contain, the corners of the picture fitted in the thumbnail's box, not
+  /// of the box ([GalleryOrigin.radius]). Declare what the thumbnail
+  /// draws: the morph starts and ends on these corners.
   final BorderRadius borderRadius;
 
   /// How the thumbnail fits its picture into its box: covering it, cropped,
