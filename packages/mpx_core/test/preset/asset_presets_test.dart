@@ -22,6 +22,33 @@ void main() {
     });
   });
 
+  group('animation', () {
+    test('decodes at one size whatever the box, so a thumbnail and the '
+        'fullscreen copy share one entry and one playback', () {
+      const plays = AssetProfile(animate: true);
+      final card = AssetPresets.animation(
+        size: const Size(160, 160),
+        profile: plays,
+      );
+      final viewer = AssetPresets.animation(
+        size: const Size(400, 300),
+        profile: const AssetProfile(animate: true, fit: AssetFit.cover),
+      );
+
+      expect(card.spec, viewer.spec);
+      expect(
+        card.spec,
+        const AssetSpec(
+          pixelWidth: AssetPresets.animationPixelExtent,
+          pixelHeight: AssetPresets.animationPixelExtent,
+        ),
+      );
+      expect(card.size, const Size(160, 160));
+      expect(viewer.size, const Size(400, 300));
+      expect(viewer.profile.fit, AssetFit.cover);
+    });
+  });
+
   group('square', () {
     test(
       'decodes an explicit extent at the density with the given profile',

@@ -87,6 +87,9 @@ final class FakeAssetPaintable extends AssetPaintable {
   /// How many times [leftScreen] said no surface shows it any more.
   int departures = 0;
 
+  /// Every [seekPlayback] position, in order.
+  final List<Duration> seeks = [];
+
   /// Whether the cache disposed it.
   bool get isDisposed => disposals > 0;
 
@@ -177,6 +180,20 @@ final class FakeAssetPaintable extends AssetPaintable {
     _played = Duration.zero;
     _lastTime = null;
     _frame = 0;
+  }
+
+  /// The time played into the pass, for a paintable that plays a sequence.
+  @override
+  Duration? get playbackPosition => frameDurations.isEmpty
+      ? null
+      : Duration(
+          microseconds: _played.inMicroseconds % _passLength.inMicroseconds,
+        );
+
+  @override
+  void seekPlayback(Duration position) {
+    seeks.add(position);
+    _played = position;
   }
 
   @override

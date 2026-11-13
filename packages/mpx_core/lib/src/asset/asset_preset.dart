@@ -75,6 +75,36 @@ abstract final class AssetPresets {
     profile: profile,
   );
 
+  /// The longest side, in pixels, an animation is decoded at by
+  /// [animation]: the largest frame the animation frame pools hold, so a
+  /// vector animation or a clip is rendered at it, and an image larger than
+  /// it is scaled down to it.
+  static const int animationPixelExtent = 512;
+
+  /// Content that plays (an animated image, a vector animation, a silent
+  /// clip) shown in a box of [size] logical pixels, used as [profile] says.
+  ///
+  /// The decode does not follow the box: every surface that shows the
+  /// content as an animation asks for the same spec, the content's own size
+  /// fitted into [animationPixelExtent] pixels (a decoder never scales up),
+  /// so a thumbnail and the fullscreen copy of it are one cache entry with
+  /// one playback, drawn in two places, and the fullscreen copy shows the
+  /// thumbnail's frame. The price is a thumbnail decoded larger than its
+  /// pixels and a fullscreen copy drawn from at most
+  /// [animationPixelExtent] pixels; a vector animation renders at that size
+  /// for both.
+  static AssetPreset animation({
+    required Size size,
+    required AssetProfile profile,
+  }) => AssetPreset(
+    size: size,
+    spec: const AssetSpec(
+      pixelWidth: animationPixelExtent,
+      pixelHeight: animationPixelExtent,
+    ),
+    profile: profile,
+  );
+
   /// Media shown on its own: a box of [size] logical pixels, of the media's
   /// own proportion, decoded at [devicePixelRatio] and used as [profile]
   /// says.

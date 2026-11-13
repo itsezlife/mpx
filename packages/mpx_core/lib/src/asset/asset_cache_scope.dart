@@ -237,6 +237,17 @@ final class AssetCacheScope {
   bool contains(MediaKey key, AssetSpec spec) =>
       _entries.containsKey((key, spec));
 
+  /// How far into its pass the playback of the entry for [key] at [spec] is,
+  /// or null when there is no such entry or it does not play
+  /// ([AssetPaintable.playbackPosition]).
+  Duration? playbackPosition(MediaKey key, AssetSpec spec) =>
+      _entries[(key, spec)]?.paintable?.playbackPosition;
+
+  /// Moves the playback of the entry for [key] at [spec] to [position] into
+  /// its pass ([AssetPaintable.seekPlayback]); nothing without such an entry.
+  void seekPlayback(MediaKey key, AssetSpec spec, Duration position) =>
+      _entries[(key, spec)]?.paintable?.seekPlayback(position);
+
   /// Bytes the entries of [tier] count, attached or not.
   int bytesIn(AssetTier tier) => _bytes[tier]!;
 

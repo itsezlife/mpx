@@ -398,6 +398,36 @@ void main() {
     });
   });
 
+  group('position and seek', () {
+    test('read and move the playback of an entry, whoever binds it', () {
+      final binding = scope.attach(_key, _large, _plays);
+      final paintable = producer.last.advance(
+        AssetStage.full,
+        tier: AssetTier.animated,
+        frames: [_ms(100), _ms(100), _ms(100)],
+      );
+      ticks.tick(_ms(0));
+      binding.paint(Canvas(PictureRecorder()), const Rect.fromLTWH(0, 0, 8, 8));
+      ticks.tick(_ms(150));
+      binding.paint(Canvas(PictureRecorder()), const Rect.fromLTWH(0, 0, 8, 8));
+
+      expect(scope.playbackPosition(_key, _large), _ms(150));
+
+      scope.seekPlayback(_key, _large, _ms(250));
+      expect(paintable.seeks, [_ms(250)]);
+      expect(scope.playbackPosition(_key, _large), _ms(250));
+    });
+
+    test('an entry that does not exist or does not play has none', () {
+      expect(scope.playbackPosition(_key, _large), isNull);
+      scope.seekPlayback(_key, _large, _ms(250));
+
+      scope.attach(_key, _large, _plays);
+      producer.last.advance(AssetStage.full);
+      expect(scope.playbackPosition(_key, _large), isNull);
+    });
+  });
+
   group('global pause layers', () {
     test('any layer stops playback and clearing it resumes', () {
       final binding = animated();

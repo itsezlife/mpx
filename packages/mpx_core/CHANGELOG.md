@@ -22,6 +22,10 @@
   layers fed through `PlaybackActivity`, which hold back staged preloads.
 - `AssetFetcherContract` watches the failing fetch before awaiting the
   served one, so a fetcher that fails it first passes.
+- `AssetPresets.animation`: content that plays decodes at one size whatever
+  the box, so a thumbnail and its fullscreen copy share one entry and one
+  playback. `AssetCacheScope.playbackPosition` and `seekPlayback` read and
+  move an entry's playback.
 
 ## 0.0.1
 

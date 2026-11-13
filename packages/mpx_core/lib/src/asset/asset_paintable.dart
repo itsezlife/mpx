@@ -144,6 +144,15 @@ abstract class AssetPaintable {
   /// decodes forward only) leaves it at that and goes on from its frame.
   void rewind() {}
 
+  /// How far into its pass the playback is, or null for a paintable that
+  /// does not play or keeps no such position. Null by default.
+  Duration? get playbackPosition => null;
+
+  /// Moves the playback to [position] into its pass, for a surface that hands
+  /// a position back (a player that played the same content on its own).
+  /// Every surface of the entry sees it. Does nothing by default.
+  void seekPlayback(Duration position) {}
+
   /// Lets a paintable that plays advance before a surface reads [sprite], for
   /// a surface that draws the sprite itself and so never calls [paint].
   ///
