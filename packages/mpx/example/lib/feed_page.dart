@@ -62,28 +62,31 @@ class _FeedPageState extends State<FeedPage> {
         ),
       ),
       // Each clip is a viewer origin: a tap opens the viewer from it.
-      body: ViewerOriginScope(
-        child: FeedListView(
-          itemCount: _count,
-          itemExtent: _extent,
-          conditions: _conditions,
-          itemOf: (index) =>
-              FeedItem(widget.clips[index % widget.clips.length]),
-          presetOf: (index, profile) => AssetPresets.media(
-            size: const Size(360, _extent - 20),
-            devicePixelRatio: dpr,
-            profile: profile,
-          ),
-          cellBuilder: (context, index, clip) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Center(
-              child: GestureDetector(
-                onTap: () => MediaViewer.show(
-                  context,
-                  source: _gallery,
-                  initialIndex: index,
+      body: SafeArea(
+        top: false,
+        child: ViewerOriginScope(
+          child: FeedListView(
+            itemCount: _count,
+            itemExtent: _extent,
+            conditions: _conditions,
+            itemOf: (index) =>
+                FeedItem(widget.clips[index % widget.clips.length]),
+            presetOf: (index, profile) => AssetPresets.media(
+              size: const Size(360, _extent - 20),
+              devicePixelRatio: dpr,
+              profile: profile,
+            ),
+            cellBuilder: (context, index, clip) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Center(
+                child: GestureDetector(
+                  onTap: () => MediaViewer.show(
+                    context,
+                    source: _gallery,
+                    initialIndex: index,
+                  ),
+                  child: ViewerOrigin(index: index, child: clip),
                 ),
-                child: ViewerOrigin(index: index, child: clip),
               ),
             ),
           ),

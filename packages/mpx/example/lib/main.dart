@@ -285,57 +285,61 @@ class _MediaAppState extends State<MediaApp> {
         child: Scaffold(
           appBar: AppBar(title: const Text('mpx')),
           body: Builder(
-            builder: (context) => ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                ViewerOriginScope(
-                  child: GridView.extent(
-                    maxCrossAxisExtent: 180,
-                    childAspectRatio: 160 / 190,
-                    mainAxisSpacing: 16,
-                    crossAxisSpacing: 16,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    children: [
-                      for (final (index, (key, _, _, label)) in _media.indexed)
-                        Builder(
-                          builder: (context) => GestureDetector(
-                            onTap: () => _open(context, index),
-                            child: _MediaTile(
-                              index: index,
-                              content: key,
-                              label: label,
+            builder: (context) => SafeArea(
+              top: false,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  ViewerOriginScope(
+                    child: GridView.extent(
+                      maxCrossAxisExtent: 180,
+                      childAspectRatio: 160 / 190,
+                      mainAxisSpacing: 16,
+                      crossAxisSpacing: 16,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      children: [
+                        for (final (index, (key, _, _, label))
+                            in _media.indexed)
+                          Builder(
+                            builder: (context) => GestureDetector(
+                              onTap: () => _open(context, index),
+                              child: _MediaTile(
+                                index: index,
+                                content: key,
+                                label: label,
+                              ),
                             ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 24),
-                ListTile(
-                  title: const Text('Feed list'),
-                  subtitle: const Text('Visible clips play muted'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => AssetCacheProvider(
-                        scope: widget.stack.scope,
-                        child: FeedPage(
-                          signals: signals,
-                          clips: [_media[1].$1, _media[3].$1],
+                  const SizedBox(height: 24),
+                  ListTile(
+                    title: const Text('Feed list'),
+                    subtitle: const Text('Visible clips play muted'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => AssetCacheProvider(
+                          scope: widget.stack.scope,
+                          child: FeedPage(
+                            signals: signals,
+                            clips: [_media[1].$1, _media[3].$1],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                _SignalTile(label: 'Network', listenable: signals.network),
-                _SignalTile(
-                  label: 'Power saving',
-                  listenable: signals.powerSaving,
-                ),
-                _SignalTile(label: 'Thermal', listenable: signals.thermal),
-              ],
+                  const SizedBox(height: 8),
+                  _SignalTile(label: 'Network', listenable: signals.network),
+                  _SignalTile(
+                    label: 'Power saving',
+                    listenable: signals.powerSaving,
+                  ),
+                  _SignalTile(label: 'Thermal', listenable: signals.thermal),
+                ],
+              ),
             ),
           ),
         ),
