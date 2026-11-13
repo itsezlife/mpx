@@ -88,6 +88,16 @@ final class PlayerBudget {
 /// happens ([onSoundOwnerLeftScreen]: pause, or picture in picture); without
 /// a host decision the owner pauses.
 ///
+/// ## Picture in picture
+///
+/// [startPictureInPicture] moves a player that holds an engine into the
+/// platform's window ([PlayerBackend.pictureInPicture]). While the window is
+/// up the player counts as shown: the budget spares it and leaving the
+/// screen does not fire. When the user closes the window and no view shows
+/// the player, the sound owner's host decides again, as above. A host that
+/// picks picture in picture over pausing calls [startPictureInPicture] from
+/// [onSoundOwnerLeftScreen].
+///
 /// Single-threaded: every call is on the UI isolate.
 final class PlayerPool {
   /// Creates a pool over [backend].
@@ -98,6 +108,7 @@ final class PlayerPool {
   }) : _backend = backend,
        _budget = budget {
     _focusChanges = backend.audioFocus.changes.listen(_onFocusChange);
+    backend.pictureInPicture.active.addListener(_onPictureInPicture);
   }
 
   final PlayerBackend _backend;
@@ -115,6 +126,55 @@ final class PlayerPool {
   // The owner a transient interruption paused; resumed when focus returns.
   _Player? _resumeOnGain;
   bool _focusHeld = false;
+
+  final ValueNotifier<MediaKey?> _pictureInPicture = ValueNotifier(null);
+  _Player? _inPictureInPicture;
+
+  /// The key of the player in the picture-in-picture window, or null.
+  ValueListenable<MediaKey?> get pictureInPicture => _pictureInPicture;
+
+  /// Moves the player of [key] into the platform's picture-in-picture
+  /// window. Returns false when the platform has none or the player holds no
+  /// engine; true when the window was asked for ([pictureInPicture] follows
+  /// once it is up).
+  bool startPictureInPicture(MediaKey key) {
+    final pip = _backend.pictureInPicture;
+    final player = _players[key];
+    final engine = player?._engine;
+    if (_disposed || !pip.isSupported || player == null || engine == null) {
+      return false;
+    }
+    if (!player.holdsEngine) return false;
+    player.touch();
+    pip.start(engine);
+    return true;
+  }
+
+  /// Closes the picture-in-picture window, if one is up.
+  void stopPictureInPicture() {
+    if (!_disposed) _backend.pictureInPicture.stop();
+  }
+
+  // The backend's window changed: the player it shows counts as one more
+  // view, and the one it stopped showing one fewer.
+  void _onPictureInPicture() {
+    if (_disposed) return;
+    final engine = _backend.pictureInPicture.active.value;
+    final shown = engine == null
+        ? null
+        : _players.values
+              .where((player) => identical(player._engine, engine))
+              .firstOrNull;
+    final previous = _inPictureInPicture;
+    if (identical(previous, shown)) return;
+    _inPictureInPicture = shown;
+    if (shown != null) shown.views++;
+    _pictureInPicture.value = shown?.key;
+    if (previous != null && !previous.disposed) {
+      previous.views--;
+      if (previous.views == 0) _viewsGone(previous);
+    }
+  }
 
   /// The key of the player that owns the sound, or null when none is
   /// audible.
@@ -152,6 +212,10 @@ final class PlayerPool {
     if (_disposed) return;
     _disposed = true;
     unawaited(_focusChanges.cancel());
+    _backend.pictureInPicture.active.removeListener(_onPictureInPicture);
+    if (_inPictureInPicture != null) _backend.pictureInPicture.stop();
+    _inPictureInPicture = null;
+    _pictureInPicture.dispose();
     _owner = null;
     _resumeOnGain = null;
     _setFocus(held: false);
@@ -518,6 +582,8 @@ final class _Player {
   }
 
   void _dropEngine(PlayerEngine engine) {
+    final pip = pool._backend.pictureInPicture;
+    if (identical(pip.active.value, engine)) pip.stop();
     engine.state.removeListener(_mirror);
     engine.dispose();
     _engine = null;

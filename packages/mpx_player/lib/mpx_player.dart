@@ -17,7 +17,9 @@
 library;
 
 export 'src/audio/audio_focus.dart';
+export 'src/backend/picture_in_picture.dart';
 export 'src/backend/player_backend.dart';
+export 'src/budget/player_device.dart';
 export 'src/feed/feed_controller.dart';
 export 'src/feed/feed_item.dart';
 export 'src/feed/feed_list_plan.dart';

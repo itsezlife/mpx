@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_player/src/audio/audio_focus.dart';
+import 'package:mpx_player/src/backend/picture_in_picture.dart';
 import 'package:mpx_player/src/player/player_state.dart';
 
 /// Makes the engines of one platform: Media3 on Android, AVPlayer on Apple, a
@@ -20,6 +21,10 @@ abstract interface class PlayerBackend {
   /// asks for the right to play sound and hears calls, other apps and
   /// outputs take it away. [NoAudioFocus] where the platform has none.
   AudioFocus get audioFocus;
+
+  /// The platform's picture in picture for this backend's engines;
+  /// [NoPictureInPicture] where the platform has none.
+  PictureInPicture get pictureInPicture;
 }
 
 /// One native player: a decoder, a buffer and a texture its frames land in.

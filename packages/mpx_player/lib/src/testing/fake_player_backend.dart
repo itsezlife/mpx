@@ -4,6 +4,7 @@ import 'dart:ui' show Size;
 import 'package:flutter/foundation.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_player/src/audio/audio_focus.dart';
+import 'package:mpx_player/src/backend/picture_in_picture.dart';
 import 'package:mpx_player/src/backend/player_backend.dart';
 import 'package:mpx_player/src/player/player_state.dart';
 
@@ -44,6 +45,9 @@ final class FakePlayerBackend implements PlayerBackend {
 
   @override
   final FakeAudioFocus audioFocus = FakeAudioFocus();
+
+  @override
+  final FakePictureInPicture pictureInPicture = FakePictureInPicture();
 
   final List<FakePlayerEngine> _created = [];
   int _nextTexture = 1;
@@ -286,4 +290,30 @@ final class FakeAudioFocus implements AudioFocus {
 
   /// Reports [change] as the system would.
   void emit(AudioFocusChange change) => _changes.add(change);
+}
+
+/// A [PictureInPicture] a test drives: [start] shows the window at once
+/// while [supported]; [end] closes it as the user would.
+final class FakePictureInPicture implements PictureInPicture {
+  final ValueNotifier<PlayerEngine?> _active = ValueNotifier(null);
+
+  /// Whether the fake platform has picture in picture.
+  bool supported = true;
+
+  @override
+  bool get isSupported => supported;
+
+  @override
+  ValueListenable<PlayerEngine?> get active => _active;
+
+  @override
+  void start(PlayerEngine engine) {
+    if (supported) _active.value = engine;
+  }
+
+  @override
+  void stop() => _active.value = null;
+
+  /// Closes the window as the user would.
+  void end() => _active.value = null;
 }

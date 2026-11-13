@@ -39,3 +39,5 @@ flutter:
       macos:
         pluginClass: MpxPlayerPlugin
         sharedDarwinSource: true
+dev_dependencies:
+  pigeon: ^27.3.0
