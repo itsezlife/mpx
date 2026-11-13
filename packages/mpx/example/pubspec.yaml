@@ -1,5 +1,5 @@
 name: mpx_example
-description: Shows an mpx stack drawing a still, an animated image, Lottie and a video loop.
+description: Shows an mpx stack drawing media, the fullscreen viewer with save and share, and a feed list.
 publish_to: none
 resolution: workspace
 
@@ -7,9 +7,11 @@ environment:
   sdk: ^3.11.0
   flutter: '>=3.38.0'
 
-# The example shows the whole set, so it takes the decoders `mpx` itself
-# never depends on.
+# The example shows the whole set, so it takes the decoders, the player and
+# the UI that `mpx` itself never depends on. Save and share are the host's:
+# file_selector (save panel) and share_plus (share sheet) live here only.
 dependencies:
+  file_selector: ^1.1.0
   flutter:
     sdk: flutter
   http: ^1.6.0
@@ -21,8 +23,13 @@ dependencies:
     path: ../../mpx_core
   mpx_lottie:
     path: ../../mpx_lottie
+  mpx_player:
+    path: ../../mpx_player
+  mpx_ui:
+    path: ../../mpx_ui
   mpx_video_decoder:
     path: ../../mpx_video_decoder
+  share_plus: ^13.3.1
 
 flutter:
   uses-material-design: true

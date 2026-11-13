@@ -87,7 +87,8 @@ A host with its own wiring takes the fetch adapter alone:
 - Fakes and contract suites in `testing.dart`.
 
 [example/](example/) draws a still, an animated WebP, a Lottie and a video
-loop through one stack.
+loop through one stack, opens them in the fullscreen viewer with save and
+share, and runs a feed list gated by the device signals.
 
 ## Docs
 

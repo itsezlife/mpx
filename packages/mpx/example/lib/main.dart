@@ -8,7 +8,10 @@ import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:mpx/mpx.dart';
 import 'package:mpx_core/frame_pool.dart';
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_example/feed_page.dart';
+import 'package:mpx_example/gallery.dart';
 import 'package:mpx_lottie/mpx_lottie.dart';
+import 'package:mpx_ui/mpx_ui.dart';
 import 'package:mpx_video_decoder/mpx_video_decoder.dart';
 
 /// The media the example shows: a key, how it renders, the file the origin
@@ -147,8 +150,9 @@ final class _BundleOrigin extends http.BaseClient {
   }
 }
 
-/// The example's media drawn by the stack's asset cache, and the device
-/// signals that pause it.
+/// The example's media drawn by the stack's asset cache, opening in the
+/// fullscreen viewer with save and share; a feed list gated by the device
+/// signals; and the signals themselves.
 class MediaApp extends StatefulWidget {
   const MediaApp({required this.stack, super.key});
 
@@ -159,11 +163,50 @@ class MediaApp extends StatefulWidget {
 }
 
 class _MediaAppState extends State<MediaApp> {
+  final ListGallery _gallery = ListGallery([
+    for (final (key, kind, _, _) in _media)
+      GalleryItem(
+        key,
+        // The silent video loop, the WebP and the Lottie all loop muted on
+        // the software path, as animations do in the viewer.
+        kind: kind == MediaKind.still
+            ? GalleryMediaKind.photo
+            : GalleryMediaKind.animation,
+      ),
+  ]);
+  late final TileOrigins _origins = TileOrigins(_media.length);
+
   @override
   void dispose() {
+    _gallery.dispose();
+    _origins.hidden.dispose();
     widget.stack.dispose();
     super.dispose();
   }
+
+  // Each platform gets its own reference viewer.
+  static ViewerPolicy get _policy => switch (defaultTargetPlatform) {
+    TargetPlatform.iOS => ViewerPolicy.$IOS,
+    TargetPlatform.macOS ||
+    TargetPlatform.windows ||
+    TargetPlatform.linux => ViewerPolicy.$Desktop,
+    _ => ViewerPolicy.$Android,
+  };
+
+  void _open(BuildContext context, int index) => MediaViewer.show(
+    context,
+    source: _gallery,
+    initialIndex: index,
+    bridge: _origins,
+    policy: _policy,
+    onFullscreenChanged: (on) => setWindowFullscreen(fullscreen: on),
+    chrome: ViewerChrome(
+      title: (context, index, item) => Text(_media[index].$4),
+      openFile: cachedFiles(widget.stack),
+      actions: (index, item) =>
+          saveAndShare(context, (key) => _fileOf(key) ?? key.encoded),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -173,25 +216,57 @@ class _MediaAppState extends State<MediaApp> {
         scope: widget.stack.scope,
         child: Scaffold(
           appBar: AppBar(title: const Text('mpx')),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Wrap(
-                spacing: 16,
-                runSpacing: 16,
-                children: [
-                  for (final (key, _, _, label) in _media)
-                    _MediaTile(content: key, label: label),
-                ],
-              ),
-              const SizedBox(height: 24),
-              _SignalTile(label: 'Network', listenable: signals.network),
-              _SignalTile(
-                label: 'Power saving',
-                listenable: signals.powerSaving,
-              ),
-              _SignalTile(label: 'Thermal', listenable: signals.thermal),
-            ],
+          body: Builder(
+            builder: (context) => ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                ValueListenableBuilder<Set<int>>(
+                  valueListenable: _origins.hidden,
+                  builder: (context, hidden, _) => Wrap(
+                    spacing: 16,
+                    runSpacing: 16,
+                    children: [
+                      for (final (index, (key, _, _, label)) in _media.indexed)
+                        GestureDetector(
+                          onTap: () => _open(context, index),
+                          child: Opacity(
+                            opacity: hidden.contains(index) ? 0 : 1,
+                            child: _MediaTile(
+                              tileKey: _origins.keys[index],
+                              content: key,
+                              label: label,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                ListTile(
+                  title: const Text('Feed list'),
+                  subtitle: const Text('Visible clips play muted'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => AssetCacheProvider(
+                        scope: widget.stack.scope,
+                        child: FeedPage(
+                          signals: signals,
+                          clips: [_media[1].$1, _media[3].$1],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _SignalTile(label: 'Network', listenable: signals.network),
+                _SignalTile(
+                  label: 'Power saving',
+                  listenable: signals.powerSaving,
+                ),
+                _SignalTile(label: 'Thermal', listenable: signals.thermal),
+              ],
+            ),
           ),
         ),
       ),
@@ -200,7 +275,14 @@ class _MediaAppState extends State<MediaApp> {
 }
 
 class _MediaTile extends StatelessWidget {
-  const _MediaTile({required this.content, required this.label});
+  const _MediaTile({
+    required this.tileKey,
+    required this.content,
+    required this.label,
+  });
+
+  /// Marks the picture, so the viewer finds where it sits.
+  final GlobalKey tileKey;
 
   static const double _extent = 160;
 
@@ -212,6 +294,7 @@ class _MediaTile extends StatelessWidget {
     mainAxisSize: MainAxisSize.min,
     children: [
       ContentView(
+        key: tileKey,
         content: content,
         preset: AssetPresets.square(
           extent: _extent,
