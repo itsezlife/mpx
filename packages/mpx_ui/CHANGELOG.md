@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `FeedClip`: the closest `FeedSlot`'s media, a `PlayerView` while it holds
+  a player, else the cached clip at its visible fraction.
+- `FeedListView` and `FeedPagerView` are built on `FeedController`,
+  `FeedSlot` and `FeedClip`. `FeedListView.itemExtent` is optional: items
+  may have any extent. `FeedListViewState.feed` and
+  `FeedPagerViewState.feed` expose the controller. `FeedPagerView`'s page
+  that plays (and `onPageChanged`) is the most visible page.
 - `MediaViewer`: a fullscreen photo viewer that opens from and closes to its
   origin, with `ViewerPolicy.$Android` (morph, dismiss drag, zoom) and host
   `ViewerTokens`; seams `GallerySource` and `OriginBridge`, with

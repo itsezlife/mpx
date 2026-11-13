@@ -55,6 +55,45 @@ final class FeedActiveItemRule {
   /// quarter.
   final double advanceFloor;
 
+  /// The index in view among [visible] (each shown index to its visible
+  /// fraction), or null when none shows [minVisibleFraction]. Ties are broken
+  /// by [tieBreak] over [centreDistances] (how far each centre is from the
+  /// viewport's, in any unit), and a full tie goes to the earlier index.
+  ///
+  /// A list reads it as the item in view; a pager as the page that plays.
+  int? pick(
+    Map<int, double> visible, {
+    Map<int, double> centreDistances = const {},
+  }) {
+    int? best;
+    for (final MapEntry(key: index, value: fraction) in visible.entries) {
+      if (fraction < minVisibleFraction) continue;
+      if (best == null || _beats(index, best, visible, centreDistances)) {
+        best = index;
+      }
+    }
+    return best;
+  }
+
+  bool _beats(
+    int candidate,
+    int current,
+    Map<int, double> visible,
+    Map<int, double> centres,
+  ) {
+    final byFraction = visible[candidate]!.compareTo(visible[current]!);
+    final byCentre = (centres[current] ?? double.infinity).compareTo(
+      centres[candidate] ?? double.infinity,
+    );
+    final (first, second) = switch (tieBreak) {
+      FeedTieBreak.mostVisible => (byFraction, byCentre),
+      FeedTieBreak.nearestCentre => (byCentre, byFraction),
+    };
+    if (first != 0) return first > 0;
+    if (second != 0) return second > 0;
+    return candidate < current;
+  }
+
   @override
   bool operator ==(Object other) =>
       other is FeedActiveItemRule &&

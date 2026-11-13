@@ -18,7 +18,7 @@ void main() {
     FeedScrollDirection direction = FeedScrollDirection.forward,
     bool fast = false,
     Map<int, double> centres = const {},
-    FeedItem Function(int)? item,
+    FeedItem? Function(int)? item,
   }) => FeedListPlanner(with_, conditions: conditions).plan(
     FeedListViewport(
       itemCount: itemCount,
@@ -72,6 +72,30 @@ void main() {
       expect(policy.activeItem.advanceFloor, 0.25);
       expect(policy.clipProfile().advanceFloor, 0.25);
       expect(policy.clipProfile().animate, isTrue);
+    });
+  });
+
+  group('unknown items', () {
+    test('an index without facts neither plays nor preloads', () {
+      final result = plan({
+        3: 1,
+        4: 0.6,
+      }, item: (i) => i == 4 || i > 5 ? null : _item(i));
+
+      expect(result.autoplay.keys, [3]);
+      expect(result.inView, 3);
+      expect(result.preloads.keys, [5]);
+    });
+  });
+
+  group('the in-view pick', () {
+    test('picks the most visible above the threshold, then the nearer', () {
+      const rule = FeedActiveItemRule();
+
+      expect(rule.pick({1: 0.4, 2: 0.45}), isNull);
+      expect(rule.pick({1: 0.6, 2: 0.9}), 2);
+      expect(rule.pick({1: 1, 2: 1}, centreDistances: {1: 50, 2: 10}), 2);
+      expect(rule.pick({1: 1, 2: 1}), 1);
     });
   });
 

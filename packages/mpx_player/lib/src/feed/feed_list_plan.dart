@@ -96,61 +96,43 @@ final class FeedListPlanner {
   final FeedConditions conditions;
 
   /// The plan for [viewport], with the facts of each index from [item].
+  ///
+  /// An index [item] knows nothing about (null) neither plays nor preloads:
+  /// a host that registers its items as they are built has no facts for the
+  /// ones further ahead.
   FeedListPlan plan(
     FeedListViewport viewport,
-    FeedItem Function(int index) item,
+    FeedItem? Function(int index) item,
   ) {
-    final shown = {
-      for (final MapEntry(:key, :value) in viewport.visible.entries)
-        if (value > 0 && key >= 0 && key < viewport.itemCount) key: value,
-    };
+    final facts = <int, FeedItem>{};
+    final shown = <int, double>{};
+    for (final MapEntry(:key, :value) in viewport.visible.entries) {
+      if (value <= 0 || key < 0 || key >= viewport.itemCount) continue;
+      final known = item(key);
+      if (known == null) continue;
+      facts[key] = known;
+      shown[key] = value;
+    }
     final autoplay = {
-      for (final index in shown.keys)
-        index: policy.autoplayOf(item(index), conditions),
+      for (final MapEntry(:key, :value) in facts.entries)
+        key: policy.autoplayOf(value, conditions),
     };
     final distances = <int, int>{};
     return FeedListPlan(
       autoplay: autoplay,
-      inView: _inView(shown, viewport.centreDistances),
+      inView: policy.activeItem.pick(
+        shown,
+        centreDistances: viewport.centreDistances,
+      ),
       preloads: _preloads(shown.keys, viewport, item, distances),
       distances: distances,
     );
   }
 
-  int? _inView(Map<int, double> shown, Map<int, double> centres) {
-    final rule = policy.activeItem;
-    int? best;
-    for (final MapEntry(key: index, value: fraction) in shown.entries) {
-      if (fraction < rule.minVisibleFraction) continue;
-      if (best == null || _beats(index, best, shown, centres)) best = index;
-    }
-    return best;
-  }
-
-  bool _beats(
-    int candidate,
-    int current,
-    Map<int, double> shown,
-    Map<int, double> centres,
-  ) {
-    final byFraction = shown[candidate]!.compareTo(shown[current]!);
-    final byCentre = (centres[current] ?? double.infinity).compareTo(
-      centres[candidate] ?? double.infinity,
-    );
-    final (first, second) = switch (policy.activeItem.tieBreak) {
-      FeedTieBreak.mostVisible => (byFraction, byCentre),
-      FeedTieBreak.nearestCentre => (byCentre, byFraction),
-    };
-    if (first != 0) return first > 0;
-    if (second != 0) return second > 0;
-    // A full tie goes to the earlier item.
-    return candidate < current;
-  }
-
   Map<int, AssetPreloadStage> _preloads(
     Iterable<int> shown,
     FeedListViewport viewport,
-    FeedItem Function(int index) item,
+    FeedItem? Function(int index) item,
     Map<int, int> distances,
   ) {
     if (shown.isEmpty) return const {};
@@ -166,9 +148,11 @@ final class FeedListPlanner {
       if (index < 0 || index >= viewport.itemCount) return;
       final stage = policy.preloadStaging(distance);
       if (stage == null) return;
+      final facts = item(index);
+      if (facts == null) return;
       preloads[index] = policy.boundPreload(
         stage,
-        item(index),
+        facts,
         conditions,
         fastScroll: viewport.fastScroll,
       );

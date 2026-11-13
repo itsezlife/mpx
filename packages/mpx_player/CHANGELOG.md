@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- `FeedController` and `FeedSlot`: feed playback inside any host
+  scrollable. Slots measure their own visible share against every enclosing
+  viewport; the controller plans per frame, holds the preloads and the
+  pager's leases, and exposes each item's `FeedItemState`. `FeedScope`
+  hands a controller to the slots below. In pager mode the most visible
+  page plays, so any pager works.
+- `FeedActiveItemRule.pick`: the in-view choice, shared by the list planner
+  and the pager.
+- The planners and `FeedPager` take facts that may be unknown (`itemOf`
+  returns null): such items are neither played nor warmed.
+  `FeedPager.itemCount` is settable and `FeedPager.replan` plans again.
 - `PlayerPool`, `PlayerLease`, `PlayerState`, `PlayerBudget`, `PlayerView`.
 - `PlayerBackend` / `PlayerEngine` seam; `FakePlayerBackend` and
   `PlayerEngineContract` in `testing.dart`.

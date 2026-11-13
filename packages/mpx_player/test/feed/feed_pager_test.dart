@@ -46,6 +46,17 @@ void main() {
       expect(plan.distances, {4: 1, 2: 1});
     });
 
+    test('neighbours without facts are neither warmed nor preloaded', () {
+      final plan = planner.plan(
+        index: 3,
+        itemCount: 10,
+        item: (i) => i == 4 ? null : itemOf(i),
+      );
+
+      expect(plan.warm, [2]);
+      expect(plan.preloads.keys, [2]);
+    });
+
     test('items the gate holds back are neither played nor warmed', () {
       const saving = FeedPagerPlanner(
         FeedPolicy.pager(),

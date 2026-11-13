@@ -37,6 +37,8 @@ void main() {
     FeedPolicy policy = const FeedPolicy.list(),
     ValueListenable<FeedConditions>? conditions,
     ValueChanged<int?>? onInView,
+    double? itemExtent = _extent,
+    Widget Function(BuildContext, int, Widget)? cellBuilder,
   }) async {
     final controller = ScrollController();
     addTearDown(controller.dispose);
@@ -48,7 +50,8 @@ void main() {
         textDirection: TextDirection.ltr,
         child: FeedListView(
           itemCount: 30,
-          itemExtent: _extent,
+          itemExtent: itemExtent,
+          cellBuilder: cellBuilder,
           itemOf: (index) => FeedItem(_key(index)),
           presetOf: preset,
           policy: policy,
@@ -173,5 +176,30 @@ void main() {
       attemptsFor(4).last.demand.preloadStage,
       AssetPreloadStage.firstFrame,
     );
+  });
+
+  testWidgets('items of mixed extents measure themselves', (tester) async {
+    final inView = <int?>[];
+    final controller = await pumpList(
+      tester,
+      itemExtent: null,
+      onInView: inView.add,
+      cellBuilder: (context, index, clip) =>
+          SizedBox(height: index.isEven ? 100 : 300, child: clip),
+    );
+
+    // Items sit at 0, 100, 400, 500, 800: 300..800 shows a third of 1 and
+    // all of 2 and 3.
+    controller.jumpTo(300);
+    await tester.pump();
+
+    final feed = tester
+        .state<FeedListViewState>(find.byType(FeedListView))
+        .feed;
+    expect(feed.stateOf(1).value.fraction, closeTo(1 / 3, 1e-9));
+    expect(feed.stateOf(2).value.fraction, 1);
+    expect(feed.stateOf(3).value.fraction, 1);
+    expect(feed.stateOf(4).value.visible, isFalse);
+    expect(inView.last, 2);
   });
 }

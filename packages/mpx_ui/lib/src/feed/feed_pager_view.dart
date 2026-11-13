@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_player/mpx_player.dart';
+import 'package:mpx_ui/src/feed/feed_clip.dart';
 
 /// Builds the page of [index] around its [media]: the player's picture, or
 /// the poster while the page holds no player.
@@ -12,11 +13,13 @@ typedef FeedPagerCellBuilder =
 /// prepared players, as a pager-mode [FeedPolicy] says: a reels or stories
 /// surface.
 ///
-/// A [FeedPager] over [pool] decides what plays and what is warm; a swipe
-/// takes over the neighbour's prepared player. Each page shows its player
-/// through a `PlayerView`, with the page's poster as the stand-in until the
-/// first frame. With [presetOf] the neighbours' bytes are preloaded to the
-/// policy's stages through the asset cache scope ([scope], or the closest
+/// The assembled default of the feed's pieces: a pager-mode
+/// [FeedController] over [pool] and a `PageView` whose pages are
+/// `FeedSlot`s showing a [FeedClip]. The page that plays is the most visible
+/// one, measured like any slot, so a host's own pager plays the same way
+/// with those pieces. A swipe takes over the neighbour's prepared player.
+/// With [presetOf] the neighbours' bytes are preloaded to the policy's
+/// stages through the asset cache scope ([scope], or the closest
 /// `AssetCacheProvider`), and the poster is the item's first frame from the
 /// cache.
 class FeedPagerView extends StatefulWidget {
@@ -89,57 +92,61 @@ class FeedPagerView extends StatefulWidget {
   State<FeedPagerView> createState() => FeedPagerViewState();
 }
 
-/// The state of a [FeedPagerView]; [pager] is the pager it drives.
+/// The state of a [FeedPagerView]; [feed] is the controller it drives and
+/// [pager] the pager that holds its leases.
 class FeedPagerViewState extends State<FeedPagerView> {
   late final PageController _pages = PageController(
     initialPage: widget.initialIndex,
   );
-  late final FeedPager _pager = FeedPager(
+  // The host's callbacks are read through the widget, so a parent that
+  // rebuilds with new closures is followed without a new controller.
+  late final FeedController _feed = FeedController(
+    policy: widget.policy,
     pool: widget.pool,
     itemCount: widget.itemCount,
-    itemOf: widget.itemOf,
-    policy: widget.policy,
+    itemOf: (index) => widget.itemOf(index),
+    presetOf: widget.presetOf == null
+        ? null
+        : (index, profile) => widget.presetOf!(index, profile),
     conditions: widget.conditions,
     initialIndex: widget.initialIndex,
     muted: widget.muted,
     onAdvance: _advance,
-  )..addListener(_onPager);
-  final Map<int, AssetPreload> _preloads = {};
-  AssetCacheScope? _scope;
+  )..inView.addListener(_pageChanged);
+
+  /// The feed: per-page decisions and the page that plays.
+  FeedController get feed => _feed;
 
   /// The pager: the page shown, the leases and the mute toggle.
-  FeedPager get pager => _pager;
+  FeedPager get pager => _feed.pager!;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final scope = widget.scope ?? AssetCacheProvider.maybeOf(context);
-    if (!identical(scope, _scope)) {
-      _cancelPreloads();
-      _scope = scope;
-      _applyPreloads();
-    }
+    _feed.scope = widget.scope ?? AssetCacheProvider.maybeOf(context);
   }
 
   @override
   void didUpdateWidget(FeedPagerView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _pager.muted = widget.muted;
+    _feed
+      ..muted = widget.muted
+      ..itemCount = widget.itemCount
+      ..scope = widget.scope ?? AssetCacheProvider.maybeOf(context);
   }
 
   @override
   void dispose() {
-    _cancelPreloads();
-    _pager
-      ..removeListener(_onPager)
+    _feed
+      ..inView.removeListener(_pageChanged)
       ..dispose();
     _pages.dispose();
     super.dispose();
   }
 
-  void _onPager() {
-    _applyPreloads();
-    if (mounted) setState(() {});
+  void _pageChanged() {
+    final index = _feed.inView.value;
+    if (index != null) widget.onPageChanged?.call(index);
   }
 
   void _advance(int next) {
@@ -151,66 +158,24 @@ class FeedPagerViewState extends State<FeedPagerView> {
     );
   }
 
-  void _cancelPreloads() {
-    for (final preload in _preloads.values) {
-      preload.cancel();
-    }
-    _preloads.clear();
-  }
-
-  void _applyPreloads() {
-    final scope = _scope;
-    final presetOf = widget.presetOf;
-    if (scope == null || presetOf == null) return;
-    final plan = _pager.plan;
-    for (final index in _preloads.keys.toList()) {
-      final wanted = plan.preloads[index];
-      final current = _preloads[index]!;
-      final drop =
-          index == plan.active ||
-          (wanted == null && widget.policy.cancelOnLeave) ||
-          (wanted != null && wanted != current.stage);
-      if (drop) _preloads.remove(index)!.cancel();
-    }
-    for (final MapEntry(key: index, value: stage) in plan.preloads.entries) {
-      if (_preloads.containsKey(index)) continue;
-      _preloads[index] = scope.preload(
-        widget.itemOf(index).key,
-        presetOf(index, const AssetProfile()).spec,
-        stage: stage,
-        distance: plan.distances[index] ?? 0,
-      );
-    }
-  }
-
   @override
-  Widget build(BuildContext context) => PageView.builder(
-    controller: _pages,
-    scrollDirection: widget.scrollDirection,
-    itemCount: widget.itemCount,
-    onPageChanged: (index) {
-      _pager.show(index);
-      widget.onPageChanged?.call(index);
-    },
-    itemBuilder: (context, index) {
-      final lease = _pager.leaseOf(index);
-      final poster = _poster(context, index);
-      final media = lease == null
-          ? poster
-          : PlayerView(lease: lease, fit: widget.fit, standIn: poster);
-      return widget.cellBuilder?.call(context, index, media) ?? media;
-    },
+  Widget build(BuildContext context) => FeedScope(
+    controller: _feed,
+    child: PageView.builder(
+      controller: _pages,
+      scrollDirection: widget.scrollDirection,
+      itemCount: widget.itemCount,
+      itemBuilder: (context, index) {
+        final media = FeedClip(
+          fit: widget.fit,
+          poster: widget.posterBuilder?.call(context, index),
+        );
+        return FeedSlot(
+          index: index,
+          item: widget.itemOf(index),
+          child: widget.cellBuilder?.call(context, index, media) ?? media,
+        );
+      },
+    ),
   );
-
-  Widget _poster(BuildContext context, int index) {
-    final custom = widget.posterBuilder;
-    if (custom != null) return custom(context, index);
-    final presetOf = widget.presetOf;
-    if (presetOf == null || _scope == null) return const SizedBox.expand();
-    return ContentView(
-      content: widget.itemOf(index).key,
-      preset: presetOf(index, const AssetProfile()),
-      scope: _scope,
-    );
-  }
 }

@@ -60,11 +60,12 @@ final class FeedPagerPlanner {
   /// At most [preparedCap] neighbours (the pool's prepared budget, which the
   /// device class bounds) and at most the policy's prepared players are
   /// warmed; only neighbours inside the preload window that the gate lets
-  /// play in full get one.
+  /// play in full get one. An index [item] knows nothing about (null) is
+  /// neither warmed nor preloaded, and an unknown [index] does not play.
   FeedPagerPlan plan({
     required int index,
     required int itemCount,
-    required FeedItem Function(int index) item,
+    required FeedItem? Function(int index) item,
     int? preparedCap,
   }) {
     final window = policy.preloadWindow;
@@ -81,6 +82,7 @@ final class FeedPagerPlanner {
         final neighbour = index + signed;
         if (neighbour < 0 || neighbour >= itemCount) continue;
         final facts = item(neighbour);
+        if (facts == null) continue;
         if (warm.length < cap &&
             policy.autoplayOf(facts, conditions) == FeedAutoplay.full) {
           warm.add(neighbour);
@@ -91,9 +93,12 @@ final class FeedPagerPlanner {
         distances[neighbour] = d;
       }
     }
+    final active = item(index);
     return FeedPagerPlan(
       active: index,
-      autoplay: policy.autoplayOf(item(index), conditions),
+      autoplay: active == null
+          ? FeedAutoplay.none
+          : policy.autoplayOf(active, conditions),
       warm: warm,
       preloads: preloads,
       distances: distances,
@@ -121,7 +126,7 @@ final class FeedPager extends ChangeNotifier {
   /// Creates a pager over [itemCount] items, showing [initialIndex].
   FeedPager({
     required PlayerPool pool,
-    required this.itemCount,
+    required int itemCount,
     required this.itemOf,
     this.policy = const FeedPolicy.pager(),
     ValueListenable<FeedConditions>? conditions,
@@ -130,6 +135,7 @@ final class FeedPager extends ChangeNotifier {
     this.onAdvance,
   }) : assert(policy.mode == FeedMode.pager, 'A pager takes a pager policy.'),
        _pool = pool,
+       _itemCount = itemCount,
        _conditions = conditions,
        _index = initialIndex,
        _muted = muted {
@@ -140,11 +146,18 @@ final class FeedPager extends ChangeNotifier {
   final PlayerPool _pool;
   final ValueListenable<FeedConditions>? _conditions;
 
-  /// How many items the pager has.
-  final int itemCount;
+  /// How many items the pager has; setting it plans again.
+  int get itemCount => _itemCount;
+  int _itemCount;
+  set itemCount(int value) {
+    if (value == _itemCount) return;
+    _itemCount = value;
+    _apply();
+  }
 
-  /// The feed facts of an item.
-  final FeedItem Function(int index) itemOf;
+  /// The feed facts of an item, or null while the host has none for it (the
+  /// item is neither played nor warmed then).
+  final FeedItem? Function(int index) itemOf;
 
   /// The rules; pager mode.
   final FeedPolicy policy;
@@ -189,6 +202,10 @@ final class FeedPager extends ChangeNotifier {
     _apply();
   }
 
+  /// Plans again for the page shown: for a host whose facts ([itemOf])
+  /// changed, such as a neighbour that became known.
+  void replan() => _apply();
+
   void _apply() {
     if (_disposed) return;
     final plan =
@@ -197,42 +214,49 @@ final class FeedPager extends ChangeNotifier {
           conditions: _conditions?.value ?? const FeedConditions(),
         ).plan(
           index: _index,
-          itemCount: itemCount,
+          itemCount: _itemCount,
           item: itemOf,
           preparedCap: _pool.budget.prepared,
         );
     _plan = plan;
-    final keep = {plan.active, ...plan.warm};
+    final known = itemOf(plan.active) != null;
+    final keep = {if (known) plan.active, ...plan.warm};
     for (final index in _leases.keys.toList()) {
       if (!keep.contains(index)) _leases.remove(index)!.release();
     }
-    // The active item first, so the budget never evicts it for a neighbour.
-    final active = _leaseFor(plan.active);
-    final arrived = _activated != plan.active;
-    _activated = plan.active;
-    if (arrived && policy.resume == FeedResume.restart) {
-      active.seekTo(Duration.zero);
-    }
-    if (plan.autoplay == FeedAutoplay.full) {
-      active.play();
-    } else {
-      active.pause();
+    if (known) {
+      // The active item first, so the budget never evicts it for a
+      // neighbour.
+      final active = _leaseFor(plan.active)!;
+      final arrived = _activated != plan.active;
+      _activated = plan.active;
+      if (arrived && policy.resume == FeedResume.restart) {
+        active.seekTo(Duration.zero);
+      }
+      if (plan.autoplay == FeedAutoplay.full) {
+        active.play();
+      } else {
+        active.pause();
+      }
+      _watch(active);
     }
     for (final index in plan.warm) {
       _leaseFor(index)
-        ..pause()
+        ?..pause()
         ..prepare();
     }
-    _watch(active);
     notifyListeners();
   }
 
-  PlayerLease _leaseFor(int index) => _leases.putIfAbsent(
-    index,
-    () => _pool.lease(itemOf(index).key)
+  PlayerLease? _leaseFor(int index) {
+    final held = _leases[index];
+    if (held != null) return held;
+    final item = itemOf(index);
+    if (item == null) return null;
+    return _leases[index] = _pool.lease(item.key)
       ..setLooping(looping: policy.loop)
-      ..setVolume(_muted ? 0 : 1),
-  );
+      ..setVolume(_muted ? 0 : 1);
+  }
 
   void _watch(PlayerLease lease) {
     if (identical(_watched, lease)) return;
@@ -248,7 +272,12 @@ final class FeedPager extends ChangeNotifier {
     final next = _index + 1;
     if (next >= itemCount) return;
     final advance = policy.autoAdvance;
-    if (advance != null && advance(itemOf(_index), itemOf(next))) {
+    final ended = itemOf(_index);
+    final following = itemOf(next);
+    if (advance != null &&
+        ended != null &&
+        following != null &&
+        advance(ended, following)) {
       onAdvance?.call(next);
     }
   }

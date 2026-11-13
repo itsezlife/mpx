@@ -13,6 +13,7 @@
 /// says.
 library;
 
+export 'src/feed/feed_clip.dart';
 export 'src/feed/feed_list_view.dart';
 export 'src/feed/feed_pager_view.dart';
 export 'src/viewer/gallery_source.dart';

@@ -28,6 +28,31 @@ final lease = pool.lease(const MediaKey.remote('42'))..play();
 lease.release();
 ```
 
+### A feed in your own list
+
+Wrap each cell in a `FeedSlot`; the controller decides from what shows.
+
+```dart
+final feed = FeedController(itemCount: items.length, itemOf: (i) => items[i]);
+
+FeedScope(
+  controller: feed,
+  child: ListView.builder( // or a CustomScrollView, GridView, PageView
+    itemCount: items.length,
+    itemBuilder: (context, i) => FeedSlot(
+      index: i,
+      child: ValueListenableBuilder<FeedItemState>(
+        valueListenable: feed.stateOf(i),
+        builder: (context, state, _) => MyCell(playing: state.playing),
+      ),
+    ),
+  ),
+);
+```
+
+Pass `FeedPolicy.pager()` and a `PlayerPool` for one playing page with
+warm neighbours (`state.lease`).
+
 ## Features
 
 - Player pool keyed by `MediaKey`; leases share one player, so hand-offs
@@ -43,6 +68,9 @@ lease.release();
 - `FeedPager`: the pager mode; the page shown plays with sound, neighbours
   keep prepared players inside the budget, a swipe takes one over
 - `FeedSignals`: network, power and heat from the host's own listenables
+- `FeedController` + `FeedSlot`: the feed inside any scrollable (lists,
+  grids, slivers, pagers, nested lists); each item's decision is a
+  `ValueListenable<FeedItemState>`
 
 Planned: Media3 and AVPlayer backends.
 

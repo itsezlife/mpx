@@ -33,6 +33,28 @@ FeedListView(
 );
 ```
 
+In your own scrollable, wrap each cell in a `FeedSlot` with a `FeedClip`:
+
+```dart
+final feed = FeedController(presetOf: (i, profile) => presetFor(i, profile));
+
+FeedScope(
+  controller: feed,
+  child: CustomScrollView(
+    slivers: [
+      SliverList.builder(
+        itemCount: clips.length,
+        itemBuilder: (context, i) => FeedSlot(
+          index: i,
+          item: FeedItem(clips[i].key),
+          child: const FeedClip(),
+        ),
+      ),
+    ],
+  ),
+);
+```
+
 Open the viewer from a list:
 
 ```dart
@@ -64,7 +86,9 @@ MediaViewer.show(
 ## Features
 
 - `FeedListView`: every visible clip plays muted, frames advance above the
-  policy's floor, the items ahead preload by stage
+  policy's floor, the items ahead preload by stage; items of any extent
+- `FeedClip`: a slot's media in any host scrollable, on the cache or the
+  player
 - `FeedPagerView`: the page shown plays with sound, its neighbours keep
   prepared players, a swipe takes one over
 - `MediaViewer`: photos and videos open from and close to their origin;
