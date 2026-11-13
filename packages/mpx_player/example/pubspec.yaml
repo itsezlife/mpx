@@ -29,3 +29,6 @@ flutter:
     # 12 s, 256x144 H.264 with a mono AAC tone; generated with ffmpeg's test
     # sources.
     - assets/clip.mp4
+    # The same clip cut into an HLS stream (ffmpeg's hls muxer, 4 s
+    # segments, stream copy).
+    - assets/stream/

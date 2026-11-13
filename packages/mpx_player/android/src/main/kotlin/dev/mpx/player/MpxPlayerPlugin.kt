@@ -21,6 +21,7 @@ class MpxPlayerPlugin : FlutterPlugin, ActivityAware, PlayerHostApi {
     private lateinit var device: MpxDeviceProbe
     private lateinit var pictureInPicture: MpxPictureInPicture
     private lateinit var background: MpxBackgroundAudio
+    private lateinit var parts: StreamParts
     private val players = HashMap<Long, MpxVideoPlayer>()
     private var nextId = 1L
 
@@ -28,6 +29,7 @@ class MpxPlayerPlugin : FlutterPlugin, ActivityAware, PlayerHostApi {
         context = binding.applicationContext
         textures = binding.textureRegistry
         flutter = PlayerFlutterApi(binding.binaryMessenger)
+        parts = StreamParts(flutter)
         device = MpxDeviceProbe(context)
         pictureInPicture =
             MpxPictureInPicture { id, active -> flutter.onPictureInPictureChange(id, active) {} }
@@ -81,6 +83,7 @@ class MpxPlayerPlugin : FlutterPlugin, ActivityAware, PlayerHostApi {
                 settings = settings,
                 producer = textures.createSurfaceProducer(),
                 renderers = MpxRenderersFactory(context),
+                parts = parts,
                 report = { snapshot ->
                     flutter.onSnapshot(snapshot) {}
                     background.update(players.values.firstOrNull { it.isAudible }?.player)

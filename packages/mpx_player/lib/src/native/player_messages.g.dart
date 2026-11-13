@@ -10,9 +10,9 @@ import 'package:flutter/services.dart';
 import 'package:meta/meta.dart' show immutable, protected, visibleForTesting;
 
 Object? _extractReplyValueOrThrow(
-    List<Object?>? replyList,
-    String channelName, {
-    required bool isNullValid,
+  List<Object?>? replyList,
+  String channelName, {
+  required bool isNullValid,
 }) {
   if (replyList == null) {
     throw PlatformException(
@@ -34,8 +34,11 @@ Object? _extractReplyValueOrThrow(
   return replyList.firstOrNull;
 }
 
-
-List<Object?> wrapResponse({Object? result, PlatformException? error, bool empty = false}) {
+List<Object?> wrapResponse({
+  Object? result,
+  PlatformException? error,
+  bool empty = false,
+}) {
   if (empty) {
     return <Object?>[];
   }
@@ -44,6 +47,7 @@ List<Object?> wrapResponse({Object? result, PlatformException? error, bool empty
   }
   return <Object?>[error.code, error.message, error.details];
 }
+
 bool _deepEquals(Object? a, Object? b) {
   if (identical(a, b)) {
     return true;
@@ -56,8 +60,9 @@ bool _deepEquals(Object? a, Object? b) {
   }
   if (a is List && b is List) {
     return a.length == b.length &&
-        a.indexed
-            .every(((int, dynamic) item) => _deepEquals(item.$2, b[item.$1]));
+        a.indexed.every(
+          ((int, dynamic) item) => _deepEquals(item.$2, b[item.$1]),
+        );
   }
   if (a is Map && b is Map) {
     if (a.length != b.length) {
@@ -106,32 +111,24 @@ int _deepHash(Object? value) {
   return value.hashCode;
 }
 
-
 /// Where a native player stands; `idle` never crosses the channel.
-enum NativePlayerPhase {
-  preparing,
-  ready,
-  buffering,
-  ended,
-  failed,
-}
+enum NativePlayerPhase { preparing, ready, buffering, ended, failed }
 
 /// What the platform's audio session says; see `AudioFocusChange`.
-enum NativeAudioFocusChange {
-  gained,
-  lost,
-  interrupted,
-  outputRemoved,
-}
+enum NativeAudioFocusChange { gained, lost, interrupted, outputRemoved }
 
 /// What a native player reads: a ranged resource published to the bytes
 /// cache's native reader under [cacheKey], read through the function table at
-/// [readerApi] (the address of `hbc_api`).
+/// [readerApi] (the address of `hbc_api`); or, with [playlistUrl], an HLS
+/// stream whose parts the player asks for one by one ([PlayerFlutterApi]
+/// `openStreamPart`).
 class NativePlayerSource {
   NativePlayerSource({
     required this.cacheKey,
     required this.readerApi,
     required this.mimeType,
+    this.playlistUrl,
+    this.streamId,
   });
 
   String cacheKey;
@@ -142,16 +139,20 @@ class NativePlayerSource {
   /// it, Android sniffs the container itself.
   String mimeType;
 
+  /// The HLS playlist the player opens first; null for a progressive file.
+  /// Relative part URLs resolve against it.
+  String? playlistUrl;
+
+  /// The stream this player's part requests name; set with [playlistUrl].
+  int? streamId;
+
   List<Object?> _toList() {
-    return <Object?>[
-      cacheKey,
-      readerApi,
-      mimeType,
-    ];
+    return <Object?>[cacheKey, readerApi, mimeType, playlistUrl, streamId];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static NativePlayerSource decode(Object result) {
     result as List<Object?>;
@@ -159,6 +160,8 @@ class NativePlayerSource {
       cacheKey: result[0]! as String,
       readerApi: result[1]! as int,
       mimeType: result[2]! as String,
+      playlistUrl: result[3] as String?,
+      streamId: result[4] as int?,
     );
   }
 
@@ -171,7 +174,11 @@ class NativePlayerSource {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(cacheKey, other.cacheKey) && _deepEquals(readerApi, other.readerApi) && _deepEquals(mimeType, other.mimeType);
+    return _deepEquals(cacheKey, other.cacheKey) &&
+        _deepEquals(readerApi, other.readerApi) &&
+        _deepEquals(mimeType, other.mimeType) &&
+        _deepEquals(playlistUrl, other.playlistUrl) &&
+        _deepEquals(streamId, other.streamId);
   }
 
   @override
@@ -180,7 +187,60 @@ class NativePlayerSource {
 
   @override
   String toString() {
-    return 'NativePlayerSource(cacheKey: $cacheKey, readerApi: $readerApi, mimeType: $mimeType)';
+    return 'NativePlayerSource(cacheKey: $cacheKey, readerApi: $readerApi, mimeType: $mimeType, playlistUrl: $playlistUrl, streamId: $streamId)';
+  }
+}
+
+/// One part of an HLS stream, as the cache serves it: a playlist's [bytes],
+/// or the [cacheKey] of a segment published to the native reader. Close it
+/// with `closeStreamPart` when done.
+class NativeStreamPart {
+  NativeStreamPart({required this.partId, this.cacheKey, this.bytes});
+
+  int partId;
+
+  String? cacheKey;
+
+  Uint8List? bytes;
+
+  List<Object?> _toList() {
+    return <Object?>[partId, cacheKey, bytes];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static NativeStreamPart decode(Object result) {
+    result as List<Object?>;
+    return NativeStreamPart(
+      partId: result[0]! as int,
+      cacheKey: result[1] as String?,
+      bytes: result[2] as Uint8List?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! NativeStreamPart || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(partId, other.partId) &&
+        _deepEquals(cacheKey, other.cacheKey) &&
+        _deepEquals(bytes, other.bytes);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'NativeStreamPart(partId: $partId, cacheKey: $cacheKey, bytes: $bytes)';
   }
 }
 
@@ -210,18 +270,12 @@ class NativePlayerSettings {
   double volume;
 
   List<Object?> _toList() {
-    return <Object?>[
-      startAtUs,
-      seekId,
-      playing,
-      speed,
-      looping,
-      volume,
-    ];
+    return <Object?>[startAtUs, seekId, playing, speed, looping, volume];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static NativePlayerSettings decode(Object result) {
     result as List<Object?>;
@@ -244,7 +298,12 @@ class NativePlayerSettings {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(startAtUs, other.startAtUs) && _deepEquals(seekId, other.seekId) && _deepEquals(playing, other.playing) && _deepEquals(speed, other.speed) && _deepEquals(looping, other.looping) && _deepEquals(volume, other.volume);
+    return _deepEquals(startAtUs, other.startAtUs) &&
+        _deepEquals(seekId, other.seekId) &&
+        _deepEquals(playing, other.playing) &&
+        _deepEquals(speed, other.speed) &&
+        _deepEquals(looping, other.looping) &&
+        _deepEquals(volume, other.volume);
   }
 
   @override
@@ -330,7 +389,8 @@ class NativePlayerSnapshot {
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static NativePlayerSnapshot decode(Object result) {
     result as List<Object?>;
@@ -361,7 +421,20 @@ class NativePlayerSnapshot {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(playerId, other.playerId) && _deepEquals(phase, other.phase) && _deepEquals(positionUs, other.positionUs) && _deepEquals(advancing, other.advancing) && _deepEquals(quarterTurns, other.quarterTurns) && _deepEquals(firstFrameRendered, other.firstFrameRendered) && _deepEquals(buffered, other.buffered) && _deepEquals(seekId, other.seekId) && _deepEquals(durationUs, other.durationUs) && _deepEquals(width, other.width) && _deepEquals(height, other.height) && _deepEquals(textureId, other.textureId) && _deepEquals(error, other.error) && _deepEquals(failedCodec, other.failedCodec);
+    return _deepEquals(playerId, other.playerId) &&
+        _deepEquals(phase, other.phase) &&
+        _deepEquals(positionUs, other.positionUs) &&
+        _deepEquals(advancing, other.advancing) &&
+        _deepEquals(quarterTurns, other.quarterTurns) &&
+        _deepEquals(firstFrameRendered, other.firstFrameRendered) &&
+        _deepEquals(buffered, other.buffered) &&
+        _deepEquals(seekId, other.seekId) &&
+        _deepEquals(durationUs, other.durationUs) &&
+        _deepEquals(width, other.width) &&
+        _deepEquals(height, other.height) &&
+        _deepEquals(textureId, other.textureId) &&
+        _deepEquals(error, other.error) &&
+        _deepEquals(failedCodec, other.failedCodec);
   }
 
   @override
@@ -391,15 +464,12 @@ class NativeDecoderInfo {
   int maxInstances;
 
   List<Object?> _toList() {
-    return <Object?>[
-      mimeType,
-      hardware,
-      maxInstances,
-    ];
+    return <Object?>[mimeType, hardware, maxInstances];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static NativeDecoderInfo decode(Object result) {
     result as List<Object?>;
@@ -419,7 +489,9 @@ class NativeDecoderInfo {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(mimeType, other.mimeType) && _deepEquals(hardware, other.hardware) && _deepEquals(maxInstances, other.maxInstances);
+    return _deepEquals(mimeType, other.mimeType) &&
+        _deepEquals(hardware, other.hardware) &&
+        _deepEquals(maxInstances, other.maxInstances);
   }
 
   @override
@@ -482,7 +554,8 @@ class NativeDeviceProbe {
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static NativeDeviceProbe decode(Object result) {
     result as List<Object?>;
@@ -507,7 +580,14 @@ class NativeDeviceProbe {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(lowRam, other.lowRam) && _deepEquals(totalMemoryBytes, other.totalMemoryBytes) && _deepEquals(cpuCount, other.cpuCount) && _deepEquals(memoryClassMb, other.memoryClassMb) && _deepEquals(performanceClass, other.performanceClass) && _deepEquals(decoders, other.decoders) && _deepEquals(containers, other.containers) && _deepEquals(failedCodecs, other.failedCodecs);
+    return _deepEquals(lowRam, other.lowRam) &&
+        _deepEquals(totalMemoryBytes, other.totalMemoryBytes) &&
+        _deepEquals(cpuCount, other.cpuCount) &&
+        _deepEquals(memoryClassMb, other.memoryClassMb) &&
+        _deepEquals(performanceClass, other.performanceClass) &&
+        _deepEquals(decoders, other.decoders) &&
+        _deepEquals(containers, other.containers) &&
+        _deepEquals(failedCodecs, other.failedCodecs);
   }
 
   @override
@@ -520,7 +600,6 @@ class NativeDeviceProbe {
   }
 }
 
-
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
   @override
@@ -528,26 +607,29 @@ class _PigeonCodec extends StandardMessageCodec {
     if (value is int) {
       buffer.putUint8(4);
       buffer.putInt64(value);
-    }    else if (value is NativePlayerPhase) {
+    } else if (value is NativePlayerPhase) {
       buffer.putUint8(129);
       writeValue(buffer, value.index);
-    }    else if (value is NativeAudioFocusChange) {
+    } else if (value is NativeAudioFocusChange) {
       buffer.putUint8(130);
       writeValue(buffer, value.index);
-    }    else if (value is NativePlayerSource) {
+    } else if (value is NativePlayerSource) {
       buffer.putUint8(131);
       writeValue(buffer, value.encode());
-    }    else if (value is NativePlayerSettings) {
+    } else if (value is NativeStreamPart) {
       buffer.putUint8(132);
       writeValue(buffer, value.encode());
-    }    else if (value is NativePlayerSnapshot) {
+    } else if (value is NativePlayerSettings) {
       buffer.putUint8(133);
       writeValue(buffer, value.encode());
-    }    else if (value is NativeDecoderInfo) {
+    } else if (value is NativePlayerSnapshot) {
       buffer.putUint8(134);
       writeValue(buffer, value.encode());
-    }    else if (value is NativeDeviceProbe) {
+    } else if (value is NativeDecoderInfo) {
       buffer.putUint8(135);
+      writeValue(buffer, value.encode());
+    } else if (value is NativeDeviceProbe) {
+      buffer.putUint8(136);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -566,12 +648,14 @@ class _PigeonCodec extends StandardMessageCodec {
       case 131:
         return NativePlayerSource.decode(readValue(buffer)!);
       case 132:
-        return NativePlayerSettings.decode(readValue(buffer)!);
+        return NativeStreamPart.decode(readValue(buffer)!);
       case 133:
-        return NativePlayerSnapshot.decode(readValue(buffer)!);
+        return NativePlayerSettings.decode(readValue(buffer)!);
       case 134:
-        return NativeDecoderInfo.decode(readValue(buffer)!);
+        return NativePlayerSnapshot.decode(readValue(buffer)!);
       case 135:
+        return NativeDecoderInfo.decode(readValue(buffer)!);
+      case 136:
         return NativeDeviceProbe.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -583,9 +667,13 @@ class PlayerHostApi {
   /// Constructor for [PlayerHostApi]. The [binaryMessenger] named argument is
   /// available for dependency injection. If it is left null, the default
   /// BinaryMessenger will be used which routes to the host platform.
-  PlayerHostApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
-      : pigeonVar_binaryMessenger = binaryMessenger,
-        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  PlayerHostApi({
+    BinaryMessenger? binaryMessenger,
+    String messageChannelSuffix = '',
+  }) : pigeonVar_binaryMessenger = binaryMessenger,
+       pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty
+           ? '.$messageChannelSuffix'
+           : '';
   final BinaryMessenger? pigeonVar_binaryMessenger;
 
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
@@ -594,7 +682,8 @@ class PlayerHostApi {
 
   /// Disposes every player a previous Dart isolate left (hot restart).
   Future<void> reset() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.mpx_player.PlayerHostApi.reset$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.mpx_player.PlayerHostApi.reset$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -604,161 +693,180 @@ class PlayerHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   /// Creates a player, starts preparing it and returns its id.
-  Future<int> create(NativePlayerSource source, NativePlayerSettings settings) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.mpx_player.PlayerHostApi.create$pigeonVar_messageChannelSuffix';
+  Future<int> create(
+    NativePlayerSource source,
+    NativePlayerSettings settings,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.mpx_player.PlayerHostApi.create$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[source, settings]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[source, settings],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as int;
   }
 
   Future<void> play(int playerId) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.mpx_player.PlayerHostApi.play$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.mpx_player.PlayerHostApi.play$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[playerId],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> pause(int playerId) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.mpx_player.PlayerHostApi.pause$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.mpx_player.PlayerHostApi.pause$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[playerId],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> seekTo(int playerId, int positionUs, int seekId) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.mpx_player.PlayerHostApi.seekTo$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.mpx_player.PlayerHostApi.seekTo$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId, positionUs, seekId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[playerId, positionUs, seekId],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> setSpeed(int playerId, double speed) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.mpx_player.PlayerHostApi.setSpeed$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.mpx_player.PlayerHostApi.setSpeed$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId, speed]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[playerId, speed],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> setLooping(int playerId, bool looping) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.mpx_player.PlayerHostApi.setLooping$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.mpx_player.PlayerHostApi.setLooping$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId, looping]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[playerId, looping],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> setVolume(int playerId, double volume) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.mpx_player.PlayerHostApi.setVolume$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.mpx_player.PlayerHostApi.setVolume$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId, volume]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[playerId, volume],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> dispose(int playerId) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.mpx_player.PlayerHostApi.dispose$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.mpx_player.PlayerHostApi.dispose$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[playerId],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> requestAudioFocus() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.mpx_player.PlayerHostApi.requestAudioFocus$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.mpx_player.PlayerHostApi.requestAudioFocus$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -768,15 +876,15 @@ class PlayerHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> abandonAudioFocus() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.mpx_player.PlayerHostApi.abandonAudioFocus$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.mpx_player.PlayerHostApi.abandonAudioFocus$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -786,15 +894,15 @@ class PlayerHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<NativeDeviceProbe> probe() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.mpx_player.PlayerHostApi.probe$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.mpx_player.PlayerHostApi.probe$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -804,16 +912,16 @@ class PlayerHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as NativeDeviceProbe;
   }
 
   Future<bool> isPictureInPictureSupported() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.mpx_player.PlayerHostApi.isPictureInPictureSupported$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.mpx_player.PlayerHostApi.isPictureInPictureSupported$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -823,36 +931,38 @@ class PlayerHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as bool;
   }
 
   /// Moves [playerId]'s picture into picture in picture (Apple: its hidden
   /// layer; Android: the activity).
   Future<void> startPictureInPicture(int playerId) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.mpx_player.PlayerHostApi.startPictureInPicture$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.mpx_player.PlayerHostApi.startPictureInPicture$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[playerId],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> stopPictureInPicture() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.mpx_player.PlayerHostApi.stopPictureInPicture$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.mpx_player.PlayerHostApi.stopPictureInPicture$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -862,31 +972,32 @@ class PlayerHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   /// Whether the sound owner keeps playing while the app is in the
   /// background.
   Future<void> setBackgroundAudio(bool enabled) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.mpx_player.PlayerHostApi.setBackgroundAudio$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.mpx_player.PlayerHostApi.setBackgroundAudio$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[enabled]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[enabled],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 }
 
@@ -900,54 +1011,85 @@ abstract class PlayerFlutterApi {
   /// Picture in picture started ([active]) or ended for [playerId].
   void onPictureInPictureChange(int playerId, bool active);
 
-  static void setUp(PlayerFlutterApi? api, {BinaryMessenger? binaryMessenger, String messageChannelSuffix = '',}) {
-    messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  /// Opens the part at [url] of stream [streamId]: a [playlist] (resolved
+  /// through the cache, revalidated by HTTP rules) or a segment (published
+  /// to the native reader under a key of its own). Fails once the stream is
+  /// closed.
+  Future<NativeStreamPart> openStreamPart(
+    int streamId,
+    String url,
+    bool playlist,
+  );
+
+  /// The player is done with [partId]; a segment's publication is withdrawn.
+  void closeStreamPart(int partId);
+
+  static void setUp(
+    PlayerFlutterApi? api, {
+    BinaryMessenger? binaryMessenger,
+    String messageChannelSuffix = '',
+  }) {
+    messageChannelSuffix = messageChannelSuffix.isNotEmpty
+        ? '.$messageChannelSuffix'
+        : '';
     {
       final pigeonVar_channel = BasicMessageChannel<Object?>(
-          'dev.flutter.pigeon.mpx_player.PlayerFlutterApi.onSnapshot$messageChannelSuffix', pigeonChannelCodec,
-          binaryMessenger: binaryMessenger);
+        'dev.flutter.pigeon.mpx_player.PlayerFlutterApi.onSnapshot$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
       if (api == null) {
         pigeonVar_channel.setMessageHandler(null);
       } else {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           final List<Object?> args = message! as List<Object?>;
-          final NativePlayerSnapshot arg_snapshot = args[0]! as NativePlayerSnapshot;
+          final NativePlayerSnapshot arg_snapshot =
+              args[0]! as NativePlayerSnapshot;
           try {
             api.onSnapshot(arg_snapshot);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
-          }          catch (e) {
-            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
           }
         });
       }
     }
     {
       final pigeonVar_channel = BasicMessageChannel<Object?>(
-          'dev.flutter.pigeon.mpx_player.PlayerFlutterApi.onAudioFocusChange$messageChannelSuffix', pigeonChannelCodec,
-          binaryMessenger: binaryMessenger);
+        'dev.flutter.pigeon.mpx_player.PlayerFlutterApi.onAudioFocusChange$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
       if (api == null) {
         pigeonVar_channel.setMessageHandler(null);
       } else {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           final List<Object?> args = message! as List<Object?>;
-          final NativeAudioFocusChange arg_change = args[0]! as NativeAudioFocusChange;
+          final NativeAudioFocusChange arg_change =
+              args[0]! as NativeAudioFocusChange;
           try {
             api.onAudioFocusChange(arg_change);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
-          }          catch (e) {
-            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
           }
         });
       }
     }
     {
       final pigeonVar_channel = BasicMessageChannel<Object?>(
-          'dev.flutter.pigeon.mpx_player.PlayerFlutterApi.onPictureInPictureChange$messageChannelSuffix', pigeonChannelCodec,
-          binaryMessenger: binaryMessenger);
+        'dev.flutter.pigeon.mpx_player.PlayerFlutterApi.onPictureInPictureChange$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
       if (api == null) {
         pigeonVar_channel.setMessageHandler(null);
       } else {
@@ -960,8 +1102,66 @@ abstract class PlayerFlutterApi {
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
-          }          catch (e) {
-            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'dev.flutter.pigeon.mpx_player.PlayerFlutterApi.openStreamPart$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final int arg_streamId = args[0]! as int;
+          final String arg_url = args[1]! as String;
+          final bool arg_playlist = args[2]! as bool;
+          try {
+            final NativeStreamPart output = await api.openStreamPart(
+              arg_streamId,
+              arg_url,
+              arg_playlist,
+            );
+            return wrapResponse(result: output);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'dev.flutter.pigeon.mpx_player.PlayerFlutterApi.closeStreamPart$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final int arg_partId = args[0]! as int;
+          try {
+            api.closeStreamPart(arg_partId);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
           }
         });
       }

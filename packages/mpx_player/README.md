@@ -38,11 +38,19 @@ final lease = pool.lease(const MediaKey.remote('42'))..play();
 lease.release();
 ```
 
+An HLS source lists before its MP4 fallback:
+`PlayerSource.hls(RangedRequest(url: playlistUrl, cacheKey: streamKey))`.
+Android plays it through the same cache: playlists are resolved through
+`playlists` (an `IBytesResolver` over the store the readers serve) and
+revalidated by HTTP rules, segments are read natively, each keyed by its
+URL under the stream's key. Apple players skip it for the next source.
+
 Tests use `FakePlayerBackend` from `testing.dart` instead.
 
 ### Platform setup
 
 - Apple plays progressive MP4 and QuickTime (no WebM, no HLS yet).
+  Android also plays WebM, Matroska and HLS.
   Background audio needs the `audio` background mode in `Info.plist`.
 - Android picture in picture needs
   `android:supportsPictureInPicture="true"` on the activity. Background

@@ -155,9 +155,20 @@ resume, the whole body buffered by design.
   present missing from the file (the store truncates before the reset is
   signalled) waits for the next landing or reset and reads again;
   `HBC_ERR_IO` is reserved for a failed file read or a bounded wait with
-  nothing following. Open: a truncate and rewrite that both finish before the
-  reset is signalled can hand a reader new bytes at an old offset; closing it
-  means signalling the reset before the store truncates.
+  nothing following.
+- Emptying a ranged payload puts a new empty file in its place (temp and
+  rename) instead of truncating it; Windows, which refuses to replace an
+  open file, still truncates. An open reader keeps the file it opened: a
+  player on an alias keeps the bytes it opened while the local key is
+  rewritten (copy-on-write chosen over pinning the payload, which would
+  stall the rewrite for as long as a player holds it), and a key's own
+  reader no longer reads new bytes at old offsets before the reset reaches
+  it. A reader reopens its path after a reset, or after a short read, once
+  the path names another file (inode compare). Ticket 52.
+- HLS parts are keyed by URL under the stream's key
+  (`BytesCacheKey.within`): playlists as whole resources revalidated by HTTP
+  rules, segments as ranged resources (ADR 0004). Signed segment URLs whose
+  query rotates miss across sessions.
 - The hook dependencies stay on `code_assets` 1.2 / `hooks` 2.0 /
   `native_toolchain_c` 0.19.2 until the pinned Flutter SDK allows `meta`
   1.19: `code_assets` 2.x needs `hooks` 2.2, which needs it.

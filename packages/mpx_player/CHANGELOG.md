@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- HLS on Android: `PlayerSource.hls` (and `PlayerSource.kind`) plays a
+  stream through Media3 with its playlists and segments in the bytes cache
+  (`NativePlayerBackend.playlists` resolves playlists). Apple players move
+  to the next source.
 - `NativePlayerBackend` in `package:mpx_player/native.dart`: Media3
   ExoPlayer (Android) and AVPlayer (iOS, macOS) drawing into textures and
   reading bytes through `http_bytes_cache`'s native reader. Sources come

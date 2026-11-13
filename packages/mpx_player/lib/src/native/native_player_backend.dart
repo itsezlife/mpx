@@ -19,6 +19,9 @@ import 'package:mpx_player/src/player/player_state.dart';
 typedef PlayerBytesPublisher =
     Future<Future<void> Function()> Function(RangedRequest request);
 
+/// Resolves one HLS playlist's bytes through the bytes cache.
+typedef PlayerPlaylistLoader = Future<Uint8List> Function(BytesRequest request);
+
 /// The platform's hardware player: Media3 ExoPlayer on Android, AVPlayer on
 /// iOS and macOS, each drawing into a texture of its own and reading the
 /// media's bytes natively through the bytes cache's reader of ranged
@@ -35,6 +38,14 @@ typedef PlayerBytesPublisher =
 /// second while it plays; [PlayerEngine.position] extrapolates between
 /// reports, so reading it per frame costs no platform call.
 ///
+/// An HLS source ([PlayerSourceKind.hls], Android only) publishes nothing up
+/// front: the platform player asks for each part as it needs it. A
+/// playlist is resolved through [playlists] (the whole-resource ladder,
+/// revalidated by HTTP rules, served stale when the network fails) and its
+/// bytes handed over; a segment is published to the native reader under its
+/// own key ([BytesCacheKey.within] the stream's key) and withdrawn when the
+/// player closes it. Disposing the engine withdraws what is still open.
+///
 /// Also brings the platform's audio session ([audioFocus]: Android audio
 /// focus and the noisy-output broadcast, Apple's audio session; macOS has
 /// none), its picture in picture ([pictureInPicture]) and the hardware
@@ -44,9 +55,13 @@ typedef PlayerBytesPublisher =
 /// One per process: it receives the platform's reports on fixed channels.
 final class NativePlayerBackend implements PlayerBackend {
   /// Creates the backend over [readers], the process's native reader.
+  ///
+  /// [playlists] resolves HLS playlists; it should read the store [readers]
+  /// serves. Defaults to [BytesResolver.shared].
   NativePlayerBackend({
     required NativeRangedReaders readers,
     required PlayerSourcesOf sourcesOf,
+    IBytesResolver? playlists,
     bool backgroundAudio = false,
   }) : this.over(
          host: PlayerHostApi(),
@@ -56,23 +71,27 @@ final class NativePlayerBackend implements PlayerBackend {
          },
          readerApi: NativeRangedReaders.apiAddress,
          sourcesOf: sourcesOf,
+         loadPlaylist: (playlists ?? BytesResolver.shared()).resolve,
          backgroundAudio: backgroundAudio,
        );
 
   /// Creates the backend over [host], a stand-in for the platform side in
-  /// tests; [publish] and [readerApi] stand in for the native reader.
+  /// tests; [publish] and [readerApi] stand in for the native reader,
+  /// [loadPlaylist] for the cache's resolver.
   @visibleForTesting
   NativePlayerBackend.over({
     required PlayerHostApi host,
     required PlayerBytesPublisher publish,
     required int readerApi,
     required PlayerSourcesOf sourcesOf,
+    PlayerPlaylistLoader? loadPlaylist,
     bool backgroundAudio = false,
     bool receive = true,
   }) : _host = host,
        _publish = publish,
        _readerApi = readerApi,
        _sourcesOf = sourcesOf,
+       _loadPlaylist = loadPlaylist ?? BytesResolver.shared().resolve,
        _backgroundAudio = backgroundAudio {
     _receiver = _Receiver(this);
     if (receive) PlayerFlutterApi.setUp(_receiver);
@@ -93,6 +112,7 @@ final class NativePlayerBackend implements PlayerBackend {
   final PlayerBytesPublisher _publish;
   final int _readerApi;
   final PlayerSourcesOf _sourcesOf;
+  final PlayerPlaylistLoader _loadPlaylist;
   final bool _backgroundAudio;
 
   late final _Receiver _receiver;
@@ -106,6 +126,11 @@ final class NativePlayerBackend implements PlayerBackend {
   // Reports for a player whose create call has not answered yet.
   final Map<int, NativePlayerSnapshot> _early = {};
   final Set<String> _failedCodecs = {};
+  final Map<int, _Stream> _streams = {};
+  // The stream of each open segment, by part id.
+  final Map<int, _Stream> _partStreams = {};
+  int _nextStreamId = 1;
+  int _nextPartId = 1;
   bool _disposed = false;
 
   /// The platform side's receiver of reports, for a test that drives the
@@ -202,6 +227,29 @@ final class NativePlayerBackend implements PlayerBackend {
     _early.remove(id);
   }
 
+  _Stream _openStream(RangedRequest request) {
+    final stream = _Stream(this, _nextStreamId++, request);
+    _streams[stream.id] = stream;
+    return stream;
+  }
+
+  Future<NativeStreamPart> _openPart(
+    int streamId,
+    String url,
+    bool playlist,
+  ) async {
+    final stream = _streams[streamId];
+    if (stream == null) {
+      throw StateError('Stream $streamId is closed');
+    }
+    return playlist ? stream.openPlaylist(url) : stream.openSegment(url);
+  }
+
+  void _closePart(int partId) {
+    final stream = _partStreams.remove(partId);
+    if (stream != null) unawaited(_send(stream.closePart(partId)));
+  }
+
   // Pauses every player when the app leaves the screen, unless the host
   // keeps sound in the background or a player went into picture in
   // picture (which hides the app on the way).
@@ -256,6 +304,16 @@ final class _Receiver implements PlayerFlutterApi {
       NativeAudioFocusChange.outputRemoved => AudioFocusChange.outputRemoved,
     });
   }
+
+  @override
+  Future<NativeStreamPart> openStreamPart(
+    int streamId,
+    String url,
+    bool playlist,
+  ) => _backend._openPart(streamId, url, playlist);
+
+  @override
+  void closeStreamPart(int partId) => _backend._closePart(partId);
 
   @override
   void onPictureInPictureChange(int playerId, bool active) {
@@ -339,6 +397,7 @@ final class _NativePlayerEngine implements PlayerEngine {
   // The platform player, once its create call answered.
   int? _id;
   Future<void> Function()? _unpublish;
+  _Stream? _stream;
   String? _codec;
   bool _disposed = false;
 
@@ -403,9 +462,15 @@ final class _NativePlayerEngine implements PlayerEngine {
         return _fail(StateError('$key has no source this device plays'));
       }
       _codec = source.codec;
-      final unpublish = await backend._publish(source.request);
-      if (_disposed) return unawaited(unpublish());
-      _unpublish = unpublish;
+      final hls = source.kind == PlayerSourceKind.hls;
+      if (hls) {
+        _stream = backend._openStream(source.request);
+      } else {
+        final unpublish = await backend._publish(source.request);
+        if (_disposed) return unawaited(unpublish());
+        _unpublish = unpublish;
+      }
+      final stream = _stream;
       final sent = NativePlayerSettings(
         startAtUs: (_seekTarget ?? _anchor).inMicroseconds,
         seekId: _seekId,
@@ -419,6 +484,8 @@ final class _NativePlayerEngine implements PlayerEngine {
           cacheKey: source.request.cacheKey.value,
           readerApi: backend._readerApi,
           mimeType: source.mimeType,
+          playlistUrl: hls ? source.request.url.toString() : null,
+          streamId: stream?.id,
         ),
         sent,
       );
@@ -502,12 +569,15 @@ final class _NativePlayerEngine implements PlayerEngine {
   void _closeNative() {
     final id = _id;
     final unpublish = _unpublish;
+    final stream = _stream;
     _id = null;
     _unpublish = null;
+    _stream = null;
     if (id != null) _backend._unregister(id);
     unawaited(() async {
       if (id != null) await _backend._send(_backend._host.dispose(id));
       if (unpublish != null) await _backend._send(unpublish());
+      if (stream != null) await _backend._send(stream.close());
     }());
   }
 
@@ -639,5 +709,80 @@ final class _NativePlayerEngine implements PlayerEngine {
     _closeNative();
     _disposed = true;
     _since.stop();
+  }
+}
+
+// --- HLS streams ------------------------------------------------------------
+
+/// One engine's HLS stream: the parts its platform player opened, keyed by
+/// URL under the stream's key.
+final class _Stream {
+  _Stream(this._backend, this.id, this._request);
+
+  final NativePlayerBackend _backend;
+  final int id;
+  final RangedRequest _request;
+  final CancelToken _cancel = CancelToken();
+  final Map<int, Future<void> Function()> _segments = {};
+  bool _closed = false;
+
+  BytesCacheKey _keyOf(String url) =>
+      BytesCacheKey.within(_request.cacheKey, url);
+
+  Future<NativeStreamPart> openPlaylist(String url) async {
+    final bytes = await _backend._loadPlaylist(
+      BytesRequest(
+        url: url,
+        headers: _request.headers,
+        cacheKey: _keyOf(url),
+        quota: _request.quota,
+        cancelToken: _cancel,
+      ),
+    );
+    _ensureOpen();
+    // A playlist holds nothing open: its id only answers the close.
+    return NativeStreamPart(partId: _backend._nextPartId++, bytes: bytes);
+  }
+
+  Future<NativeStreamPart> openSegment(String url) async {
+    final key = _keyOf(url);
+    final unpublish = await _backend._publish(
+      RangedRequest(
+        url: Uri.parse(url),
+        cacheKey: key,
+        headers: _request.headers,
+        quota: _request.quota,
+      ),
+    );
+    if (_closed) {
+      await unpublish();
+      _ensureOpen();
+    }
+    final partId = _backend._nextPartId++;
+    _segments[partId] = unpublish;
+    _backend._partStreams[partId] = this;
+    return NativeStreamPart(partId: partId, cacheKey: key.value);
+  }
+
+  Future<void> closePart(int partId) async {
+    await _segments.remove(partId)?.call();
+  }
+
+  /// Withdraws every segment still open and refuses new parts.
+  Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
+    _cancel.cancel();
+    _backend._streams.remove(id);
+    final open = _segments.entries.toList();
+    _segments.clear();
+    for (final MapEntry(key: partId, value: unpublish) in open) {
+      _backend._partStreams.remove(partId);
+      await unpublish();
+    }
+  }
+
+  void _ensureOpen() {
+    if (_closed) throw StateError('Stream $id is closed');
   }
 }

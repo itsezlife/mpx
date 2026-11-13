@@ -25,6 +25,10 @@ final class LocalMedia {
   /// A 12 s clip with sound.
   static const MediaKey clip = MediaKey.remote('clip');
 
+  /// The same clip as an HLS stream (three 4 s segments), with the MP4 as
+  /// the fallback for players that open progressive files only (Apple).
+  static const MediaKey stream = MediaKey.remote('stream');
+
   /// Bytes that are no video.
   static const MediaKey garbage = MediaKey.remote('garbage');
 
@@ -40,13 +44,19 @@ final class LocalMedia {
 
   /// Serves the bundled clip and opens a fresh cache.
   static Future<LocalMedia> start() async {
-    final data = await rootBundle.load('assets/clip.mp4');
+    Future<Uint8List> asset(String name) async {
+      final data = await rootBundle.load('assets/$name');
+      return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    }
+
     final noise = Random(7);
     final files = <String, Uint8List>{
-      'clip': data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      'clip': await asset('clip.mp4'),
       'garbage': Uint8List.fromList(
         List.generate(64 * 1024, (_) => noise.nextInt(256)),
       ),
+      for (final part in _streamParts)
+        'stream/$part': await asset('stream/$part'),
     };
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((request) => _serve(request, files));
@@ -61,7 +71,22 @@ final class LocalMedia {
     final origin = Uri.parse('http://127.0.0.1:${server.port}');
     final backend = NativePlayerBackend(
       readers: readers,
+      playlists: BytesResolver(cache: store, client: client),
       sourcesOf: (key) => switch (key) {
+        MediaKey$Remote(id: 'stream') => [
+          PlayerSource.hls(
+            RangedRequest(
+              url: origin.resolve('/stream/index.m3u8'),
+              cacheKey: const BytesCacheKey('player-stream'),
+            ),
+          ),
+          PlayerSource(
+            RangedRequest(
+              url: origin.resolve('/clip'),
+              cacheKey: const BytesCacheKey('player-clip'),
+            ),
+          ),
+        ],
         MediaKey$Remote(:final id) when files.containsKey(id) => [
           PlayerSource(
             RangedRequest(
@@ -100,14 +125,19 @@ final class LocalMedia {
     Map<String, Uint8List> files,
   ) async {
     final response = request.response;
-    final body = files[request.uri.pathSegments.lastOrNull];
+    final path = request.uri.path.substring(1);
+    final body = files[path];
     if (body == null) {
       response.statusCode = HttpStatus.notFound;
       return response.close();
     }
     response.headers
       ..set(HttpHeaders.acceptRangesHeader, 'bytes')
-      ..contentType = ContentType('video', 'mp4');
+      ..contentType = switch (path.split('.').last) {
+        'm3u8' => ContentType('application', 'vnd.apple.mpegurl'),
+        'ts' => ContentType('video', 'mp2t'),
+        _ => ContentType('video', 'mp4'),
+      };
     final range = RegExp(
       r'bytes=(\d+)-(\d*)',
     ).firstMatch(request.headers.value(HttpHeaders.rangeHeader) ?? '');
@@ -130,4 +160,11 @@ final class LocalMedia {
       ..add(body.sublist(start, last + 1));
     return response.close();
   }
+
+  static const List<String> _streamParts = [
+    'index.m3u8',
+    'seg-0.ts',
+    'seg-1.ts',
+    'seg-2.ts',
+  ];
 }

@@ -28,12 +28,16 @@ enum NativePlayerPhase { preparing, ready, buffering, ended, failed }
 
 /// What a native player reads: a ranged resource published to the bytes
 /// cache's native reader under [cacheKey], read through the function table at
-/// [readerApi] (the address of `hbc_api`).
+/// [readerApi] (the address of `hbc_api`); or, with [playlistUrl], an HLS
+/// stream whose parts the player asks for one by one ([PlayerFlutterApi]
+/// `openStreamPart`).
 class NativePlayerSource {
   NativePlayerSource({
     required this.cacheKey,
     required this.readerApi,
     required this.mimeType,
+    this.playlistUrl,
+    this.streamId,
   });
 
   String cacheKey;
@@ -42,6 +46,24 @@ class NativePlayerSource {
   /// The container's MIME type (`video/mp4`); Apple's resource loader needs
   /// it, Android sniffs the container itself.
   String mimeType;
+
+  /// The HLS playlist the player opens first; null for a progressive file.
+  /// Relative part URLs resolve against it.
+  String? playlistUrl;
+
+  /// The stream this player's part requests name; set with [playlistUrl].
+  int? streamId;
+}
+
+/// One part of an HLS stream, as the cache serves it: a playlist's [bytes],
+/// or the [cacheKey] of a segment published to the native reader. Close it
+/// with `closeStreamPart` when done.
+class NativeStreamPart {
+  NativeStreamPart({required this.partId, this.cacheKey, this.bytes});
+
+  int partId;
+  String? cacheKey;
+  Uint8List? bytes;
 }
 
 /// The settings a native player starts with.
@@ -206,4 +228,14 @@ abstract class PlayerFlutterApi {
 
   /// Picture in picture started ([active]) or ended for [playerId].
   void onPictureInPictureChange(int playerId, bool active);
+
+  /// Opens the part at [url] of stream [streamId]: a [playlist] (resolved
+  /// through the cache, revalidated by HTTP rules) or a segment (published
+  /// to the native reader under a key of its own). Fails once the stream is
+  /// closed.
+  @async
+  NativeStreamPart openStreamPart(int streamId, String url, bool playlist);
+
+  /// The player is done with [partId]; a segment's publication is withdrawn.
+  void closeStreamPart(int partId);
 }

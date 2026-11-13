@@ -159,6 +159,19 @@ Tickets 23-26, 28, 29 (2026-11-13).
 - **Decoder failure**: Android persists the failed video codec; the engine
   re-prepares the next source from the same position and later engines
   skip that codec.
+- **HLS on Android** (ticket 52): `PlayerSource.hls`; Media3's
+  `HlsMediaSource` opens the playlist URL and asks Dart for each part over
+  Pigeon (`openStreamPart`), the loader thread waiting for the answer
+  (interrupted when the load is cancelled). Dart keys each part by its URL
+  under the stream's key (`BytesCacheKey.within`). Playlists, and any part
+  other than media and init sections (keys), are whole resources resolved
+  through the cache's ladder with HTTP revalidation (stale on a network
+  failure) and handed over as bytes; segments and init sections are ranged
+  resources published to the native reader and withdrawn when the player
+  closes them or the engine goes. Apple's probe lists progressive
+  containers only, so an HLS source is skipped for the next. DASH is not
+  wired (another extension and no data type per request to tell manifest
+  from segment).
 - **Picture in picture**: `PictureInPicture` on `PlayerBackend`; the pool
   counts the window as a view. Apple: a hidden one-point `AVPlayerLayer` on
   the same player in the key window. Android: activity picture in picture
@@ -173,8 +186,9 @@ Tickets 23-26, 28, 29 (2026-11-13).
 - iOS background-audio rule (visible layer pauses video): unverified, verify
   on device.
 - Concurrent decoder limits on Apple: undocumented, measure on device.
-- HLS: not wired on either platform (Apple v1 is MP4 only; Android would
-  need an HLS media source over cached segments).
+- ABR on Android HLS: segment reads are not network transfers to Media3's
+  bandwidth meter, so variant choice runs on its initial estimate; it comes
+  back with the feed's resolution and quality knobs.
 - A pause from outside the app (a media notification, the picture-in-picture
   window's own button) is not mirrored into the play wish yet; the next
   snapshot shows the playhead stopped.

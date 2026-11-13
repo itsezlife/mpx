@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,6 +22,7 @@ void main() {
   late NativePlayerBackend backend;
   late List<String> published;
   late List<String> withdrawn;
+  late List<BytesRequest> playlistRequests;
 
   PlayerSource sourceOf(String name, {String? codec}) => PlayerSource(
     RangedRequest(
@@ -43,6 +45,10 @@ void main() {
         return () async => withdrawn.add(request.cacheKey.value);
       },
       readerApi: 0x1000,
+      loadPlaylist: (request) async {
+        playlistRequests.add(request);
+        return Uint8List.fromList('#EXTM3U'.codeUnits);
+      },
       sourcesOf: (key) =>
           sources?[key] ??
           [
@@ -63,6 +69,7 @@ void main() {
   setUp(() {
     published = [];
     withdrawn = [];
+    playlistRequests = [];
   });
 
   group('NativePlayerBackend over a simulated platform', () {
@@ -280,6 +287,162 @@ void main() {
 
       expect(engine.state.value.phase, PlayerPhase.failed);
       expect(engine.state.value.error, isNotNull);
+    });
+  });
+
+  group('HLS', () {
+    const streamKey = BytesCacheKey('clip-hls');
+    final master = Uri.parse('https://media.example/clip/master.m3u8');
+    const segment = 'https://media.example/clip/720p/seg-1.ts';
+    final hls = PlayerSource.hls(
+      RangedRequest(
+        url: master,
+        cacheKey: streamKey,
+        headers: const {'Authorization': 'Bearer t'},
+      ),
+    );
+
+    Future<SimulatedPlayer> created() async {
+      for (var i = 0; i < 20; i++) {
+        if (host.live.isNotEmpty) return host.live.single;
+        await settle();
+      }
+      fail('no platform player');
+    }
+
+    test('the platform player opens the playlist URL, nothing is published '
+        'up front', () async {
+      backend = backendOver(
+        SimulatedHost(),
+        sources: {
+          clip: [hls],
+        },
+      );
+      addTearDown(backend.dispose);
+      backend.create(clip).prepare();
+
+      final player = await created();
+
+      expect(player.source.playlistUrl, master.toString());
+      expect(player.source.streamId, isNotNull);
+      expect(published, isEmpty);
+    });
+
+    test('a playlist is resolved through the cache under the stream key, '
+        'revalidated by HTTP rules', () async {
+      backend = backendOver(
+        SimulatedHost(),
+        sources: {
+          clip: [hls],
+        },
+      );
+      addTearDown(backend.dispose);
+      backend.create(clip).prepare();
+      final player = await created();
+
+      final part = await host.receiver.openStreamPart(
+        player.source.streamId!,
+        master.toString(),
+        true,
+      );
+
+      expect(String.fromCharCodes(part.bytes!), '#EXTM3U');
+      expect(part.cacheKey, isNull);
+      final request = playlistRequests.single;
+      expect(request.url, master.toString());
+      expect(request.cacheKey, BytesCacheKey.within(streamKey, '$master'));
+      expect(request.revalidation, RevalidationPolicy.http);
+      expect(request.headers, {'Authorization': 'Bearer t'});
+      expect(published, isEmpty);
+    });
+
+    test('a segment is published under the stream key and withdrawn when the '
+        'platform closes it', () async {
+      backend = backendOver(
+        SimulatedHost(),
+        sources: {
+          clip: [hls],
+        },
+      );
+      addTearDown(backend.dispose);
+      backend.create(clip).prepare();
+      final player = await created();
+      final key = BytesCacheKey.within(streamKey, segment).value;
+
+      final part = await host.receiver.openStreamPart(
+        player.source.streamId!,
+        segment,
+        false,
+      );
+
+      expect(part.cacheKey, key);
+      expect(part.bytes, isNull);
+      expect(published, [key]);
+
+      host.receiver.closeStreamPart(part.partId);
+      await settle();
+      expect(withdrawn, [key]);
+    });
+
+    test('disposing the engine withdraws the segments still open and refuses '
+        'new parts', () async {
+      backend = backendOver(
+        SimulatedHost(),
+        sources: {
+          clip: [hls],
+        },
+      );
+      addTearDown(backend.dispose);
+      final engine = backend.create(clip)..prepare();
+      final player = await created();
+      final stream = player.source.streamId!;
+      await host.receiver.openStreamPart(stream, segment, false);
+
+      engine.dispose();
+      await settle();
+      await settle();
+
+      expect(withdrawn, [BytesCacheKey.within(streamKey, segment).value]);
+      await expectLater(
+        host.receiver.openStreamPart(stream, segment, false),
+        throwsStateError,
+      );
+    });
+
+    test('a platform that opens progressive files only moves to the next '
+        'source', () async {
+      backend = backendOver(
+        SimulatedHost(
+          probeResult: NativeDeviceProbe(
+            lowRam: false,
+            totalMemoryBytes: 0,
+            cpuCount: 0,
+            memoryClassMb: 0,
+            decoders: [],
+            containers: ['video/mp4', 'video/quicktime'],
+            failedCodecs: [],
+          ),
+        ),
+        sources: {
+          clip: [hls, sourceOf('clip-mp4')],
+        },
+      );
+      addTearDown(backend.dispose);
+      backend.create(clip).prepare();
+      final player = await created();
+
+      expect(player.source.playlistUrl, isNull);
+      expect(published, ['clip-mp4']);
+    });
+
+    test('an HLS source names its kind and the HLS MIME type', () {
+      expect(hls.kind, PlayerSourceKind.hls);
+      expect(hls.mimeType, PlayerSource.hlsMimeType);
+      expect(sourceOf('clip').kind, PlayerSourceKind.progressive);
+      expect(
+        PlayerSource(hls.request, mimeType: 'application/x-mpegURL').kind,
+        PlayerSourceKind.hls,
+      );
     });
   });
 

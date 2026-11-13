@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_player/testing.dart';
 import 'package:mpx_player_example/local_media.dart';
@@ -28,8 +29,8 @@ void main() {
 
     PictureInPictureContract.run(() => media.backend.pictureInPicture);
 
-    Future<PlayerEngine> ready() async {
-      final engine = media.backend.create(LocalMedia.clip)..prepare();
+    Future<PlayerEngine> ready([MediaKey key = LocalMedia.clip]) async {
+      final engine = media.backend.create(key)..prepare();
       addTearDown(engine.dispose);
       for (var i = 0; i < 200; i++) {
         if (engine.state.value.phase == PlayerPhase.ready) return engine;
@@ -96,6 +97,29 @@ void main() {
             engine.state.value.phase == PlayerPhase.ready &&
             engine.position < const Duration(seconds: 3),
       );
+    });
+
+    // Android plays the HLS stream; Apple players open progressive files
+    // only and play the MP4 fallback.
+    testWidgets('the stream plays, seeks and loops', (_) async {
+      final engine = await ready(LocalMedia.stream);
+      engine
+        ..setLooping(looping: true)
+        ..play();
+      await until(engine, () => engine.position > const Duration(seconds: 1));
+      expect(engine.state.value.firstFrameRendered, isTrue);
+      expect(engine.state.value.videoSize?.width, 256);
+
+      engine.seekTo(const Duration(seconds: 9));
+      await until(engine, () => engine.position > const Duration(seconds: 9));
+      await until(
+        engine,
+        () =>
+            engine.state.value.phase == PlayerPhase.ready &&
+            engine.position < const Duration(seconds: 3) &&
+            engine.position > Duration.zero,
+      );
+      expect(engine.state.value.playing, isTrue);
     });
 
     testWidgets('the probe lists the decoders and containers', (_) async {

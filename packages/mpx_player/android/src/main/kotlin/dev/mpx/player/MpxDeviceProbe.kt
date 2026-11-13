@@ -63,7 +63,7 @@ internal class MpxDeviceProbe(private val context: Context) {
             memoryClassMb = activities.memoryClass.toLong(),
             performanceClass = performanceClass,
             decoders = decoders(),
-            // ExoPlayer sniffs the container: MP4, WebM and Matroska all open.
+            // ExoPlayer sniffs MP4, WebM and Matroska; HLS opens by its MIME type.
             containers = emptyList(),
             failedCodecs = failedCodecs.toList(),
         )

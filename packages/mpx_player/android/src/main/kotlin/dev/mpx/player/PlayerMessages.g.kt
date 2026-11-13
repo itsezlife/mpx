@@ -227,7 +227,9 @@ enum class NativeAudioFocusChange(val raw: Int) {
 /**
  * What a native player reads: a ranged resource published to the bytes
  * cache's native reader under [cacheKey], read through the function table at
- * [readerApi] (the address of `hbc_api`).
+ * [readerApi] (the address of `hbc_api`); or, with [playlistUrl], an HLS
+ * stream whose parts the player asks for one by one ([PlayerFlutterApi]
+ * `openStreamPart`).
  *
  * Generated class from Pigeon that represents data sent in messages.
  */
@@ -238,7 +240,14 @@ data class NativePlayerSource (
    * The container's MIME type (`video/mp4`); Apple's resource loader needs
    * it, Android sniffs the container itself.
    */
-  val mimeType: String
+  val mimeType: String,
+  /**
+   * The HLS playlist the player opens first; null for a progressive file.
+   * Relative part URLs resolve against it.
+   */
+  val playlistUrl: String? = null,
+  /** The stream this player's part requests name; set with [playlistUrl]. */
+  val streamId: Long? = null
 )
  {
   companion object {
@@ -246,7 +255,9 @@ data class NativePlayerSource (
       val cacheKey = pigeonVar_list[0] as String
       val readerApi = pigeonVar_list[1] as Long
       val mimeType = pigeonVar_list[2] as String
-      return NativePlayerSource(cacheKey, readerApi, mimeType)
+      val playlistUrl = pigeonVar_list[3] as String?
+      val streamId = pigeonVar_list[4] as Long?
+      return NativePlayerSource(cacheKey, readerApi, mimeType, playlistUrl, streamId)
     }
   }
   fun toList(): List<Any?> {
@@ -254,6 +265,8 @@ data class NativePlayerSource (
       cacheKey,
       readerApi,
       mimeType,
+      playlistUrl,
+      streamId,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -264,7 +277,7 @@ data class NativePlayerSource (
       return true
     }
     val other = other as NativePlayerSource
-    return PlayerMessagesPigeonUtils.deepEquals(this.cacheKey, other.cacheKey) && PlayerMessagesPigeonUtils.deepEquals(this.readerApi, other.readerApi) && PlayerMessagesPigeonUtils.deepEquals(this.mimeType, other.mimeType)
+    return PlayerMessagesPigeonUtils.deepEquals(this.cacheKey, other.cacheKey) && PlayerMessagesPigeonUtils.deepEquals(this.readerApi, other.readerApi) && PlayerMessagesPigeonUtils.deepEquals(this.mimeType, other.mimeType) && PlayerMessagesPigeonUtils.deepEquals(this.playlistUrl, other.playlistUrl) && PlayerMessagesPigeonUtils.deepEquals(this.streamId, other.streamId)
   }
 
   override fun hashCode(): Int {
@@ -272,10 +285,63 @@ data class NativePlayerSource (
     result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.cacheKey)
     result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.readerApi)
     result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.mimeType)
+    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.playlistUrl)
+    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.streamId)
     return result
   }
   override fun toString(): String {
-    return "NativePlayerSource(cacheKey=$cacheKey, readerApi=$readerApi, mimeType=$mimeType)"
+    return "NativePlayerSource(cacheKey=$cacheKey, readerApi=$readerApi, mimeType=$mimeType, playlistUrl=$playlistUrl, streamId=$streamId)"
+  }
+}
+
+/**
+ * One part of an HLS stream, as the cache serves it: a playlist's [bytes],
+ * or the [cacheKey] of a segment published to the native reader. Close it
+ * with `closeStreamPart` when done.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class NativeStreamPart (
+  val partId: Long,
+  val cacheKey: String? = null,
+  val bytes: ByteArray? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): NativeStreamPart {
+      val partId = pigeonVar_list[0] as Long
+      val cacheKey = pigeonVar_list[1] as String?
+      val bytes = pigeonVar_list[2] as ByteArray?
+      return NativeStreamPart(partId, cacheKey, bytes)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      partId,
+      cacheKey,
+      bytes,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as NativeStreamPart
+    return PlayerMessagesPigeonUtils.deepEquals(this.partId, other.partId) && PlayerMessagesPigeonUtils.deepEquals(this.cacheKey, other.cacheKey) && PlayerMessagesPigeonUtils.deepEquals(this.bytes, other.bytes)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.partId)
+    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.cacheKey)
+    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.bytes)
+    return result
+  }
+  override fun toString(): String {
+    return "NativeStreamPart(partId=$partId, cacheKey=$cacheKey, bytes=${bytes?.contentToString()})"
   }
 }
 
@@ -597,20 +663,25 @@ private open class PlayerMessagesPigeonCodec : StandardMessageCodec() {
       }
       132.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          NativePlayerSettings.fromList(it)
+          NativeStreamPart.fromList(it)
         }
       }
       133.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          NativePlayerSnapshot.fromList(it)
+          NativePlayerSettings.fromList(it)
         }
       }
       134.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          NativeDecoderInfo.fromList(it)
+          NativePlayerSnapshot.fromList(it)
         }
       }
       135.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          NativeDecoderInfo.fromList(it)
+        }
+      }
+      136.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           NativeDeviceProbe.fromList(it)
         }
@@ -632,20 +703,24 @@ private open class PlayerMessagesPigeonCodec : StandardMessageCodec() {
         stream.write(131)
         writeValue(stream, value.toList())
       }
-      is NativePlayerSettings -> {
+      is NativeStreamPart -> {
         stream.write(132)
         writeValue(stream, value.toList())
       }
-      is NativePlayerSnapshot -> {
+      is NativePlayerSettings -> {
         stream.write(133)
         writeValue(stream, value.toList())
       }
-      is NativeDecoderInfo -> {
+      is NativePlayerSnapshot -> {
         stream.write(134)
         writeValue(stream, value.toList())
       }
-      is NativeDeviceProbe -> {
+      is NativeDecoderInfo -> {
         stream.write(135)
+        writeValue(stream, value.toList())
+      }
+      is NativeDeviceProbe -> {
+        stream.write(136)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -1022,6 +1097,50 @@ class PlayerFlutterApi(private val binaryMessenger: BinaryMessenger, private val
     val channelName = "dev.flutter.pigeon.mpx_player.PlayerFlutterApi.onPictureInPictureChange$separatedMessageChannelSuffix"
     val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
     channel.send(listOf(playerIdArg, activeArg)) {
+      if (it is List<*>) {
+        if (it.size > 1) {
+          callback(Result.failure(FlutterError(it[0] as String, it[1] as String, it[2] as String?)))
+        } else {
+          callback(Result.success(Unit))
+        }
+      } else {
+        callback(Result.failure(PlayerMessagesPigeonUtils.createConnectionError(channelName)))
+      } 
+    }
+  }
+  /**
+   * Opens the part at [url] of stream [streamId]: a [playlist] (resolved
+   * through the cache, revalidated by HTTP rules) or a segment (published
+   * to the native reader under a key of its own). Fails once the stream is
+   * closed.
+   */
+  fun openStreamPart(streamIdArg: Long, urlArg: String, playlistArg: Boolean, callback: (Result<NativeStreamPart>) -> Unit)
+{
+    val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+    val channelName = "dev.flutter.pigeon.mpx_player.PlayerFlutterApi.openStreamPart$separatedMessageChannelSuffix"
+    val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
+    channel.send(listOf(streamIdArg, urlArg, playlistArg)) {
+      if (it is List<*>) {
+        if (it.size > 1) {
+          callback(Result.failure(FlutterError(it[0] as String, it[1] as String, it[2] as String?)))
+        } else if (it[0] == null) {
+          callback(Result.failure(FlutterError("null-error", "Flutter api returned null value for non-null return value.", "")))
+        } else {
+          val output = it[0] as NativeStreamPart
+          callback(Result.success(output))
+        }
+      } else {
+        callback(Result.failure(PlayerMessagesPigeonUtils.createConnectionError(channelName)))
+      } 
+    }
+  }
+  /** The player is done with [partId]; a segment's publication is withdrawn. */
+  fun closeStreamPart(partIdArg: Long, callback: (Result<Unit>) -> Unit)
+{
+    val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+    val channelName = "dev.flutter.pigeon.mpx_player.PlayerFlutterApi.closeStreamPart$separatedMessageChannelSuffix"
+    val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
+    channel.send(listOf(partIdArg)) {
       if (it is List<*>) {
         if (it.size > 1) {
           callback(Result.failure(FlutterError(it[0] as String, it[1] as String, it[2] as String?)))

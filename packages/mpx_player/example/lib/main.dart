@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_player_example/local_media.dart';
 
@@ -9,7 +10,8 @@ Future<void> main() async {
 }
 
 /// One clip with sound on the platform player, with play, pause, a seek bar
-/// and loop.
+/// and loop; the stream button switches between the progressive file and
+/// the HLS stream of the same clip.
 class PlayerExample extends StatefulWidget {
   const PlayerExample({required this.pool, super.key});
 
@@ -21,13 +23,24 @@ class PlayerExample extends StatefulWidget {
 
 class _PlayerExampleState extends State<PlayerExample>
     with SingleTickerProviderStateMixin {
-  late final PlayerLease _lease = widget.pool.lease(LocalMedia.clip)
-    ..setLooping(looping: true)
-    ..play();
+  late PlayerLease _lease = _leaseOf(LocalMedia.clip);
   // Repaints the seek bar every frame: the playhead is read, never pushed.
   late final AnimationController _ticker = AnimationController.unbounded(
     vsync: this,
   )..repeat(min: 0, max: 1, period: const Duration(seconds: 1));
+
+  PlayerLease _leaseOf(MediaKey key) => widget.pool.lease(key)
+    ..setLooping(looping: true)
+    ..play();
+
+  void _switch() {
+    final next = _lease.key == LocalMedia.clip
+        ? LocalMedia.stream
+        : LocalMedia.clip;
+    final previous = _lease;
+    setState(() => _lease = _leaseOf(next));
+    previous.release();
+  }
 
   @override
   void dispose() {
@@ -72,6 +85,14 @@ class _PlayerExampleState extends State<PlayerExample>
                         );
                       },
                     ),
+                  ),
+                  IconButton(
+                    color: _lease.key == LocalMedia.stream
+                        ? Colors.white
+                        : Colors.white38,
+                    icon: const Icon(Icons.stream),
+                    tooltip: 'HLS stream',
+                    onPressed: _switch,
                   ),
                   IconButton(
                     color: state.looping ? Colors.white : Colors.white38,

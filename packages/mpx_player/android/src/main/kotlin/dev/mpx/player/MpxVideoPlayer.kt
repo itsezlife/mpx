@@ -7,6 +7,7 @@ import android.os.Looper
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
@@ -14,12 +15,16 @@ import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.RenderersFactory
+import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import io.flutter.view.TextureRegistry
 
 /**
  * One ExoPlayer drawing into its own [TextureRegistry.SurfaceProducer] and
- * reading its bytes through the bytes cache's native reader.
+ * reading its bytes through the bytes cache's native reader: a progressive
+ * file by its cache key, or an HLS stream whose parts Dart hands over one by
+ * one ([parts]).
  *
  * Reports a whole snapshot to Dart on every change and about once a second
  * while it plays; Dart extrapolates the playhead in between. Every call is on
@@ -33,6 +38,7 @@ internal class MpxVideoPlayer(
     settings: NativePlayerSettings,
     private val producer: TextureRegistry.SurfaceProducer,
     renderers: RenderersFactory,
+    parts: StreamParts,
     private val report: (NativePlayerSnapshot) -> Unit,
     private val failedCodecOf: (PlaybackException, String?) -> String?,
 ) : Player.Listener {
@@ -58,16 +64,7 @@ internal class MpxVideoPlayer(
         }
 
     init {
-        val mediaSource =
-            ProgressiveMediaSource.Factory(
-                    HbcDataSource.Factory(source.readerApi, source.cacheKey, readers),
-                )
-                .createMediaSource(
-                    MediaItem.Builder()
-                        .setUri(Uri.parse("$SCHEME://${Uri.encode(source.cacheKey)}"))
-                        .setMimeType(source.mimeType)
-                        .build(),
-                )
+        val mediaSource = mediaSourceOf(source, parts)
         exo =
             ExoPlayer.Builder(context, renderers)
                 .setLooper(Looper.getMainLooper())
@@ -104,6 +101,31 @@ internal class MpxVideoPlayer(
         exo.setMediaSource(mediaSource, settings.startAtUs / 1000)
         exo.prepare()
         send()
+    }
+
+    private fun mediaSourceOf(source: NativePlayerSource, parts: StreamParts): MediaSource {
+        val playlist = source.playlistUrl
+        val stream = source.streamId
+        if (playlist != null && stream != null) {
+            return HlsMediaSource.Factory(
+                    StreamPartDataSource.Factory(parts, stream, source.readerApi, readers),
+                )
+                .createMediaSource(
+                    MediaItem.Builder()
+                        .setUri(Uri.parse(playlist))
+                        .setMimeType(MimeTypes.APPLICATION_M3U8)
+                        .build(),
+                )
+        }
+        return ProgressiveMediaSource.Factory(
+                HbcDataSource.Factory(source.readerApi, source.cacheKey, readers),
+            )
+            .createMediaSource(
+                MediaItem.Builder()
+                    .setUri(Uri.parse("$SCHEME://${Uri.encode(source.cacheKey)}"))
+                    .setMimeType(source.mimeType)
+                    .build(),
+            )
     }
 
     fun play() {
