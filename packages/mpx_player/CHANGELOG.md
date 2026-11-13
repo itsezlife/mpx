@@ -15,8 +15,8 @@
   as no burst and no stall; reports are placed by the time they were read.
   Seeks, pauses, loop wraps and errors over half a second still move it at
   once.
-- Android applies a speed change at once (AudioTrack playback params),
-  rather than after the audio already processed has played out.
+- A failed player keeps its error through a pause or a speed change: a
+  copied state stays failed with its error, never failed without one.
 - Android fixes from device runs: the JNI library is 16 KB page aligned;
   the playhead reads the duration once a pass ends and holds a settled
   seek; `PictureInPicture.stop` expands the window.

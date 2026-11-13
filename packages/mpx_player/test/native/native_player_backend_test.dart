@@ -417,6 +417,35 @@ void main() {
       });
     }
 
+    test('speed changes (1x, 2x, 0.2x, 0.5x) never fail the engine on '
+        'their own', () async {
+      final engine = await playing();
+      final player = host.live.single;
+      var platformUs = player.positionUs.toDouble();
+      var rate = 1.0;
+      for (final (frame, speed) in [(30, 2.0), (90, 0.2), (150, 0.5)]) {
+        while (clock.elapsed < Duration(microseconds: frame * 16667)) {
+          clock.advance(const Duration(microseconds: 16667));
+          platformUs += 16667 * rate;
+          player.positionUs = platformUs.round();
+          if (clock.elapsedMicroseconds ~/ 16667 % 6 == 0) {
+            player.report();
+            await settle();
+          }
+          expect(engine.position.isNegative, isFalse);
+        }
+        engine.setSpeed(speed);
+        rate = speed;
+        await settle();
+      }
+      engine.pause();
+      await settle();
+
+      expect(engine.state.value.phase, PlayerPhase.ready);
+      expect(engine.state.value.error, isNull);
+      expect(engine.state.value.speed, 0.5);
+    });
+
     test('a seek still jumps, back as well', () async {
       final engine = await playing();
       clock.advance(const Duration(seconds: 3));

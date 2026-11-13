@@ -117,6 +117,38 @@ void main() {
     });
   });
 
+  group('a failed player', () {
+    test('keeps its error through a pause, a speed change and the release '
+        'of its last lease', () async {
+      final lease = pool.lease(a)..play();
+      await settle();
+      final error = StateError('the platform player stopped');
+      backend.latestFor(a)!.fail(error);
+      await settle();
+      expect(lease.state.value.phase, PlayerPhase.failed);
+
+      lease
+        ..setSpeed(0.5)
+        ..pause();
+      expect(lease.state.value.phase, PlayerPhase.failed);
+      expect(lease.state.value.error, same(error));
+
+      lease.release();
+    });
+
+    test('a state copied with another phase drops the error; one that stays '
+        'failed keeps it', () {
+      final failed = const PlayerState().copyWith(
+        phase: PlayerPhase.failed,
+        error: 'broken',
+      );
+
+      expect(failed.copyWith(playing: false).error, 'broken');
+      expect(failed.copyWith(speed: 2).phase, PlayerPhase.failed);
+      expect(failed.copyWith(phase: PlayerPhase.idle).error, isNull);
+    });
+  });
+
   group('budget', () {
     test('evicts the coldest prepared player past the budget', () async {
       pool.budget = const PlayerBudget(active: 1, prepared: 2);

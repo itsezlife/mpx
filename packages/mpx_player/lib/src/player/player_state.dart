@@ -148,8 +148,9 @@ final class PlayerState {
   bool isBuffered(Duration position) =>
       buffered.any((range) => range.contains(position));
 
-  /// A copy with the given fields replaced. [error] is cleared unless given,
-  /// since only a failed state carries one.
+  /// A copy with the given fields replaced. Only a failed state carries an
+  /// error: a copy that stays failed keeps this one's unless [error] is
+  /// given, and one that leaves failed drops it.
   PlayerState copyWith({
     PlayerPhase? phase,
     bool? playing,
@@ -163,20 +164,25 @@ final class PlayerState {
     bool? looping,
     double? volume,
     Object? error,
-  }) => PlayerState(
-    phase: phase ?? this.phase,
-    playing: playing ?? this.playing,
-    duration: duration ?? this.duration,
-    buffered: buffered ?? this.buffered,
-    videoSize: videoSize ?? this.videoSize,
-    quarterTurns: quarterTurns ?? this.quarterTurns,
-    textureId: textureId ?? this.textureId,
-    firstFrameRendered: firstFrameRendered ?? this.firstFrameRendered,
-    speed: speed ?? this.speed,
-    looping: looping ?? this.looping,
-    volume: volume ?? this.volume,
-    error: error,
-  );
+  }) {
+    final next = phase ?? this.phase;
+    return PlayerState(
+      phase: next,
+      playing: playing ?? this.playing,
+      duration: duration ?? this.duration,
+      buffered: buffered ?? this.buffered,
+      videoSize: videoSize ?? this.videoSize,
+      quarterTurns: quarterTurns ?? this.quarterTurns,
+      textureId: textureId ?? this.textureId,
+      firstFrameRendered: firstFrameRendered ?? this.firstFrameRendered,
+      speed: speed ?? this.speed,
+      looping: looping ?? this.looping,
+      volume: volume ?? this.volume,
+      // Without this a failed player that was paused or sped up (as a viewer
+      // does when it lets go of the player) became failed with no error.
+      error: error ?? (next == PlayerPhase.failed ? this.error : null),
+    );
+  }
 
   /// The same settings without anything the engine held: what a player shows
   /// once its engine is released. The wish to play is kept, so the next
