@@ -317,6 +317,11 @@ final class BytesRetentionCompound extends BytesRetention {
   final int? maxBytes;
 }
 
+/// The name of a [BytesQuota]: what a row persists ([BytesRecord.quota]) to
+/// say which share it counts against. A name of its own, so a quota is never
+/// confused with a key or another string a row carries.
+extension type const BytesQuotaName(String value) implements String {}
+
 /// A named share of the store's budget, so one kind of media cannot evict
 /// every other.
 ///
@@ -324,7 +329,7 @@ final class BytesRetentionCompound extends BytesRetention {
 /// [maxBytes] / [maxEntries] gives back space from its own least recently used
 /// rows only. When the store as a whole is over its [BytesRetention] budget,
 /// the quota furthest over its share (bytes used / [maxBytes]) gives back
-/// first, so a long video cannot evict every avatar.
+/// first, so one large resource cannot evict every small one.
 ///
 /// Identity is [name]. A store takes the limits of the quota it was configured
 /// with; a write naming a quota the store was not configured with brings its
@@ -332,12 +337,15 @@ final class BytesRetentionCompound extends BytesRetention {
 @immutable
 final class BytesQuota {
   /// A quota named [name]; null limits mean only the store budget applies.
-  const BytesQuota(this.name, {this.maxBytes, this.maxEntries})
-    : assert(maxBytes == null || maxBytes > 0, 'maxBytes must be > 0'),
+  const BytesQuota(String name, {this.maxBytes, this.maxEntries})
+    : _name = name,
+      assert(maxBytes == null || maxBytes > 0, 'maxBytes must be > 0'),
       assert(maxEntries == null || maxEntries > 0, 'maxEntries must be > 0');
 
+  final String _name;
+
   /// Identity of the quota; persisted on every row.
-  final String name;
+  BytesQuotaName get name => BytesQuotaName(_name);
 
   /// Bytes this quota may hold before it evicts within itself.
   final int? maxBytes;
@@ -345,10 +353,10 @@ final class BytesQuota {
   /// Rows this quota may hold before it evicts within itself.
   final int? maxEntries;
 
-  /// Still images, stickers, avatars: 256 MiB. Rows written without a quota,
-  /// and rows stored before quotas existed, belong here.
+  /// Whole still media: 256 MiB. Rows written without a quota, and rows
+  /// stored before quotas existed, belong here.
   static const BytesQuota images = BytesQuota(
-    _defaultQuotaName,
+    _defaultQuota,
     maxBytes: 256 * 1024 * 1024,
   );
 
@@ -358,13 +366,15 @@ final class BytesQuota {
     maxBytes: 768 * 1024 * 1024,
   );
 
-  /// Rendered Lottie frame caches: 256 MiB.
+  /// Frame caches of rendered vector animations, kept by their owner as a
+  /// [RegisteredQuota]: 256 MiB.
   static const BytesQuota lottieFrames = BytesQuota(
     'lottie_frames',
     maxBytes: 256 * 1024 * 1024,
   );
 
-  /// Glyph atlas pages: 32 MiB.
+  /// Pre-rendered glyph pages, kept by their owner as a [RegisteredQuota]:
+  /// 32 MiB.
   static const BytesQuota glyphs = BytesQuota(
     'glyphs',
     maxBytes: 32 * 1024 * 1024,
@@ -389,7 +399,8 @@ final class BytesQuota {
   String toString() => 'BytesQuota($name)';
 }
 
-const String _defaultQuotaName = 'images';
+const String _defaultQuota = 'images';
+const BytesQuotaName _defaultQuotaName = BytesQuotaName(_defaultQuota);
 
 /// Frees up to `bytes` from a registered quota's files and returns how many
 /// bytes it freed (0 when it could free nothing).
@@ -643,7 +654,7 @@ final class BytesRecord {
   BytesCacheKey get payload => payloadKey ?? key;
 
   /// [BytesQuota.name] of the quota this row counts against.
-  final String quota;
+  final BytesQuotaName quota;
 
   /// When the payload was last written (UTC preferred).
   final DateTime writtenAt;
@@ -666,7 +677,7 @@ final class BytesRecord {
     DateTime? accessedAt,
     int? byteLength,
     HttpCacheMeta? httpCacheMeta,
-    String? quota,
+    BytesQuotaName? quota,
     BytesCacheKey? payloadKey,
   }) => BytesRecord(
     key: key,
@@ -876,7 +887,13 @@ abstract interface class IBytesStore implements IBytesCache, IBytesRichCache {
   /// Counts files another owner keeps against [quota] (see
   /// [RegisteredQuota]); [onEvict] frees them when the store asks.
   ///
-  /// Throws [StateError] when a quota of that name is already registered.
+  /// A quota the store was not configured with brings its own limits; one it
+  /// was configured with must name the same limits, so the store and the
+  /// owner never disagree about the share.
+  ///
+  /// Throws [StateError] when a quota of that name is already registered,
+  /// and [ArgumentError] when the store was configured with a quota of that
+  /// name and other limits.
   RegisteredQuota registerQuota(
     BytesQuota quota, {
     required QuotaEvictor onEvict,
@@ -1141,7 +1158,19 @@ final class IndexedBytesCache implements IRangedBytesStore {
     if (_registered.containsKey(quota.name)) {
       throw StateError('Quota ${quota.name} is already registered');
     }
-    _quotas.putIfAbsent(quota.name, () => quota);
+    final configured = _quotas[quota.name];
+    if (configured != null &&
+        (configured.maxBytes != quota.maxBytes ||
+            configured.maxEntries != quota.maxEntries)) {
+      throw ArgumentError.value(
+        quota,
+        'quota',
+        'The store was configured with ${quota.name} at '
+            'maxBytes ${configured.maxBytes}, maxEntries '
+            '${configured.maxEntries}; register it with those limits',
+      );
+    }
+    _quotas[quota.name] = quota;
     late final RegisteredQuota registered;
     registered = RegisteredQuota(
       quota: quota,
@@ -1391,7 +1420,9 @@ final class IndexedBytesCache implements IRangedBytesStore {
       final previous = await _index.get(key);
       final quotaName = quota?.name ?? previous?.quota ?? _defaultQuotaName;
       // The key gets its own payload: an alias row stops reading the shared
-      // one, which stays for the keys still reading it.
+      // one, which stays for the keys still reading it; keys reading the
+      // payload stored under this key keep the bytes they had.
+      await _handOffPayload(key);
       await _blobs.write(key, bytes);
       _orphanedLeases.remove(key);
       await _index.put(
@@ -1519,6 +1550,7 @@ final class IndexedBytesCache implements IRangedBytesStore {
       if (!keepsBytes) {
         final preEpoch = await _captureIndexSnapshot();
         await _flushPendingAccess();
+        await _handOffPayload(key);
         await _putRanged(
           key,
           previous: previous,
@@ -1571,6 +1603,7 @@ final class IndexedBytesCache implements IRangedBytesStore {
         total ??= stored.totalLength;
         meta ??= stored.validator;
       } else {
+        await _handOffPayload(key);
         await blobs.clear(key);
       }
       if (bytes.isNotEmpty) {
@@ -1603,6 +1636,7 @@ final class IndexedBytesCache implements IRangedBytesStore {
       final preEpoch = await _captureIndexSnapshot();
       await _flushPendingAccess();
       final previous = await _index.get(key);
+      await _handOffPayload(key);
       await blobs.clear(key);
       await _putRanged(
         key,
@@ -1853,6 +1887,58 @@ final class IndexedBytesCache implements IRangedBytesStore {
       _orphanedLeases.add(payload);
     } else {
       await _blobs.delete(payload);
+    }
+  }
+
+  /// Before the payload stored under [key] is rewritten, hands it to the
+  /// other rows that read it (aliases of [key], kept after [key] was
+  /// released), so they keep serving the bytes they had: an alias is a
+  /// snapshot, never a view of a later write.
+  ///
+  /// The bytes move to the payload of one reader (the heir) and the others
+  /// read that. A reader whose own key names a payload a third row still
+  /// reads cannot be the heir, since that payload is not free; when no reader
+  /// can, or the bytes are gone, the readers are dropped and miss, which
+  /// costs a fetch, never wrong bytes. A lease already open on the old file
+  /// keeps the old bytes, as the file is replaced, not rewritten in place.
+  Future<void> _handOffPayload(BytesCacheKey key) async {
+    final rows = await _index.values();
+    final readers = [
+      for (final row in rows)
+        if (row.key != key && row.payload == key) row,
+    ];
+    if (readers.isEmpty) return;
+    final readPayloads = {for (final row in rows) row.payload};
+    BytesRecord? heir;
+    for (final reader in readers) {
+      if (!readPayloads.contains(reader.key)) {
+        heir = reader;
+        break;
+      }
+    }
+    final bytes = heir == null
+        ? null
+        : await _blobs.read(key, knownByteLength: heir.byteLength);
+    if (heir == null || bytes == null) {
+      for (final reader in readers) {
+        _pendingAccess.remove(reader.key);
+        await _index.delete(reader.key);
+      }
+      return;
+    }
+    await _blobs.write(heir.key, bytes);
+    for (final reader in readers) {
+      await _index.put(
+        BytesRecord(
+          key: reader.key,
+          writtenAt: reader.writtenAt,
+          accessedAt: reader.accessedAt,
+          byteLength: reader.byteLength,
+          httpCacheMeta: reader.httpCacheMeta,
+          quota: reader.quota,
+          payloadKey: identical(reader, heir) ? null : heir.key,
+        ),
+      );
     }
   }
 

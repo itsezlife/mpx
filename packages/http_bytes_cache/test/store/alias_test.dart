@@ -105,6 +105,54 @@ void main() {
       expect(blobs.payloads, isEmpty);
     });
 
+    test('the server row keeps the length of the bytes it reads', () async {
+      await store.alias(local, server);
+      await store.write(local, Uint8List.fromList([1, 2, 3, 4, 5]));
+
+      expect(await store.read(server), captured);
+      expect((await index.get(server))!.byteLength, captured.length);
+      expect((await index.get(local))!.byteLength, 5);
+    });
+
+    test('a write after release leaves the server bytes alone', () async {
+      await store.alias(local, server);
+      await store.release(local);
+      await store.write(local, Uint8List.fromList([1]));
+
+      expect(await store.read(server), captured);
+      expect(await store.read(local), [1]);
+    });
+
+    test(
+      'a key aliased onto a payload a third key reads is not reused',
+      () async {
+        const mirror = BytesCacheKey('mirror');
+        await store.write(server, Uint8List.fromList([5, 5]));
+        await store.alias(server, mirror);
+        await store.alias(local, server);
+        await store.write(local, Uint8List.fromList([1]));
+
+        // The server key cannot take the bytes over (its own payload is the
+        // mirror's), so it misses rather than serve wrong bytes.
+        expect(await store.read(mirror), [5, 5]);
+        expect(await store.read(server), isNull);
+        expect(await store.read(local), [1]);
+      },
+    );
+
+    test('ranges of another representation leave the server bytes', () async {
+      await store.alias(local, server);
+      await store.writeRange(
+        local,
+        0,
+        Uint8List.fromList([1, 2]),
+        validator: const HttpCacheMeta(etag: '"v2"'),
+        totalLength: 4,
+      );
+
+      expect(await store.read(server), captured);
+    });
+
     test('writing the server key gives it its own payload', () async {
       await store.alias(local, server);
       await store.write(server, Uint8List.fromList([9]));

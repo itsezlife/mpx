@@ -49,6 +49,34 @@ void main() {
   });
 
   group('Registered quotas', () {
+    test(
+      'a quota the store was not configured with keeps its limits',
+      () async {
+        final store = open();
+        final owner = _FakeOwner(30);
+        store
+            .registerQuota(
+              const BytesQuota('glyphs', maxBytes: 10),
+              onEvict: owner.evict,
+            )
+            .reportUsage(owner.usedBytes);
+        await store.prune();
+
+        expect(owner.asks, [20]);
+      },
+    );
+
+    test('limits that differ from the configured ones are refused', () {
+      final store = open();
+      expect(
+        () => store.registerQuota(
+          const BytesQuota('lottie_frames', maxBytes: 20),
+          onEvict: (_) async => 0,
+        ),
+        throwsArgumentError,
+      );
+    });
+
     test('over its own share, the owner is asked for the excess', () async {
       final store = open();
       final owner = _FakeOwner(80);

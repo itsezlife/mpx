@@ -106,6 +106,28 @@ void runBytesStoreContract(String name, BytesStoreFactory create) {
         expect(await store.read(server), bytes);
       });
 
+      test(
+        'a write to the local key leaves the server key as it was',
+        () async {
+          final store = await open();
+          await store.write(local, bytes);
+          await store.alias(local, server);
+          final next = Uint8List.fromList([...bytes, ...bytes]);
+          await store.write(local, next);
+          expect(await store.read(local), next);
+          expect(await store.read(server), bytes);
+        },
+      );
+
+      test('a write to a released local key leaves the server key', () async {
+        final store = await open();
+        await store.write(local, bytes);
+        await store.alias(local, server);
+        await store.release(local);
+        await store.write(local, Uint8List.fromList([1, 2]));
+        expect(await store.read(server), bytes);
+      });
+
       test('aliasing a key that holds nothing is refused', () async {
         final store = await open();
         expect(await store.alias(local, server), isFalse);

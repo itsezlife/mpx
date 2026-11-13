@@ -159,7 +159,7 @@ final class _BytesIndexDocumentDecoder
             },
             quota: switch (map['q']) {
               null => BytesQuota.images.name,
-              final String name => name,
+              final String name => BytesQuotaName(name),
               _ => throw const FormatException(
                 'image bytes index: invalid quota',
               ),

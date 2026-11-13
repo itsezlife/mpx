@@ -129,7 +129,7 @@ void main() {
         writtenAt: DateTime.utc(2026),
         accessedAt: DateTime.utc(2026),
         byteLength: 3,
-        quota: 'video',
+        quota: const BytesQuotaName('video'),
       );
       final decoded = codec.decode(codec.encode({'k': record}));
       expect(decoded['k']!.quota, 'video');
