@@ -105,6 +105,19 @@ Video plays through the player pool and the audio owner (ADR 0004); opening
 from a bubble is the hand-off there. GIFs loop muted with no controls and
 continue the bubble's animation (software path), as on every reference client.
 
+The continuation is the core's shared playback phase (ADR 0003): the viewer's
+decode is another entry of the bubble's content, and it starts at the frame
+the bubble is at, for animated images, Lottie and silent loops alike; the
+bubble, drawn over meanwhile, comes back at the viewer's frame when the viewer
+closes. Until the viewer's own decode exists it shows the bubble's playback,
+scaled up. A clip whose container declares no duration catches up only
+forward until its first pass ends, since its pass length is unknown. Video
+with sound continues through `GalleryOrigin.position` instead.
+
+The origin's frame (`OriginBridge.frameOf`) is the picture's placeholder: it
+shows until the item's content has a stage and fades out as the content
+rises, so content with transparency never shows it beneath.
+
 ## Why
 
 - Users of each platform know their own client. A single canon would look

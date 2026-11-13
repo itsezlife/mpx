@@ -465,7 +465,8 @@ class MediaViewerState extends State<MediaViewer>
 
   // Frees the origin pictures, all of them or those of pages more than one
   // away from [around]. A page still drawing one keeps its own clone
-  // (RawImage holds one), so freeing ours never pulls a picture off screen.
+  // (its placeholder holds one), so freeing ours never pulls a picture off
+  // screen.
   void _dropOriginFrames({int? around}) {
     _originFrames.removeWhere((index, frame) {
       if (around != null && (index - around).abs() <= 1) return false;
@@ -1152,46 +1153,134 @@ class MediaViewerState extends State<MediaViewer>
     );
   }
 
-  // The picture of [item]: the origin's frame under the item's own content,
-  // which covers it once it arrives. [size] is the decode size, kept the same
-  // through the morph so the morph never attaches again.
+  // The picture of [item]: the item's own content, with the origin's frame
+  // standing in until the content shows. [size] is the decode size, kept the
+  // same through the morph so the morph never attaches again.
   Widget _picture(int index, GalleryItem item, Size size, BoxFit fit) {
-    final frame = _originFrame(index);
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
+    final box = size.isEmpty ? const Size(1, 1) : size;
     return FittedBox(
       fit: fit,
       clipBehavior: Clip.hardEdge,
       child: SizedBox.fromSize(
-        size: size.isEmpty ? const Size(1, 1) : size,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (frame != null) RawImage(image: frame, fit: BoxFit.cover),
-            ContentView(
-              content: item.key,
-              scope: widget.scope,
-              preset: AssetPresets.media(
-                size: size.isEmpty ? const Size(1, 1) : size,
-                devicePixelRatio: dpr,
-                profile: switch (item.kind) {
-                  // A GIF continues as a muted loop on the software path.
-                  GalleryMediaKind.animation => const AssetProfile(
-                    animate: true,
-                    loop: true,
-                  ),
-                  // A video's still; the player draws over it.
-                  GalleryMediaKind.video => const AssetProfile(),
-                  GalleryMediaKind.photo => const AssetProfile(animate: true),
-                },
+        size: box,
+        child: _OriginContent(
+          frame: _originFrame(index),
+          content: item.key,
+          scope: widget.scope,
+          preset: AssetPresets.media(
+            size: box,
+            devicePixelRatio: dpr,
+            profile: switch (item.kind) {
+              // A GIF continues as a muted loop on the software path, from
+              // the frame the origin shows (the entries of a content share
+              // their phase).
+              GalleryMediaKind.animation => const AssetProfile(
+                animate: true,
+                loop: true,
               ),
-              placeholder: const RectPlaceholder(),
-              placeholderTint: const Color(0x00000000),
-            ),
-          ],
+              // A video's still; the player draws over it.
+              GalleryMediaKind.video => const AssetProfile(),
+              GalleryMediaKind.photo => const AssetProfile(animate: true),
+            },
+          ),
         ),
       ),
     );
   }
+}
+
+/// The content of a page, with the origin's [frame] as its placeholder: the
+/// view draws it until the content has a stage and fades it out as the
+/// content rises, so content with transparency never shows it beneath.
+///
+/// The placeholder holds a clone of [frame], so the viewer freeing its copy
+/// as it leaves the page never frees one a view still draws.
+class _OriginContent extends StatefulWidget {
+  const _OriginContent({
+    required this.frame,
+    required this.content,
+    required this.scope,
+    required this.preset,
+  });
+
+  final ui.Image? frame;
+  final MediaKey content;
+  final AssetCacheScope? scope;
+  final AssetPreset preset;
+
+  @override
+  State<_OriginContent> createState() => _OriginContentState();
+}
+
+class _OriginContentState extends State<_OriginContent> {
+  _OriginFrame? _standIn;
+
+  @override
+  void initState() {
+    super.initState();
+    _standIn = _standInFor(widget.frame);
+  }
+
+  @override
+  void didUpdateWidget(_OriginContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(widget.frame, oldWidget.frame)) return;
+    _standIn?.dispose();
+    _standIn = _standInFor(widget.frame);
+  }
+
+  @override
+  void dispose() {
+    _standIn?.dispose();
+    super.dispose();
+  }
+
+  static _OriginFrame? _standInFor(ui.Image? frame) =>
+      frame == null ? null : _OriginFrame(frame.clone());
+
+  @override
+  Widget build(BuildContext context) => ContentView(
+    content: widget.content,
+    scope: widget.scope,
+    preset: widget.preset,
+    placeholder: _standIn ?? const RectPlaceholder(),
+    placeholderTint: const Color(0x00000000),
+  );
+}
+
+/// The origin's frame as a placeholder: it covers the box in its own colours,
+/// as the origin showed it.
+final class _OriginFrame extends AssetPaintable {
+  /// Draws [image], which it owns from now on.
+  _OriginFrame(this._image);
+
+  final ui.Image _image;
+
+  @override
+  AtlasSprite? get sprite => null;
+
+  @override
+  bool get isAnimated => false;
+
+  @override
+  bool get isHolding => false;
+
+  @override
+  bool restart() => false;
+
+  @override
+  void paint(Canvas canvas, Rect rect, AssetPaintContext context) => paintImage(
+    canvas: canvas,
+    rect: rect,
+    image: _image,
+    fit: BoxFit.cover,
+    opacity: context.opacity,
+    filterQuality: FilterQuality.medium,
+  );
+
+  @override
+  void dispose() => _image.dispose();
 }
 
 /// One end of a morph.

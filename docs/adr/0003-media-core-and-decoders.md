@@ -86,6 +86,23 @@ satisfied attempt ending as cancelled; `PlaybackPauseLayer.meteredNetwork` and
 set, which together with `lowPower` and `fastScroll` hold back new staged
 preload attempts (`AssetCacheScope.preloadPausingLayers`).
 
+### Shared playback phase
+
+The same content at two specs is two cache entries, each with its own
+playback. The entries of one `MediaKey` that play at once share their phase:
+the scope keeps an `AssetPlaybackPhase` per key and passes it in the paint
+context (`AssetPaintContext.phase`). A playing paintable reports how far into
+its pass it is at each paint that steps it; at its first such paint, and at
+one after the clock ran on without it (drawn over), it takes the position
+another entry reported. A playback stopped on purpose (held, hidden, off
+screen) and a rewound one (a foreground surface) go on from their own frame.
+The position runs on with the clock while its entry plays and stays where it
+stopped once it does not. Lottie renders any frame, so it is there at once;
+the image codec and the video decoder decode forward only, so they decode and
+drop the frames up to it while the frame on show stays. A playing sibling
+lends its live playback to a binding below its first frame; a foreground
+binding gets the first-frame still, as before.
+
 ### Unchanged contracts
 
 The fetch contract stands: settle promptly on cancel, report progress at start

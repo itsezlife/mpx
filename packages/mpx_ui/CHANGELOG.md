@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The viewer's origin frame is a placeholder the content replaces, no longer
+  drawn under transparent content; animations continue the origin's frame.
 - Breaking: `GalleryOrigin.frame` is gone; `OriginBridge.frameOf` hands
   out a picture the caller owns and disposes. The viewer frees its copies
   as it leaves the pages, and the scope keeps one only while an origin is

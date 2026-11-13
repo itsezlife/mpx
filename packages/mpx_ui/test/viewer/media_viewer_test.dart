@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_ui/mpx_ui.dart';
 import 'package:mpx_ui/testing.dart';
 
@@ -124,6 +125,41 @@ void main() {
       for (final (index, frame) in handed) {
         expect(frame.debugDisposed, isTrue, reason: 'frame of $index');
       }
+    });
+  });
+
+  group('the origin frame', () {
+    // Whether a paint of the viewer draws [frame] or a clone of it.
+    PaintPattern drawsFrame(ui.Image frame) =>
+        paints..something((method, arguments) {
+          if (method != #drawImageRect) return false;
+          final image = arguments.first as ui.Image;
+          return image.isCloneOf(frame);
+        });
+
+    testWidgets('stands in until the content shows, then is gone: content '
+        'with transparency never shows it beneath', (tester) async {
+      final harness = ViewerHarness();
+      final frame = _image();
+      addTearDown(frame.dispose);
+      harness.bridge.frames[0] = frame;
+      await harness.pump(tester);
+
+      expect(find.byType(MediaViewer), drawsFrame(frame));
+
+      harness.producer
+          .attemptsFor(
+            AssetRequest(
+              photoKey(0),
+              harness.producer.attempts.first.request.spec,
+            ),
+          )
+          .single
+          .advance(AssetStage.full);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.byType(MediaViewer), isNot(drawsFrame(frame)));
     });
   });
 
