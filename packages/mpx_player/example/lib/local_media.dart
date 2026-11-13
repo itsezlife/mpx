@@ -59,7 +59,16 @@ final class LocalMedia {
         'stream/$part': await asset('stream/$part'),
     };
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    server.listen((request) => _serve(request, files));
+    late final LocalMedia media;
+    server.listen((request) {
+      if (!media.originOnline) {
+        request.response.statusCode = HttpStatus.serviceUnavailable;
+        unawaited(request.response.close());
+        return;
+      }
+      media._requests.add(request.uri.path);
+      unawaited(_serve(request, files));
+    });
     final directory = await Directory.systemTemp.createTemp('mpx_player_');
     final store = await BytesCache.open(
       directory: directory.path,
@@ -98,7 +107,7 @@ final class LocalMedia {
         _ => const [],
       },
     );
-    return LocalMedia._(
+    return media = LocalMedia._(
       server,
       directory,
       store,
@@ -108,6 +117,15 @@ final class LocalMedia {
       backend,
     );
   }
+
+  final List<String> _requests = [];
+
+  /// The paths the origin was asked for, in order.
+  List<String> get originRequests => List.unmodifiable(_requests);
+
+  /// Whether the origin answers; offline, as in airplane mode, it fails
+  /// every request and what plays comes from the cache.
+  bool originOnline = true;
 
   /// Stops everything and deletes the cache.
   Future<void> close() async {

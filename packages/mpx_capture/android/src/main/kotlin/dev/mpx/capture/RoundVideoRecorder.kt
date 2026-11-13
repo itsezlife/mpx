@@ -16,6 +16,7 @@ import android.opengl.EGLSurface
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Range
 import android.util.Size
 import android.view.Surface
@@ -33,6 +34,7 @@ import io.flutter.view.TextureRegistry
 import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.Executor
+import kotlin.math.abs
 
 /** One round video as the Dart side configured it. */
 class RoundVideoConfig(
@@ -96,6 +98,14 @@ class RoundVideoRecorder(
     private var surfaceTexture: SurfaceTexture? = null
     private var bufferSize = Size(640, 480)
     private var rotationDegrees = 0
+
+    // A camera that writes its orientation into the buffer (the
+    // SurfaceTexture's matrix carries it) has already turned the frame by
+    // the sensor's rotation; what is left of [rotationDegrees] turns here.
+    private var cameraTransform = false
+    @Volatile private var sensorDegrees = 0
+    private val turnDegrees
+        get() = if (cameraTransform) (rotationDegrees - sensorDegrees + 360) % 360 else rotationDegrees
     private var encoderSurface: EGLSurface? = null
     private var previewSurface: EGLSurface? = null
     private val surfaceMatrix = FloatArray(16)
@@ -110,6 +120,10 @@ class RoundVideoRecorder(
     @Volatile private var pausedAtNs = 0L
     @Volatile private var offsetNs = 0L
     @Volatile private var startNs = -1L
+
+    // The clock the camera stamps frames with (monotonic or boot time, by
+    // device); pauses and the microphone's samples are timed on the same one.
+    @Volatile private var clock: () -> Long = System::nanoTime
     @Volatile private var positionUs = 0L
     @Volatile private var stopping = false
     @Volatile private var finished = false
@@ -145,13 +159,13 @@ class RoundVideoRecorder(
 
     fun pause() {
         if (finished || paused) return
-        pausedAtNs = System.nanoTime()
+        pausedAtNs = clock()
         paused = true
     }
 
     fun resume() {
         if (finished || !paused) return
-        if (startNs >= 0) offsetNs += System.nanoTime() - pausedAtNs
+        if (startNs >= 0) offsetNs += clock() - pausedAtNs
         paused = false
     }
 
@@ -210,7 +224,8 @@ class RoundVideoRecorder(
                     .build()
                 preview.setSurfaceProvider(glExecutor) { request -> provideSurface(request) }
                 provider.unbindAll()
-                provider.bindToLifecycle(this, selector(facing), preview)
+                val camera = provider.bindToLifecycle(this, selector(facing), preview)
+                sensorDegrees = camera.cameraInfo.sensorRotationDegrees
             } catch (error: Exception) {
                 gl.post { fail(error) }
             }
@@ -267,7 +282,10 @@ class RoundVideoRecorder(
             setDefaultBufferSize(request.resolution.width, request.resolution.height)
             setOnFrameAvailableListener({ onFrame(it, texture) }, gl)
         }
-        request.setTransformationInfoListener(glExecutor) { info -> rotationDegrees = info.rotationDegrees }
+        request.setTransformationInfoListener(glExecutor) { info ->
+            rotationDegrees = info.rotationDegrees
+            cameraTransform = info.hasCameraTransform()
+        }
         val surface = Surface(target)
         request.provideSurface(surface, glExecutor) {
             surface.release()
@@ -286,7 +304,7 @@ class RoundVideoRecorder(
         target.getTransformMatrix(surfaceMatrix)
         val mirrored = facing == "front"
         previewSurface?.let {
-            stage.draw(it, previewSide, texture, surfaceMatrix, bufferSize.width, bufferSize.height, rotationDegrees, mirrored)
+            stage.draw(it, previewSide, texture, surfaceMatrix, bufferSize.width, bufferSize.height, rotationDegrees, turnDegrees, mirrored)
         }
         started?.let { done ->
             started = null
@@ -300,11 +318,14 @@ class RoundVideoRecorder(
         }
         if (paused || stopping) return
         val frameNs = target.timestamp
-        if (startNs < 0) startNs = frameNs
+        if (startNs < 0) {
+            clock = clockOf(frameNs)
+            startNs = frameNs
+        }
         val ptsNs = frameNs - startNs - offsetNs
         if (ptsNs < 0) return
         val encoder = encoderSurface ?: return
-        stage.draw(encoder, config.side, texture, surfaceMatrix, bufferSize.width, bufferSize.height, rotationDegrees, mirrored, ptsNs)
+        stage.draw(encoder, config.side, texture, surfaceMatrix, bufferSize.width, bufferSize.height, rotationDegrees, turnDegrees, mirrored, ptsNs)
         drain(videoEncoder, video = true, endOfStream = false)
         positionUs = ptsNs / 1000
         report()
@@ -475,7 +496,7 @@ class RoundVideoRecorder(
                 while (!ending) {
                     val read = record.read(pcm, 0, chunk)
                     if (read <= 0) continue
-                    val nowNs = System.nanoTime()
+                    val nowNs = clock()
                     if (paused || startNs < 0) continue
                     val durationUs = read / 2 * 1_000_000L / sampleRate
                     var ptsUs = (nowNs - startNs - offsetNs) / 1000 - durationUs
@@ -510,6 +531,18 @@ class RoundVideoRecorder(
     }
 
     companion object {
+        // A frame's timestamp is close to now on its own clock and far off
+        // on the other one by the time the device has slept.
+        private fun clockOf(frameNs: Long): () -> Long {
+            val monotonic = System.nanoTime()
+            val boot = SystemClock.elapsedRealtimeNanos()
+            return if (abs(frameNs - boot) < abs(frameNs - monotonic)) {
+                SystemClock::elapsedRealtimeNanos
+            } else {
+                System::nanoTime
+            }
+        }
+
         fun hasPermissions(context: Context): Boolean =
             listOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO).all {
                 ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED

@@ -49,6 +49,13 @@ void main() {
       fail('never happened: ${engine.state.value} at ${engine.position}');
     }
 
+    Future<PlayerEngine> playingStream() async {
+      final engine = await ready(LocalMedia.stream);
+      engine.play();
+      await until(engine, () => engine.position > const Duration(seconds: 1));
+      return engine;
+    }
+
     testWidgets('plays: the playhead moves and frames arrive', (_) async {
       final engine = await ready();
       engine.play();
@@ -123,6 +130,20 @@ void main() {
       );
       expect(engine.state.value.playing, isTrue);
     });
+
+    testWidgets(
+      'a stream played once replays from the cache with the origin gone',
+      (_) async {
+        (await playingStream()).dispose();
+        final asked = media.originRequests.length;
+        media.originOnline = false;
+        addTearDown(() => media.originOnline = true);
+
+        await playingStream();
+        expect(media.originRequests, hasLength(asked));
+      },
+      skip: !Platform.isAndroid,
+    );
 
     testWidgets('the probe lists the decoders and containers', (_) async {
       final device = await media.backend.device;

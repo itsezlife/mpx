@@ -97,7 +97,8 @@ class GlStage {
     /**
      * Draws [texture] into [target] at [side] × [side]. [surfaceMatrix] is the
      * SurfaceTexture's transform; [bufferWidth] × [bufferHeight] the camera
-     * buffer, which [rotationDegrees] (clockwise) turns upright. With
+     * buffer, which [rotationDegrees] (clockwise) turns upright, [turnDegrees]
+     * of it applied here (the rest is in [surfaceMatrix]). With
      * [presentationNs] the frame gets that timestamp (the encoder's surface).
      */
     fun draw(
@@ -108,13 +109,14 @@ class GlStage {
         bufferWidth: Int,
         bufferHeight: Int,
         rotationDegrees: Int,
+        turnDegrees: Int,
         mirrored: Boolean,
         presentationNs: Long? = null,
     ) {
         makeCurrent(target)
         GLES20.glViewport(0, 0, side, side)
         GLES20.glUseProgram(program)
-        displayToTexture(surfaceMatrix, bufferWidth, bufferHeight, rotationDegrees, mirrored)
+        displayToTexture(surfaceMatrix, bufferWidth, bufferHeight, rotationDegrees, turnDegrees, mirrored)
         GLES20.glUniformMatrix4fv(texMatrixLocation, 1, false, matrix, 0)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, texture)
@@ -128,15 +130,16 @@ class GlStage {
     }
 
     // Maps a coordinate of the upright output square to the camera texture:
-    // texture = surfaceMatrix · (centre + rotate(r) · mirror · crop · (d − centre)).
-    // The crop keeps the centre square of the upright frame; rotating the
-    // upright coordinate counter-clockwise by r finds it in the buffer, which
-    // the camera turns clockwise by r to stand it up.
+    // texture = surfaceMatrix · (centre + rotate(t) · mirror · crop · (d − centre)).
+    // The crop keeps the centre square of the upright frame (its shape set by
+    // the whole rotation); rotating the upright coordinate counter-clockwise
+    // by t, the part of the rotation the matrix does not carry, finds it.
     private fun displayToTexture(
         surfaceMatrix: FloatArray,
         bufferWidth: Int,
         bufferHeight: Int,
         rotationDegrees: Int,
+        turnDegrees: Int,
         mirrored: Boolean,
     ) {
         val quarterTurn = rotationDegrees % 180 != 0
@@ -146,7 +149,7 @@ class GlStage {
         val local = FloatArray(16)
         Matrix.setIdentityM(local, 0)
         Matrix.translateM(local, 0, 0.5f, 0.5f, 0f)
-        Matrix.rotateM(local, 0, rotationDegrees.toFloat(), 0f, 0f, 1f)
+        Matrix.rotateM(local, 0, turnDegrees.toFloat(), 0f, 0f, 1f)
         Matrix.scaleM(local, 0, (if (mirrored) -1f else 1f) * square / uprightWidth, square / uprightHeight, 1f)
         Matrix.translateM(local, 0, -0.5f, -0.5f, 0f)
         Matrix.multiplyMM(matrix, 0, surfaceMatrix, 0, local, 0)

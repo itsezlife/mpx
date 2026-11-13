@@ -6,6 +6,9 @@
   400 KB reserved head (the index goes at the end); a source that fits is
   remuxed; cancelling a recording returns once its file is deleted.
   `CaptureProgress.bytesWritten` is 0 while Android compresses.
+- Round video on Android: frames stand upright when the camera writes its
+  orientation into the buffer, and the microphone is timed on the camera's
+  clock (sound was dropped after the device had slept).
 - Compression before send: `CompressionPreset` (the shared size / kbps
   table and its plan), `Transcoder` with `PlatformTranscoder` (Media3
   Transformer on Android, AVAssetReader into AVAssetWriter on iOS and
