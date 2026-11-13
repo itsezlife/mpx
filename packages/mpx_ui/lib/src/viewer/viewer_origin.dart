@@ -124,6 +124,7 @@ class ViewerOriginScopeState extends State<ViewerOriginScope>
         radius: origin.widget.borderRadius,
         clip: place.clip,
         position: origin.widget.position?.call(),
+        fit: origin.widget.fit,
       );
     }
     return null;
@@ -253,6 +254,7 @@ class ViewerOrigin extends StatefulWidget {
     this.captureFrame = true,
     this.position,
     this.onHandBack,
+    this.fit = BoxFit.cover,
     super.key,
   }) : assert(
          index != null || media != null,
@@ -267,6 +269,10 @@ class ViewerOrigin extends StatefulWidget {
 
   /// The thumbnail's corners.
   final BorderRadius borderRadius;
+
+  /// How the thumbnail fits its picture into its box: covering it, cropped,
+  /// or whole inside it ([GalleryOrigin.fit]).
+  final BoxFit fit;
 
   /// Whether the viewer gets the thumbnail's current picture to start from.
   final bool captureFrame;

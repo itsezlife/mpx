@@ -334,6 +334,8 @@ class MediaViewerState extends State<MediaViewer>
   // The video on screen and the index it plays.
   ViewerVideoSession? _session;
   int? _sessionIndex;
+  // Holds the origin's loop of the video the player plays.
+  AssetPlaybackHold? _loopHold;
   Timer? _spaceHold;
   bool _fullscreen = false;
   Offset? _lastHover;
@@ -519,20 +521,28 @@ class MediaViewerState extends State<MediaViewer>
     }
     if (_sessionIndex == _index && _session != null) return;
     _releaseVideo();
+    final cache = _cache;
+    // Where the origin's loop is: the host's word for it, else the loop of
+    // the content the surface plays through the cache, which the page draws
+    // too.
+    final loopAt = switch (_video.start) {
+      ViewerVideoStart.origin =>
+        (_index == widget.initialIndex
+                ? widget.bridge?.originOf(_index)?.position
+                : null) ??
+            cache?.playbackPosition(item.key, _loopSpec),
+      ViewerVideoStart.beginning => null,
+    };
+    // The loop stands still while the player plays the item: one decode of
+    // the content at a time.
+    _loopHold = cache?.holdPlayback(item.key, _loopSpec);
     _session = ViewerVideoSession(
       players: players,
       item: item,
       rules: _video,
       controls: _controls,
       speeds: _speeds,
-      // Where the origin's loop is: the host's word for it, else the loop of
-      // the content the surface plays through the cache, which the page
-      // draws too.
-      startAt:
-          (_index == widget.initialIndex
-              ? widget.bridge?.originOf(_index)?.position
-              : null) ??
-          _cache?.playbackPosition(item.key, _loopSpec),
+      startAt: loopAt,
       autoHide: _phase == _Phase.open,
     )..addListener(_onSession);
     _sessionIndex = _index;
@@ -545,6 +555,8 @@ class MediaViewerState extends State<MediaViewer>
   }
 
   void _releaseVideo() {
+    _loopHold?.release();
+    _loopHold = null;
     final session = _session;
     if (session == null) return;
     session
@@ -740,6 +752,15 @@ class MediaViewerState extends State<MediaViewer>
     }
   }
 
+  // The page's picture as it shows now, the player's included, or null when
+  // the page has none painted.
+  ui.Image? _pictureNow(int index) {
+    final boundary = _frameKeys[index]?.currentContext?.findRenderObject();
+    if (boundary is! RenderRepaintBoundary || !boundary.hasSize) return null;
+    final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
+    return boundary.toImageSync(pixelRatio: dpr);
+  }
+
   Future<ui.Image?> _captureFrame(int index) async {
     final boundary = _frameKeys[index]?.currentContext?.findRenderObject();
     if (boundary is! RenderRepaintBoundary || !boundary.hasSize) return null;
@@ -756,7 +777,11 @@ class MediaViewerState extends State<MediaViewer>
     _hide(_index, hidden: true);
     _from = origin == null
         ? _Frame(fitted, opacity: 0)
-        : _Frame(origin.rect, radius: origin.radius, clip: origin.clip);
+        : _Frame(
+            _shownIn(origin, fitted),
+            radius: origin.radius,
+            clip: origin.clip,
+          );
     _to = _Frame(fitted);
     _transition
       ..duration = widget.policy.openDuration
@@ -775,12 +800,23 @@ class MediaViewerState extends State<MediaViewer>
     if (_phase == _Phase.closing || _phase == _Phase.closed) return;
     final session = _session;
     if (session != null) {
-      final position = session.lease.position;
-      widget.bridge?.handBack(_index, position);
-      // The surface's loop of the content goes on from the player's place.
-      if (widget.source.itemAt(_index) case final item?) {
-        _cache?.seekPlayback(item.key, _loopSpec, position);
+      if (_video.originReturn == ViewerOriginReturn.atPlayer) {
+        final position = session.lease.position;
+        widget.bridge?.handBack(_index, position);
+        // The surface's loop of the content goes to the player's place,
+        // showing the player's last picture until its own frame there is
+        // drawn.
+        if (widget.source.itemAt(_index) case final item?) {
+          _cache?.seekPlayback(
+            item.key,
+            _loopSpec,
+            position,
+            picture: _pictureNow(_index),
+          );
+        }
       }
+      _loopHold?.release();
+      _loopHold = null;
       session.autoHide = false;
     }
     if (_fullscreen) toggleFullscreen();
@@ -803,7 +839,11 @@ class MediaViewerState extends State<MediaViewer>
       _from = _Frame(from);
       _fadeOut = origin == null;
       if (origin != null) {
-        _to = _Frame(origin.rect, radius: origin.radius, clip: origin.clip);
+        _to = _Frame(
+          _shownIn(origin, from),
+          radius: origin.radius,
+          clip: origin.clip,
+        );
         _transition.duration = policy.closeDuration;
       } else if (_drag != 0) {
         // The origin is gone: the picture leaves the way it was dragged.
@@ -901,10 +941,38 @@ class MediaViewerState extends State<MediaViewer>
     );
   }
 
+  // The picture where the origin shows it: its box for a surface that covers
+  // the box with it, the part of the box it fills for one that shows it
+  // whole. [fitted] has the picture's proportion.
+  static Rect _shownIn(GalleryOrigin origin, Rect fitted) {
+    if (fitted.isEmpty || origin.rect.isEmpty) return origin.rect;
+    final shown = applyBoxFit(origin.fit, fitted.size, origin.rect.size);
+    return Alignment.center.inscribe(shown.destination, origin.rect);
+  }
+
+  // The picture's proportion: the item's size, else the picture a cache
+  // entry of it draws, else the player's picture, else the origin's frame or
+  // box, never a square guessed for it.
   double _aspectOf(int index, GalleryOrigin? origin) {
-    final itemSize = widget.source.itemAt(index)?.size;
+    final item = widget.source.itemAt(index);
+    final itemSize = item?.size;
     if (itemSize != null && !itemSize.isEmpty) {
       return itemSize.width / itemSize.height;
+    }
+    final decoded = item == null ? null : _cache?.pictureSizeOf(item.key);
+    if (decoded != null && !decoded.isEmpty) {
+      return decoded.width / decoded.height;
+    }
+    if (_sessionIndex == index) {
+      final state = _session?.lease.state.value;
+      if (state?.videoSize case final video? when !video.isEmpty) {
+        return state!.quarterTurns.isOdd
+            ? video.height / video.width
+            : video.width / video.height;
+      }
+    }
+    if (_originFrames[index] case final frame?) {
+      return frame.width / frame.height;
     }
     final rect = (origin ?? widget.bridge?.originOf(index))?.rect;
     if (rect != null && !rect.isEmpty) return rect.width / rect.height;
@@ -1170,8 +1238,12 @@ class MediaViewerState extends State<MediaViewer>
   }
 
   // The cache the pictures attach to.
+  // Read without depending on the provider: the video session starts from
+  // initState, and a changed provider reaches the pages through their own
+  // views.
   AssetCacheScope? get _cache =>
-      widget.scope ?? AssetCacheProvider.maybeOf(context);
+      widget.scope ??
+      context.getInheritedWidgetOfExactType<AssetCacheProvider>()?.scope;
 
   // The spec of content that plays, whatever the box: a surface that shows
   // the same content as an animation binds the same entry, so the viewer
@@ -1227,10 +1299,17 @@ class MediaViewerState extends State<MediaViewer>
           content: item.key,
           scope: widget.scope,
           preset: switch (item.kind) {
-            // A GIF continues as a muted loop on the software path; a video's
-            // loop goes on under its player.
-            GalleryMediaKind.animation || GalleryMediaKind.video =>
-              AssetPresets.animation(size: box, profile: loops),
+            // A GIF continues as a muted loop on the software path.
+            GalleryMediaKind.animation => AssetPresets.animation(
+              size: box,
+              profile: loops,
+            ),
+            // A video's loop shows the frame it stands on until the player
+            // has one: the player is the one playback of it meanwhile.
+            GalleryMediaKind.video => AssetPresets.animation(
+              size: box,
+              profile: const AssetProfile(),
+            ),
             GalleryMediaKind.photo => AssetPresets.media(
               size: box,
               devicePixelRatio: dpr,

@@ -148,6 +148,57 @@ void main() {
       await _settle(tester);
 
       expect(loop.seeks.last, const Duration(seconds: 7));
+      // The player's last picture, which the loop shows until its frame there
+      // is drawn.
+      final picture = loop.seekPictures.last;
+      expect(picture, isNotNull);
+      picture!.dispose();
+    });
+
+    testWidgets('the loop stands still while the player plays the item, and '
+        'plays again once the viewer closed', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+      );
+      final loop = harness.cardLoop(videoKey(0), seconds);
+      expect(harness.card.isPlaying, isTrue);
+
+      await harness.pump(tester);
+      expect(harness.card.isPlaying, isFalse);
+      expect(harness.card.visible, isTrue);
+
+      unawaited(harness.state(tester).close());
+      await _settle(tester);
+
+      expect(harness.card.isPlaying, isTrue);
+      for (final picture in loop.seekPictures) {
+        picture?.dispose();
+      }
+    });
+
+    testWidgets('a policy that starts from the beginning leaves the loop to '
+        'go on from where it paused', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+        originPosition: const Duration(seconds: 12),
+      );
+      final loop = harness.cardLoop(videoKey(0), seconds)
+        ..seekPlayback(const Duration(seconds: 4));
+      await harness.pump(tester, policy: ViewerPolicy.$Desktop);
+
+      expect(harness.engine(0).preparedFrom, isNot(const Duration(seconds: 4)));
+      expect(harness.engine(0).preparedFrom, anyOf(isNull, Duration.zero));
+      expect(harness.card.isPlaying, isFalse);
+      harness.engine(0).advance(const Duration(seconds: 3));
+
+      unawaited(harness.state(tester).close());
+      await _settle(tester);
+
+      expect(loop.seeks, [const Duration(seconds: 4)]);
+      expect(harness.bridge.handedBack, isEmpty);
+      expect(harness.card.isPlaying, isTrue);
     });
 
     testWidgets('the close morph shows the player\'s picture', (tester) async {

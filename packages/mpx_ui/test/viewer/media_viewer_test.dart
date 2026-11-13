@@ -163,6 +163,46 @@ void main() {
     });
   });
 
+  group('the morph', () {
+    testWidgets('runs between the picture as the origin shows it and the '
+        'picture fitted, at the content\'s own proportion', (tester) async {
+      // A square tile that shows a 16:9 clip whole, with no size known for
+      // the item: the proportion comes from the decoded picture.
+      final harness = ViewerHarness(
+        items: [GalleryItem(photoKey(0), kind: GalleryMediaKind.animation)],
+      );
+      harness.bridge.origins[0] = const GalleryOrigin(
+        rect: Rect.fromLTWH(20, 600, 100, 100),
+        fit: BoxFit.contain,
+      );
+      harness.cardLoop(
+        photoKey(0),
+        List.filled(10, const Duration(milliseconds: 100)),
+        pictureSize: const Size(1600, 900),
+      );
+      await harness.pump(tester, open: false);
+
+      final from = harness.morphRect(tester);
+      expect(from.left, closeTo(20, 0.01));
+      expect(from.width, closeTo(100, 0.01));
+      expect(from.height, closeTo(56.25, 0.01));
+      expect(from.center.dy, closeTo(650, 0.01));
+
+      await tester.pump(const Duration(milliseconds: 100));
+      final halfway = harness.morphRect(tester);
+      expect(halfway.width / halfway.height, closeTo(16 / 9, 0.01));
+
+      await tester.pump(const Duration(milliseconds: 101));
+      final to = tester.getRect(find.byType(ViewerPhotoPage));
+      expect(harness.state(tester).isOpen, isTrue);
+      expect(to.width, 400);
+      expect(
+        tester.getSize(find.byType(ContentView)).aspectRatio,
+        closeTo(16 / 9, 0.01),
+      );
+    });
+  });
+
   group('an animation', () {
     testWidgets('draws the surface\'s own entry: one decode, one playback in '
         'two places', (tester) async {

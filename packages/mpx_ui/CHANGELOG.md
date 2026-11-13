@@ -5,9 +5,14 @@
 - The viewer's origin frame is a placeholder the content replaces, no longer
   drawn under transparent content.
 - An animation's page draws the surface's own playback
-  (`AssetPresets.animation`); a video with sound starts where the surface's
-  loop is, shows the player in the morph both ways and moves the loop to the
-  player's place on close.
+  (`AssetPresets.animation`). While a video with sound plays, the surface's
+  loop of it stands still; the player starts where the loop is and the loop
+  goes to the player's place on close, or both start over and resume, as
+  `ViewerVideoRules.start` and `originReturn` say (`$Desktop`: from the
+  beginning, resuming). The morph shows the player both ways.
+- The morph keeps the content's proportion from end to end
+  (`GalleryOrigin.fit`, `ViewerOrigin.fit` for a tile that shows the picture
+  whole).
 - The video bar keeps the seek track's length as the time and speed change;
   the speed panel shows the speed beside its slider; viewer text takes the
   viewer's style whatever the host puts above it.

@@ -99,9 +99,12 @@ pixels than it shows, and a fullscreen copy is drawn from at most 512 px (a
 vector animation renders at 512 for both). A copy whose thumbnail is gone
 decodes the same spec anew. `AssetPaintable.playbackPosition` and
 `seekPlayback` (through `AssetCacheScope`) read and move an entry's playback:
-a player of the same content hands its position back to the loop. A silent
-clip seeks by decoding and dropping frames forward, as its decoder has no
-seek to a time.
+a player of the same content hands its position back to the loop, with the
+picture to show until the loop's frame there is drawn. A silent clip seeks
+for real (`mpx_video_seek`): back to the keyframe at or before the position,
+then forward to it on the decoder's side, its time standing still until that
+frame is decoded. `holdPlayback` stops an entry on its frame while something
+else plays the content; `pictureSizeOf` gives the content's proportion.
 
 Rejected: a second entry at the viewer's size that takes the thumbnail's
 phase. A forward-only decoder has to decode its way to the phase, so the copy

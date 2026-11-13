@@ -300,6 +300,26 @@ final class ViewerSpeedRule {
       (speed.clamp(min, max) * 10).roundToDouble() / 10;
 }
 
+/// Where the player starts as the viewer opens on a video.
+enum ViewerVideoStart {
+  /// Where the origin's own loop of the video is: the video goes on.
+  origin,
+
+  /// At the beginning.
+  beginning,
+}
+
+/// What the origin's own loop of a video does as the viewer closes. While
+/// the player plays the item the loop stands still on its frame, whichever.
+enum ViewerOriginReturn {
+  /// It goes to where the player stood and plays on from there, showing the
+  /// player's last picture until its own frame there is drawn.
+  atPlayer,
+
+  /// It plays on from the frame it stood on.
+  whereItPaused,
+}
+
 /// The video rules of a viewer policy: controls, seek, speed and loop.
 @immutable
 final class ViewerVideoRules {
@@ -313,7 +333,15 @@ final class ViewerVideoRules {
     this.doubleTapFullscreen = false,
     this.hold,
     this.seekPreviewBox,
+    this.start = ViewerVideoStart.origin,
+    this.originReturn = ViewerOriginReturn.atPlayer,
   });
+
+  /// Where the player starts as the viewer opens on a video.
+  final ViewerVideoStart start;
+
+  /// What the origin's own loop of the video does as the viewer closes.
+  final ViewerOriginReturn originReturn;
 
   /// Whether the controls show when a video opens.
   final bool controlsVisibleOnOpen;
@@ -607,6 +635,8 @@ final class ViewerPolicy {
         memory: ViewerSpeedMemory.global,
       ),
       loops: ViewerVideoRules.loopSilent,
+      start: ViewerVideoStart.beginning,
+      originReturn: ViewerOriginReturn.whereItPaused,
       doubleTapFullscreen: true,
       hold: ViewerHoldSpeed(delay: Duration(milliseconds: 200), rate: 2),
     ),

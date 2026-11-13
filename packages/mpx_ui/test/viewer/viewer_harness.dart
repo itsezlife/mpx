@@ -127,11 +127,19 @@ final class ViewerHarness {
   static Widget _hostStyle(TextStyle? style, Widget child) =>
       style == null ? child : DefaultTextStyle(style: style, child: child);
 
+  /// The binding [cardLoop] attached last.
+  late AssetBinding card;
+
   /// Attaches the surface's own loop of [key], as a list item that shows it
-  /// playing does, and plays it as [frames]; returns its playback.
-  FakeAssetPaintable cardLoop(MediaKey key, List<Duration> frames) {
+  /// playing does, and plays it as [frames] with a picture of [pictureSize];
+  /// returns its playback.
+  FakeAssetPaintable cardLoop(
+    MediaKey key,
+    List<Duration> frames, {
+    Size? pictureSize,
+  }) {
     const profile = AssetProfile(animate: true);
-    scope.attach(
+    card = scope.attach(
       key,
       AssetPresets.animation(size: originRect.size, profile: profile).spec,
       profile,
@@ -140,6 +148,7 @@ final class ViewerHarness {
       AssetStage.full,
       tier: AssetTier.animated,
       frames: frames,
+      pictureSize: pictureSize,
     );
   }
 

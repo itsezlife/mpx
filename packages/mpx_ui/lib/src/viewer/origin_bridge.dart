@@ -13,6 +13,7 @@ final class GalleryOrigin {
     this.radius = BorderRadius.zero,
     this.clip,
     this.position,
+    this.fit = BoxFit.cover,
   });
 
   /// The item's picture on the surface, in global coordinates.
@@ -24,6 +25,11 @@ final class GalleryOrigin {
   /// The part of the surface the picture shows through (a list's visible
   /// area), in global coordinates; null when nothing clips it.
   final Rect? clip;
+
+  /// How the surface fits the item's picture into [rect]: covering it,
+  /// cropped (a grid cell), or whole inside it (a tile that letterboxes).
+  /// The morph starts and ends on the picture as the surface shows it.
+  final BoxFit fit;
 
   /// Where the surface's playback of the item is (a bubble's silent loop):
   /// a video opens on the player from there. Null to start from the
