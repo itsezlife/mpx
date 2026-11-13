@@ -2,7 +2,6 @@ package dev.mpx.player
 
 import android.content.Context
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.DefaultRenderersFactory
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.view.TextureRegistry
 
@@ -52,7 +51,7 @@ class MpxPlayerPlugin : FlutterPlugin, PlayerHostApi {
                 source = source,
                 settings = settings,
                 producer = textures.createSurfaceProducer(),
-                renderers = DefaultRenderersFactory(context),
+                renderers = MpxRenderersFactory(context),
                 report = { snapshot -> flutter.onSnapshot(snapshot) {} },
                 failedCodecOf = { null },
             )
