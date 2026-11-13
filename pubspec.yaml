@@ -12,6 +12,7 @@ workspace:
   - packages/mpx_player
   - packages/mpx_ui
   - packages/mpx_capture
+  - packages/mpx_capture/example
   - packages/mpx
   - packages/mpx/example
 

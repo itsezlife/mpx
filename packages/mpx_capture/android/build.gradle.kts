@@ -51,3 +51,11 @@ android {
         minSdk = 24
     }
 }
+
+dependencies {
+    // Compression before send (ADR 0007): H.264 + AAC through Transformer,
+    // which transmuxes when nothing changes.
+    implementation("androidx.media3:media3-transformer:1.11.1")
+    implementation("androidx.media3:media3-effect:1.11.1")
+    implementation("androidx.media3:media3-common:1.11.1")
+}

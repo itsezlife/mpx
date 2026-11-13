@@ -17,14 +17,15 @@ dependencies:
   # Edges fixed by ADR 0001; nothing else in the workspace.
   flutter:
     sdk: flutter
-  mpx_core:
-    path: ../mpx_core
-  http_bytes_cache:
-    path: ../http_bytes_cache
-
-dev_dependencies:
+  # Only lib/testing.dart needs it: its contract suites are written with the
+  # test framework, and a library cannot import a dev dependency. Production
+  # entry points never import it.
   flutter_test:
     sdk: flutter
+  http_bytes_cache:
+    path: ../http_bytes_cache
+  mpx_core:
+    path: ../mpx_core
 
 flutter:
   plugin:
