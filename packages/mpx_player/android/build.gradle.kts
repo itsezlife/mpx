@@ -63,4 +63,7 @@ android {
 dependencies {
     // ExoPlayer and its progressive extractors (MP4, WebM, Matroska).
     implementation("androidx.media3:media3-exoplayer:1.11.1")
+    // The media session that keeps the sound owner playing in the background
+    // (MpxPlaybackService; the host declares the service).
+    implementation("androidx.media3:media3-session:1.11.1")
 }

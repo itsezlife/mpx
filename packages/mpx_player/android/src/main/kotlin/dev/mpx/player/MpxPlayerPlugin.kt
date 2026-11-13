@@ -3,6 +3,8 @@ package dev.mpx.player
 import android.content.Context
 import androidx.media3.common.util.UnstableApi
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.embedding.engine.plugins.activity.ActivityAware
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.view.TextureRegistry
 
 /**
@@ -11,12 +13,14 @@ import io.flutter.view.TextureRegistry
  * back through [PlayerFlutterApi].
  */
 @UnstableApi
-class MpxPlayerPlugin : FlutterPlugin, PlayerHostApi {
+class MpxPlayerPlugin : FlutterPlugin, ActivityAware, PlayerHostApi {
     private lateinit var context: Context
     private lateinit var textures: TextureRegistry
     private lateinit var flutter: PlayerFlutterApi
     private lateinit var focus: MpxAudioFocus
     private lateinit var device: MpxDeviceProbe
+    private lateinit var pictureInPicture: MpxPictureInPicture
+    private lateinit var background: MpxBackgroundAudio
     private val players = HashMap<Long, MpxVideoPlayer>()
     private var nextId = 1L
 
@@ -25,6 +29,9 @@ class MpxPlayerPlugin : FlutterPlugin, PlayerHostApi {
         textures = binding.textureRegistry
         flutter = PlayerFlutterApi(binding.binaryMessenger)
         device = MpxDeviceProbe(context)
+        pictureInPicture =
+            MpxPictureInPicture { id, active -> flutter.onPictureInPictureChange(id, active) {} }
+        background = MpxBackgroundAudio(context)
         // Focus callbacks and the noisy broadcast arrive on the main thread,
         // where Pigeon's Flutter API must be called.
         focus = MpxAudioFocus(context) { change -> flutter.onAudioFocusChange(change) {} }
@@ -35,12 +42,25 @@ class MpxPlayerPlugin : FlutterPlugin, PlayerHostApi {
         PlayerHostApi.setUp(binding.binaryMessenger, null)
         reset()
         focus.abandon()
+        background.enabled = false
     }
+
+    // --- Activity ----------------------------------------------------------
+
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) =
+        pictureInPicture.attach(binding.activity)
+
+    override fun onDetachedFromActivityForConfigChanges() = pictureInPicture.detach()
+
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) =
+        pictureInPicture.attach(binding.activity)
+
+    override fun onDetachedFromActivity() = pictureInPicture.detach()
 
     // --- Players -----------------------------------------------------------
 
     override fun reset() {
-        players.values.forEach { it.dispose() }
+        players.values.forEach { release(it) }
         players.clear()
         // A previous isolate's focus goes with its players.
         focus.abandon()
@@ -61,7 +81,10 @@ class MpxPlayerPlugin : FlutterPlugin, PlayerHostApi {
                 settings = settings,
                 producer = textures.createSurfaceProducer(),
                 renderers = MpxRenderersFactory(context),
-                report = { snapshot -> flutter.onSnapshot(snapshot) {} },
+                report = { snapshot ->
+                    flutter.onSnapshot(snapshot) {}
+                    background.update(players.values.firstOrNull { it.isAudible }?.player)
+                },
                 failedCodecOf = device::failedCodecOf,
             )
         return id
@@ -92,26 +115,38 @@ class MpxPlayerPlugin : FlutterPlugin, PlayerHostApi {
     }
 
     override fun dispose(playerId: Long) {
-        players.remove(playerId)?.dispose()
+        players.remove(playerId)?.let { release(it) }
     }
 
-    // --- Audio focus (ticket 26) ---------------------------------------------
+    private fun release(player: MpxVideoPlayer) {
+        pictureInPicture.forget(player.id)
+        background.forget(player.player)
+        player.dispose()
+    }
+
+    // --- Audio focus --------------------------------------------------------
 
     override fun requestAudioFocus() = focus.request()
 
     override fun abandonAudioFocus() = focus.abandon()
 
-    // --- Hardware probe (ticket 28) ------------------------------------------
+    // --- Hardware probe -----------------------------------------------------
 
     override fun probe(): NativeDeviceProbe = device.probe()
 
-    // --- Picture in picture and background audio (ticket 29) -----------------
+    // --- Picture in picture and background audio ----------------------------
 
-    override fun isPictureInPictureSupported(): Boolean = false
+    override fun isPictureInPictureSupported(): Boolean = pictureInPicture.isSupported
 
-    override fun startPictureInPicture(playerId: Long) {}
+    override fun startPictureInPicture(playerId: Long) {
+        val player = players[playerId] ?: return
+        pictureInPicture.start(playerId, player.aspectRatio)
+    }
 
-    override fun stopPictureInPicture() {}
+    override fun stopPictureInPicture() = pictureInPicture.stop()
 
-    override fun setBackgroundAudio(enabled: Boolean) {}
+    override fun setBackgroundAudio(enabled: Boolean) {
+        background.enabled = enabled
+        if (enabled) background.update(players.values.firstOrNull { it.isAudible }?.player)
+    }
 }
