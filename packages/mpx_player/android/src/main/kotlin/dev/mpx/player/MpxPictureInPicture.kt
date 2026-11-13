@@ -3,11 +3,13 @@ package dev.mpx.player
 import android.app.Activity
 import android.app.Application
 import android.app.PictureInPictureParams
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.util.Rational
+import android.view.ViewTreeObserver
 
 /**
  * Android's picture in picture is the activity's: the whole Flutter view
@@ -15,9 +17,8 @@ import android.util.Rational
  *
  * The host's activity must declare `android:supportsPictureInPicture="true"`
  * (and `android:resizeableActivity="true"`). Leaving the window (the user
- * expands or closes it) shows only on the activity's lifecycle: on resume or
- * stop, an activity no longer in picture in picture means the window is
- * gone. An app cannot close the window itself; [stop] leaves it to the user.
+ * expands or closes it) shows on the activity's layout and lifecycle: an
+ * activity no longer in picture in picture means the window is gone. [stop] expands the window by bringing the activity to the front.
  */
 internal class MpxPictureInPicture(
     private val report: (playerId: Long, active: Boolean) -> Unit,
@@ -25,13 +26,19 @@ internal class MpxPictureInPicture(
     private var activity: Activity? = null
     private var shown: Long? = null
 
+    // Entering and leaving the window always resizes it; a resumed activity
+    // may stay resumed through both, so the layout is the reliable signal.
+    private val onLayout = ViewTreeObserver.OnGlobalLayoutListener { activity?.let(::checkLeft) }
+
     fun attach(activity: Activity) {
         detach()
         this.activity = activity
         activity.application.registerActivityLifecycleCallbacks(this)
+        activity.window.decorView.viewTreeObserver.addOnGlobalLayoutListener(onLayout)
     }
 
     fun detach() {
+        activity?.window?.decorView?.viewTreeObserver?.removeOnGlobalLayoutListener(onLayout)
         activity?.application?.unregisterActivityLifecycleCallbacks(this)
         activity = null
     }
@@ -63,11 +70,20 @@ internal class MpxPictureInPicture(
     }
 
     /**
-     * The platform gives an app no call to close its window; the user
-     * closes or expands it, and [onActivityResumed] / [onActivityStopped]
-     * report the end.
+     * The platform gives an app no call to close its window: bringing the
+     * activity back to the front expands it.
      */
-    fun stop() {}
+    fun stop() {
+        val current = activity ?: return
+        if (shown == null) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !current.isInPictureInPictureMode) {
+            return end()
+        }
+        current.startActivity(
+            Intent(current, current.javaClass).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
+        )
+        end()
+    }
 
     /** The player that left the engine while in the window. */
     fun forget(playerId: Long) {

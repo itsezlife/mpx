@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -127,8 +129,10 @@ void main() {
 
       expect(device.canDecode('video/avc'), isTrue);
       expect(device.opensContainer('video/mp4'), isTrue);
-      expect(device.opensContainer('video/webm'), isFalse);
-      expect(device.instanceCountsKnown, isFalse);
+      // Media3 opens WebM; Apple's players do not.
+      expect(device.opensContainer('video/webm'), Platform.isAndroid);
+      // MediaCodec reports how many decoders may run; Apple's do not.
+      expect(device.instanceCountsKnown, Platform.isAndroid);
     });
 
     testWidgets('picture in picture opens and closes', (_) async {

@@ -22,7 +22,8 @@ final class CaptureProgress {
     this.headerRewritten = false,
   });
 
-  /// Bytes in the output file so far.
+  /// Bytes in the output file so far; 0 while a writer that pre-sizes its
+  /// file runs (Android's compression), whose output is read once finished.
   final int bytesWritten;
 
   /// Media time written so far: the encode position of a compression, the

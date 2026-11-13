@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Android fixes from device runs: compressed files no longer carry a
+  400 KB reserved head (the index goes at the end); a source that fits is
+  remuxed; cancelling a recording returns once its file is deleted.
+  `CaptureProgress.bytesWritten` is 0 while Android compresses.
 - Compression before send: `CompressionPreset` (the shared size / kbps
   table and its plan), `Transcoder` with `PlatformTranscoder` (Media3
   Transformer on Android, AVAssetReader into AVAssetWriter on iOS and

@@ -4,3 +4,5 @@ project(mpx_player_hbc C)
 # The JNI shim over http_bytes_cache's native reader. It links nothing of the
 # cache: it calls through the function table whose address Dart hands over.
 add_library(mpx_player_hbc SHARED mpx_player_hbc.c)
+# 16 KB page alignment; NDK r28 defaults to it, older ones do not.
+target_link_options(mpx_player_hbc PRIVATE -Wl,-z,max-page-size=16384)

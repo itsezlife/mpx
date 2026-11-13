@@ -164,11 +164,11 @@ class MpxCapturePlugin :
                 }
             }
             "cancel" -> {
-                call.argument<Int>("job")?.let {
-                    transcoder.cancel(it)
-                    recorders.remove(it)?.cancel()
-                }
-                result.success(null)
+                val job = call.argument<Int>("job")
+                if (job != null) transcoder.cancel(job)
+                // The reply waits until the recording's file is deleted.
+                val recorder = job?.let { recorders.remove(it) }
+                if (recorder == null) result.success(null) else recorder.cancel { result.success(null) }
             }
             "permissions" -> requestPermissions(result)
             "roundStart" -> startRound(call, result)

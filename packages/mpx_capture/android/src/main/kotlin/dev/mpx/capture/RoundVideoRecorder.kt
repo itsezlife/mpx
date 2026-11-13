@@ -169,12 +169,14 @@ class RoundVideoRecorder(
         gl.post { finish() }
     }
 
-    fun cancel() {
-        if (finished) return
+    /** Stops and deletes the file; [done] runs on the main thread once it is gone. */
+    fun cancel(done: () -> Unit = {}) {
+        if (finished) return done()
         cancelled = true
         gl.post {
             teardown()
             File(config.output).delete()
+            main.post(done)
         }
     }
 

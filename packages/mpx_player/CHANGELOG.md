@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android fixes from device runs: the JNI library is 16 KB page aligned;
+  the playhead reads the duration once a pass ends and holds a settled
+  seek; `PictureInPicture.stop` expands the window.
 - HLS on Android: `PlayerSource.hls` (and `PlayerSource.kind`) plays a
   stream through Media3 with its playlists and segments in the bytes cache
   (`NativePlayerBackend.playlists` resolves playlists). Apple players move

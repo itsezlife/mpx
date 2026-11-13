@@ -418,6 +418,7 @@ final class _NativePlayerEngine implements PlayerEngine {
   final Stopwatch _since = Stopwatch();
   bool _advancing = false;
   Duration? _seekTarget;
+  Duration? _held;
   int _seekId = 0;
 
   @override
@@ -428,13 +429,19 @@ final class _NativePlayerEngine implements PlayerEngine {
     null => null,
   };
 
+  // The platform reports the end a little off the duration (the last
+  // sample's time, or past it): an ended pass and anything past the end
+  // read as the duration.
   @override
   Duration get position {
     final target = _seekTarget;
     if (target != null) return target;
-    if (!_advancing) return _anchor;
-    final moved = _anchor + _since.elapsed * _speed;
     final duration = _duration;
+    if (_phase == PlayerPhase.ended && duration != null) return duration;
+    if (!_advancing) {
+      return duration != null && _anchor > duration ? duration : _anchor;
+    }
+    final moved = _anchor + _since.elapsed * _speed;
     if (duration == null || duration <= Duration.zero || moved <= duration) {
       return moved;
     }
@@ -525,8 +532,14 @@ final class _NativePlayerEngine implements PlayerEngine {
       if (failedCodec == _codec) return _retryAfterDecoderFailure();
     }
     _last = snapshot;
-    if (snapshot.seekId >= _seekId) _seekTarget = null;
-    _anchor = Duration(microseconds: snapshot.positionUs);
+    if (snapshot.seekId >= _seekId) {
+      // A held playhead stays where it was sent until it moves: the
+      // platform lands on the nearest sample, a millisecond short at the end.
+      _held = _seekTarget ?? _held;
+      _seekTarget = null;
+    }
+    if (snapshot.advancing) _held = null;
+    _anchor = _held ?? Duration(microseconds: snapshot.positionUs);
     _since
       ..reset()
       ..start();

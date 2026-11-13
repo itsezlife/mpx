@@ -22,6 +22,7 @@ import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
+import androidx.media3.transformer.InAppMp4Muxer
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
@@ -115,23 +116,17 @@ class CaptureTranscoder(
 
     private fun start(request: CompressionRequest) {
         File(request.output).delete()
-        val encoders = DefaultEncoderFactory.Builder(context)
-            .setRequestedVideoEncoderSettings(
-                VideoEncoderSettings.Builder()
-                    .setBitrate(request.videoBitrate)
-                    .setiFrameIntervalSeconds(1f)
-                    .build(),
-            )
-            .setRequestedAudioEncoderSettings(
-                AudioEncoderSettings.Builder().setBitrate(request.audioBitrate).build(),
-            )
-            .setEnableFallback(true)
-            .build()
         lateinit var current: Running
-        val transformer = Transformer.Builder(context)
-            .setVideoMimeType(MimeTypes.VIDEO_H264)
-            .setAudioMimeType(MimeTypes.AUDIO_AAC)
-            .setEncoderFactory(encoders)
+        val builder = Transformer.Builder(context).setMuxerFactory(muxerFor(request))
+        // Requested encoder settings make Transformer re-encode, so a
+        // passthrough keeps the defaults and the source's formats.
+        if (!request.passthrough) {
+            builder
+                .setVideoMimeType(MimeTypes.VIDEO_H264)
+                .setAudioMimeType(MimeTypes.AUDIO_AAC)
+                .setEncoderFactory(encodersFor(request))
+        }
+        val transformer = builder
             .addListener(object : Transformer.Listener {
                 override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                     finish(current) { done(current.request, exportResult) }
@@ -188,6 +183,27 @@ class CaptureTranscoder(
         poll(current)
     }
 
+    private fun encodersFor(request: CompressionRequest) = DefaultEncoderFactory.Builder(context)
+        .setRequestedVideoEncoderSettings(
+            VideoEncoderSettings.Builder()
+                .setBitrate(request.videoBitrate)
+                .setiFrameIntervalSeconds(1f)
+                .build(),
+        )
+        .setRequestedAudioEncoderSettings(
+            AudioEncoderSettings.Builder().setBitrate(request.audioBitrate).build(),
+        )
+        .setEnableFallback(true)
+        .build()
+
+    // A streamable file reserves a fixed 400 KB at its head for the index,
+    // more than a short clip weighs; the index goes at the end instead, which
+    // a player reads with one range request.
+    private fun muxerFor(request: CompressionRequest) =
+        InAppMp4Muxer.Factory()
+            .setVideoDurationUs(request.durationUs)
+            .setAttemptStreamableOutputEnabled(false)
+
     private fun finish(current: Running, report: () -> Unit) {
         if (current.finished) return
         current.finished = true
@@ -208,8 +224,8 @@ class CaptureTranscoder(
                 "durationUs" to if (result.durationMs > 0) result.durationMs * 1000 else request.durationUs,
                 "width" to request.width,
                 "height" to request.height,
-                // The muxer writes the index at the front once the sizes are
-                // known: the head of the file changes at the end.
+                // The muxer patches the media box size at the head once the
+                // samples are written: the head of the file changes at the end.
                 "headerRewritten" to true,
                 "reencoded" to reencoded,
             ),
@@ -227,7 +243,9 @@ class CaptureTranscoder(
                     mapOf(
                         "job" to current.request.job,
                         "type" to "progress",
-                        "bytes" to File(current.request.output).length(),
+                        // The muxer pre-sizes the file and trims it at the end,
+                        // so its length says nothing about the bytes written.
+                        "bytes" to 0L,
                         "positionUs" to (current.request.durationUs * fraction).toLong(),
                         "fraction" to fraction,
                     ),
