@@ -122,16 +122,31 @@ native AAC, which stays LGPL.
 - `MediaKey` has a `local` variant; the bytes cache gains alias
   and release (ADR 0002, 0003).
 
+## Settled in implementation
+
+- The plan (output size, bitrate, passthrough) is computed once in Dart from
+  a native probe, so every platform applies one rule: the long side scaled
+  down to the step, sides rounded to even, bitrate the lower of the step's
+  and the source's, and an H.264 source with neither size nor bitrate to
+  change is remuxed. kbps are 1000 bits. Sends are H.264 only; no HEVC in v1.
+- Apple writers set `shouldOptimizeForNetworkUse` (index at the front);
+  Android compression uses Media3's default muxer, round video the
+  platform `MediaMuxer`, both non-fragmented. Every v1 writer changes the
+  head of the file at the end, so `headerRewritten` is set on every output;
+  the field stays for a later fragmented or growing-file writer.
+- Round video values arrive as a `RoundVideoConfig` the host builds (from
+  its server or the defaults).
+- macOS: the first camera counts as front, a second as back; permissions
+  are the camera and audio-input sandbox entitlements plus the usage strings.
+- Capture output moves into the store under `MediaKey.local(uuid).encoded`,
+  the fetch adapter's content key, in pieces as a complete ranged resource
+  where the store keeps ranges. `mpx_capture` does not depend on `mpx`; the
+  host names the server key through the adapter's `cacheKeyOf`.
+
 ## Open in implementation
 
-- Whether HEVC is allowed for sends outside the preset table.
-- Where server-tunable round video values come from (the host passes them;
-  the shape is not fixed).
-- The Android muxer choice for round video (our own growing-file writer as in
-  the reference, or Media3's) and fragmented vs faststart output.
 - Thumbnail API: first frame, keyframe strip.
 - Size estimate before send.
-- macOS camera permissions and device selection.
 
 ## Provenance
 
