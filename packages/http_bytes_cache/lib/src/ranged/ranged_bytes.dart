@@ -515,8 +515,14 @@ final class _Fetch {
       if (_waiters == 0 && !_done.isCompleted) abort();
     }
 
+    // The wait listens to a child token linked for this step only. A
+    // listener on [cancelToken] itself would stay until it cancels, and an
+    // ask steps once per landing and per GET with the same token: a
+    // long-lived token would keep every past wait, and its GET, alive.
+    final wait = CancelToken();
+    final unlink = cancelToken.link(wait);
     unawaited(
-      cancelToken.whenCancel.then((_) {
+      wait.whenCancel.then((_) {
         if (result.isCompleted) return;
         result.completeError(
           HttpBytesException$Cancelled(
@@ -528,11 +534,13 @@ final class _Fetch {
     );
     next.then(
       (_) {
+        unlink();
         if (result.isCompleted) return;
         _waiters--;
         result.complete();
       },
       onError: (Object error, StackTrace stackTrace) {
+        unlink();
         if (result.isCompleted) return;
         _waiters--;
         result.completeError(error, stackTrace);

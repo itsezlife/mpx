@@ -21,29 +21,47 @@ import 'package:http_bytes_cache/src/ranged/ranged_bytes.dart';
 /// [RangedResource.ensure], while the reader blocks on its own thread until
 /// the "range landed" signal wakes it. Only control messages cross into Dart.
 ///
-/// One per process: the native side has a single fetch callback. Requires
-/// the code asset the package's build hook compiles ([isAvailable]); VM
-/// only.
-final class NativeRangedReaders {
+/// One per process: the native side has a single fetch callback, so it
+/// lets one instance attach at a time, from whichever isolate. An instance
+/// whose isolate group ends without [close] (a hot restart) is detached as
+/// the group shuts down, and its publications are withdrawn, so the next
+/// instance starts from a clean native side. Requires the code asset the
+/// package's build hook compiles ([isAvailable]); VM only.
+final class NativeRangedReaders implements Finalizable {
   /// Serves readers of [ranged]'s resources.
   ///
-  /// Throws [StateError] when another instance is open in this isolate, and
-  /// [UnsupportedError] when the native library is missing.
+  /// Throws [StateError] while another instance is attached in this process
+  /// (in any isolate), and [UnsupportedError] when the native library is
+  /// missing.
   NativeRangedReaders(this.ranged, {this.readAheadBytes = 512 * 1024}) {
     if (!isAvailable) {
       throw UnsupportedError(
         'The native reader of http_bytes_cache is not built for this target.',
       );
     }
-    if (_active != null) {
-      throw StateError('Another NativeRangedReaders is open');
+    final fetch = NativeCallable<HbcFetchNative>.listener(_onFetch);
+    final owner = hbcAttach(fetch.nativeFunction);
+    if (owner == hbcErrBusy) {
+      fetch.close();
+      throw StateError(
+        'Another NativeRangedReaders is attached in this process; close it '
+        'first (the native reader has one fetch callback per process).',
+      );
     }
-    _active = this;
-    _fetch = NativeCallable<HbcFetchNative>.listener(_onFetch);
-    hbcSetFetchCallback(_fetch.nativeFunction);
+    _fetch = fetch;
+    _owner = owner;
+    _detacher.attach(this, Pointer<Void>.fromAddress(owner), detach: this);
   }
 
-  static NativeRangedReaders? _active;
+  /// Detaches an instance its isolate group dropped without [close]: native
+  /// finalizers run when the group shuts down, which a hot restart does.
+  /// [_fetch] keeps the instance reachable until [close], so the finalizer
+  /// never runs earlier.
+  static final NativeFinalizer _detacher = NativeFinalizer(
+    Native.addressOf<NativeFunction<Void Function(Pointer<Void>)>>(
+      hbcDetachFinalizer,
+    ).cast(),
+  );
 
   /// Whether the native library is loaded and speaks this interface.
   static bool get isAvailable {
@@ -57,7 +75,7 @@ final class NativeRangedReaders {
   }
 
   /// The C interface version this Dart side speaks (`HBC_ABI_VERSION`).
-  static const int abiVersion = 1;
+  static const int abiVersion = 2;
 
   /// Address of the native `hbc_api` function table, for a player's native
   /// code (Kotlin through JNI, Swift) to call the reader functions without
@@ -72,7 +90,11 @@ final class NativeRangedReaders {
   final int readAheadBytes;
 
   late final NativeCallable<HbcFetchNative> _fetch;
-  final Map<int, NativePublication> _byId = {};
+  late final int _owner;
+
+  /// Publications by native id. Publishing a key twice yields one id (the
+  /// native side counts the publications), so an id may hold several.
+  final Map<int, Set<NativePublication>> _byId = {};
   var _closed = false;
 
   /// Opens [request]'s ranged resource and makes it readable natively under
@@ -95,13 +117,13 @@ final class NativeRangedReaders {
       );
     }
     final publication = NativePublication._(this, id, resource);
-    _byId[id] = publication;
+    (_byId[id] ??= {}).add(publication);
     publication._start();
     return publication;
   }
 
   void _onFetch(int id, int offset, int length, int priority) {
-    final publication = _byId[id];
+    final publication = _byId[id]?.firstOrNull;
     if (publication == null) return;
     final end = offset + (length > readAheadBytes ? length : readAheadBytes);
     final level =
@@ -130,16 +152,20 @@ final class NativeRangedReaders {
         );
   }
 
-  /// Withdraws every publication and detaches from the native side.
+  /// Withdraws every publication and detaches from the native side, so
+  /// another instance may attach.
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
-    hbcSetFetchCallback(nullptr);
-    for (final publication in List.of(_byId.values)) {
+    // Detaching first stops native misses from calling back and wakes
+    // blocked readers as closed; the publications then only close their
+    // handles (their unpublish finds nothing left).
+    hbcDetach(_owner);
+    _detacher.detach(this);
+    for (final publication in [for (final set in _byId.values) ...set]) {
       await publication.close();
     }
     _fetch.close();
-    if (identical(_active, this)) _active = null;
   }
 }
 
@@ -185,12 +211,16 @@ final class NativePublication {
     hbcSetLength(id, total);
   }
 
-  /// Withdraws the resource from native readers and closes its handle.
-  /// Idempotent.
+  /// Withdraws this publication from native readers and closes its handle.
+  /// A key published again stays readable until its last publication
+  /// closes. Idempotent.
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
-    _owner._byId.remove(id);
+    final siblings = _owner._byId[id];
+    if (siblings != null && siblings.remove(this) && siblings.isEmpty) {
+      _owner._byId.remove(id);
+    }
     hbcUnpublish(id);
     await _events?.cancel();
     await resource.close();

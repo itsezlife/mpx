@@ -170,6 +170,33 @@ void main() {
       await expectLater(pending, throwsA(isA<HttpBytesException$Cancelled>()));
     });
 
+    test('a cancel token holds one wait at a time, however many GETs and '
+        'landings the ask waits through', () async {
+      final fine = RangedBytes(
+        store: store,
+        client: client,
+        chunkBytes: 100,
+        writeBytes: 100,
+      );
+      addTearDown(fine.close);
+      final resource = await fine.open(
+        RangedRequest(url: server.url(), cacheKey: key),
+      );
+      final token = CancelToken();
+      final held = <int>[];
+      final events = resource.events.listen((event) {
+        if (event is RangeLanded) held.add(token.debugLinkedCount);
+      });
+      addTearDown(events.cancel);
+
+      await resource.ensure(const ByteRange(0, 10000), cancelToken: token);
+
+      expect(held.length, greaterThan(10));
+      expect(held, everyElement(lessThanOrEqualTo(1)));
+      expect(held, contains(1));
+      expect(token.debugLinkedCount, 0);
+    });
+
     test('a store that cannot keep ranges is reported unsupported', () async {
       final unsupported = RangedBytes(
         store: MemoryBytesCache(),

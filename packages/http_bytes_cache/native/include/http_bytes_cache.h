@@ -33,13 +33,14 @@ extern "C" {
 #endif
 
 /* Version of this interface; hbc_api.version carries it. */
-#define HBC_ABI_VERSION 1
+#define HBC_ABI_VERSION 2
 
 /* hbc_reader_read results below zero. Zero means end of the resource. */
 #define HBC_ERR_CANCELLED (-1) /* hbc_reader_cancel woke the read */
 #define HBC_ERR_FAILED (-2)    /* the fetch of the missing bytes failed */
 #define HBC_ERR_CLOSED (-3)    /* the resource was unpublished */
 #define HBC_ERR_IO (-4)        /* the file could not be read */
+#define HBC_ERR_BUSY (-5)      /* hbc_attach: another host is attached */
 
 /* Priorities, as the Dart side's RequestPriority. */
 #define HBC_PRIORITY_BACKGROUND 0
@@ -57,13 +58,27 @@ typedef void (*hbc_fetch_fn)(int64_t resource_id, int64_t offset,
 
 HBC_EXPORT int32_t hbc_abi_version(void);
 
-/* Sets the fetch callback; NULL detaches it (reads then wait for landings
- * only). */
-HBC_EXPORT void hbc_set_fetch_callback(hbc_fetch_fn fetch);
+/* Attaches the one host of this process, which [fetch] reaches. Returns its
+ * owner token (> 0), or HBC_ERR_BUSY while another host is attached (from
+ * any isolate) or when [fetch] is NULL. */
+HBC_EXPORT int64_t hbc_attach(hbc_fetch_fn fetch);
+
+/* Detaches the host [owner]: drops the fetch callback and withdraws every
+ * published resource (blocked and later reads return HBC_ERR_CLOSED). A
+ * token that is not the attached one is ignored. */
+HBC_EXPORT void hbc_detach(int64_t owner);
+
+/* hbc_detach for a Dart NativeFinalizer, whose token is [owner]: when the
+ * host's isolate group ends without detaching (a hot restart), the
+ * finalizer detaches it, so the next host attaches to a clean library and
+ * nothing calls the dead host's callback. */
+HBC_EXPORT void hbc_detach_finalizer(void *owner);
 
 /* Publishes the resource [key] whose sparse file is [path]. [total_length]
  * is -1 when unknown. Returns its id (> 0), or 0 when out of memory.
- * Publishing a published key returns its id and updates path and length. */
+ * Publishing a published key returns its id, updates path and length, and
+ * counts one more publication: each publication is withdrawn by its own
+ * hbc_unpublish. */
 HBC_EXPORT int64_t hbc_publish(const char *key, const char *path,
                                int64_t total_length);
 
@@ -81,7 +96,8 @@ HBC_EXPORT void hbc_ranges_reset(int64_t id);
  * return HBC_ERR_FAILED. */
 HBC_EXPORT void hbc_fetch_failed(int64_t id, int64_t offset, int64_t length);
 
-/* Withdraws the resource: blocked and later reads return HBC_ERR_CLOSED. */
+/* Withdraws one publication of the resource. At the last one, blocked and
+ * later reads return HBC_ERR_CLOSED. */
 HBC_EXPORT void hbc_unpublish(int64_t id);
 
 /* --- Reader side (players, on their own threads) ------------------------ */
@@ -97,7 +113,10 @@ HBC_EXPORT int64_t hbc_reader_length(hbc_reader *reader, int32_t wait);
 
 /* Reads up to [length] bytes at [offset] into [buffer]. Returns the count
  * read (at least 1), 0 at the end, or a negative HBC_ERR_* code. Blocks
- * while the byte at [offset] is missing. */
+ * while the byte at [offset] is missing. A read that races a reset (the
+ * file no longer holds bytes counted present, or changed under the read)
+ * waits for the next landing or reset and reads again; HBC_ERR_IO only when
+ * the file read fails, or nothing follows the short read for seconds. */
 HBC_EXPORT int64_t hbc_reader_read(hbc_reader *reader, int64_t offset,
                                    uint8_t *buffer, int64_t length);
 
