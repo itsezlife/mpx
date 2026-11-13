@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -61,22 +62,48 @@ final class ViewerController extends ChangeNotifier {
   /// Closes the viewer as the back button does; completes when it has run.
   Future<void> close() async => _viewer?.close();
 
+  bool _notifyPending = false;
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
   void _attach(MediaViewerState viewer) {
     assert(
       _viewer == null || identical(_viewer, viewer),
       'A ViewerController drives one viewer at a time.',
     );
     _viewer = viewer;
-    notifyListeners();
+    _changed();
   }
 
   void _detach(MediaViewerState viewer) {
     if (!identical(_viewer, viewer)) return;
     _viewer = null;
-    notifyListeners();
+    _changed();
   }
 
-  void _changed() => notifyListeners();
+  // The viewer attaches in initState and detaches in dispose, and takes or
+  // gives back its video's lease there and in layout: inside a build, or
+  // while the tree is locked. A listener elsewhere in the tree cannot
+  // rebuild then (Flutter asserts), so a change heard during the frame's
+  // build, layout or paint is told once, at the end of that frame.
+  void _changed() {
+    final binding = SchedulerBinding.instance;
+    if (binding.schedulerPhase != SchedulerPhase.persistentCallbacks) {
+      notifyListeners();
+      return;
+    }
+    if (_notifyPending) return;
+    _notifyPending = true;
+    binding.addPostFrameCallback((_) {
+      _notifyPending = false;
+      if (!_disposed) notifyListeners();
+    });
+  }
 }
 
 // --- Viewer -----------------------------------------------------------------
@@ -313,6 +340,10 @@ class MediaViewerState extends State<MediaViewer>
   late final ViewerSpeeds _speeds = widget.speeds ?? ViewerSpeeds();
   final FocusNode _focus = FocusNode(debugLabel: 'mpx-viewer');
   final Map<int, GlobalKey<ViewerPhotoPageState>> _pageKeys = {};
+  // The origins' pictures the pages draw until their own arrive, owned by
+  // the viewer: the bridge hands out clones. Kept for the pages that can
+  // show (the item and its neighbours), freed as the viewer leaves them.
+  final Map<int, ui.Image> _originFrames = {};
 
   /// The index of the item shown.
   int get index => _index;
@@ -389,6 +420,7 @@ class MediaViewerState extends State<MediaViewer>
     for (final index in _hidden) {
       widget.bridge?.setHidden(index, hidden: false);
     }
+    _dropOriginFrames();
     _transition.dispose();
     _springBack.dispose();
     _pages.dispose();
@@ -403,6 +435,43 @@ class MediaViewerState extends State<MediaViewer>
       oldWidget.controller?._detach(this);
       widget.controller?._attach(this);
     }
+    if (!identical(widget.source, oldWidget.source)) {
+      oldWidget.source.removeListener(_onSource);
+      widget.source.addListener(_onSource);
+      widget.source.loadAround(_index);
+      // The index may name another item now.
+      _releaseVideo();
+      _syncVideo();
+    }
+    if (!identical(widget.bridge, oldWidget.bridge)) {
+      // The new surface hides what the viewer stands over; the old one shows
+      // it again. Its pictures came from the old surface.
+      for (final index in _hidden) {
+        oldWidget.bridge?.setHidden(index, hidden: false);
+        widget.bridge?.setHidden(index, hidden: true);
+      }
+      if (widget.bridge == null) _hidden.clear();
+      _dropOriginFrames();
+    }
+  }
+
+  ui.Image? _originFrame(int index) {
+    final kept = _originFrames[index];
+    if (kept != null) return kept;
+    final frame = widget.bridge?.frameOf(index);
+    if (frame != null) _originFrames[index] = frame;
+    return frame;
+  }
+
+  // Frees the origin pictures, all of them or those of pages more than one
+  // away from [around]. A page still drawing one keeps its own clone
+  // (RawImage holds one), so freeing ours never pulls a picture off screen.
+  void _dropOriginFrames({int? around}) {
+    _originFrames.removeWhere((index, frame) {
+      if (around != null && (index - around).abs() <= 1) return false;
+      frame.dispose();
+      return true;
+    });
   }
 
   void _notifyController() => widget.controller?._changed();
@@ -939,6 +1008,7 @@ class MediaViewerState extends State<MediaViewer>
             itemCount: widget.source.count,
             onPageChanged: (index) {
               setState(() => _index = index);
+              _dropOriginFrames(around: index);
               _notifyController();
               _syncVideo();
               widget.source.loadAround(index);
@@ -1086,7 +1156,7 @@ class MediaViewerState extends State<MediaViewer>
   // which covers it once it arrives. [size] is the decode size, kept the same
   // through the morph so the morph never attaches again.
   Widget _picture(int index, GalleryItem item, Size size, BoxFit fit) {
-    final frame = widget.bridge?.originOf(index)?.frame;
+    final frame = _originFrame(index);
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
     return FittedBox(
       fit: fit,

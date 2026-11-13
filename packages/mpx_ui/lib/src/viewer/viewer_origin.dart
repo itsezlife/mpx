@@ -68,7 +68,11 @@ class ViewerOriginScopeState extends State<ViewerOriginScope>
     implements OriginBridge {
   final List<_ViewerOriginState> _origins = [];
   final Set<int> _hidden = {};
-  final Map<int, ui.Image> _frames = {};
+  // The picture each hidden origin showed as it was hidden (a hidden origin
+  // paints nothing to read), by the gallery it was hidden for: two galleries
+  // over one scope share indexes, not items. Freed when the origin shows
+  // again; callers only ever get clones.
+  final Map<(GallerySource?, int), ui.Image> _frames = {};
 
   /// The bridge for a viewer paging [source]: origins registered by key are
   /// found through [source]'s items.
@@ -115,17 +119,27 @@ class ViewerOriginScopeState extends State<ViewerOriginScope>
     for (final origin in _of(index, source)) {
       final place = origin._place();
       if (place == null) continue;
-      final frame =
-          _frames[index] ??
-          (_hidden.contains(index) ? null : origin._captureFrame());
-      if (frame != null) _frames[index] = frame;
       return GalleryOrigin(
         rect: place.rect,
         radius: origin.widget.borderRadius,
         clip: place.clip,
-        frame: frame,
         position: origin.widget.position?.call(),
       );
+    }
+    return null;
+  }
+
+  ui.Image? _frameOf(int index, GallerySource? source) {
+    final kept = _frames[(source, index)];
+    if (kept != null) return kept.clone();
+    if (_hidden.contains(index)) return null;
+    return _capture(index, source);
+  }
+
+  ui.Image? _capture(int index, GallerySource? source) {
+    for (final origin in _of(index, source)) {
+      if (origin._place() == null) continue;
+      return origin._captureFrame();
     }
     return null;
   }
@@ -153,10 +167,16 @@ class ViewerOriginScopeState extends State<ViewerOriginScope>
 
   void _setHidden(int index, GallerySource? source, {required bool hidden}) {
     if (hidden) {
+      // Read before the origin turns transparent: it still shows the picture.
+      final key = (source, index);
+      if (!_frames.containsKey(key)) {
+        final frame = _capture(index, source);
+        if (frame != null) _frames[key] = frame;
+      }
       _hidden.add(index);
     } else {
       _hidden.remove(index);
-      _frames.remove(index)?.dispose();
+      _frames.remove((source, index))?.dispose();
     }
     for (final origin in _of(index, source)) {
       origin._hiddenChanged(source);
@@ -171,6 +191,9 @@ class ViewerOriginScopeState extends State<ViewerOriginScope>
 
   @override
   GalleryOrigin? originOf(int index) => _originOf(index, null);
+
+  @override
+  ui.Image? frameOf(int index) => _frameOf(index, null);
 
   @override
   Future<void> reveal(int index) => _reveal(index, null);
@@ -195,6 +218,9 @@ final class _SourcedBridge implements OriginBridge {
 
   @override
   GalleryOrigin? originOf(int index) => _scope._originOf(index, _source);
+
+  @override
+  ui.Image? frameOf(int index) => _scope._frameOf(index, _source);
 
   @override
   Future<void> reveal(int index) => _scope._reveal(index, _source);

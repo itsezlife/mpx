@@ -310,6 +310,23 @@ void main() {
     expect(tester.widget<Opacity>(find.byType(Opacity)).opacity, 0);
   });
 
+  testWidgets('a frame handed out stays valid after its origin shows again', (
+    tester,
+  ) async {
+    await pumpHost(tester, ListView(children: [thumbnail(0, height: 90)]));
+    final bridge = ViewerOriginScope.of(
+      tester.element(find.byType(ListView)),
+    ).bridgeFor(source);
+
+    final frame = bridge.frameOf(0)!;
+    bridge
+      ..setHidden(0, hidden: true)
+      ..setHidden(0, hidden: false);
+
+    expect(frame.debugDisposed, isFalse);
+    frame.dispose();
+  });
+
   group('ViewerController', () {
     testWidgets('observes the item, the open state and the controls', (
       tester,
@@ -349,6 +366,55 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       expect(controller.isAttached, isFalse);
       expect(controller.index, isNull);
+    });
+    testWidgets('attaching and detaching never rebuild a listener mid-build', (
+      tester,
+    ) async {
+      final controller = ViewerController();
+      addTearDown(controller.dispose);
+      tester.view.physicalSize = viewerSize;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      var showViewer = false;
+      late StateSetter setHost;
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: StatefulBuilder(
+            builder: (context, setState) {
+              setHost = setState;
+              return Stack(
+                children: [
+                  ListenableBuilder(
+                    listenable: controller,
+                    builder: (context, _) =>
+                        Text('attached: ${controller.isAttached}'),
+                  ),
+                  if (showViewer)
+                    MediaViewer(
+                      source: source,
+                      initialIndex: 0,
+                      scope: scope,
+                      controller: controller,
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+      );
+
+      setHost(() => showViewer = true);
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      await tester.pump();
+      expect(find.text('attached: true'), findsOneWidget);
+
+      setHost(() => showViewer = false);
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      await tester.pump();
+      expect(find.text('attached: false'), findsOneWidget);
     });
   });
 

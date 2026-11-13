@@ -1,5 +1,9 @@
+import 'dart:ui' as ui;
+
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_ui/mpx_ui.dart';
+import 'package:mpx_ui/testing.dart';
 
 import 'viewer_harness.dart';
 
@@ -84,6 +88,92 @@ void main() {
       await harness.pump(tester, open: false);
 
       expect(harness.morphRect(tester), fittedRect);
+    });
+  });
+
+  group('origin frames', () {
+    testWidgets('are owned by the viewer and freed with the pages', (
+      tester,
+    ) async {
+      final harness = ViewerHarness(count: 5);
+      final controller = ViewerController();
+      addTearDown(controller.dispose);
+      for (var i = 0; i < 5; i++) {
+        harness.bridge.frames[i] = _image();
+      }
+      addTearDown(() {
+        for (final frame in harness.bridge.frames.values) {
+          frame.dispose();
+        }
+      });
+      await harness.pump(tester, controller: controller);
+      for (final index in [1, 2, 3]) {
+        controller.jumpTo(index);
+        await tester.pump();
+      }
+
+      // Pages 0 and 1 are out of reach of page 3: their pictures are gone;
+      // 2 and 3 keep theirs.
+      final handed = harness.bridge.handedFrames;
+      expect({for (final (index, _) in handed) index}, containsAll([0, 3]));
+      for (final (index, frame) in handed) {
+        expect(frame.debugDisposed, index < 2, reason: 'frame of $index');
+      }
+
+      await tester.pumpWidget(const SizedBox());
+      for (final (index, frame) in handed) {
+        expect(frame.debugDisposed, isTrue, reason: 'frame of $index');
+      }
+    });
+  });
+
+  group('rebuilt', () {
+    testWidgets('with a new source and bridge, moves to them', (tester) async {
+      final harness = ViewerHarness();
+      final first = _SpySource(harness.source);
+      final second = _SpySource(
+        FakeGallerySource([
+          for (var i = 0; i < 5; i++)
+            GalleryItem(photoKey(i), size: const Size(1200, 900)),
+        ]),
+      );
+      addTearDown(second.inner.dispose);
+      final bridge = FakeOriginBridge();
+      tester.view.physicalSize = viewerSize;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      addTearDown(() {
+        harness.scope.dispose();
+        harness.clock.dispose();
+        harness.source.dispose();
+      });
+      Future<void> pumpOn(GallerySource source, OriginBridge bridge) =>
+          tester.pumpWidget(
+            Directionality(
+              textDirection: TextDirection.ltr,
+              child: MediaViewer(
+                source: source,
+                initialIndex: 0,
+                bridge: bridge,
+                scope: harness.scope,
+              ),
+            ),
+          );
+      await pumpOn(first, harness.bridge);
+      await tester.pump();
+      expect(harness.bridge.hidden, {0});
+
+      await pumpOn(second, bridge);
+
+      expect(first.listeners, isEmpty);
+      expect(second.listeners, hasLength(1));
+      expect(second.inner.requests, [0]);
+      expect(harness.bridge.hidden, isEmpty);
+      expect(bridge.hidden, {0});
+
+      await tester.pumpWidget(const SizedBox());
+      expect(second.listeners, isEmpty);
+      expect(bridge.hidden, isEmpty);
     });
   });
 
@@ -293,4 +383,36 @@ void main() {
       expect(harness.state(tester).index, 0);
     });
   });
+}
+
+/// A source that records who listens to it.
+final class _SpySource implements GallerySource {
+  _SpySource(this.inner);
+
+  final FakeGallerySource inner;
+  final List<VoidCallback> listeners = [];
+
+  @override
+  int get count => inner.count;
+
+  @override
+  GalleryItem? itemAt(int index) => inner.itemAt(index);
+
+  @override
+  void loadAround(int index) => inner.loadAround(index);
+
+  @override
+  void addListener(VoidCallback listener) => listeners.add(listener);
+
+  @override
+  void removeListener(VoidCallback listener) => listeners.remove(listener);
+}
+
+ui.Image _image() {
+  final recorder = ui.PictureRecorder();
+  Canvas(recorder).drawPaint(Paint());
+  final picture = recorder.endRecording();
+  final image = picture.toImageSync(4, 3);
+  picture.dispose();
+  return image;
 }

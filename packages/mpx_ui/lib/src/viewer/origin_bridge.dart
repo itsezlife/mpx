@@ -12,7 +12,6 @@ final class GalleryOrigin {
     required this.rect,
     this.radius = BorderRadius.zero,
     this.clip,
-    this.frame,
     this.position,
   });
 
@@ -25,10 +24,6 @@ final class GalleryOrigin {
   /// The part of the surface the picture shows through (a list's visible
   /// area), in global coordinates; null when nothing clips it.
   final Rect? clip;
-
-  /// The frame the surface shows now (a bubble's current frame), drawn by
-  /// the viewer until its own picture is ready; null for none.
-  final ui.Image? frame;
 
   /// Where the surface's playback of the item is (a bubble's silent loop):
   /// a video opens on the player from there. Null to start from the
@@ -46,6 +41,17 @@ abstract interface class OriginBridge {
   /// scrolled away, it was never in the list). Without one the viewer closes
   /// by sliding off instead of morphing back.
   GalleryOrigin? originOf(int index);
+
+  /// The picture [index]'s origin shows now (a bubble's current frame), or
+  /// the one it showed as it was hidden; the viewer draws it until its own
+  /// picture is ready. Null when there is none.
+  ///
+  /// Each call hands out a new handle ([ui.Image.clone]) that the caller
+  /// owns and disposes: the bridge may free its own copy at any time (when
+  /// the origin shows again), and a picture the caller still paints must not
+  /// go with it. [originOf] carries no picture, so reading a place stays
+  /// cheap.
+  ui.Image? frameOf(int index);
 
   /// Brings [index]'s origin on screen before the viewer closes on it, when
   /// that is another item than the one it opened from: the surface scrolls to

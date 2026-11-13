@@ -84,6 +84,7 @@ final class ViewerHarness {
     ViewerChrome? chrome,
     bool open = true,
     List<ViewerQuality> Function(int index, GalleryItem item)? qualitiesOf,
+    ViewerController? controller,
   }) async {
     tester.view.physicalSize = viewerSize;
     tester.view.devicePixelRatio = 1;
@@ -110,6 +111,7 @@ final class ViewerHarness {
           speeds: speeds,
           qualitiesOf: qualitiesOf,
           onFullscreenChanged: fullscreen.add,
+          controller: controller,
         ),
       ),
     );

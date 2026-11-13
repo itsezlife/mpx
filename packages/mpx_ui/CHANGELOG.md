@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Breaking: `GalleryOrigin.frame` is gone; `OriginBridge.frameOf` hands
+  out a picture the caller owns and disposes. The viewer frees its copies
+  as it leaves the pages, and the scope keeps one only while an origin is
+  hidden, so a picture is never painted after it is freed.
+- `ViewerController` tells its listeners after the frame when the viewer
+  mounts or unmounts, instead of during the build.
+- `MediaViewer` moves to a new `source` or `bridge` when rebuilt with one.
+- `OriginBridgeContract` in `testing.dart`, run against
+  `ViewerOriginScope` and `FakeOriginBridge`.
 - Breaking: `MediaViewer.show` takes the platform's policy when none is
   given (was `ViewerPolicy.$Android`) and, without a bridge, the closest
   `ViewerOriginScope`.
