@@ -11,7 +11,8 @@
   (`originReturn`: to the player's place, from its start, or where it
   paused) and what an animation does on open (`loopOpen`: goes on, starts
   over, or plays its own); each platform's policy has its own. The morph
-  shows the player both ways.
+  shows the player both ways; the origin's picture shows until the player
+  moves, then the player fades in over it.
 - `ViewerPolicyScope` and `copyWith` on the policy and every value in it: a
   host changes a field and keeps the platform's others. With no policy the
   viewer takes the scope's, else the reference of the theme's platform.

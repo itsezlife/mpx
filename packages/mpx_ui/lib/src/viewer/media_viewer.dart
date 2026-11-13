@@ -356,6 +356,9 @@ class MediaViewerState extends State<MediaViewer>
   int? _sessionIndex;
   // Holds the origin's loop of the video the player plays.
   AssetPlaybackHold? _loopHold;
+  // The session whose player has moved, so every picture of it (the page,
+  // the morph) shows the player from the start.
+  ViewerVideoSession? _movingSession;
   // Whether the close already told the host where the player stood.
   bool _leftReported = false;
   Timer? _spaceHold;
@@ -1331,12 +1334,12 @@ class MediaViewerState extends State<MediaViewer>
     Widget picture,
     ViewerVideoSession session, {
     BoxFit fit = BoxFit.contain,
-  }) => Stack(
-    fit: StackFit.expand,
-    children: [
-      picture,
-      PlayerView(lease: session.lease, fit: fit),
-    ],
+  }) => _PlayerOverPicture(
+    lease: session.lease,
+    picture: picture,
+    fit: fit,
+    shown: identical(_movingSession, session),
+    onMoving: () => _movingSession = session,
   );
 
   // The picture the morph moves: a video's player over its picture, so the
@@ -1521,4 +1524,99 @@ final class _GlobalClip extends CustomClipper<Rect> {
   @override
   bool shouldReclip(_GlobalClip oldClipper) =>
       oldClipper.clip != clip || oldClipper.origin != origin;
+}
+
+/// A video's player over its picture: the picture alone until the player
+/// moves (playing, its first frame drawn and its position past where it
+/// first stood), then the player, faded in over it.
+///
+/// A cold player draws its first frame, at its start, a moment before it
+/// plays: shown at once that frame stood in for the origin's and stood
+/// still, a jump and a freeze before playback. A warm one moves at once and
+/// shows at once.
+class _PlayerOverPicture extends StatefulWidget {
+  const _PlayerOverPicture({
+    required this.lease,
+    required this.picture,
+    required this.fit,
+    required this.shown,
+    required this.onMoving,
+  });
+
+  final PlayerLease lease;
+  final Widget picture;
+  final BoxFit fit;
+
+  /// Whether the player has moved already, under another picture of the
+  /// item: it shows from the start.
+  final bool shown;
+
+  /// Called once the player moves.
+  final VoidCallback onMoving;
+
+  @override
+  State<_PlayerOverPicture> createState() => _PlayerOverPictureState();
+}
+
+class _PlayerOverPictureState extends State<_PlayerOverPicture>
+    with SingleTickerProviderStateMixin {
+  // How long the player fades in over the picture once it moves.
+  static const Duration _fadeIn = Duration(milliseconds: 120);
+
+  late final Ticker _watch;
+  // Where the player stood when its first frame was seen; null before.
+  Duration? _firstAt;
+  bool _moving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _watch = createTicker(_check);
+    _moving = widget.shown;
+    if (!_moving) _watch.start();
+  }
+
+  @override
+  void didUpdateWidget(_PlayerOverPicture oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(widget.lease, oldWidget.lease)) return;
+    _firstAt = null;
+    _moving = widget.shown;
+    if (!_moving && !_watch.isActive) _watch.start();
+  }
+
+  void _check(Duration _) {
+    final state = widget.lease.state.value;
+    if (!state.playing || !state.firstFrameRendered) return;
+    final position = widget.lease.position;
+    final first = _firstAt ??= position;
+    if (position == first) return;
+    _watch.stop();
+    setState(() => _moving = true);
+    widget.onMoving();
+  }
+
+  @override
+  void dispose() {
+    _watch.dispose();
+    super.dispose();
+  }
+
+  // The player's view is there from the start, transparent: it counts as a
+  // view of the player for the pool, and its texture is ready to show.
+  @override
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: [
+      widget.picture,
+      TweenAnimationBuilder<double>(
+        key: const ValueKey('mpx-viewer-player'),
+        tween: Tween(begin: 0, end: _moving ? 1 : 0),
+        duration: widget.shown ? Duration.zero : _fadeIn,
+        builder: (context, opacity, child) =>
+            Opacity(opacity: opacity, child: child),
+        child: PlayerView(lease: widget.lease, fit: widget.fit),
+      ),
+    ],
+  );
 }

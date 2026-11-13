@@ -24,6 +24,16 @@ Future<void> _doubleTap(WidgetTester tester, Offset at) async {
 
 // The controls read the playhead every frame while a video plays, so the
 // tree never settles by itself: pump a second of frames instead.
+// Whether the player's picture shows: its texture, fully opaque.
+bool _playerShows(WidgetTester tester) {
+  final textures = find.byType(Texture);
+  if (textures.evaluate().isEmpty) return false;
+  final opacity = tester.widget<Opacity>(
+    find.ancestor(of: textures.first, matching: find.byType(Opacity)).first,
+  );
+  return opacity.opacity == 1;
+}
+
 Future<void> _settle(WidgetTester tester) async {
   for (var i = 0; i < 20; i++) {
     await tester.pump(const Duration(milliseconds: 50));
@@ -53,7 +63,36 @@ void main() {
 
       engine.renderFirstFrame();
       await tester.pump();
-      expect(find.byType(Texture), findsOneWidget);
+      expect(_playerShows(tester), isFalse, reason: 'not moving yet');
+
+      engine.advance(const Duration(milliseconds: 40));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(_playerShows(tester), isTrue);
+    });
+
+    testWidgets('a cold player is leased as the viewer is built, and the '
+        'origin\'s picture shows until the player moves', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+        autoFirstFrame: false,
+      );
+      await harness.pump(tester, open: false);
+
+      expect(harness.backend!.created, isNotEmpty, reason: 'before the morph');
+      final engine = harness.engine(0);
+      expect(engine.state.value.playing, isTrue);
+
+      // Its first frame, standing at 0: still the origin's picture.
+      engine.renderFirstFrame();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(_playerShows(tester), isFalse);
+
+      engine.advance(const Duration(milliseconds: 40));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(_playerShows(tester), isTrue);
     });
 
     testWidgets('closing hands the position back to the origin', (
