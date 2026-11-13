@@ -3,7 +3,14 @@
 ## Unreleased
 
 - The viewer's origin frame is a placeholder the content replaces, no longer
-  drawn under transparent content; animations continue the origin's frame.
+  drawn under transparent content.
+- An animation's page draws the surface's own playback
+  (`AssetPresets.animation`); a video with sound starts where the surface's
+  loop is, shows the player in the morph both ways and moves the loop to the
+  player's place on close.
+- The video bar keeps the seek track's length as the time and speed change;
+  the speed panel shows the speed beside its slider; viewer text takes the
+  viewer's style whatever the host puts above it.
 - Breaking: `GalleryOrigin.frame` is gone; `OriginBridge.frameOf` hands
   out a picture the caller owns and disposes. The viewer frees its copies
   as it leaves the pages, and the scope keeps one only while an origin is

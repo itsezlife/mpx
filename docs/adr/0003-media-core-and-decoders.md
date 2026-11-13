@@ -86,22 +86,26 @@ satisfied attempt ending as cancelled; `PlaybackPauseLayer.meteredNetwork` and
 set, which together with `lowPower` and `fastScroll` hold back new staged
 preload attempts (`AssetCacheScope.preloadPausingLayers`).
 
-### Shared playback phase
+### One playback per content that plays
 
-The same content at two specs is two cache entries, each with its own
-playback. The entries of one `MediaKey` that play at once share their phase:
-the scope keeps an `AssetPlaybackPhase` per key and passes it in the paint
-context (`AssetPaintContext.phase`). A playing paintable reports how far into
-its pass it is at each paint that steps it; at its first such paint, and at
-one after the clock ran on without it (drawn over), it takes the position
-another entry reported. A playback stopped on purpose (held, hidden, off
-screen) and a rewound one (a foreground surface) go on from their own frame.
-The position runs on with the clock while its entry plays and stays where it
-stopped once it does not. Lottie renders any frame, so it is there at once;
-the image codec and the video decoder decode forward only, so they decode and
-drop the frames up to it while the frame on show stays. A playing sibling
-lends its live playback to a binding below its first frame; a foreground
-binding gets the first-frame still, as before.
+A thumbnail and the fullscreen copy of an animation draw one playback: the
+same cache entry, bound twice. Content that plays (an animated image, a vector
+animation, a silent clip) is decoded at one spec whatever the box it is shown
+in (`AssetPresets.animation`): the content fitted into 512 px, the largest
+frame the animation pools hold (a decoder never scales up). Every surface that
+shows it playing binds that spec, so they share one decoder and one frame;
+nothing catches up and nothing restarts. The price: a thumbnail decodes more
+pixels than it shows, and a fullscreen copy is drawn from at most 512 px (a
+vector animation renders at 512 for both). A copy whose thumbnail is gone
+decodes the same spec anew. `AssetPaintable.playbackPosition` and
+`seekPlayback` (through `AssetCacheScope`) read and move an entry's playback:
+a player of the same content hands its position back to the loop. A silent
+clip seeks by decoding and dropping frames forward, as its decoder has no
+seek to a time.
+
+Rejected: a second entry at the viewer's size that takes the thumbnail's
+phase. A forward-only decoder has to decode its way to the phase, so the copy
+showed its first frame or jumped back while it caught up.
 
 ### Unchanged contracts
 

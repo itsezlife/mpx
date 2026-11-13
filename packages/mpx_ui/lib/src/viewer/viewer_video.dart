@@ -297,6 +297,14 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
     final state = widget.lease.state.value;
     final tokens = widget.tokens;
     final bottom = MediaQuery.paddingOf(context).bottom;
+    return DefaultTextStyle(
+      style: tokens.subtitle,
+      child: _controls(state, bottom),
+    );
+  }
+
+  Widget _controls(PlayerState state, double bottom) {
+    final tokens = widget.tokens;
     return IgnorePointer(
       ignoring: !widget.visible,
       child: TweenAnimationBuilder<double>(
@@ -387,19 +395,31 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
               ),
             ),
             const SizedBox(width: 8),
-            ValueListenableBuilder<Duration>(
-              valueListenable: _playhead,
-              builder: (context, playhead, _) => Text(
-                '${formatViewerTime(_preview ?? playhead)} / '
-                '${formatViewerTime(duration)}',
-                key: const ValueKey('mpx-viewer-time'),
-                style: tokens.subtitle,
+            // The time and the speed keep one width each, whatever they
+            // say, so the seek bar's track never changes length under the
+            // thumb.
+            SizedBox(
+              width: _widthOf(
+                context,
+                '${_digitsOf(duration)} / ${_digitsOf(duration)}',
+              ),
+              child: ValueListenableBuilder<Duration>(
+                valueListenable: _playhead,
+                builder: (context, playhead, _) => Text(
+                  '${formatViewerTime(_preview ?? playhead)} / '
+                  '${formatViewerTime(duration)}',
+                  key: const ValueKey('mpx-viewer-time'),
+                  style: _figures,
+                  textAlign: TextAlign.end,
+                  maxLines: 1,
+                ),
               ),
             ),
             _textButton(
               key: const ValueKey('mpx-viewer-speed'),
               label: widget.strings.speed,
               text: '${_speedText(state.speed)}x',
+              width: _speedWidth(context),
               onTap: () => _toggle(_Panel.speed),
             ),
             if (widget.qualities.length > 1)
@@ -426,6 +446,7 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
     required String label,
     required String text,
     required VoidCallback onTap,
+    double? width,
   }) => Semantics(
     key: key,
     button: true,
@@ -435,10 +456,46 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Center(child: Text(text, style: widget.tokens.subtitle)),
+        child: SizedBox(
+          width: width,
+          child: Center(child: Text(text, style: _figures, maxLines: 1)),
+        ),
       ),
     ),
   );
+
+  // The subtitle with digits of one width, so a time keeps its width as it
+  // counts.
+  TextStyle get _figures => widget.tokens.subtitle.copyWith(
+    fontFeatures: const [ui.FontFeature.tabularFigures()],
+  );
+
+  // [duration]'s time with every digit a zero: as wide as any time up to it.
+  static String _digitsOf(Duration duration) =>
+      formatViewerTime(duration).replaceAll(RegExp('[0-9]'), '0');
+
+  double _widthOf(BuildContext context, String text) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: _figures),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final width = painter.width.ceilToDouble() + 1;
+    painter.dispose();
+    return width;
+  }
+
+  // As wide as the widest speed the rule allows.
+  double _speedWidth(BuildContext context) {
+    final rule = widget.rules.speed;
+    var widest = 0.0;
+    for (final speed in {rule.min, rule.max, 1.0, ...rule.presets}) {
+      widest = math.max(widest, _widthOf(context, '${_speedText(speed)}x'));
+    }
+    // A speed between two tenths shows one decimal, as wide as 0.0.
+    return math.max(widest, _widthOf(context, '0.0x'));
+  }
 
   static String _speedText(double speed) => speed == speed.roundToDouble()
       ? speed.toStringAsFixed(0)
@@ -473,6 +530,37 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
     return size * scale;
   }
 
+  Widget _speedSlider(double speed, ViewerSpeedRule rule) => LayoutBuilder(
+    builder: (context, constraints) {
+      final width = constraints.maxWidth;
+      void at(double x) {
+        final fraction = (x / width).clamp(0.0, 1.0);
+        widget.onSpeed(
+          rule.settle(rule.min + (rule.max - rule.min) * fraction),
+        );
+      }
+
+      return GestureDetector(
+        key: const ValueKey('mpx-viewer-speed-slider'),
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragUpdate: (d) => at(d.localPosition.dx),
+        onTapUp: (d) => at(d.localPosition.dx),
+        child: CustomPaint(
+          size: Size(width, 44),
+          painter: _SeekBarPainter(
+            duration: const Duration(seconds: 1),
+            position:
+                const Duration(seconds: 1) *
+                ((speed - rule.min) / (rule.max - rule.min)).clamp(0.0, 1.0),
+            buffered: const [],
+            foreground: widget.tokens.menuForeground,
+            dragging: false,
+          ),
+        ),
+      );
+    },
+  );
+
   Widget _speedPanel(double speed) {
     final rule = widget.rules.speed;
     return ColoredBox(
@@ -483,38 +571,26 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final width = constraints.maxWidth;
-                void at(double x) {
-                  final fraction = (x / width).clamp(0.0, 1.0);
-                  widget.onSpeed(
-                    rule.settle(rule.min + (rule.max - rule.min) * fraction),
-                  );
-                }
-
-                return GestureDetector(
-                  key: const ValueKey('mpx-viewer-speed-slider'),
-                  behavior: HitTestBehavior.opaque,
-                  onHorizontalDragUpdate: (d) => at(d.localPosition.dx),
-                  onTapUp: (d) => at(d.localPosition.dx),
-                  child: CustomPaint(
-                    size: Size(width, 44),
-                    painter: _SeekBarPainter(
-                      duration: const Duration(seconds: 1),
-                      position:
-                          const Duration(seconds: 1) *
-                          ((speed - rule.min) / (rule.max - rule.min)).clamp(
-                            0.0,
-                            1.0,
-                          ),
-                      buffered: const [],
-                      foreground: widget.tokens.menuForeground,
-                      dragging: false,
+            Row(
+              children: [
+                // The speed set now, beside the slider that sets it: the
+                // slider reads as the speed's, not as a second seek bar.
+                Padding(
+                  key: const ValueKey('mpx-viewer-speed-value'),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: SizedBox(
+                    width: _speedWidth(context),
+                    child: Text(
+                      '${_speedText(speed)}x',
+                      style: _figures.copyWith(
+                        color: widget.tokens.menuForeground,
+                      ),
+                      maxLines: 1,
                     ),
                   ),
-                );
-              },
+                ),
+                Expanded(child: _speedSlider(speed, rule)),
+              ],
             ),
             Wrap(
               spacing: 8,

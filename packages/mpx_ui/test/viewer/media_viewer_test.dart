@@ -163,6 +163,30 @@ void main() {
     });
   });
 
+  group('an animation', () {
+    testWidgets('draws the surface\'s own entry: one decode, one playback in '
+        'two places', (tester) async {
+      final harness = ViewerHarness(
+        items: [
+          GalleryItem(
+            photoKey(0),
+            kind: GalleryMediaKind.animation,
+            size: const Size(1200, 900),
+          ),
+        ],
+      );
+      final card = harness.cardLoop(
+        photoKey(0),
+        List.filled(10, const Duration(milliseconds: 100)),
+      );
+
+      await harness.pump(tester);
+
+      expect(harness.producer.attempts, hasLength(1));
+      expect(card.paints, isNotEmpty);
+    });
+  });
+
   group('rebuilt', () {
     testWidgets('with a new source and bridge, moves to them', (tester) async {
       final harness = ViewerHarness();

@@ -299,7 +299,7 @@ class _MediaAppState extends State<MediaApp> {
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       children: [
-                        for (final (index, (key, _, _, label))
+                        for (final (index, (key, kind, _, label))
                             in _media.indexed)
                           Builder(
                             builder: (context) => GestureDetector(
@@ -307,6 +307,7 @@ class _MediaAppState extends State<MediaApp> {
                               child: _MediaTile(
                                 index: index,
                                 content: key,
+                                plays: kind != MediaKind.still,
                                 label: label,
                               ),
                             ),
@@ -352,6 +353,7 @@ class _MediaTile extends StatelessWidget {
   const _MediaTile({
     required this.index,
     required this.content,
+    required this.plays,
     required this.label,
   });
 
@@ -361,6 +363,10 @@ class _MediaTile extends StatelessWidget {
   static const double _extent = 160;
 
   final MediaKey content;
+
+  /// Whether the content plays: it then binds the one spec every surface
+  /// that plays it binds, so the viewer draws this tile's own playback.
+  final bool plays;
   final String label;
 
   @override
@@ -372,11 +378,16 @@ class _MediaTile extends StatelessWidget {
         borderRadius: const BorderRadius.all(Radius.circular(12)),
         child: ContentView(
           content: content,
-          preset: AssetPresets.square(
-            extent: _extent,
-            devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
-            profile: const AssetProfile(animate: true),
-          ),
+          preset: plays
+              ? AssetPresets.animation(
+                  size: const Size.square(_extent),
+                  profile: const AssetProfile(animate: true),
+                )
+              : AssetPresets.square(
+                  extent: _extent,
+                  devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+                  profile: const AssetProfile(animate: true),
+                ),
         ),
       ),
       const SizedBox(height: 8),

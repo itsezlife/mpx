@@ -105,14 +105,22 @@ Video plays through the player pool and the audio owner (ADR 0004); opening
 from a bubble is the hand-off there. GIFs loop muted with no controls and
 continue the bubble's animation (software path), as on every reference client.
 
-The continuation is the core's shared playback phase (ADR 0003): the viewer's
-decode is another entry of the bubble's content, and it starts at the frame
-the bubble is at, for animated images, Lottie and silent loops alike; the
-bubble, drawn over meanwhile, comes back at the viewer's frame when the viewer
-closes. Until the viewer's own decode exists it shows the bubble's playback,
-scaled up. A clip whose container declares no duration catches up only
-forward until its first pass ends, since its pass length is unknown. Video
-with sound continues through `GalleryOrigin.position` instead.
+The continuation is one playback drawn twice (ADR 0003): the page of an
+animation binds the spec the bubble binds (`AssetPresets.animation`), so it
+draws the bubble's own entry, at the bubble's frame, and the bubble goes on
+from the viewer's frame when the viewer closes. An item whose bubble is gone
+gets its own entry at the same spec.
+
+Video with sound starts the player where the bubble's loop is: the origin's
+`GalleryOrigin.position`, else the position of the loop the bubble plays
+through the cache (`AssetCacheScope.playbackPosition`). The page draws that
+loop under the player, so the open shows the bubble's frame until the
+player's first, and the morph carries the player's picture both ways. On
+close the viewer hands the player's position back (`OriginBridge.handBack`)
+and moves the loop there (`AssetCacheScope.seekPlayback`). The loop keeps
+playing under the player, so the step on close is short; a seek or a speed
+change in the viewer makes it longer, and the silent clip decodes its way
+there.
 
 The origin's frame (`OriginBridge.frameOf`) is the picture's placeholder: it
 shows until the item's content has a stage and fades out as the content

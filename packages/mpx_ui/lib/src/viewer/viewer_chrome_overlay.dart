@@ -102,7 +102,10 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
       widget.chrome.actions?.call(widget.index, item) ?? const [];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      DefaultTextStyle(style: widget.tokens.subtitle, child: _build(context));
+
+  Widget _build(BuildContext context) {
     final item = widget.source.itemAt(widget.index);
     final visible = widget.controls.value;
     final padding = MediaQuery.paddingOf(context);

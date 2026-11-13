@@ -525,9 +525,14 @@ class MediaViewerState extends State<MediaViewer>
       rules: _video,
       controls: _controls,
       speeds: _speeds,
-      startAt: _index == widget.initialIndex
-          ? widget.bridge?.originOf(_index)?.position
-          : null,
+      // Where the origin's loop is: the host's word for it, else the loop of
+      // the content the surface plays through the cache, which the page
+      // draws too.
+      startAt:
+          (_index == widget.initialIndex
+              ? widget.bridge?.originOf(_index)?.position
+              : null) ??
+          _cache?.playbackPosition(item.key, _loopSpec),
       autoHide: _phase == _Phase.open,
     )..addListener(_onSession);
     _sessionIndex = _index;
@@ -770,7 +775,12 @@ class MediaViewerState extends State<MediaViewer>
     if (_phase == _Phase.closing || _phase == _Phase.closed) return;
     final session = _session;
     if (session != null) {
-      widget.bridge?.handBack(_index, session.lease.position);
+      final position = session.lease.position;
+      widget.bridge?.handBack(_index, position);
+      // The surface's loop of the content goes on from the player's place.
+      if (widget.source.itemAt(_index) case final item?) {
+        _cache?.seekPlayback(item.key, _loopSpec, position);
+      }
       session.autoHide = false;
     }
     if (_fullscreen) toggleFullscreen();
@@ -903,8 +913,14 @@ class MediaViewerState extends State<MediaViewer>
 
   // --- Build ----------------------------------------------------------------
 
+  // Text below takes the viewer's style, not whatever the host has above:
+  // a route with no text style of its own shows the framework's warning
+  // underline.
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
+  Widget build(BuildContext context) =>
+      DefaultTextStyle(style: widget.tokens.subtitle, child: _build(context));
+
+  Widget _build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       _size = constraints.biggest;
       final background = widget.tokens.background;
@@ -1065,7 +1081,7 @@ class MediaViewerState extends State<MediaViewer>
       onHoldEnd: () => session?.holdEnd(),
       child: RepaintBoundary(
         key: _frameKeys.putIfAbsent(index, GlobalKey.new),
-        child: video ? PlayerView(lease: session.lease, standIn: still) : still,
+        child: video ? _withPlayer(still, session) : still,
       ),
     );
   }
@@ -1102,7 +1118,7 @@ class MediaViewerState extends State<MediaViewer>
                 borderRadius: radius,
                 child: widget.policy.openStyle == ViewerOpenStyle.reveal
                     ? _revealed(from, to, t, rect, fitted, item)
-                    : _picture(_index, item, fitted, fit),
+                    : _morphPicture(item, fitted, fit),
               ),
             ),
           ),
@@ -1147,18 +1163,60 @@ class MediaViewerState extends State<MediaViewer>
         offset: picture.topLeft - window.topLeft,
         child: SizedBox.fromSize(
           size: picture.size,
-          child: _picture(_index, item, fitted, BoxFit.contain),
+          child: _morphPicture(item, fitted, BoxFit.contain),
         ),
       ),
     );
   }
 
+  // The cache the pictures attach to.
+  AssetCacheScope? get _cache =>
+      widget.scope ?? AssetCacheProvider.maybeOf(context);
+
+  // The spec of content that plays, whatever the box: a surface that shows
+  // the same content as an animation binds the same entry, so the viewer
+  // draws the surface's own playback and hands a video's position back to it.
+  static final AssetSpec _loopSpec = AssetPresets.animation(
+    size: Size.zero,
+    profile: const AssetProfile(),
+  ).spec;
+
+  // The picture of a video under its player: the player's picture once it
+  // has one, the content's loop (the frame the surface showed) until then.
+  // The loop goes on under the player, so the surface it hands back to is
+  // where the player started, a step from where it stands.
+  Widget _withPlayer(
+    Widget picture,
+    ViewerVideoSession session, {
+    BoxFit fit = BoxFit.contain,
+  }) => Stack(
+    fit: StackFit.expand,
+    children: [
+      picture,
+      PlayerView(lease: session.lease, fit: fit),
+    ],
+  );
+
+  // The picture the morph moves: a video's player over its picture, so the
+  // close shows where the player stands.
+  Widget _morphPicture(GalleryItem item, Size size, BoxFit fit) {
+    final picture = _picture(_index, item, size, fit);
+    // Closed, the viewer stops showing the player, which lets it pause.
+    final session = _sessionIndex == _index && _phase != _Phase.closed
+        ? _session
+        : null;
+    return session == null ? picture : _withPlayer(picture, session, fit: fit);
+  }
+
   // The picture of [item]: the item's own content, with the origin's frame
-  // standing in until the content shows. [size] is the decode size, kept the
-  // same through the morph so the morph never attaches again.
+  // standing in until the content shows. [size] is the box, kept the same
+  // through the morph so the morph never attaches again. Content that plays
+  // (an animation, the loop of a video) binds the spec every surface binds
+  // it at, so the page draws the surface's own playback, not a second one.
   Widget _picture(int index, GalleryItem item, Size size, BoxFit fit) {
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
     final box = size.isEmpty ? const Size(1, 1) : size;
+    const loops = AssetProfile(animate: true, loop: true);
     return FittedBox(
       fit: fit,
       clipBehavior: Clip.hardEdge,
@@ -1168,22 +1226,17 @@ class MediaViewerState extends State<MediaViewer>
           frame: _originFrame(index),
           content: item.key,
           scope: widget.scope,
-          preset: AssetPresets.media(
-            size: box,
-            devicePixelRatio: dpr,
-            profile: switch (item.kind) {
-              // A GIF continues as a muted loop on the software path, from
-              // the frame the origin shows (the entries of a content share
-              // their phase).
-              GalleryMediaKind.animation => const AssetProfile(
-                animate: true,
-                loop: true,
-              ),
-              // A video's still; the player draws over it.
-              GalleryMediaKind.video => const AssetProfile(),
-              GalleryMediaKind.photo => const AssetProfile(animate: true),
-            },
-          ),
+          preset: switch (item.kind) {
+            // A GIF continues as a muted loop on the software path; a video's
+            // loop goes on under its player.
+            GalleryMediaKind.animation || GalleryMediaKind.video =>
+              AssetPresets.animation(size: box, profile: loops),
+            GalleryMediaKind.photo => AssetPresets.media(
+              size: box,
+              devicePixelRatio: dpr,
+              profile: const AssetProfile(animate: true),
+            ),
+          },
         ),
       ),
     );

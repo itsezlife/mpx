@@ -85,6 +85,7 @@ final class ViewerHarness {
     bool open = true,
     List<ViewerQuality> Function(int index, GalleryItem item)? qualitiesOf,
     ViewerController? controller,
+    TextStyle? hostTextStyle,
   }) async {
     tester.view.physicalSize = viewerSize;
     tester.view.devicePixelRatio = 1;
@@ -98,26 +99,48 @@ final class ViewerHarness {
     await tester.pumpWidget(
       Directionality(
         textDirection: TextDirection.ltr,
-        child: MediaViewer(
-          source: source,
-          initialIndex: 0,
-          bridge: bridge,
-          policy: policy,
-          scope: scope,
-          onClosed: () => closed++,
-          onBackdropScale: backdrop.add,
-          chrome: chrome,
-          players: players,
-          speeds: speeds,
-          qualitiesOf: qualitiesOf,
-          onFullscreenChanged: fullscreen.add,
-          controller: controller,
+        child: _hostStyle(
+          hostTextStyle,
+          MediaViewer(
+            source: source,
+            initialIndex: 0,
+            bridge: bridge,
+            policy: policy,
+            scope: scope,
+            onClosed: () => closed++,
+            onBackdropScale: backdrop.add,
+            chrome: chrome,
+            players: players,
+            speeds: speeds,
+            qualitiesOf: qualitiesOf,
+            onFullscreenChanged: fullscreen.add,
+            controller: controller,
+          ),
         ),
       ),
     );
     await tester.pump();
     if (open)
       await tester.pump(policy.openDuration + const Duration(milliseconds: 1));
+  }
+
+  static Widget _hostStyle(TextStyle? style, Widget child) =>
+      style == null ? child : DefaultTextStyle(style: style, child: child);
+
+  /// Attaches the surface's own loop of [key], as a list item that shows it
+  /// playing does, and plays it as [frames]; returns its playback.
+  FakeAssetPaintable cardLoop(MediaKey key, List<Duration> frames) {
+    const profile = AssetProfile(animate: true);
+    scope.attach(
+      key,
+      AssetPresets.animation(size: originRect.size, profile: profile).spec,
+      profile,
+    );
+    return producer.last.advance(
+      AssetStage.full,
+      tier: AssetTier.animated,
+      frames: frames,
+    );
   }
 
   MediaViewerState state(WidgetTester tester) =>

@@ -115,6 +115,56 @@ void main() {
     });
   });
 
+  group('the surface\'s own loop of the content', () {
+    final seconds = List.filled(60, const Duration(seconds: 1));
+
+    testWidgets('the player starts where the loop is', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+      );
+      harness
+          .cardLoop(videoKey(0), seconds)
+          .seekPlayback(const Duration(seconds: 4));
+
+      await harness.pump(tester);
+
+      expect(harness.engine(0).preparedFrom, const Duration(seconds: 4));
+    });
+
+    testWidgets('closing moves the loop to where the player stood', (
+      tester,
+    ) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+      );
+      final loop = harness.cardLoop(videoKey(0), seconds)
+        ..seekPlayback(const Duration(seconds: 4));
+      await harness.pump(tester);
+      harness.engine(0).advance(const Duration(seconds: 3));
+
+      unawaited(harness.state(tester).close());
+      await _settle(tester);
+
+      expect(loop.seeks.last, const Duration(seconds: 7));
+    });
+
+    testWidgets('the close morph shows the player\'s picture', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+      );
+      await harness.pump(tester);
+
+      unawaited(harness.state(tester).close());
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(harness.state(tester).isOpen, isFalse);
+      expect(find.byType(Texture), findsOneWidget);
+    });
+  });
+
   group('controls', () {
     late ViewerHarness harness;
 
@@ -189,6 +239,71 @@ void main() {
         harness.speeds.speedFor(videoKey(1), ViewerSpeedMemory.perItem),
         1,
       );
+    });
+
+    testWidgets('the seek bar keeps its length as the time and the speed '
+        'change', (tester) async {
+      await open(tester);
+      Rect bar() =>
+          tester.getRect(find.byKey(const ValueKey('mpx-viewer-seek-bar')));
+      final before = bar();
+
+      harness.engine(0).advance(const Duration(seconds: 12));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(bar(), before);
+
+      await tester.tap(find.byKey(const ValueKey('mpx-viewer-speed')));
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey(('mpx-viewer-speed-preset', 1.5))),
+      );
+      await tester.pump();
+      expect(bar(), before);
+    });
+
+    testWidgets('the speed panel names the speed beside its slider', (
+      tester,
+    ) async {
+      await open(tester);
+      await tester.tap(find.byKey(const ValueKey('mpx-viewer-speed')));
+      await tester.pump();
+
+      final value = find.byKey(const ValueKey('mpx-viewer-speed-value'));
+      expect(find.descendant(of: value, matching: find.text('1x')), findsOne);
+      final slider = tester.getRect(
+        find.byKey(const ValueKey('mpx-viewer-speed-slider')),
+      );
+      expect(tester.getRect(value).center.dy, closeTo(slider.center.dy, 1));
+      expect(find.byKey(const ValueKey('mpx-viewer-seek-bar')), findsOne);
+    });
+
+    testWidgets('its text is styled whatever the host puts above it', (
+      tester,
+    ) async {
+      harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+      );
+      // What a text with no style of its own inherits under an app that
+      // gives none: the framework's warning style.
+      await harness.pump(
+        tester,
+        hostTextStyle: const TextStyle(
+          color: Color(0xFFFFFF00),
+          decoration: TextDecoration.underline,
+          decorationStyle: TextDecorationStyle.double,
+        ),
+      );
+
+      final time = tester.widget<RichText>(
+        find.descendant(
+          of: find.byKey(const ValueKey('mpx-viewer-time')),
+          matching: find.byType(RichText),
+        ),
+      );
+      final style = time.text.style!;
+      expect(style.decoration, anyOf(isNull, TextDecoration.none));
+      expect(style.color, isNot(const Color(0xFFFFFF00)));
     });
 
     testWidgets('a quality moves the player to its media at the same place', (
