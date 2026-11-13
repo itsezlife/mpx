@@ -15,6 +15,7 @@ class MpxPlayerPlugin : FlutterPlugin, PlayerHostApi {
     private lateinit var context: Context
     private lateinit var textures: TextureRegistry
     private lateinit var flutter: PlayerFlutterApi
+    private lateinit var focus: MpxAudioFocus
     private val players = HashMap<Long, MpxVideoPlayer>()
     private var nextId = 1L
 
@@ -22,12 +23,16 @@ class MpxPlayerPlugin : FlutterPlugin, PlayerHostApi {
         context = binding.applicationContext
         textures = binding.textureRegistry
         flutter = PlayerFlutterApi(binding.binaryMessenger)
+        // Focus callbacks and the noisy broadcast arrive on the main thread,
+        // where Pigeon's Flutter API must be called.
+        focus = MpxAudioFocus(context) { change -> flutter.onAudioFocusChange(change) {} }
         PlayerHostApi.setUp(binding.binaryMessenger, this)
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         PlayerHostApi.setUp(binding.binaryMessenger, null)
         reset()
+        focus.abandon()
     }
 
     // --- Players -----------------------------------------------------------
@@ -35,6 +40,8 @@ class MpxPlayerPlugin : FlutterPlugin, PlayerHostApi {
     override fun reset() {
         players.values.forEach { it.dispose() }
         players.clear()
+        // A previous isolate's focus goes with its players.
+        focus.abandon()
     }
 
     override fun create(source: NativePlayerSource, settings: NativePlayerSettings): Long {
@@ -88,9 +95,9 @@ class MpxPlayerPlugin : FlutterPlugin, PlayerHostApi {
 
     // --- Audio focus (ticket 26) ---------------------------------------------
 
-    override fun requestAudioFocus() {}
+    override fun requestAudioFocus() = focus.request()
 
-    override fun abandonAudioFocus() {}
+    override fun abandonAudioFocus() = focus.abandon()
 
     // --- Hardware probe (ticket 28) ------------------------------------------
 
