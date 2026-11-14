@@ -24,7 +24,11 @@ void main() {
     final bad = <String>[];
     for (final f in files) {
       final name = f.path.split('/').last;
-      final r = binding.open(f.readAsBytesSync(), width: w, height: h);
+      final r = binding.open(
+        VideoSource.bytes(f.readAsBytesSync()),
+        width: w,
+        height: h,
+      );
       if (r is! VideoOpened) {
         bad.add('$name OPEN ${(r as VideoRejected).reason}');
         continue;

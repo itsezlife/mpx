@@ -25,6 +25,7 @@ void main() {
     expect(MpxVideoStatus.internal, headerValue('INTERNAL'));
     expect(MpxVideoStatus.badSize, headerValue('BAD_SIZE'));
     expect(MpxVideoStatus.decodeFailed, headerValue('DECODE_FAILED'));
+    expect(MpxVideoStatus.sourceFailed, headerValue('SOURCE_FAILED'));
   });
 
   test('the header lists no status the binding lacks', () {
@@ -34,10 +35,11 @@ void main() {
     ).firstMatch(header)!.group(0)!;
     final names = RegExp(r'MPX_VIDEO_([A-Z_]+)\s*=').allMatches(statusEnum);
 
-    expect(names, hasLength(10));
+    expect(names, hasLength(11));
   });
 
   test('the ABI version is the one the binding expects', () {
     expect(MpxVideoAbi.expectedVersion, headerValue('ABI_VERSION'));
+    expect(MpxVideoAbi.readerVersion, headerValue('READER_ABI_VERSION'));
   });
 }

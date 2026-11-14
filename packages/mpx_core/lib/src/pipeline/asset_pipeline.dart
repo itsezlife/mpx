@@ -215,6 +215,8 @@ final class AssetPipeline implements AssetProducer {
         progress.task = task;
       }
     } on Object catch (error, stackTrace) {
+      // A decoder that throws did not take the content.
+      work.content!.release();
       progress.fail(error, stackTrace);
     }
     _fetchLane.pump();
@@ -423,11 +425,17 @@ final class _Work implements LaneWork {
   }
 
   void fetched(FetchedContent fetchedContent) {
-    if (_cancelled) return;
+    // Nobody will decode it: the attempt ended while it was fetched.
+    if (_cancelled) {
+      fetchedContent.release();
+      return;
+    }
     // All of it arrived, which a fetcher's last report need not say (nor a
     // fetch that found the announced content after all): a surface that drew
     // the download shows it complete until the decode.
     if (prefix != null) {
+      // A prefix is fetched to be held, not decoded.
+      fetchedContent.release();
       prefix = null;
       _pipeline._fetchLane.release(this);
       if (job.demand.preloadStage is AssetPreloadStage$Seconds) {
@@ -471,6 +479,7 @@ final class _Work implements LaneWork {
         token?.cancel();
         _pipeline._fetchLane.release(this);
       case _Phase.queuedDecode:
+        content?.release();
         _pipeline._decodeLane.remove(this);
         _pipeline._fetchLane.pump();
       case _Phase.decoding:

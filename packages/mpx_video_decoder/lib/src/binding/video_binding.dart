@@ -1,10 +1,9 @@
 import 'dart:ffi';
-import 'dart:typed_data';
-
 import 'package:mpx_video_decoder/src/binding/video_availability.dart';
 import 'package:mpx_video_decoder/src/binding/video_frame_result.dart';
 import 'package:mpx_video_decoder/src/binding/video_handle.dart';
 import 'package:mpx_video_decoder/src/binding/video_open_result.dart';
+import 'package:mpx_video_decoder/src/binding/video_source.dart';
 
 /// The native video decoder as the host sees it: open a file, pull frames
 /// into page memory, rewind to loop, dispose.
@@ -25,13 +24,16 @@ abstract interface class VideoBinding {
   /// [nextFrame] on one that is not throw a [StateError].
   bool get isAvailable;
 
-  /// Opens [bytes] (any container the build reads) for frames of exactly
-  /// [width] by [height] pixels: frames are scaled to that size, not
-  /// letterboxed, so the host picks an aspect-correct size.
+  /// Opens the file [source] names (any container the build reads) for
+  /// frames of exactly [width] by [height] pixels: frames are scaled to that
+  /// size, not letterboxed, so the host picks an aspect-correct size.
   ///
-  /// Never throws for bad data: a refused file is a [VideoRejected].
+  /// A file or ranged source is read in place as frames need it; a ranged
+  /// one blocks this call (and later ones on the handle) while its bytes
+  /// have not landed. Never throws for bad data or an unreadable source: a
+  /// refused file is a [VideoRejected].
   VideoOpenResult open(
-    Uint8List bytes, {
+    VideoSource source, {
     required int width,
     required int height,
   });

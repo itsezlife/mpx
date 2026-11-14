@@ -55,7 +55,11 @@ void main() {
   var time = Duration.zero;
 
   Future<VideoClip> openClip() async {
-    final result = await engine.open(bytes, width: 16, height: 8);
+    final result = await engine.open(
+      VideoSource.bytes(bytes),
+      width: 16,
+      height: 8,
+    );
     return (result as VideoClipOpened).clip;
   }
 

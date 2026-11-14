@@ -50,6 +50,8 @@ At shutdown dispose the scheduler, then the engine.
 
 - Decode-only, for short silent loops: a pool of worker isolates, frames into
   frame pool pages or platform textures; a `<video>` element on the web.
+- Clips are read in place, from a file or through the bytes cache's native
+  ranged reader as they download: the UI isolate never holds their bytes.
 - macOS arm64, iOS arm64 and Android arm64-v8a.
 - Native names: `libmpx_video`, C symbols `mpx_video_*`.
 - Fakes and contract suites in `testing.dart`.

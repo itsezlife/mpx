@@ -18,7 +18,9 @@ int _run(Fixture fixture, int edge, int millis) {
   final binding = NativeVideoBinding.probe();
   final bytes = fixture.bytes;
   final h = edge * fixture.height ~/ fixture.width;
-  final r = binding.open(bytes, width: edge, height: h) as VideoOpened;
+  final r =
+      binding.open(VideoSource.bytes(bytes), width: edge, height: h)
+          as VideoOpened;
   final target = calloc<Uint8>(edge * h * 4);
   final watch = Stopwatch()..start();
   var frames = 0;

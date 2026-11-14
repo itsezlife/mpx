@@ -22,13 +22,13 @@ final class VideoDecodeCore {
   /// How many clips are open.
   int get openClips => _clips.length;
 
-  /// Opens [bytes] at [width] by [height].
+  /// Opens [source] at [width] by [height].
   VideoClipOpenResult open(
-    Uint8List bytes, {
+    VideoSource source, {
     required int width,
     required int height,
   }) {
-    switch (_binding.open(bytes, width: width, height: height)) {
+    switch (_binding.open(source, width: width, height: height)) {
       case VideoRejected(:final reason):
         return VideoClipRejected(reason);
       case VideoOpened(:final handle, :final info):

@@ -92,10 +92,13 @@ final class FakeDecode implements AssetTask {
     return paintable;
   }
 
+  // A decode that ended no longer reads its content: given back, as a
+  // decoder must.
   void _settle() {
     if (_settled) return;
     _settled = true;
     _decoder._active--;
+    request.content.release();
   }
 
   static bool _same(Uint8List a, Uint8List b) =>

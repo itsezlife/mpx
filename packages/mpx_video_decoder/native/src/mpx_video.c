@@ -7,8 +7,27 @@
 #include <libavutil/pixdesc.h>
 #include <libswscale/swscale.h>
 #include <stdatomic.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* --- Ranged reader table ----------------------------------------------- */
+
+/* Mirror of the bytes cache's reader table (hbc_api in http_bytes_cache.h,
+ * version MPX_VIDEO_READER_ABI_VERSION). Mirrored instead of included: the
+ * wrapper is built without the cache's sources, and the version check keeps
+ * the mirror honest. */
+typedef struct mpx_video_reader mpx_video_reader;
+typedef struct {
+  int32_t version;
+  mpx_video_reader *(*reader_open)(const char *key);
+  int64_t (*reader_length)(mpx_video_reader *reader, int32_t wait);
+  int64_t (*reader_read)(mpx_video_reader *reader, int64_t offset, uint8_t *buffer,
+                         int64_t length);
+  void (*reader_set_priority)(mpx_video_reader *reader, int32_t priority);
+  void (*reader_cancel)(mpx_video_reader *reader);
+  void (*reader_close)(mpx_video_reader *reader);
+} ReaderApi;
 
 /* --- Handle ----------------------------------------------------------- */
 
@@ -19,11 +38,24 @@ typedef enum {
   STATE_SPENT     /* a failure; only a rewind revives the handle */
 } State;
 
+typedef enum {
+  SOURCE_MEMORY, /* `data`, a copy of the caller's bytes */
+  SOURCE_FILE,   /* `file`, read in place */
+  SOURCE_READER  /* `reader` through `api`, blocking for missing bytes */
+} SourceKind;
+
 struct MpxVideo {
-  /* The file, copied: AVIO reads from it through the cursor. */
+  /* The file: AVIO reads it through the cursor `pos`, whatever holds it. */
+  SourceKind source;
   uint8_t *data;
-  size_t size;
-  size_t pos;
+  FILE *file;
+  const ReaderApi *api;
+  mpx_video_reader *reader;
+  int64_t size;
+  int64_t pos;
+  /* A read of the source failed (not the end): the open or the decode that
+   * ran into it reports MPX_VIDEO_SOURCE_FAILED, not a damaged file. */
+  int source_failed;
 
   AVIOContext *avio;
   AVFormatContext *fmt;
@@ -49,31 +81,54 @@ struct MpxVideo {
   AVFrame *held;
 };
 
-/* --- In-memory AVIO --------------------------------------------------- */
+/* --- AVIO over the source --------------------------------------------- */
 
-static int read_memory(void *opaque, uint8_t *buf, int buf_size) {
+static int read_source(void *opaque, uint8_t *buf, int buf_size) {
   MpxVideo *h = opaque;
-  size_t left = h->size - h->pos;
-  if (left == 0) return AVERROR_EOF;
-  size_t n = (size_t)buf_size < left ? (size_t)buf_size : left;
-  memcpy(buf, h->data + h->pos, n);
+  int64_t left = h->size - h->pos;
+  if (left <= 0) return AVERROR_EOF;
+  int64_t want = buf_size < left ? buf_size : left;
+  int64_t n = 0;
+  switch (h->source) {
+    case SOURCE_MEMORY:
+      memcpy(buf, h->data + h->pos, (size_t)want);
+      n = want;
+      break;
+    case SOURCE_FILE:
+      if (fseek(h->file, (long)h->pos, SEEK_SET) != 0) goto failed;
+      n = (int64_t)fread(buf, 1, (size_t)want, h->file);
+      if (n == 0) {
+        if (ferror(h->file)) goto failed;
+        return AVERROR_EOF; /* shorter than it was at open */
+      }
+      break;
+    case SOURCE_READER:
+      n = h->api->reader_read(h->reader, h->pos, buf, want);
+      if (n == 0) return AVERROR_EOF;
+      if (n < 0) goto failed;
+      break;
+  }
   h->pos += n;
   return (int)n;
+
+failed:
+  h->source_failed = 1;
+  return AVERROR(EIO);
 }
 
-static int64_t seek_memory(void *opaque, int64_t offset, int whence) {
+static int64_t seek_source(void *opaque, int64_t offset, int whence) {
   MpxVideo *h = opaque;
-  if (whence & AVSEEK_SIZE) return (int64_t)h->size;
+  if (whence & AVSEEK_SIZE) return h->size;
   int64_t base;
   switch (whence & ~AVSEEK_FORCE) {
     case SEEK_SET: base = 0; break;
-    case SEEK_CUR: base = (int64_t)h->pos; break;
-    case SEEK_END: base = (int64_t)h->size; break;
+    case SEEK_CUR: base = h->pos; break;
+    case SEEK_END: base = h->size; break;
     default: return AVERROR(EINVAL);
   }
   int64_t at = base + offset;
-  if (at < 0 || at > (int64_t)h->size) return AVERROR(EINVAL);
-  h->pos = (size_t)at;
+  if (at < 0 || at > h->size) return AVERROR(EINVAL);
+  h->pos = at;
   return at;
 }
 
@@ -93,6 +148,8 @@ void mpx_video_free(MpxVideo *h) {
     avio_context_free(&h->avio);
   }
   free(h->data);
+  if (h->file) fclose(h->file);
+  if (h->reader) h->api->reader_close(h->reader);
   free(h);
 }
 
@@ -117,8 +174,10 @@ static int32_t open_decoder(MpxVideo *h) {
   h->fmt->flags |= AVFMT_FLAG_CUSTOM_IO;
   int r = avformat_open_input(&h->fmt, NULL, NULL, &opts);
   av_dict_free(&opts);
-  if (r < 0) return MPX_VIDEO_MALFORMED; /* h->fmt is freed and NULL */
-  if (avformat_find_stream_info(h->fmt, NULL) < 0) return MPX_VIDEO_MALFORMED;
+  /* h->fmt is freed and NULL on failure. */
+  if (r < 0) return h->source_failed ? MPX_VIDEO_SOURCE_FAILED : MPX_VIDEO_MALFORMED;
+  if (avformat_find_stream_info(h->fmt, NULL) < 0)
+    return h->source_failed ? MPX_VIDEO_SOURCE_FAILED : MPX_VIDEO_MALFORMED;
 
   h->stream = av_find_best_stream(h->fmt, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
   if (h->stream < 0) return MPX_VIDEO_UNSUPPORTED;
@@ -165,35 +224,40 @@ static int32_t open_decoder(MpxVideo *h) {
   return MPX_VIDEO_OK;
 }
 
-int32_t mpx_video_open(const uint8_t *data, size_t len, uint32_t target_w,
-                        uint32_t target_h, MpxVideo **out_handle) {
-  if (!out_handle) return MPX_VIDEO_INVALID_ARGUMENT;
-  *out_handle = NULL;
-  if (!data) return MPX_VIDEO_INVALID_ARGUMENT;
-  /* Before the bytes are looked at. */
-  if (len > MPX_VIDEO_MAX_INPUT_BYTES) return MPX_VIDEO_TOO_LARGE;
-  if (len == 0) return MPX_VIDEO_MALFORMED;
-  if (target_w == 0 || target_h == 0 || target_w > MPX_VIDEO_MAX_TARGET_EDGE ||
-      target_h > MPX_VIDEO_MAX_TARGET_EDGE)
-    return MPX_VIDEO_BAD_SIZE;
-  quiet_ffmpeg_once();
+static int bad_target(uint32_t target_w, uint32_t target_h) {
+  return target_w == 0 || target_h == 0 || target_w > MPX_VIDEO_MAX_TARGET_EDGE ||
+         target_h > MPX_VIDEO_MAX_TARGET_EDGE;
+}
 
+static MpxVideo *new_handle(SourceKind source, uint32_t target_w, uint32_t target_h) {
   MpxVideo *h = calloc(1, sizeof *h);
-  if (!h) return MPX_VIDEO_INTERNAL;
-  int32_t status = MPX_VIDEO_INTERNAL;
-  h->data = malloc(len);
-  if (!h->data) goto fail;
-  memcpy(h->data, data, len);
-  h->size = len;
+  if (!h) return NULL;
+  h->source = source;
   h->target_w = target_w;
   h->target_h = target_h;
   h->last_pts_ms = -1;
   h->seek_ms = -1;
+  return h;
+}
+
+/* Gates the source's size, then builds the AVIO and the decoder over it.
+ * Frees the handle on failure. */
+static int32_t finish_open(MpxVideo *h, MpxVideo **out_handle) {
+  int32_t status = MPX_VIDEO_INTERNAL;
+  if (h->size > MPX_VIDEO_MAX_INPUT_BYTES) {
+    status = MPX_VIDEO_TOO_LARGE;
+    goto fail;
+  }
+  if (h->size == 0) {
+    status = MPX_VIDEO_MALFORMED;
+    goto fail;
+  }
+  quiet_ffmpeg_once();
 
   const int io_size = 32 * 1024;
   uint8_t *io_buffer = av_malloc(io_size);
   if (!io_buffer) goto fail;
-  h->avio = avio_alloc_context(io_buffer, io_size, 0, h, read_memory, NULL, seek_memory);
+  h->avio = avio_alloc_context(io_buffer, io_size, 0, h, read_source, NULL, seek_source);
   if (!h->avio) {
     av_free(io_buffer);
     goto fail;
@@ -207,6 +271,72 @@ int32_t mpx_video_open(const uint8_t *data, size_t len, uint32_t target_w,
 fail:
   mpx_video_free(h);
   return status;
+}
+
+int32_t mpx_video_open(const uint8_t *data, size_t len, uint32_t target_w,
+                        uint32_t target_h, MpxVideo **out_handle) {
+  if (!out_handle) return MPX_VIDEO_INVALID_ARGUMENT;
+  *out_handle = NULL;
+  if (!data) return MPX_VIDEO_INVALID_ARGUMENT;
+  /* Before the bytes are looked at. */
+  if (len > MPX_VIDEO_MAX_INPUT_BYTES) return MPX_VIDEO_TOO_LARGE;
+  if (len == 0) return MPX_VIDEO_MALFORMED;
+  if (bad_target(target_w, target_h)) return MPX_VIDEO_BAD_SIZE;
+
+  MpxVideo *h = new_handle(SOURCE_MEMORY, target_w, target_h);
+  if (!h) return MPX_VIDEO_INTERNAL;
+  h->data = malloc(len);
+  if (!h->data) {
+    mpx_video_free(h);
+    return MPX_VIDEO_INTERNAL;
+  }
+  memcpy(h->data, data, len);
+  h->size = (int64_t)len;
+  return finish_open(h, out_handle);
+}
+
+int32_t mpx_video_open_file(const char *path, uint32_t target_w, uint32_t target_h,
+                            MpxVideo **out_handle) {
+  if (!out_handle) return MPX_VIDEO_INVALID_ARGUMENT;
+  *out_handle = NULL;
+  if (!path) return MPX_VIDEO_INVALID_ARGUMENT;
+  if (bad_target(target_w, target_h)) return MPX_VIDEO_BAD_SIZE;
+
+  MpxVideo *h = new_handle(SOURCE_FILE, target_w, target_h);
+  if (!h) return MPX_VIDEO_INTERNAL;
+  h->file = fopen(path, "rb");
+  long size = -1;
+  if (h->file && fseek(h->file, 0, SEEK_END) == 0) size = ftell(h->file);
+  if (size < 0) {
+    mpx_video_free(h);
+    return MPX_VIDEO_SOURCE_FAILED;
+  }
+  h->size = size;
+  return finish_open(h, out_handle);
+}
+
+int32_t mpx_video_open_reader(const void *reader_api, const char *key,
+                              uint32_t target_w, uint32_t target_h,
+                              MpxVideo **out_handle) {
+  if (!out_handle) return MPX_VIDEO_INVALID_ARGUMENT;
+  *out_handle = NULL;
+  const ReaderApi *api = reader_api;
+  if (!api || !key || api->version != MPX_VIDEO_READER_ABI_VERSION)
+    return MPX_VIDEO_INVALID_ARGUMENT;
+  if (bad_target(target_w, target_h)) return MPX_VIDEO_BAD_SIZE;
+
+  MpxVideo *h = new_handle(SOURCE_READER, target_w, target_h);
+  if (!h) return MPX_VIDEO_INTERNAL;
+  h->api = api;
+  h->reader = api->reader_open(key);
+  /* Blocks until a response names the length. */
+  int64_t size = h->reader ? api->reader_length(h->reader, 1) : -1;
+  if (size < 0) {
+    mpx_video_free(h);
+    return MPX_VIDEO_SOURCE_FAILED;
+  }
+  h->size = size;
+  return finish_open(h, out_handle);
 }
 
 int32_t mpx_video_info(const MpxVideo *h, MpxVideoInfo *out_info) {
@@ -330,12 +460,13 @@ int32_t mpx_video_next(MpxVideo *h, uint8_t *dst, size_t stride, int64_t *out_pt
     /* The decoder wants a packet. */
     if (h->packets >= MPX_VIDEO_MAX_PACKETS_PER_PASS) return spend(h, MPX_VIDEO_LIMIT_EXCEEDED);
     r = av_read_frame(h->fmt, h->pkt);
-    if (r == AVERROR_EOF) {
+    if (r == AVERROR_EOF && !h->source_failed) {
       h->state = STATE_DRAINING;
       if (avcodec_send_packet(h->dec, NULL) < 0) return spend(h, MPX_VIDEO_DECODE_FAILED);
       continue;
     }
-    if (r < 0) return spend(h, MPX_VIDEO_DECODE_FAILED);
+    if (r < 0 || h->source_failed)
+      return spend(h, h->source_failed ? MPX_VIDEO_SOURCE_FAILED : MPX_VIDEO_DECODE_FAILED);
     h->packets++;
     if (h->pkt->stream_index != h->stream) {
       av_packet_unref(h->pkt);
@@ -360,6 +491,7 @@ int32_t mpx_video_rewind(MpxVideo *h) {
   if (r < 0) return spend(h, MPX_VIDEO_DECODE_FAILED);
   avcodec_flush_buffers(h->dec);
   h->state = STATE_RUNNING;
+  h->source_failed = 0;
   h->packets = 0;
   h->frames = 0;
   h->skipped = 0;
@@ -386,6 +518,7 @@ int32_t mpx_video_seek(MpxVideo *h, int64_t position_ms) {
   } else {
     avcodec_flush_buffers(h->dec);
     h->state = STATE_RUNNING;
+    h->source_failed = 0;
     h->packets = 0;
     h->frames = 0;
     h->skipped = 0;

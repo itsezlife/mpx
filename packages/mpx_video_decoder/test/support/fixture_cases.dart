@@ -19,7 +19,7 @@ void fixtureCases(Future<VideoEngine> Function() open) {
       final (width, height) = fixture.target;
 
       final opened = await engine.open(
-        fixture.bytes,
+        VideoSource.bytes(fixture.bytes),
         width: width,
         height: height,
       );

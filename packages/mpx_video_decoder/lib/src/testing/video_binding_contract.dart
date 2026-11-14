@@ -8,6 +8,7 @@ import 'package:mpx_video_decoder/src/binding/video_binding.dart';
 import 'package:mpx_video_decoder/src/binding/video_frame_result.dart';
 import 'package:mpx_video_decoder/src/binding/video_handle.dart';
 import 'package:mpx_video_decoder/src/binding/video_open_result.dart';
+import 'package:mpx_video_decoder/src/binding/video_source.dart';
 
 /// What a [VideoBindingContract] run needs besides the binding.
 final class VideoBindingHarness {
@@ -21,6 +22,7 @@ final class VideoBindingHarness {
     this.width = 16,
     this.height = 12,
     this.unavailable,
+    this.validElsewhere,
   });
 
   /// The binding under test; it must be available.
@@ -43,6 +45,11 @@ final class VideoBindingHarness {
 
   /// The target height the contract opens at.
   final int height;
+
+  /// The file of [validBytes] from a source read in place (a path, a ranged
+  /// resource), if the implementation reads one; its cases are skipped
+  /// otherwise.
+  final VideoSource? validElsewhere;
 
   /// Builds a binding that is not available, if the implementation can; its
   /// case is skipped otherwise.
@@ -69,7 +76,7 @@ abstract final class VideoBindingContract {
 
       VideoHandle open() {
         final result = harness.binding.open(
-          harness.validBytes,
+          VideoSource.bytes(harness.validBytes),
           width: harness.width,
           height: harness.height,
         );
@@ -92,7 +99,7 @@ abstract final class VideoBindingContract {
 
       test('valid bytes open with the expected info', () {
         final result = harness.binding.open(
-          harness.validBytes,
+          VideoSource.bytes(harness.validBytes),
           width: harness.width,
           height: harness.height,
         );
@@ -101,9 +108,32 @@ abstract final class VideoBindingContract {
         expect((result as VideoOpened).info, harness.expectedInfo);
       });
 
+      test('the file read in place opens and decodes as its bytes do', () {
+        final elsewhere = harness.validElsewhere;
+        if (elsewhere == null) {
+          markTestSkipped('the binding reads no other source');
+          return;
+        }
+        final result = harness.binding.open(
+          elsewhere,
+          width: harness.width,
+          height: harness.height,
+        );
+
+        expect(result, isA<VideoOpened>());
+        final handle = (result as VideoOpened).handle;
+        expect(result.info, harness.expectedInfo);
+        var frames = 0;
+        while (next(handle).status == VideoFrameStatus.frame) {
+          frames++;
+        }
+        expect(frames, harness.frameCount);
+        harness.binding.dispose(handle);
+      });
+
       test('bytes that are not a video are rejected, never thrown on', () {
         final result = harness.binding.open(
-          harness.malformedBytes,
+          VideoSource.bytes(harness.malformedBytes),
           width: harness.width,
           height: harness.height,
         );
@@ -117,7 +147,7 @@ abstract final class VideoBindingContract {
 
       test('a zero target size is a bad size', () {
         final result = harness.binding.open(
-          harness.validBytes,
+          VideoSource.bytes(harness.validBytes),
           width: 0,
           height: harness.height,
         );
@@ -336,7 +366,7 @@ abstract final class VideoBindingContract {
 
           expect(
             () => harness.binding.open(
-              harness.validBytes,
+              VideoSource.bytes(harness.validBytes),
               width: harness.width,
               height: harness.height,
             ),
@@ -356,7 +386,7 @@ abstract final class VideoBindingContract {
         expect(binding.isAvailable, isFalse);
         expect(
           () => binding.open(
-            harness.validBytes,
+            VideoSource.bytes(harness.validBytes),
             width: harness.width,
             height: harness.height,
           ),

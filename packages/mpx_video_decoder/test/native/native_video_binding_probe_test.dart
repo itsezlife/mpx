@@ -15,7 +15,8 @@ void main() {
       expect(binding.isAvailable, isFalse);
       expect(binding.availability, VideoAvailability.missingLibrary);
       expect(
-        () => binding.open(Uint8List(8), width: 8, height: 8),
+        () =>
+            binding.open(VideoSource.bytes(Uint8List(8)), width: 8, height: 8),
         throwsStateError,
       );
       expect(() => binding.rewind(const VideoHandle(1)), throwsStateError);
@@ -49,6 +50,7 @@ void main() {
       expect(NativeVideoBinding.rejectionFor(-5), VideoRejection.unsupported);
       expect(NativeVideoBinding.rejectionFor(-6), VideoRejection.internal);
       expect(NativeVideoBinding.rejectionFor(-7), VideoRejection.badSize);
+      expect(NativeVideoBinding.rejectionFor(-9), VideoRejection.source);
     });
 
     test('treats a status it does not know as a malformed file', () {

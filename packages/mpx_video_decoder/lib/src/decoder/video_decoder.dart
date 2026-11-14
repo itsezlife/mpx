@@ -69,10 +69,19 @@ final class VideoDecodeRejected implements Exception {
 /// (the square one is closed first; the open only builds a scaler, no frame
 /// is decoded).
 ///
+/// ## The file
+///
+/// A file (`FetchedFile`) or a ranged resource (`FetchedRanged`) is opened
+/// where it is: the engine reads it at the offsets the demuxer asks for,
+/// and its bytes never pass through this isolate. Content in memory
+/// (`FetchedBytes`, a test or the web) is handed over as bytes. The content
+/// is released once nothing reads it: when the last clip over it closes.
+///
 /// ## What an entry costs
 ///
 /// The `still` stage reports its `width * height * 4`; the `full` stage that
-/// plus the encoded size (the engine keeps the file open). The decoded frames
+/// plus the encoded size when the engine holds the file in memory (content
+/// handed over as bytes); a file read in place costs nothing more. The decoded frames
 /// the scheduler keeps ahead of the clock are not an entry's: they are bounded
 /// by the scheduler's cap on advancing clips.
 ///
@@ -140,10 +149,33 @@ final class _VideoDecode implements AssetTask {
     }
   }
 
-  Future<Uint8List> _bytes() => switch (_request.content) {
+  /// The thumbnail's bytes: a small image, read whole.
+  Future<Uint8List> _thumbnailBytes() => switch (_request.content) {
     FetchedBytes(:final bytes) => Future.value(bytes),
     FetchedFile(:final path) => environment_specific.$readFileBytes(path),
+    FetchedRanged() => Future.error(
+      UnsupportedError('A thumbnail is an image, not a ranged resource.'),
+    ),
   };
+
+  /// Where the engine reads the clip.
+  VideoSource get _source => switch (_request.content) {
+    FetchedBytes(:final bytes) => VideoSource.bytes(bytes),
+    FetchedFile(:final path) => VideoSource.file(path),
+    FetchedRanged(:final readerApi, :final key) => VideoSource.ranged(
+      readerApi: readerApi,
+      key: key,
+    ),
+  };
+
+  /// The encoded bytes the engine holds in memory for the clip.
+  int get _encodedInMemory => switch (_request.content) {
+    FetchedBytes(:final bytes) => bytes.length,
+    FetchedFile() || FetchedRanged() => 0,
+  };
+
+  /// Gives the content back; called once, when nothing reads it any more.
+  void _release() => _request.content.release();
 
   void _fail(Object error, StackTrace stackTrace) {
     if (!_cancelled) {
@@ -154,7 +186,13 @@ final class _VideoDecode implements AssetTask {
   Future<void> _thumbnail() async {
     final ui.Image image;
     try {
-      image = await _owner._decodeImage(await _bytes());
+      final Uint8List bytes;
+      try {
+        bytes = await _thumbnailBytes();
+      } finally {
+        _release();
+      }
+      image = await _owner._decodeImage(bytes);
     } on Object catch (error, stackTrace) {
       _fail(error, stackTrace);
       return;
@@ -172,11 +210,9 @@ final class _VideoDecode implements AssetTask {
 
   Future<void> _content() async {
     final VideoClip clip;
-    final Uint8List bytes;
     final Uint8List first;
     try {
-      bytes = await _bytes();
-      clip = await _open(bytes);
+      clip = await _open(_source);
       try {
         first = await _firstFrame(clip);
       } on Object {
@@ -184,33 +220,34 @@ final class _VideoDecode implements AssetTask {
         rethrow;
       }
     } on Object catch (error, stackTrace) {
+      _release();
       _fail(error, stackTrace);
       return;
     }
     // Cancelled while the engine decoded: a clip that arrives now is ours to
     // close, nobody else knows it.
     if (_cancelled) {
-      _close(clip);
+      _closeLast(clip);
       return;
     }
     final ui.Image image;
     try {
       image = await _owner._uploadPixels(first, clip.width, clip.height);
     } on Object catch (error, stackTrace) {
-      _close(clip);
+      _closeLast(clip);
       _fail(error, stackTrace);
       return;
     }
     if (_cancelled) {
       image.dispose();
-      _close(clip);
+      _closeLast(clip);
       return;
     }
     // Outside the try above: from here the image and the clip belong to the
     // paintables handed over.
     final frameBytes = clip.frameBytes;
     if (_request.spec.variant == AssetVariant.firstFrame) {
-      _close(clip);
+      _closeLast(clip);
       _progress.advance(
         AssetStage.firstFrame,
         VideoStillPaintable(image),
@@ -234,32 +271,32 @@ final class _VideoDecode implements AssetTask {
           clip: clip,
           firstFrame: animationStill,
           scheduler: _owner._scheduler,
-          onDispose: () => _close(clip),
+          onDispose: () => _closeLast(clip),
         ),
-        bytes: frameBytes + bytes.length,
+        bytes: frameBytes + _encodedInMemory,
         tier: AssetTier.animated,
       );
   }
 
-  /// Opens [bytes] at the size class the spec snaps to, aspect kept.
-  Future<VideoClip> _open(Uint8List bytes) async {
+  /// Opens [source] at the size class the spec snaps to, aspect kept.
+  Future<VideoClip> _open(VideoSource source) async {
     final spec = _request.spec;
     final edge = VideoFrameSize.edgeFor(
       math.max(spec.pixelWidth, spec.pixelHeight),
       classes: _owner._sizeClasses,
     );
-    final probe = await _openAt(bytes, edge, edge);
+    final probe = await _openAt(source, edge, edge);
     final fitted = VideoFrameSize.fitting(probe.info, edge);
     if (fitted.width == probe.width && fitted.height == probe.height) {
       return probe;
     }
     _close(probe);
-    return _openAt(bytes, fitted.width, fitted.height);
+    return _openAt(source, fitted.width, fitted.height);
   }
 
-  Future<VideoClip> _openAt(Uint8List bytes, int width, int height) async {
+  Future<VideoClip> _openAt(VideoSource source, int width, int height) async {
     final opened = await _owner._engine.open(
-      bytes,
+      source,
       width: width,
       height: height,
     );
@@ -278,6 +315,14 @@ final class _VideoDecode implements AssetTask {
       );
     }
     return pixels;
+  }
+
+  /// Closes [clip], the last one over the content, and gives the content
+  /// back. The close is sent first: releasing a ranged resource wakes a read
+  /// the clip may be blocked in, and the close then runs right after it.
+  void _closeLast(VideoClip clip) {
+    _close(clip);
+    _release();
   }
 
   void _close(VideoClip clip) {

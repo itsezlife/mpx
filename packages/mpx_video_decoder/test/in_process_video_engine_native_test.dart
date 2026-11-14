@@ -28,6 +28,7 @@ void main() {
           ),
           frameCount: mp4.frames,
           malformedBytes: Uint8List(2048),
+          validElsewhere: VideoSource.file(mp4.path),
         ),
       );
       group('fixtures', () => fixtureCases(_open));

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Breaking: `VideoBinding.open` and `VideoEngine.open` take a `VideoSource`:
+  bytes, a file path, or a ranged resource of the bytes cache's native
+  reader. A file or ranged source is read in place by the decode worker, at
+  the offsets the demuxer asks for, so a clip's bytes no longer pass through
+  the UI isolate; a ranged source opens once its head has landed and blocks
+  the worker for missing bytes. `VideoDecoder` opens `FetchedFile` and
+  `FetchedRanged` content that way and releases it when its clip closes.
+- ABI version 3: `mpx_video_open_file`, `mpx_video_open_reader` and the
+  status `MPX_VIDEO_SOURCE_FAILED` (`VideoRejection.source`).
+- A clip read in place costs its frame only; the encoded size counts for
+  bytes held in memory.
 - Seek to a time: `mpx_video_seek` (ABI version 2) goes back to the keyframe
   before it and decodes forward on the engine's side, through
   `VideoBinding.seek`, `VideoEngine.seek` and `VideoFrameLease.seekTo`. A

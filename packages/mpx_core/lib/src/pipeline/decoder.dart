@@ -50,6 +50,11 @@ final class DecodeRequest {
 ///   pipeline treats every decode failure as permanent. It never throws.
 /// - It reports nothing after the returned task is cancelled, and a paintable
 ///   passed to `advance` belongs to the cache from that call on.
+/// - The content is the decoder's from [decode] on: it calls
+///   `FetchedContent.release` once it no longer reads it, whether the decode
+///   succeeds, fails or is cancelled. A decoder that reads the whole file at
+///   once releases it after the read; one that keeps reading (a clip that
+///   plays) when the last thing reading it closes.
 abstract interface class Decoder {
   /// Starts decoding [request], reporting to [progress].
   AssetTask decode(DecodeRequest request, AssetProgress progress);

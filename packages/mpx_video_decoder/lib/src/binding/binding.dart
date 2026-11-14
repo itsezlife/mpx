@@ -15,3 +15,4 @@ export 'video_availability.dart';
 export 'video_frame_result.dart';
 export 'video_handle.dart';
 export 'video_open_result.dart';
+export 'video_source.dart';

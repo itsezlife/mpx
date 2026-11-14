@@ -25,6 +25,7 @@ import 'native/native_video_binding_contract_test.dart'
 import 'native/native_video_binding_probe_test.dart'
     as native_video_binding_probe_test;
 import 'native/native_video_binding_test.dart' as native_video_binding_test;
+import 'native/native_video_sources_test.dart' as native_video_sources_test;
 import 'paint/video_animation_paintable_test.dart'
     as video_animation_paintable_test;
 import 'playback/video_frame_scheduler_test.dart' as video_frame_scheduler_test;
@@ -66,6 +67,7 @@ void main() {
     native_video_binding_probe_test.main,
   );
   group('native_video_binding_test', native_video_binding_test.main);
+  group('native_video_sources_test', native_video_sources_test.main);
   group('video_animation_paintable_test', video_animation_paintable_test.main);
   group('video_frame_scheduler_test', video_frame_scheduler_test.main);
   group(

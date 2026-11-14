@@ -1,4 +1,4 @@
-// The C ABI of native/include/mpx_video.h, bound by hand: seven functions are
+// The C ABI of native/include/mpx_video.h, bound by hand: nine functions are
 // too few to be worth putting LLVM (ffigen) on every contributor. The asset
 // id of these `@Native`s is this file's library URI, which is the name
 // hook/build.dart registers the library under; moving this file means
@@ -7,10 +7,15 @@
 // ignore_for_file: public_member_api_docs
 import 'dart:ffi';
 
+import 'package:ffi/ffi.dart';
+
 /// The ABI of `mpx_video.h` the bindings were written against.
 abstract final class MpxVideoAbi {
   /// The version a library must answer from its ABI probe.
-  static const expectedVersion = 2;
+  static const expectedVersion = 3;
+
+  /// The version of the ranged reader table `mpx_video_open_reader` reads.
+  static const readerVersion = 2;
 }
 
 /// The status numbers of `mpx_video.h`, in one place so no other file
@@ -26,6 +31,7 @@ abstract final class MpxVideoStatus {
   static const internal = -6;
   static const badSize = -7;
   static const decodeFailed = -8;
+  static const sourceFailed = -9;
 }
 
 /// `MpxVideoInfo`.
@@ -58,6 +64,36 @@ external int mpxVideoAbiVersion();
 external int mpxVideoOpen(
   Pointer<Uint8> data,
   int len,
+  int targetW,
+  int targetH,
+  Pointer<Pointer<Void>> outHandle,
+);
+
+/// Not a leaf: it opens the file and probes the container like
+/// [mpxVideoOpen].
+@Native<Int32 Function(Pointer<Utf8>, Uint32, Uint32, Pointer<Pointer<Void>>)>(
+  symbol: 'mpx_video_open_file',
+)
+external int mpxVideoOpenFile(
+  Pointer<Utf8> path,
+  int targetW,
+  int targetH,
+  Pointer<Pointer<Void>> outHandle,
+);
+
+/// Not a leaf: it blocks while the bytes it reads have not landed.
+@Native<
+  Int32 Function(
+    Pointer<Void>,
+    Pointer<Utf8>,
+    Uint32,
+    Uint32,
+    Pointer<Pointer<Void>>,
+  )
+>(symbol: 'mpx_video_open_reader')
+external int mpxVideoOpenReader(
+  Pointer<Void> readerApi,
+  Pointer<Utf8> key,
   int targetW,
   int targetH,
   Pointer<Pointer<Void>> outHandle,

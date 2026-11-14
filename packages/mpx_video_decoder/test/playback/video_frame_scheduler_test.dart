@@ -48,7 +48,11 @@ void main() {
   var time = Duration.zero;
 
   Future<VideoClip> openClip() async {
-    final result = await engine.open(bytes, width: 16, height: 16);
+    final result = await engine.open(
+      VideoSource.bytes(bytes),
+      width: 16,
+      height: 16,
+    );
     return (result as VideoClipOpened).clip;
   }
 
@@ -432,7 +436,11 @@ void main() {
       /// The frame indices shown over two passes, painted every clock frame.
       Future<Set<int>> shownFrames({required int frameStep}) async {
         fake.accept(bytes60, info60, frameCount: 8);
-        final opened = await engine.open(bytes60, width: 16, height: 16);
+        final opened = await engine.open(
+          VideoSource.bytes(bytes60),
+          width: 16,
+          height: 16,
+        );
         final lease = scheduler.acquire('a', (opened as VideoClipOpened).clip)!;
         final shown = <int>{};
         for (var ms = 0; ms <= 260; ms += 16) {

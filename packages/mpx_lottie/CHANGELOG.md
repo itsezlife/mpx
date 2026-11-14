@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `LottieDecoder` releases its fetched content once it is read.
 - The Lottie paintables say their picture size (`pictureSize`).
 - `FrameCache.evict(bytes)`: frees files least recently used first, never one
   in use, so the folder registers as a store quota

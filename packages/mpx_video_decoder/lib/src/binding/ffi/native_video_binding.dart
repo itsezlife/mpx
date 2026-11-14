@@ -1,6 +1,4 @@
 import 'dart:ffi';
-import 'dart:typed_data';
-
 import 'package:ffi/ffi.dart';
 import 'package:meta/meta.dart';
 import 'package:mpx_video_decoder/src/binding/ffi/mpx_video_symbols.dart';
@@ -9,6 +7,7 @@ import 'package:mpx_video_decoder/src/binding/video_binding.dart';
 import 'package:mpx_video_decoder/src/binding/video_frame_result.dart';
 import 'package:mpx_video_decoder/src/binding/video_handle.dart';
 import 'package:mpx_video_decoder/src/binding/video_open_result.dart';
+import 'package:mpx_video_decoder/src/binding/video_source.dart';
 
 /// [VideoBinding] over the compiled `mpx_video` library.
 final class NativeVideoBinding implements VideoBinding {
@@ -52,19 +51,49 @@ final class NativeVideoBinding implements VideoBinding {
 
   @override
   VideoOpenResult open(
-    Uint8List bytes, {
+    VideoSource source, {
     required int width,
     required int height,
   }) {
     _requireAvailable();
-    // Never a zero-length allocation: the library gets a valid pointer and
-    // refuses the empty file itself.
-    final data = calloc<Uint8>(bytes.isEmpty ? 1 : bytes.length);
     final info = calloc<MpxVideoInfo>();
     final out = calloc<Pointer<Void>>();
     try {
-      data.asTypedList(bytes.length).setAll(0, bytes);
-      final status = mpxVideoOpen(data, bytes.length, width, height, out);
+      final status = using(
+        (arena) => switch (source) {
+          VideoBytesSource(:final bytes) => mpxVideoOpen(
+            // Never a zero-length allocation: the library gets a valid
+            // pointer and refuses the empty file itself.
+            arena<Uint8>(bytes.isEmpty ? 1 : bytes.length)
+              ..asTypedList(bytes.length).setAll(0, bytes),
+            bytes.length,
+            width,
+            height,
+            out,
+          ),
+          VideoFileSource(:final path) => mpxVideoOpenFile(
+            path.toNativeUtf8(allocator: arena),
+            width,
+            height,
+            out,
+          ),
+          VideoRangedSource(:final readerApi, :final key) => mpxVideoOpenReader(
+            Pointer<Void>.fromAddress(readerApi),
+            key.toNativeUtf8(allocator: arena),
+            width,
+            height,
+            out,
+          ),
+        },
+      );
+      if (status == MpxVideoStatus.invalidArgument &&
+          source is VideoRangedSource) {
+        throw ArgumentError.value(
+          source,
+          'source',
+          'is not a reader table of version ${MpxVideoAbi.readerVersion}',
+        );
+      }
       if (status != MpxVideoStatus.ok) {
         return VideoRejected(rejectionFor(status));
       }
@@ -91,7 +120,6 @@ final class NativeVideoBinding implements VideoBinding {
       );
     } finally {
       calloc
-        ..free(data)
         ..free(info)
         ..free(out);
     }
@@ -183,6 +211,7 @@ final class NativeVideoBinding implements VideoBinding {
     MpxVideoStatus.unsupported => VideoRejection.unsupported,
     MpxVideoStatus.badSize => VideoRejection.badSize,
     MpxVideoStatus.internal => VideoRejection.internal,
+    MpxVideoStatus.sourceFailed => VideoRejection.source,
     _ => VideoRejection.malformed,
   };
 }

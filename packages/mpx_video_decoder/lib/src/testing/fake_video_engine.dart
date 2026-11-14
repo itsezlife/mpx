@@ -21,17 +21,41 @@ final class FakeVideoEngine implements VideoEngine {
 
   /// Makes [bytes] open as a video described by [info] with [frameCount]
   /// frames.
-  void accept(Uint8List bytes, VideoInfo info, {required int frameCount}) {
-    _scripted[_key(bytes)] = _Script(info, frameCount, null);
+  void accept(Uint8List bytes, VideoInfo info, {required int frameCount}) =>
+      acceptSource(VideoSource.bytes(bytes), info, frameCount: frameCount);
+
+  /// Makes [source] open as a video described by [info] with [frameCount]
+  /// frames: bytes by their content, a file by its path, a ranged resource
+  /// by its key.
+  void acceptSource(
+    VideoSource source,
+    VideoInfo info, {
+    required int frameCount,
+  }) {
+    _scripted[_key(source)] = _Script(info, frameCount, null);
   }
+
+  /// Makes [source] refuse to open for [reason]. A file or ranged resource
+  /// never scripted is refused as [VideoRejection.source].
+  void rejectSource(VideoSource source, VideoRejection reason) {
+    _scripted[_key(source)] = _Script(null, 0, reason);
+  }
+
+  /// How many times [source] was opened, scripted or not.
+  int opensOf(VideoSource source) => _opens[_key(source)] ?? 0;
+
+  final _opens = <String, int>{};
 
   /// Makes [bytes] refuse to open for [reason]. Bytes never scripted are
   /// refused as [VideoRejection.malformed].
-  void reject(Uint8List bytes, VideoRejection reason) {
-    _scripted[_key(bytes)] = _Script(null, 0, reason);
-  }
+  void reject(Uint8List bytes, VideoRejection reason) =>
+      rejectSource(VideoSource.bytes(bytes), reason);
 
-  static String _key(Uint8List bytes) => base64.encode(bytes);
+  static String _key(VideoSource source) => switch (source) {
+    VideoBytesSource(:final bytes) => 'bytes:${base64.encode(bytes)}',
+    VideoFileSource(:final path) => 'file:$path',
+    VideoRangedSource(:final key) => 'ranged:$key',
+  };
 
   void _requireOpen() {
     if (_disposed) throw VideoEngineClosed();
@@ -39,17 +63,24 @@ final class FakeVideoEngine implements VideoEngine {
 
   @override
   Future<VideoClipOpenResult> open(
-    Uint8List bytes, {
+    VideoSource source, {
     required int width,
     required int height,
   }) async {
     _requireOpen();
+    final key = _key(source);
+    _opens.update(key, (n) => n + 1, ifAbsent: () => 1);
     if (width <= 0 || height <= 0) {
       return const VideoClipRejected(VideoRejection.badSize);
     }
-    final script = _scripted[_key(bytes)];
-    if (script == null)
-      return const VideoClipRejected(VideoRejection.malformed);
+    final script = _scripted[key];
+    if (script == null) {
+      return VideoClipRejected(
+        source is VideoBytesSource
+            ? VideoRejection.malformed
+            : VideoRejection.source,
+      );
+    }
     final rejection = script.rejection;
     if (rejection != null) return VideoClipRejected(rejection);
 

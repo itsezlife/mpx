@@ -25,7 +25,11 @@ void main() {
   group('open', skip: nativeSkipReason(binding), () {
     test('describes each fixture as its generator made it', () {
       for (final fixture in fixtures) {
-        final result = binding.open(fixture.bytes, width: 32, height: 24);
+        final result = binding.open(
+          VideoSource.bytes(fixture.bytes),
+          width: 32,
+          height: 24,
+        );
 
         expect(result, isA<VideoOpened>(), reason: fixture.file);
         final info = (result as VideoOpened).info;
@@ -115,7 +119,12 @@ void main() {
       const height = 30;
       const stride = 48 * 4;
       final opened =
-          binding.open(mp4.bytes, width: width, height: height) as VideoOpened;
+          binding.open(
+                VideoSource.bytes(mp4.bytes),
+                width: width,
+                height: height,
+              )
+              as VideoOpened;
       final page = calloc<Uint8>(stride * height);
       try {
         page.asTypedList(stride * height).fillRange(0, stride * height, 0x7f);
@@ -148,7 +157,12 @@ void main() {
     test('restarts the stream with an identical first frame', () {
       for (final fixture in fixtures) {
         final opened =
-            binding.open(fixture.bytes, width: 32, height: 24) as VideoOpened;
+            binding.open(
+                  VideoSource.bytes(fixture.bytes),
+                  width: 32,
+                  height: 24,
+                )
+                as VideoOpened;
         final target = calloc<Uint8>(32 * 24 * 4);
         Uint8List next() {
           final result = binding.nextFrame(
@@ -194,7 +208,12 @@ void main() {
         'the same frame a straight decode gives', () {
       for (final fixture in fixtures) {
         final opened =
-            binding.open(fixture.bytes, width: 32, height: 24) as VideoOpened;
+            binding.open(
+                  VideoSource.bytes(fixture.bytes),
+                  width: 32,
+                  height: 24,
+                )
+                as VideoOpened;
         final target = calloc<Uint8>(32 * 24 * 4);
         (int, Uint8List)? next() {
           final result = binding.nextFrame(
@@ -244,7 +263,11 @@ void main() {
       Uint8List bytes, {
       int width = 32,
       int height = 24,
-    }) => switch (binding.open(bytes, width: width, height: height)) {
+    }) => switch (binding.open(
+      VideoSource.bytes(bytes),
+      width: width,
+      height: height,
+    )) {
       VideoRejected(:final reason) => reason,
       final VideoOpened opened => () {
         binding.dispose(opened.handle);
@@ -302,7 +325,7 @@ void main() {
     test('a stream past the frame budget fails, and a rewind revives it', () {
       final opened =
           binding.open(
-                _gif(width: 1, height: 1, frames: 10100),
+                VideoSource.bytes(_gif(width: 1, height: 1, frames: 10100)),
                 width: 1,
                 height: 1,
               )
@@ -365,7 +388,11 @@ void main() {
         };
         for (final MapEntry(key: how, value: bytes) in damaged.entries) {
           final reason = '${fixture.file} $how';
-          final opened = binding.open(bytes, width: 32, height: 24);
+          final opened = binding.open(
+            VideoSource.bytes(bytes),
+            width: 32,
+            height: 24,
+          );
           if (opened is! VideoOpened) continue;
           final target = calloc<Uint8>(32 * 24 * 4);
           try {
@@ -398,7 +425,11 @@ void main() {
       ]);
       final target = calloc<Uint8>(64 * 48 * 4);
       void cycle(Uint8List bytes) {
-        final result = binding.open(bytes, width: 64, height: 48);
+        final result = binding.open(
+          VideoSource.bytes(bytes),
+          width: 64,
+          height: 48,
+        );
         if (result is! VideoOpened) return;
         for (var i = 0; i < 3; i++) {
           binding.nextFrame(result.handle, target: target, strideBytes: 256);
@@ -439,7 +470,12 @@ void main() {
   required int height,
 }) {
   final opened =
-      binding.open(fixture.bytes, width: width, height: height) as VideoOpened;
+      binding.open(
+            VideoSource.bytes(fixture.bytes),
+            width: width,
+            height: height,
+          )
+          as VideoOpened;
   final target = calloc<Uint8>(width * height * 4);
   try {
     final frames = <_Frame>[];

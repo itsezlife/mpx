@@ -49,6 +49,11 @@ enum VideoRejection {
   /// The wrapper failed on its own (allocation, an FFmpeg internal error).
   /// Not a verdict on the file: a host must not cache it as one.
   internal,
+
+  /// The source could not be read: no file at the path, a ranged resource
+  /// that is not published, or bytes whose fetch failed or that were
+  /// withdrawn. Not a verdict on the file either.
+  source,
 }
 
 /// What an open video declares about itself.

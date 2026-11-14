@@ -9,6 +9,12 @@
  * Lifetime: a handle is freed exactly once; a second free is undefined. The
  * bytes passed to mpx_video_open are copied; the caller keeps its buffer.
  *
+ * Sources: a handle reads its file from memory (mpx_video_open), from a path
+ * (mpx_video_open_file) or through a ranged reader (mpx_video_open_reader).
+ * The last two read the bytes as the demuxer asks for them, at offsets: no
+ * open loads a whole file into memory. A ranged reader blocks the calling
+ * thread for bytes that have not arrived yet.
+ *
  * Output: frames are premultiplied BGRA (byte order B, G, R, A), scaled to
  * the target size given at open (stretched, not letterboxed).
  *
@@ -41,7 +47,8 @@ enum {
   MPX_VIDEO_UNSUPPORTED = -5,      /* open: no video stream, or its codec is not built in */
   MPX_VIDEO_INTERNAL = -6,         /* allocation or FFmpeg internal failure: not the file's fault */
   MPX_VIDEO_BAD_SIZE = -7,         /* open: target edge zero or over the cap; next: stride under the row width */
-  MPX_VIDEO_DECODE_FAILED = -8     /* next: the stream is damaged beyond the tolerated bad packets; rewind: cannot seek */
+  MPX_VIDEO_DECODE_FAILED = -8,    /* next: the stream is damaged beyond the tolerated bad packets; rewind: cannot seek */
+  MPX_VIDEO_SOURCE_FAILED = -9     /* open, next: the source could not be read (no such file, a reader that is not published, a fetch that failed, a resource withdrawn) */
 };
 
 /* Caps. Changing one is an ABI-visible behaviour change. */
@@ -55,7 +62,7 @@ enum {
   MPX_VIDEO_MAX_SKIPPED_PACKETS = 10            /* consecutive undecodable packets tolerated */
 };
 
-enum { MPX_VIDEO_ABI_VERSION = 2 };
+enum { MPX_VIDEO_ABI_VERSION = 3 };
 
 typedef struct MpxVideo MpxVideo; /* opaque */
 
@@ -76,6 +83,34 @@ MPX_VIDEO_API uint32_t mpx_video_abi_version(void);
  * decoder drops alpha, FFmpeg Trac #8344). */
 MPX_VIDEO_API int32_t mpx_video_open(const uint8_t *data, size_t len, uint32_t target_w,
                         uint32_t target_h, MpxVideo **out_handle);
+
+/* Opens the file at path for frames of target_w x target_h, reading it in
+ * place. Statuses as mpx_video_open, plus MPX_VIDEO_SOURCE_FAILED when the
+ * file cannot be opened or read. The file's size is the input gated by
+ * MPX_VIDEO_MAX_INPUT_BYTES. */
+MPX_VIDEO_API int32_t mpx_video_open_file(const char *path, uint32_t target_w,
+                        uint32_t target_h, MpxVideo **out_handle);
+
+/* The version of the ranged reader table mpx_video_open_reader reads. */
+enum { MPX_VIDEO_READER_ABI_VERSION = 2 };
+
+/* Opens the ranged resource `key` through the reader table at reader_api,
+ * for frames of target_w x target_h. The table is the bytes cache's native
+ * reader (hbc_api of http_bytes_cache.h, whose version field must be
+ * MPX_VIDEO_READER_ABI_VERSION; another version is
+ * MPX_VIDEO_INVALID_ARGUMENT). The handle opens a reader of its own, reads
+ * through it at offsets, and closes it when freed.
+ *
+ * Reads block while their bytes are missing: the reader asks its host to
+ * fetch them and waits until they land. Open, next, rewind and seek may
+ * therefore wait on the network, and must run on a thread that is not the
+ * one serving the reader's fetches. A resource withdrawn by its host wakes
+ * a blocked read, which then fails with MPX_VIDEO_SOURCE_FAILED. The open
+ * waits until the resource's length is known; that length is the input
+ * gated by MPX_VIDEO_MAX_INPUT_BYTES. */
+MPX_VIDEO_API int32_t mpx_video_open_reader(const void *reader_api, const char *key,
+                        uint32_t target_w, uint32_t target_h,
+                        MpxVideo **out_handle);
 
 /* Describes the open video. */
 MPX_VIDEO_API int32_t mpx_video_info(const MpxVideo *handle, MpxVideoInfo *out_info);

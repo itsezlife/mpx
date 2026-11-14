@@ -131,9 +131,13 @@ void main() {
     final file = File('${dir.path}${Platform.pathSeparator}sticker.json')
       ..writeAsBytesSync(bytes);
     final report = _Report();
+    var released = 0;
 
     decoder.decode(
-      _request(bytes, content: FetchedContent.file(file.path)),
+      _request(
+        bytes,
+        content: FetchedContent.file(file.path, onRelease: () => released++),
+      ),
       report,
     );
     // The read is real disk I/O, which a fixed pump of the event queue does
@@ -148,6 +152,8 @@ void main() {
       AssetStage.firstFrame,
       AssetStage.full,
     ]);
+    // Read whole, so given back at once.
+    expect(released, 1);
   });
 
   test('on the web a file is an UnsupportedError, not a read', () async {

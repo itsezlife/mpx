@@ -13,6 +13,14 @@ import 'package:mpx_video_decoder/src/engine/video_texture_engine.dart';
 /// A [VideoEngine] that decodes on a pool of long-lived worker isolates, so
 /// opening, demuxing and decoding never take a frame from the UI isolate.
 ///
+/// A file or ranged source crosses as its path or key: the worker reads the
+/// file itself, at the offsets the demuxer asks for, so its bytes never
+/// pass through the caller's isolate. Only a bytes source is copied over
+/// (once, into a transferable). A ranged source's reads block the worker
+/// while their bytes are missing: the other clips on that worker wait with
+/// it, which is why a host publishes only what it is fetching anyway, and
+/// withdraws the resource (waking the read) when the clip closes.
+///
 /// Each worker builds its own binding (a binding is single-isolate state),
 /// owns the clips it opened, and answers its requests one at a time in
 /// arrival order. A clip is pinned to the worker that opened it, which is what
@@ -105,7 +113,7 @@ final class IsolateVideoEngine implements VideoTextureEngine {
 
   @override
   Future<VideoClipOpenResult> open(
-    Uint8List bytes, {
+    VideoSource source, {
     required int width,
     required int height,
   }) async {
@@ -116,11 +124,14 @@ final class IsolateVideoEngine implements VideoTextureEngine {
     // Reserved now, returned if the open does not yield a clip, so opens made
     // before the first answer still spread.
     worker.clips++;
-    final data = TransferableTypedData.fromList([bytes]);
+    final wire = switch (source) {
+      VideoBytesSource(:final bytes) => TransferableTypedData.fromList([bytes]),
+      VideoFileSource() || VideoRangedSource() => source,
+    };
     final VideoClipOpenResult result;
     try {
       result = await worker.request<VideoClipOpenResult>(
-        (id) => _Open(id, data, width, height),
+        (id) => _Open(id, wire, width, height),
       );
     } on Object {
       worker.clips--;
@@ -453,9 +464,12 @@ sealed class _Request {
 }
 
 final class _Open extends _Request {
-  const _Open(this.id, this.data, this.width, this.height);
+  const _Open(this.id, this.source, this.width, this.height);
   final int id;
-  final TransferableTypedData data;
+
+  /// A file or ranged [VideoSource] as it is, or the bytes of a bytes source
+  /// as a [TransferableTypedData].
+  final Object source;
   final int width;
   final int height;
 }
@@ -524,11 +538,16 @@ void _workerMain(_Boot boot) {
 
   commands.listen((message) {
     switch (message as _Request) {
-      case _Open(:final id, :final data, :final width, :final height):
+      case _Open(:final id, :final source, :final width, :final height):
         answer(
           id,
           () => core.open(
-            data.materialize().asUint8List(),
+            switch (source) {
+              final TransferableTypedData data => VideoSource.bytes(
+                data.materialize().asUint8List(),
+              ),
+              _ => source as VideoSource,
+            },
             width: width,
             height: height,
           ),

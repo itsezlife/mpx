@@ -42,10 +42,10 @@ final class GatedVideoEngine implements VideoEngine {
 
   @override
   Future<VideoClipOpenResult> open(
-    Uint8List bytes, {
+    VideoSource source, {
     required int width,
     required int height,
-  }) => inner.open(bytes, width: width, height: height);
+  }) => inner.open(source, width: width, height: height);
 
   @override
   Future<VideoFrameResult> nextFrame(

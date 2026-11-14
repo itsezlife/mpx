@@ -16,7 +16,9 @@ enum VideoFrameStatus {
   badSize,
 
   /// The data could not be decoded (damaged stream, or a decode budget
-  /// exceeded). The handle is spent until a successful rewind.
+  /// exceeded), or its source could not be read (a ranged resource that was
+  /// withdrawn, a fetch that failed). The handle is spent until a successful
+  /// rewind.
   failed,
 }
 

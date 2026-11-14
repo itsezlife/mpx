@@ -59,7 +59,8 @@ void main() {
       setUp(() async {
         engine = await spawn();
         clip =
-            (await engine.open(_bytes, width: 4, height: 2) as VideoClipOpened)
+            (await engine.open(VideoSource.bytes(_bytes), width: 4, height: 2)
+                    as VideoClipOpened)
                 .clip;
         final buffer = Uint8List(clip.frameBytes);
         await engine.nextFrame(clip, destination: buffer);

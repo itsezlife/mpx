@@ -15,6 +15,7 @@ final class VideoEngineHarness {
     required this.malformedBytes,
     this.width = 16,
     this.height = 12,
+    this.validElsewhere,
   });
 
   /// Opens a fresh engine over an available binding; the contract closes it.
@@ -37,6 +38,10 @@ final class VideoEngineHarness {
 
   /// The target height the contract opens at.
   final int height;
+
+  /// The file of [validBytes] from a source read in place (a path, a ranged
+  /// resource), if the engine reads one; its case is skipped otherwise.
+  final VideoSource? validElsewhere;
 }
 
 /// The behaviour every [VideoEngine] shares: the in-process and isolate
@@ -57,7 +62,7 @@ abstract final class VideoEngineContract {
 
       Future<VideoClip> open() async {
         final result = await engine.open(
-          harness.validBytes,
+          VideoSource.bytes(harness.validBytes),
           width: harness.width,
           height: harness.height,
         );
@@ -76,11 +81,39 @@ abstract final class VideoEngineContract {
         },
       );
 
+      test('the file read in place opens and plays as its bytes do', () async {
+        final elsewhere = harness.validElsewhere;
+        if (elsewhere == null) {
+          markTestSkipped('the engine reads no other source');
+          return;
+        }
+        final result = await engine.open(
+          elsewhere,
+          width: harness.width,
+          height: harness.height,
+        );
+
+        expect(result, isA<VideoClipOpened>());
+        final clip = (result as VideoClipOpened).clip;
+        expect(clip.info, harness.expectedInfo);
+        final destination = Uint8List(clip.frameBytes);
+        var frames = 0;
+        while ((await engine.nextFrame(
+              clip,
+              destination: destination,
+            )).status ==
+            VideoFrameStatus.frame) {
+          frames++;
+        }
+        expect(frames, harness.frameCount);
+        await engine.close(clip);
+      });
+
       test(
         'bytes that are not a video are rejected with the binding reason',
         () async {
           final result = await engine.open(
-            harness.malformedBytes,
+            VideoSource.bytes(harness.malformedBytes),
             width: harness.width,
             height: harness.height,
           );
@@ -95,7 +128,7 @@ abstract final class VideoEngineContract {
 
       test('a zero target size is rejected as a bad size', () async {
         final result = await engine.open(
-          harness.validBytes,
+          VideoSource.bytes(harness.validBytes),
           width: 0,
           height: harness.height,
         );
@@ -318,7 +351,7 @@ abstract final class VideoEngineContract {
         await engine.close(clip);
         await expectLater(
           engine.open(
-            harness.validBytes,
+            VideoSource.bytes(harness.validBytes),
             width: harness.width,
             height: harness.height,
           ),

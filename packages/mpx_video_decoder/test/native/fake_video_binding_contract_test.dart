@@ -15,13 +15,17 @@ void main() {
   );
 
   VideoBindingContract.run(() {
-    final fake = FakeVideoBinding()..accept(valid, info, frameCount: 5);
+    const elsewhere = VideoSource.file('/media/a-video.mp4');
+    final fake = FakeVideoBinding()
+      ..accept(valid, info, frameCount: 5)
+      ..acceptSource(elsewhere, info, frameCount: 5);
     return VideoBindingHarness(
       binding: fake,
       validBytes: valid,
       expectedInfo: info,
       frameCount: 5,
       malformedBytes: Uint8List.fromList(utf8.encode('not a video')),
+      validElsewhere: elsewhere,
       unavailable: () =>
           FakeVideoBinding(availability: VideoAvailability.missingLibrary),
     );

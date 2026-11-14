@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `FetchedContent.ranged`: content read natively as it downloads. Fetched
+  content has a release point: the decoder that takes it releases it once
+  it no longer reads it, the pipeline releases content no decode takes, and
+  `FetchedFile` takes an `onRelease`. `ImageCodecDecoder` releases a file
+  once the engine has it in a buffer.
 - `ViewportVisibility.of`: a box's rectangle, the clip of every viewport
   around it, its visible share, centre distance and how many viewports away
   it is, in one walk. The feed slot and the viewer origin measure with it.

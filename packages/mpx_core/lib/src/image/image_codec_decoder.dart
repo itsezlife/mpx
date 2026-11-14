@@ -70,14 +70,25 @@ final class _DecodeTask implements AssetTask {
     final int encodedBytes;
     ui.Codec? decoding;
     try {
-      final buffer = await switch (_request.content) {
-        FetchedBytes(:final bytes) => ui.ImmutableBuffer.fromUint8List(bytes),
-        FetchedFile() when kIsWeb => throw UnsupportedError(
-          'ImageCodecDecoder reads no file on the web: the fetcher must hand '
-          'bytes (FetchedContent.bytes).',
-        ),
-        FetchedFile(:final path) => ui.ImmutableBuffer.fromFilePath(path),
-      };
+      final ui.ImmutableBuffer buffer;
+      try {
+        // A file is read by the engine, not through this isolate's heap.
+        buffer = await switch (_request.content) {
+          FetchedBytes(:final bytes) => ui.ImmutableBuffer.fromUint8List(bytes),
+          FetchedFile() when kIsWeb => throw UnsupportedError(
+            'ImageCodecDecoder reads no file on the web: the fetcher must '
+            'hand bytes (FetchedContent.bytes).',
+          ),
+          FetchedFile(:final path) => ui.ImmutableBuffer.fromFilePath(path),
+          FetchedRanged() => throw UnsupportedError(
+            'ImageCodecDecoder reads whole files: the fetcher must not hand '
+            'it a ranged resource.',
+          ),
+        };
+      } finally {
+        // The buffer holds the bytes now; the file may go.
+        _request.content.release();
+      }
       encodedBytes = buffer.length;
       // Cancelled while the data was read: no codec, no decoded frame.
       if (_cancelled) {
