@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:http_bytes_cache/native_reader.dart';
 import 'package:mpx/mpx.dart';
+import 'package:mpx/native.dart';
 import 'package:mpx_core/frame_pool.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_example/feed_page.dart';
@@ -83,6 +84,10 @@ Future<void> main() async {
     directoryPath: framesDirectory,
     diskBudgetBytes: null,
   );
+  // The process's one native reader, over the stack's ranged resources: the
+  // software video decoder reads clips through it as they download, and the
+  // players read their sources through it.
+  NativeRangedReaders? readers;
   final stack = await MpxStack.create(
     // Where each key's bytes are. A real host maps its keys to its CDN.
     locate: (descriptor, part) => switch (_fileOf(descriptor.key)) {
@@ -98,13 +103,16 @@ Future<void> main() async {
     client:
         (kMpxLab ? Lab.httpClient() : null) ??
         HttpBytesClient(client: _BundleOrigin()),
+    publisher: (ranged) => NativeRangedReaders.isAvailable
+        ? NativeRangedContentPublisher(readers = NativeRangedReaders(ranged))
+        : null,
   );
   for (final (key, kind, _, _) in _media) {
     stack.pipeline.know(
       MediaDescriptor(key: key, kind: kind, animated: kind != MediaKind.still),
     );
   }
-  final players = await _players(stack);
+  final players = await _players(readers);
   if (kMpxLab) Lab.attach(stack, players);
   runApp(MediaApp(stack: stack, players: players));
 }
@@ -112,23 +120,21 @@ Future<void> main() async {
 /// The platform player over the stack's cache: the viewer plays videos with
 /// sound on it, reading their bytes through the cache's native reader. Null
 /// where there is no native reader (the viewer then shows stills).
-Future<PlayerPool?> _players(MpxStack stack) async {
-  if (!NativeRangedReaders.isAvailable) return null;
-  final ranged = RangedBytes(store: stack.store, client: stack.client);
-  if (!ranged.isSupported) return null;
+Future<PlayerPool?> _players(NativeRangedReaders? readers) async {
+  if (readers == null) return null;
   // The example logs the players' lifecycle, so a problem seen on a device
   // can be traced in its log.
   PlayerDiagnostics.enabled = true;
   final backend = NativePlayerBackend(
-    readers: NativeRangedReaders(ranged),
+    readers: readers,
     sourcesOf: (key) => switch (_fileOf(key)) {
       final file? => [
         PlayerSource(
           RangedRequest(
             url: _urlOf(file),
-            // Its own entry: the player reads a sparse file of ranges, the
-            // software decoder the whole body.
-            cacheKey: BytesCacheKey('ranged-${key.encoded}'),
+            // The content's own entry: the player and the software decoder
+            // read one sparse file, so a clip is downloaded once.
+            cacheKey: BytesCacheFetcher.cacheKeyOf(key, FetchPart.content),
           ),
           mimeType: _mimeOf(file),
         ),

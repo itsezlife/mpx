@@ -118,6 +118,9 @@ abstract final class Lab {
         const HttpBytesTimeoutMiddleware().call,
         const HttpBytesConditionalMiddleware().call,
       ],
+      // As the stack's default client: media bodies stay on the transfer
+      // worker, which reports each transfer for the network numbers.
+      transfers: HttpBytesTransfers(onTransfer: recorder.recordTransfer),
     );
   }
 

@@ -178,8 +178,23 @@ resume, the whole body buffered by design.
   straight from the store, before asking the host for a URL; passes
   `immutable` unless the host's location asks otherwise; maps placeholder and
   visible work to `visible`, preload to `preload`; answers `needsDownload` as
-  "not cached" (absent or in flight). Content goes out as bytes: a file lease
-  has no release point in the fetch contract.
+  "not cached" (absent or in flight). Over a store that keeps files, content
+  goes out as its file under a lease the decoder releases (the fetch
+  contract gained a release point, ADR 0003); a missing part whose location
+  is immutable is fetched as a ranged resource in one GET to the end, and
+  the content kinds a host's `RangedContentPublisher` takes (video) go out
+  published to the native reader, read as they download. Elsewhere (memory,
+  the web, revalidated locations) content goes out as bytes through the
+  ladder. Settled 2026-11-14, after a CPU profile of a media-heavy list
+  showed the UI isolate copying whole clips to hand them to the decoder.
+- Transfers (2026-11-14): a client given `HttpBytesTransfers` runs
+  file-bound GETs (`HttpBytesClient.transfer`) on a worker isolate: socket,
+  body and file writes stay there; the calling isolate runs the middlewares
+  up to the head and records each span written (`recordRange`). Ranged
+  resources use them when the store keeps files, so media bytes never reach
+  the UI isolate. The body's idle timeout is the worker's own, since the
+  middlewares see no body. The resolve ladder's whole-body GETs (bytes a
+  caller wants in memory) still stream through the calling isolate.
 
 ## Open in implementation
 

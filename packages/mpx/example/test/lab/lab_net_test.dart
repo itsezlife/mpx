@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:mpx_example/lab/corpus.dart';
 import 'package:mpx_example/lab/lab_net.dart';
 
@@ -50,5 +51,30 @@ void main() {
     expect(report.first, contains('files=2 of 5 entries'));
     expect(report.skip(1), hasLength(2));
     expect(report[1], contains('net file a.mp4 host=example.org requests=2'));
+  });
+
+  test('a transfer the worker ran counts as a request', () {
+    final recorder =
+        NetRecorder(MockClient((_) async => http.Response('', 200)))
+          ..recordTransfer(
+            HttpBytesTransferRecord(
+              url: Uri.parse('http://127.0.0.1:1/clip.mp4'),
+              range: 'bytes=0-',
+              statusCode: 206,
+              started: DateTime(2026),
+              head: const Duration(milliseconds: 12),
+              ended: const Duration(milliseconds: 80),
+              bytes: 4000,
+              failed: false,
+            ),
+          );
+
+    final request = recorder.requests.single;
+    expect(request.range, 'bytes=0-');
+    expect(request.status, 206);
+    expect(request.bytes, 4000);
+    expect(request.firstByte, const Duration(milliseconds: 12));
+    expect(request.done, const Duration(milliseconds: 80));
+    expect(recorder.report(entries: 1).first, contains('bytes=4000'));
   });
 }

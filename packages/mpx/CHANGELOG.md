@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- `BytesCacheFetcher` hands media out as the file it is in over a store
+  that keeps files, leased until the decoder releases it, instead of reading
+  it into the UI isolate; a missing immutable part is fetched as a ranged
+  resource in one GET. `RangedContentPublisher` (`NativeRangedContentPublisher`
+  in `package:mpx/native.dart`, `FakeRangedContentPublisher` in
+  `testing.dart`) publishes missing content of its kinds for native readers
+  instead of downloading it first.
+- `MpxStack`: `ranged` holds the store's ranged resources, `publisher`
+  builds a publisher over them, and the default client runs its media
+  transfers on a worker isolate.
 - `MpxStack.create`: a working media stack from one call (bytes store, HTTP
   client, fetch adapter, pipeline, asset cache scope, pause layers fed by the
   device signals), with host decoders and registered quotas.

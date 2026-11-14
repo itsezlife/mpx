@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http_bytes_cache/http_bytes_cache.dart';
+import 'package:mpx/src/fetch/ranged_content_publisher.dart';
 import 'package:mpx_core/mpx_core.dart';
 
 /// Where one part of a piece of media is on the network, as the host's
@@ -66,22 +67,38 @@ typedef MediaLocator =
 /// - Priorities map onto the client's slot queue: placeholder and visible
 ///   work is visible, preload work is preload.
 ///
-/// Content is handed out as bytes. A file lease has no release point in the
-/// fetch contract, so leased files stay for consumers that own one (the
-/// player).
+/// ## What goes out
+///
+/// Over a store that keeps files (the VM store) content goes out as the
+/// file it is in ([FetchedFile]), leased until the decoder releases it, so
+/// its bytes never pass through this isolate. With [ranged], a missing
+/// part whose location is immutable is fetched into the store as a ranged
+/// resource (one GET to the end, through the client's transfer worker when
+/// it has one) and goes out as its file too. With [publisher], missing
+/// content of the kinds it takes goes out published instead
+/// ([FetchedRanged]): the decoder reads it natively as it downloads. Over a
+/// store without files (memory, the web), or for a location that asks for
+/// revalidation, content goes out as bytes through the resolve ladder.
 final class BytesCacheFetcher implements ContentFetcher {
   /// Creates a fetcher over [store] and [client], locating parts with
-  /// [locate]. Neither the store nor the client is closed by it.
+  /// [locate]. Neither the store, the client, [ranged] nor [publisher] is
+  /// closed by it. [ranged] must be over [store].
   BytesCacheFetcher({
     required IBytesStore store,
     required HttpBytesClient client,
     required MediaLocator locate,
+    RangedBytes? ranged,
+    RangedContentPublisher? publisher,
   }) : _store = store,
        _locate = locate,
+       _ranged = ranged != null && ranged.isSupported ? ranged : null,
+       _publisher = publisher,
        _resolver = BytesResolver(cache: store, client: client);
 
   final IBytesStore _store;
   final MediaLocator _locate;
+  final RangedBytes? _ranged;
+  final RangedContentPublisher? _publisher;
   final BytesResolver _resolver;
 
   // --- Cache keys ---
@@ -122,7 +139,12 @@ final class BytesCacheFetcher implements ContentFetcher {
     if (!settled.isCompleted) {
       _fetch(request, cancel).then(
         (content) {
-          if (!settled.isCompleted) settled.complete(content);
+          if (settled.isCompleted) {
+            // Settled by the cancel: nobody takes this content.
+            content.release();
+          } else {
+            settled.complete(content);
+          }
         },
         onError: (Object error, StackTrace stackTrace) {
           if (!settled.isCompleted) {
@@ -145,6 +167,10 @@ final class BytesCacheFetcher implements ContentFetcher {
   ) async {
     final key = cacheKeyOf(request.descriptor.key, request.part);
     if (_store.contains(key)) {
+      final lease = await _store.leaseFile(key);
+      if (lease != null) {
+        return FetchedContent.file(lease.path, onRelease: lease.release);
+      }
       final held = await _store.read(key);
       if (held != null && held.isNotEmpty) return FetchedContent.bytes(held);
     }
@@ -153,6 +179,24 @@ final class BytesCacheFetcher implements ContentFetcher {
       throw FetchFailure.permanent(
         'no location for the ${request.part.name} of ${request.descriptor.key}',
       );
+    }
+    final ranged = _ranged;
+    if (ranged != null &&
+        location.revalidation == RevalidationPolicy.immutable) {
+      final rangedRequest = RangedRequest(
+        url: Uri.parse(location.url),
+        cacheKey: key,
+        headers: location.headers,
+        quota: location.quota ?? BytesQuota.images,
+      );
+      final publisher = _publisher;
+      if (publisher != null &&
+          request.part == FetchPart.content &&
+          request.prefix == null &&
+          publisher.kinds.contains(request.descriptor.kind)) {
+        return publisher.publish(rangedRequest);
+      }
+      return _fetchWhole(ranged, rangedRequest, request, cancel);
     }
     final bytes = await _resolver.resolve(
       BytesRequest(
@@ -167,6 +211,43 @@ final class BytesCacheFetcher implements ContentFetcher {
       ),
     );
     return FetchedContent.bytes(bytes);
+  }
+
+  /// Fetches the whole of [rangedRequest] into the store and hands out its
+  /// file, held until released.
+  Future<FetchedContent> _fetchWhole(
+    RangedBytes ranged,
+    RangedRequest rangedRequest,
+    FetchRequest request,
+    CancelToken cancel,
+  ) async {
+    final resource = await ranged.open(rangedRequest);
+    var reported = false;
+    void report() {
+      reported = true;
+      request.onProgress(resource.ranges.coveredBytes, resource.totalLength);
+    }
+
+    final events = resource.events.listen((event) {
+      if (event is RangeLanded) report();
+    });
+    try {
+      await resource.ensure(
+        const ByteRange(0),
+        priority: PriorityToken(_priorityOf(request.priority)),
+        cancelToken: cancel,
+      );
+    } on Object {
+      await events.cancel();
+      await resource.close();
+      rethrow;
+    }
+    await events.cancel();
+    if (reported) report();
+    return FetchedContent.file(
+      resource.path,
+      onRelease: () => unawaited(resource.close()),
+    );
   }
 
   // A request that only names the key: what `peek` reads.

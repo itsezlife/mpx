@@ -113,7 +113,15 @@ showed its first frame or jumped back while it caught up.
 ### Unchanged contracts
 
 The fetch contract stands: settle promptly on cancel, report progress at start
-and per chunk to every sharer, answer `needsDownload` at once. Readiness never
+and per chunk to every sharer, answer `needsDownload` at once. Amended
+2026-11-14: fetched content has a release point (`FetchedContent.release`,
+called once by the decoder that took it, or by the pipeline for content no
+decode takes), so a fetcher can hand out a leased file or a published
+ranged resource (`FetchedRanged`) instead of bytes. The software video
+decoder opens a clip from its source in the decode worker
+(`VideoSource`: bytes, a file read in place, or a ranged resource read
+through the bytes cache's native reader, `mpx_video_open_reader`, blocking
+the worker for missing bytes); the UI isolate no longer copies clips. Readiness never
 shows a failure stage. The HW player's textures live outside the CPU texture
 pool and its budget (ADR 0004).
 

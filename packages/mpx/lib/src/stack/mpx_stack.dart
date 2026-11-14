@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:mpx/src/fetch/bytes_cache_fetcher.dart';
+import 'package:mpx/src/fetch/ranged_content_publisher.dart';
 import 'package:mpx/src/signals/device_signals.dart';
 import 'package:mpx_core/mpx_core.dart';
 
@@ -55,6 +56,13 @@ final class MpxDecoderContext {
 typedef MpxDecoderFactory =
     FutureOr<Map<MediaKind, Decoder>> Function(MpxDecoderContext context);
 
+/// Builds the host's [RangedContentPublisher] over the stack's [ranged]
+/// resources, or null for none. Called once, where the store keeps ranged
+/// resources (the VM): a native reader is one per process and serves one
+/// [RangedBytes], so the host keeps what it builds here for its players.
+typedef MpxPublisherFactory =
+    RangedContentPublisher? Function(RangedBytes ranged);
+
 /// A media stack assembled in one call: one bytes store, one HTTP client,
 /// the fetch adapter, the pipeline, the asset cache scope and the pause
 /// layers fed by the device.
@@ -73,6 +81,7 @@ final class MpxStack {
   MpxStack._({
     required this.store,
     required this.client,
+    required this.ranged,
     required this.fetcher,
     required this.pipeline,
     required this.scope,
@@ -97,7 +106,12 @@ final class MpxStack {
   ///   [PlaybackPauseLayer.lowPower]; the app lifecycle drives the other
   ///   layers ([PlaybackActivity]).
   /// - [client] defaults to an [HttpBytesClient] with the retry, timeout and
-  ///   conditional middlewares; a host client is not closed by [dispose].
+  ///   conditional middlewares, whose file-bound GETs run on a transfer
+  ///   worker (`HttpBytesTransfers`); a host client is not closed by
+  ///   [dispose].
+  /// - [publisher] builds what publishes content of some kinds for native
+  ///   readers instead of downloading it first (the software video decoder
+  ///   reads clips that way); see [MpxPublisherFactory].
   /// - [platformTextures] lends a [FrameTexturePool] over the platform's
   ///   texture host where there is one.
   static Future<MpxStack> create({
@@ -109,6 +123,7 @@ final class MpxStack {
     IDeviceSignals? signals,
     ValueListenable<bool>? reducedMotion,
     HttpBytesClient? client,
+    MpxPublisherFactory? publisher,
     AssetCacheBudgets budgets = AssetCacheBudgets.defaults,
     AssetPipelineLimits limits = const AssetPipelineLimits(),
     PlaybackPolicy playbackPolicy = const PlaybackPolicy(),
@@ -128,6 +143,9 @@ final class MpxStack {
     own(store.close);
     final http = client ?? _defaultClient();
     if (client == null) own(http.close);
+    final rangedBytes = RangedBytes(store: store, client: http);
+    final ranged = rangedBytes.isSupported ? rangedBytes : null;
+    if (ranged != null) own(ranged.close);
     final quotas = <String, RegisteredQuota>{
       for (final MapEntry(key: quota, value: onEvict)
           in registeredQuotas.entries)
@@ -173,6 +191,8 @@ final class MpxStack {
       store: store,
       client: http,
       locate: locate,
+      ranged: ranged,
+      publisher: ranged == null ? null : publisher?.call(ranged),
     );
     final pipeline = AssetPipeline(
       fetcher: fetcher,
@@ -205,6 +225,7 @@ final class MpxStack {
     return MpxStack._(
       store: store,
       client: http,
+      ranged: ranged,
       fetcher: fetcher,
       pipeline: pipeline,
       scope: scope,
@@ -217,12 +238,15 @@ final class MpxStack {
 
   // Outermost first: retry over timeout, so each attempt has its own
   // deadline; conditional innermost, so revalidation reaches the wire.
+  // Transfers keep the media bytes on a worker isolate; the web, which has
+  // none, sends them through the client as before.
   static HttpBytesClient _defaultClient() => HttpBytesClient(
     middlewares: [
       HttpBytesRetryMiddleware().call,
       const HttpBytesTimeoutMiddleware().call,
       const HttpBytesConditionalMiddleware().call,
     ],
+    transfers: const HttpBytesTransfers(),
   );
 
   /// The one bytes store: media, and the registered folders' accounting.
@@ -230,6 +254,11 @@ final class MpxStack {
 
   /// The HTTP client the fetcher sends through.
   final HttpBytesClient client;
+
+  /// The ranged resources of [store], or null where it keeps none (memory,
+  /// the web). The fetcher fetches media through them; a host's native
+  /// reader (players, [MpxPublisherFactory]) serves these and no others.
+  final RangedBytes? ranged;
 
   /// The core's fetch seam, filled from [store] and [client].
   final BytesCacheFetcher fetcher;

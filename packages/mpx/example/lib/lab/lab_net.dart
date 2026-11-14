@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:http/http.dart' as http;
+import 'package:http_bytes_cache/http_bytes_cache.dart';
 
 /// One request the stack sent.
 final class NetRequest {
@@ -35,6 +36,19 @@ final class NetRecorder extends http.BaseClient {
   final List<NetRequest> requests = [];
 
   void clear() => requests.clear();
+
+  /// Records a transfer the client's worker ran: its socket never passed
+  /// through [send].
+  void recordTransfer(HttpBytesTransferRecord transfer) {
+    requests.add(
+      NetRequest(transfer.url, transfer.range, _clock.elapsed - transfer.ended)
+        ..status = transfer.statusCode == 0 ? null : transfer.statusCode
+        ..firstByte = transfer.head
+        ..done = transfer.failed ? null : transfer.ended
+        ..bytes = transfer.bytes
+        ..failed = transfer.failed,
+    );
+  }
 
   /// Hosts such as Wikimedia refuse requests without a descriptive agent.
   static const String userAgent = 'mpx-example-lab/1.0 (media performance lab)';

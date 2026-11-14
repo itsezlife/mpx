@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -72,6 +73,51 @@ void main() {
     final content = decoder.decodes.single.request.content as FetchedBytes;
     expect(content.bytes, _body);
     expect(stack.fetcher.needsDownload(_key), isFalse);
+    binding.detach();
+  });
+
+  testWidgets('a store with files gets ranged resources, over which the '
+      'publisher is built and video goes out published', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('mpx_stack_ranged_');
+    final decoder = FakeDecoder(autoRespond: false);
+    final publisher = FakeRangedContentPublisher();
+    RangedBytes? builtOver;
+    final stack = (await tester.runAsync(
+      () => MpxStack.create(
+        locate: (descriptor, _) =>
+            MediaLocation('https://cdn.test/${descriptor.key.encoded}'),
+        cacheDirectory: dir.path,
+        decoders: (_) => {MediaKind.video: decoder},
+        signals: signals,
+        client: client,
+        platformTextures: false,
+        publisher: (ranged) {
+          builtOver = ranged;
+          return publisher;
+        },
+      ),
+    ))!;
+    addTearDown(() async {
+      await tester.runAsync(stack.dispose);
+      dir.deleteSync(recursive: true);
+    });
+    stack.pipeline.know(
+      const MediaDescriptor(key: _key, kind: MediaKind.video),
+    );
+
+    final binding = stack.scope.attach(
+      _key,
+      const AssetSpec(pixelWidth: 8, pixelHeight: 8),
+      const AssetProfile(),
+    );
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+
+    expect(stack.ranged, isNotNull);
+    expect(builtOver, same(stack.ranged));
+    expect(publisher.published.single.cacheKey.value, _key.encoded);
+    expect(requested, isEmpty);
+    expect(decoder.decodes.single.request.content, isA<FetchedRanged>());
     binding.detach();
   });
 
