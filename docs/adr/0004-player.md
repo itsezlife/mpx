@@ -193,6 +193,16 @@ Tickets 23-26, 28, 29 (2026-11-13).
   window's own button) is not mirrored into the play wish yet; the next
   snapshot shows the playhead stopped.
 - The loopback proxy for Apple HLS: design and timing.
+- Linux desktop and a synchronized stream group (a later effort, kept
+  possible): several streams (8–25) on one external master clock with
+  per-stream offsets and gaps in time, a Linux backend behind
+  `PlayerBackend` (FFmpeg with hardware decode, or libmpv), Linux textures
+  through the embedder's texture registrar, memory under a fixed budget.
+  Until then new code keeps to: engines accept an injected clock rather
+  than owning time; the software path reads through the bytes cache's
+  native ranged reader in portable C; no media file is loaded whole into
+  memory; HLS parsing sits above the bytes cache, not only inside a platform
+  player; the frame-texture API stays platform-neutral.
 
 ## Provenance
 
