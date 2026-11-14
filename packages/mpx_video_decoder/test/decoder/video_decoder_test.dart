@@ -388,25 +388,33 @@ void main() {
       expect(fake.openClips, 0);
     });
 
-    test('with logFailures on, a clip that does not open says why', () async {
-      final lines = <String?>[];
-      final previous = debugPrint;
-      debugPrint = (message, {wrapWidth}) => lines.add(message);
-      VideoDecoder.logFailures = true;
-      addTearDown(() {
-        debugPrint = previous;
-        VideoDecoder.logFailures = false;
-      });
+    test(
+      'with logFailures on, each stage is logged and a failure says why',
+      () async {
+        final lines = <String?>[];
+        final previous = debugPrint;
+        debugPrint = (message, {wrapWidth}) => lines.add(message);
+        VideoDecoder.logFailures = true;
+        addTearDown(() {
+          debugPrint = previous;
+          VideoDecoder.logFailures = false;
+        });
 
-      decoder.decode(_request(refused), _Report());
-      decoder.decode(_request(good), _Report());
-      await pumpEventQueue();
+        decoder.decode(_request(refused), _Report());
+        decoder.decode(_request(good), _Report());
+        await pumpEventQueue();
 
-      expect(lines, hasLength(1));
-      expect(lines.single, startsWith('mpx_video: '));
-      expect(lines.single, contains('fixture'));
-      expect(lines.single, contains('unsupported'));
-    });
+        // Every stage of the clip that plays, and why the other one stopped.
+        expect(lines, everyElement(startsWith('mpx_video: ')));
+        expect(
+          lines.where((l) => l!.contains('did not decode')).single,
+          contains('unsupported'),
+        );
+        for (final stage in ['decode', 'opened', 'first frame', 'still']) {
+          expect(lines.where((l) => l!.contains(' $stage')), isNotEmpty);
+        }
+      },
+    );
 
     test('by default a failure stays silent', () async {
       final lines = <String?>[];

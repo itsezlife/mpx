@@ -183,8 +183,19 @@ final class _VideoDecode implements AssetTask {
   /// Gives the content back; called once, when nothing reads it any more.
   void _release() => _request.content.release();
 
+  // One line per stage of a content decode, under logFailures: where a clip
+  // that never shows stopped.
+  void _stage(String what) {
+    if (VideoDecoder.logFailures) {
+      debugPrint('mpx_video: ${_request.descriptor.key} $what');
+    }
+  }
+
   void _fail(Object error, StackTrace stackTrace) {
-    if (_cancelled) return;
+    if (_cancelled) {
+      _stage('cancelled ($error)');
+      return;
+    }
     if (VideoDecoder.logFailures) {
       debugPrint(
         'mpx_video: ${_request.descriptor.key} (${_request.part.name}) did '
@@ -222,10 +233,13 @@ final class _VideoDecode implements AssetTask {
   Future<void> _content() async {
     final VideoClip clip;
     final Uint8List first;
+    _stage('decode $_source');
     try {
       clip = await _open(_source);
+      _stage('opened ${clip.info} at ${clip.width}x${clip.height}');
       try {
         first = await _firstFrame(clip);
+        _stage('first frame');
       } on Object {
         _close(clip);
         rethrow;
@@ -256,6 +270,7 @@ final class _VideoDecode implements AssetTask {
     }
     // Outside the try above: from here the image and the clip belong to the
     // paintables handed over.
+    _stage('still uploaded');
     final frameBytes = clip.frameBytes;
     if (_request.spec.variant == AssetVariant.firstFrame) {
       _closeLast(clip);

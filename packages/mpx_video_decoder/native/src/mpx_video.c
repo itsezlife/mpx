@@ -240,14 +240,12 @@ static MpxVideo *new_handle(SourceKind source, uint32_t target_w, uint32_t targe
   return h;
 }
 
-/* Gates the source's size, then builds the AVIO and the decoder over it.
- * Frees the handle on failure. */
+/* Builds the AVIO and the decoder over the source. The byte cap is the
+ * in-memory open's own (it bounds the copy held): a file or a reader is
+ * read in place, a buffer at a time, whatever its size. Frees the handle on
+ * failure. */
 static int32_t finish_open(MpxVideo *h, MpxVideo **out_handle) {
   int32_t status = MPX_VIDEO_INTERNAL;
-  if (h->size > MPX_VIDEO_MAX_INPUT_BYTES) {
-    status = MPX_VIDEO_TOO_LARGE;
-    goto fail;
-  }
   if (h->size == 0) {
     status = MPX_VIDEO_MALFORMED;
     goto fail;

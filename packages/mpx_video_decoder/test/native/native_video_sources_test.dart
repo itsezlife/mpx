@@ -32,6 +32,30 @@ void main() {
       }
     });
 
+    test('larger than the in-memory cap opens, read in place', () {
+      // The cap bounds a copy held in memory; a file read at offsets holds
+      // none. A real clip with padding after it is over the cap.
+      final file = File('${Directory.systemTemp.path}/large-clip-$pid.webm')
+        ..writeAsBytesSync([...webm.bytes, ...Uint8List(11 * 1024 * 1024)]);
+      addTearDown(file.deleteSync);
+
+      final fromFile = _decodeAll(binding, VideoSource.file(file.path));
+
+      expect(fromFile, hasLength(webm.frames));
+      expect(
+        binding.open(
+          VideoSource.bytes(file.readAsBytesSync()),
+          width: 32,
+          height: 24,
+        ),
+        isA<VideoRejected>().having(
+          (r) => r.reason,
+          'reason',
+          VideoRejection.tooLarge,
+        ),
+      );
+    });
+
     test('that does not exist is rejected as an unreadable source', () {
       final result = binding.open(
         VideoSource.file('${Directory.systemTemp.path}/no-such-clip.mp4'),

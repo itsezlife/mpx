@@ -41,7 +41,7 @@ enum {
   MPX_VIDEO_END_OF_STREAM = 1,     /* next: no more frames until a rewind */
   MPX_VIDEO_OK = 0,
   MPX_VIDEO_INVALID_ARGUMENT = -1, /* a null pointer */
-  MPX_VIDEO_TOO_LARGE = -2,        /* open: len over MPX_VIDEO_MAX_INPUT_BYTES, checked before the bytes are looked at */
+  MPX_VIDEO_TOO_LARGE = -2,        /* mpx_video_open: len over MPX_VIDEO_MAX_INPUT_BYTES, checked before the bytes are looked at */
   MPX_VIDEO_MALFORMED = -3,        /* open: not a container this build reads, or no readable stream info */
   MPX_VIDEO_LIMIT_EXCEEDED = -4,   /* open: source dimensions over the cap; next: packet or frame budget spent */
   MPX_VIDEO_UNSUPPORTED = -5,      /* open: no video stream, or its codec is not built in */
@@ -53,7 +53,7 @@ enum {
 
 /* Caps. Changing one is an ABI-visible behaviour change. */
 enum {
-  MPX_VIDEO_MAX_INPUT_BYTES = 10 * 1024 * 1024, /* 10 MiB gif/clip input gate */
+  MPX_VIDEO_MAX_INPUT_BYTES = 10 * 1024 * 1024, /* 10 MiB gate on the copy mpx_video_open holds; a file or reader is read in place and has none */
   MPX_VIDEO_MAX_SOURCE_EDGE = 3840,             /* per-side cap */
   MPX_VIDEO_MAX_SOURCE_PIXELS = 3840 * 2160,
   MPX_VIDEO_MAX_TARGET_EDGE = 2048,
@@ -86,8 +86,8 @@ MPX_VIDEO_API int32_t mpx_video_open(const uint8_t *data, size_t len, uint32_t t
 
 /* Opens the file at path for frames of target_w x target_h, reading it in
  * place. Statuses as mpx_video_open, plus MPX_VIDEO_SOURCE_FAILED when the
- * file cannot be opened or read. The file's size is the input gated by
- * MPX_VIDEO_MAX_INPUT_BYTES. */
+ * file cannot be opened or read. No byte cap applies: nothing is copied, so
+ * a file is bounded by the dimension caps and the per-pass budgets. */
 MPX_VIDEO_API int32_t mpx_video_open_file(const char *path, uint32_t target_w,
                         uint32_t target_h, MpxVideo **out_handle);
 
@@ -106,8 +106,8 @@ enum { MPX_VIDEO_READER_ABI_VERSION = 2 };
  * therefore wait on the network, and must run on a thread that is not the
  * one serving the reader's fetches. A resource withdrawn by its host wakes
  * a blocked read, which then fails with MPX_VIDEO_SOURCE_FAILED. The open
- * waits until the resource's length is known; that length is the input
- * gated by MPX_VIDEO_MAX_INPUT_BYTES. */
+ * waits until the resource's length is known. No byte cap applies, as for
+ * mpx_video_open_file. */
 MPX_VIDEO_API int32_t mpx_video_open_reader(const void *reader_api, const char *key,
                         uint32_t target_w, uint32_t target_h,
                         MpxVideo **out_handle);
