@@ -8,7 +8,11 @@
   resource in one GET. `RangedContentPublisher` (`NativeRangedContentPublisher`
   in `package:mpx/native.dart`, `FakeRangedContentPublisher` in
   `testing.dart`) publishes missing content of its kinds for native readers
-  instead of downloading it first.
+  instead of downloading it first; opt-in, since a published clip blocks
+  its decode worker on missing bytes. The example does not publish: its
+  clips download whole off the UI isolate, and its lab reports coverage
+  (items that reached a picture, video frames decoded) beside the hitches,
+  flagging a replay that drew less than its recording.
 - `MpxStack`: `ranged` holds the store's ranged resources, `publisher`
   builds a publisher over them, and the default client runs its media
   transfers on a worker isolate.

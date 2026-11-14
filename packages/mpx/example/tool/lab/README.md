@@ -174,6 +174,17 @@ summary, then a line per segment, every count with its denominator:
 The pointer windows come from the tape, never from the app's messages.
 `-` instead of a tape takes the app's input dispatches: a smoke test only.
 
+## Coverage
+
+A run that draws less is cheaper, so its hitches drop for the wrong
+reason. Every recording and every replay of the stress feed ends with a
+`LAB coverage` line: the stress items that reached a picture and the video
+frames the software decoder decoded, per corpus kind. `session.py` prints
+the replay's next to the recording's and flags `COVERAGE DROPPED` when the
+replay reached under 90 % of the recording's items of a kind, or under half
+its video frames; `replay.sh` also counts `mpx_video:` lines, the reasons
+clips failed to decode. A flagged run is not an A/B result.
+
 ## Before trusting a number
 
 - The engine's marks reach the trace only with `trace-systrace`, which

@@ -40,7 +40,8 @@ sleep 2
 trace_stop "$dir"
 logcat_stop "$dir"
 lab_log "$dir"
-grep -E 'summary|tape replay done|LAB net requests' "$dir/lab.txt" | sed 's/^/  /'
+grep -E 'summary|coverage|tape replay done|LAB net requests' "$dir/lab.txt" | sed 's/^/  /'
+echo "  video decode failures=$(grep -c 'mpx_video:' "$dir/logcat.txt" 2>/dev/null || true)"
 echo "  trace=$(wc -c <"$dir/trace.pftrace" | tr -d ' ')B," \
   "events=$(grep -c 'LAB event' "$dir/lab.txt" || true)," \
   "slow frames=$(grep -c 'LAB slow' "$dir/lab.txt" || true)"

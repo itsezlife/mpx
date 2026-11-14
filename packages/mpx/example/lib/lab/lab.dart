@@ -12,6 +12,7 @@ import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:mpx/mpx.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_example/lab/corpus.dart';
+import 'package:mpx_example/lab/lab_coverage.dart';
 import 'package:mpx_example/lab/lab_net.dart';
 import 'package:mpx_example/lab/pointer_tape.dart';
 import 'package:mpx_example/lab/stress_feed.dart';
@@ -313,9 +314,11 @@ abstract final class Lab {
         _logNet();
       case 'record' when value == 'true':
         PointerTape.start(_top);
+        LabCoverage.start();
         _log('tape record start $tape from $_top');
       case 'record':
         final n = await PointerTape.stop(_filesDir!, tape);
+        _log(LabCoverage.stop());
         _log('tape saved $tape rows=$n');
       case 'replay':
         await _replay(tape);
@@ -334,10 +337,12 @@ abstract final class Lab {
     }
     _log('tape replay start $name rows=${tape.rows.length}');
     _replayFrames = [];
+    LabCoverage.start();
     final n = await PointerTape.replay(tape);
     // Timings arrive in batches; let the last one land.
     await Future<void>.delayed(const Duration(milliseconds: 1500));
     _logReplaySummary(_replayFrames!);
+    _log(LabCoverage.stop());
     _replayFrames = null;
     _logNet();
     _log('tape replay done $name rows=$n');
@@ -362,6 +367,7 @@ abstract final class Lab {
       kinds: kinds.value,
       distinct: distinct.value,
     )..know(stack);
+    LabCoverage.watch(stack.scope, feed);
     navigator
       ..popUntil((route) => route.isFirst)
       ..push(

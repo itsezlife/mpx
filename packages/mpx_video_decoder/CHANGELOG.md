@@ -13,6 +13,9 @@
   status `MPX_VIDEO_SOURCE_FAILED` (`VideoRejection.source`).
 - A clip read in place costs its frame only; the encoded size counts for
   bytes held in memory.
+- `VideoDecoder.logFailures`: a decode that fails logs an `mpx_video:` line
+  with the media key and the reason, so a clip left on its placeholder can
+  be told apart on a device.
 - Seek to a time: `mpx_video_seek` (ABI version 2) goes back to the keyframe
   before it and decodes forward on the engine's side, through
   `VideoBinding.seek`, `VideoEngine.seek` and `VideoFrameLease.seekTo`. A

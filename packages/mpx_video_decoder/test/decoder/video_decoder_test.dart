@@ -1,7 +1,7 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
@@ -386,6 +386,38 @@ void main() {
       await pumpEventQueue();
 
       expect(fake.openClips, 0);
+    });
+
+    test('with logFailures on, a clip that does not open says why', () async {
+      final lines = <String?>[];
+      final previous = debugPrint;
+      debugPrint = (message, {wrapWidth}) => lines.add(message);
+      VideoDecoder.logFailures = true;
+      addTearDown(() {
+        debugPrint = previous;
+        VideoDecoder.logFailures = false;
+      });
+
+      decoder.decode(_request(refused), _Report());
+      decoder.decode(_request(good), _Report());
+      await pumpEventQueue();
+
+      expect(lines, hasLength(1));
+      expect(lines.single, startsWith('mpx_video: '));
+      expect(lines.single, contains('fixture'));
+      expect(lines.single, contains('unsupported'));
+    });
+
+    test('by default a failure stays silent', () async {
+      final lines = <String?>[];
+      final previous = debugPrint;
+      debugPrint = (message, {wrapWidth}) => lines.add(message);
+      addTearDown(() => debugPrint = previous);
+
+      decoder.decode(_request(refused), _Report());
+      await pumpEventQueue();
+
+      expect(lines, isEmpty);
     });
 
     group('gives its content back', () {

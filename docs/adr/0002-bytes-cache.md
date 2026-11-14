@@ -182,8 +182,12 @@ resume, the whole body buffered by design.
   goes out as its file under a lease the decoder releases (the fetch
   contract gained a release point, ADR 0003); a missing part whose location
   is immutable is fetched as a ranged resource in one GET to the end, and
-  the content kinds a host's `RangedContentPublisher` takes (video) go out
-  published to the native reader, read as they download. Elsewhere (memory,
+  the content kinds a host's `RangedContentPublisher` takes go out
+  published to the native reader, read as they download. Publishing is
+  opt-in: a published clip blocks its decode worker (and every clip on it)
+  and a pipeline decode slot on each byte the network has not brought, which
+  on a device starved the software decoder until no list clip played; the
+  example downloads clips whole instead. Elsewhere (memory,
   the web, revalidated locations) content goes out as bytes through the
   ladder. Settled 2026-11-14, after a CPU profile of a media-heavy list
   showed the UI isolate copying whole clips to hand them to the decoder.

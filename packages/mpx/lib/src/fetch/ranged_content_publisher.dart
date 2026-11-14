@@ -11,6 +11,14 @@ import 'package:mpx_core/mpx_core.dart';
 /// [FetchedRanged]; the reader fetches what its reads miss, and releasing the
 /// content withdraws the publication. `NativeRangedContentPublisher` in
 /// `package:mpx/native.dart` is the VM implementation.
+///
+/// Opt-in, and only for a decoder that can afford to wait: a read of bytes
+/// the network has not brought blocks the thread that decodes, and the
+/// pipeline's decode slot stays taken meanwhile. On a pool of worker
+/// isolates (`IsolateVideoEngine`) every clip sharing the worker waits with
+/// it, so a few clips still downloading from a far origin hold back clips
+/// that are already held. Without a publisher the fetcher downloads the
+/// content whole (on the client's transfer worker) before it decodes.
 abstract interface class RangedContentPublisher {
   /// The kinds whose missing content goes out published, not downloaded.
   Set<MediaKind> get kinds;

@@ -17,9 +17,10 @@ import 'package:mpx_video_decoder/src/engine/video_texture_engine.dart';
 /// file itself, at the offsets the demuxer asks for, so its bytes never
 /// pass through the caller's isolate. Only a bytes source is copied over
 /// (once, into a transferable). A ranged source's reads block the worker
-/// while their bytes are missing: the other clips on that worker wait with
-/// it, which is why a host publishes only what it is fetching anyway, and
-/// withdraws the resource (waking the read) when the clip closes.
+/// while their bytes are missing: every other clip on that worker waits with
+/// it, for as long as the network takes, so a ranged source suits a clip
+/// whose bytes are close (or a worker of its own), not a list of clips from
+/// a far origin. Withdrawing the resource wakes a blocked read.
 ///
 /// Each worker builds its own binding (a binding is single-isolate state),
 /// owns the clips it opened, and answers its requests one at a time in

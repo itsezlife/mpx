@@ -7,13 +7,13 @@ import 'package:http/http.dart' as http;
 import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:http_bytes_cache/native_reader.dart';
 import 'package:mpx/mpx.dart';
-import 'package:mpx/native.dart';
 import 'package:mpx_core/frame_pool.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_example/feed_page.dart';
 import 'package:mpx_example/gallery.dart';
 import 'package:mpx_example/lab/corpus.dart';
 import 'package:mpx_example/lab/lab.dart';
+import 'package:mpx_example/lab/lab_coverage.dart';
 import 'package:mpx_example/lab/lab_viewer.dart';
 import 'package:mpx_example/lab/stress_feed.dart';
 import 'package:mpx_lottie/mpx_lottie.dart';
@@ -84,10 +84,6 @@ Future<void> main() async {
     directoryPath: framesDirectory,
     diskBudgetBytes: null,
   );
-  // The process's one native reader, over the stack's ranged resources: the
-  // software video decoder reads clips through it as they download, and the
-  // players read their sources through it.
-  NativeRangedReaders? readers;
   final stack = await MpxStack.create(
     // Where each key's bytes are. A real host maps its keys to its CDN.
     locate: (descriptor, part) => switch (_fileOf(descriptor.key)) {
@@ -103,16 +99,23 @@ Future<void> main() async {
     client:
         (kMpxLab ? Lab.httpClient() : null) ??
         HttpBytesClient(client: _BundleOrigin()),
-    publisher: (ranged) => NativeRangedReaders.isAvailable
-        ? NativeRangedContentPublisher(readers = NativeRangedReaders(ranged))
-        : null,
   );
   for (final (key, kind, _, _) in _media) {
     stack.pipeline.know(
       MediaDescriptor(key: key, kind: kind, animated: kind != MediaKind.still),
     );
   }
-  final players = await _players(readers);
+  // The process's one native reader, over the stack's ranged resources:
+  // the players read their sources through it. The software decoder reads
+  // whole files instead (no publisher): a clip opened on the reader blocks
+  // its decode worker, and the other clips on it, on every byte the
+  // network has not brought yet.
+  final ranged = stack.ranged;
+  final players = await _players(
+    ranged != null && NativeRangedReaders.isAvailable
+        ? NativeRangedReaders(ranged)
+        : null,
+  );
   if (kMpxLab) Lab.attach(stack, players);
   runApp(MediaApp(stack: stack, players: players));
 }
@@ -205,7 +208,8 @@ Future<Map<MediaKind, Decoder>> _decoders(
     debugPrint('Lottie is off: $reason');
   }
   try {
-    final engine = await IsolateVideoEngine.spawn();
+    final worker = await IsolateVideoEngine.spawn();
+    final engine = kMpxLab ? LabCoverage.count(worker) : worker;
     final textures = context.textures;
     final scheduler = VideoFrameScheduler(
       engine: engine,
@@ -220,6 +224,9 @@ Future<Map<MediaKind, Decoder>> _decoders(
       ..onDispose(engine.dispose)
       ..onDispose(scheduler.dispose);
     if (kMpxLab) Lab.wireVideo(scheduler);
+    // A clip that does not open says why in the log, instead of staying on
+    // its placeholder in silence.
+    VideoDecoder.logFailures = true;
     decoders[MediaKind.video] = VideoDecoder(
       engine: engine,
       scheduler: scheduler,

@@ -120,6 +120,12 @@ final class VideoDecoder implements Decoder {
   final VideoImageDecoder _decodeImage;
   final VideoPixelUploader _uploadPixels;
 
+  /// Whether a decode that fails logs a `mpx_video:` line with the media key
+  /// and the reason (`debugPrint`, so it reaches the device log). Off by
+  /// default: a failed decode keeps its placeholder by design, which leaves
+  /// a host diagnosing a device nothing to read without it.
+  static bool logFailures = false;
+
   @override
   AssetTask decode(DecodeRequest request, AssetProgress progress) {
     final task = _VideoDecode(this, request, progress);
@@ -178,9 +184,14 @@ final class _VideoDecode implements AssetTask {
   void _release() => _request.content.release();
 
   void _fail(Object error, StackTrace stackTrace) {
-    if (!_cancelled) {
-      _progress.fail(error, stackTrace, AssetFailureKind.permanent);
+    if (_cancelled) return;
+    if (VideoDecoder.logFailures) {
+      debugPrint(
+        'mpx_video: ${_request.descriptor.key} (${_request.part.name}) did '
+        'not decode: $error',
+      );
     }
+    _progress.fail(error, stackTrace, AssetFailureKind.permanent);
   }
 
   Future<void> _thumbnail() async {

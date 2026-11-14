@@ -20,11 +20,18 @@ segments; each kind has its own metric and denominator:
   its first second; for the feeds, the time from the input to the first
   frame with content (`feed first-content`).
 
+Coverage guards the numbers: the app's `coverage` line (stress items that
+reached a picture, video frames decoded, per kind) of this run, read from
+the lab.txt beside the trace, against the tape's recording (the lab.txt
+beside the tape). A run that drew much less than its recording is flagged
+COVERAGE DROPPED: its hitches are not comparable.
+
 Prints one summary table, then one line per segment. Exits non-zero when
 the trace holds no segment at all.
 """
 
 import collections
+import os
 import statistics
 import sys
 
@@ -154,11 +161,71 @@ for n, (ts, text) in enumerate(events):
 if not segments:
     sys.exit("no segment marks in the trace: is it a lab build, and did the trace cover the run?")
 
+def coverage(lab_txt):
+    """The last `coverage` line of a lab.txt as {name: (shown, of) or n}."""
+    try:
+        lines = [l for l in open(lab_txt) if l.startswith("LAB coverage ")]
+    except OSError:
+        return None
+    if not lines:
+        return None
+    out = {}
+    for part in lines[-1].split()[2:]:
+        if "=" not in part:
+            continue
+        name, value = part.split("=", 1)
+        if "/" in value:
+            a, b = value.split("/", 1)
+            out[name] = (int(a), int(b))
+        elif value.isdigit():
+            out[name] = int(value)
+    return out
+
+
+def coverage_text(c):
+    shown = c.get("content", (0, 0))
+    kinds = " ".join(f"{k[8:]} {v[0]}/{v[1]}" for k, v in sorted(c.items())
+                     if k.startswith("content.") and isinstance(v, tuple))
+    frames = " ".join(f"{k[12:]} {v}" for k, v in sorted(c.items())
+                      if k.startswith("videoFrames.") and isinstance(v, int))
+    return (f"content {shown[0]}/{shown[1]} ({kinds}), video frames "
+            f"{c.get('videoFrames', 0)}" + (f" ({frames})" if frames else ""))
+
+
+def coverage_dropped(run, rec):
+    """Why [run] covers less than its recording [rec], or None."""
+    why = []
+    for name, value in rec.items():
+        mine = run.get(name)
+        if isinstance(value, tuple) and value[0] > 0:
+            got = mine[0] if isinstance(mine, tuple) else 0
+            if got < 0.9 * value[0]:
+                why.append(f"{name} {got} < {value[0]}")
+        elif isinstance(value, int) and value > 0:
+            got = mine if isinstance(mine, int) else 0
+            if got < 0.5 * value:
+                why.append(f"{name} {got} < {value}")
+    return ", ".join(why) or None
+
+
+run_cov = coverage(os.path.join(os.path.dirname(args[0]) or ".", "lab.txt"))
+rec_cov = None if args[1] == "-" else coverage(
+    os.path.join(os.path.dirname(args[1]) or ".", "lab.txt"))
+
 span = (cap.refreshes[-1] - cap.refreshes[0]) / 1e9 if cap.refreshes else 0
 print(f"run: {len(cap.refreshes)} refreshes at {cap.hz:.0f} Hz over {span:.1f} s, "
       f"{len(segments)} segments, input from {'the tape' if args[1] != '-' else 'the app (smoke)'}")
 line, glide, drag = scroll_all.line()
 print(f"  {'scroll':13} n={counts['scroll']:<3} {line}")
+if run_cov is not None:
+    print(f"  {'coverage':13} {coverage_text(run_cov)}")
+    if rec_cov is not None:
+        print(f"  {'recorded':13} {coverage_text(rec_cov)}")
+        dropped = coverage_dropped(run_cov, rec_cov)
+        if dropped:
+            print(f"  COVERAGE DROPPED vs the recording: {dropped}")
+else:
+    print(f"  {'coverage':13} - (no coverage line beside the trace)")
 for kind in ("viewer open", "viewer close", "route push", "route pop"):
     if not counts[kind]:
         continue
