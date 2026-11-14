@@ -26,6 +26,7 @@ export 'src/cache/middlewares/logger_middleware.dart';
 export 'src/cache/middlewares/skip_cache_middleware.dart';
 export 'src/http/byte_range.dart';
 export 'src/http/http_bytes_client.dart';
+export 'src/http/http_bytes_transfer.dart';
 export 'src/http/middlewares/bearer_middleware.dart';
 export 'src/http/middlewares/conditional_middleware.dart';
 export 'src/http/middlewares/logger_middleware.dart';

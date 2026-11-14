@@ -1032,6 +1032,24 @@ abstract interface class IRangedBytesStore implements IBytesStore {
     BytesQuota? quota,
   });
 
+  /// Adds `[offset, offset + length)` to [key]'s ranges without writing:
+  /// the bytes are already in the payload file at [offset] (a transfer
+  /// worker wrote them there, at [FileLease.path] of [openRanged]). Returns
+  /// the state after.
+  ///
+  /// [validator] and [totalLength] are read as in [writeRange], except that
+  /// a different representation drops the spans from the index only: the
+  /// file is left as it is, since it holds the bytes being recorded. An
+  /// empty resource takes the representation it is given.
+  Future<RangedState> recordRange(
+    BytesCacheKey key,
+    int offset,
+    int length, {
+    HttpCacheMeta? validator,
+    int? totalLength,
+    BytesQuota? quota,
+  });
+
   /// Drops every span of [key] and records a new representation
   /// ([validator], [totalLength]): what a `200` to a range request means.
   Future<RangedState> resetRanges(
@@ -1647,6 +1665,45 @@ final class IndexedBytesCache implements IRangedBytesStore {
     HttpCacheMeta? validator,
     int? totalLength,
     BytesQuota? quota,
+  }) => _landRange(
+    key,
+    offset,
+    bytes.length,
+    bytes: bytes,
+    validator: validator,
+    totalLength: totalLength,
+    quota: quota,
+  );
+
+  @override
+  Future<RangedState> recordRange(
+    BytesCacheKey key,
+    int offset,
+    int length, {
+    HttpCacheMeta? validator,
+    int? totalLength,
+    BytesQuota? quota,
+  }) => _landRange(
+    key,
+    offset,
+    length,
+    validator: validator,
+    totalLength: totalLength,
+    quota: quota,
+  );
+
+  /// Adds `[offset, offset + length)` to [key]'s ranges, writing [bytes]
+  /// there first when given ([writeRange]); without them the bytes are
+  /// already in the file ([recordRange]), so a new representation drops the
+  /// old spans from the index but leaves the file alone.
+  Future<RangedState> _landRange(
+    BytesCacheKey key,
+    int offset,
+    int length, {
+    Uint8List? bytes,
+    HttpCacheMeta? validator,
+    int? totalLength,
+    BytesQuota? quota,
   }) {
     final blobs = _rangedBlobs;
     return _runExclusive(() async {
@@ -1664,18 +1721,21 @@ final class IndexedBytesCache implements IRangedBytesStore {
           (totalLength == null ||
               stored.totalLength == null ||
               stored.totalLength == totalLength);
+      // Recorded bytes are already in the file: an empty resource takes
+      // their representation instead of being cleared under them.
+      final adopts = bytes == null && stored != null && stored.ranges.isEmpty;
       if (sameRepresentation) {
         ranges = stored.ranges;
         total ??= stored.totalLength;
         meta ??= stored.validator;
-      } else {
+      } else if (!adopts) {
         await _handOffPayload(key);
-        await blobs.clear(key);
+        if (bytes != null) await blobs.clear(key);
       }
-      if (bytes.isNotEmpty) {
+      if (bytes != null && bytes.isNotEmpty) {
         await blobs.writeAt(key, offset, bytes);
-        ranges = ranges.add(offset, offset + bytes.length);
       }
+      if (length > 0) ranges = ranges.add(offset, offset + length);
       await _putRanged(
         key,
         previous: previous,

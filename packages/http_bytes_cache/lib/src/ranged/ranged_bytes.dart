@@ -5,6 +5,7 @@ import 'package:cancel_token/cancel_token.dart';
 import 'package:http_bytes_cache/src/bytes_cache.dart';
 import 'package:http_bytes_cache/src/http/byte_range.dart';
 import 'package:http_bytes_cache/src/http/http_bytes_client.dart';
+import 'package:http_bytes_cache/src/http/http_bytes_transfer.dart';
 import 'package:http_bytes_cache/src/http/request_priority.dart';
 import 'package:http_bytes_cache/src/ranged/byte_range_set.dart';
 import 'package:meta/meta.dart';
@@ -65,7 +66,13 @@ final class RangesReset extends RangedEvent {
 /// fetches and its events until the last handle closes. Bytes are fetched in
 /// single-range GETs of [chunkBytes] through [client] (so its middlewares,
 /// priorities and slots apply), written to the sparse file in pieces of at
-/// least [writeBytes], and announced as [RangeLanded].
+/// least [writeBytes], and announced as [RangeLanded]. An ask that runs to
+/// the end ([ByteRange.end] null) is one GET to the end, not a chunk.
+///
+/// When the client [HttpBytesClient.canTransfer] and the store keeps files,
+/// each GET is a transfer: its body is written into the sparse file on the
+/// client's worker isolate, and this isolate only records the spans that
+/// landed. The bytes never enter it.
 ///
 /// A `206` adds bytes. A `200` to a range GET means the server ignores ranges
 /// or the representation changed: every span is dropped and the new body is
@@ -337,7 +344,9 @@ final class _RangedCore {
         if (gap == null) return;
         gapStart = gap.$1;
       }
-      final fetch = _covering(gapStart) ?? _start(gapStart, total, priority);
+      final fetch =
+          _covering(gapStart) ??
+          _start(gapStart, total, priority, toEnd: want.end == null);
       // Wake on every landing, not only at the end of the GET: a sequential
       // GET may run for the whole file while the bytes asked for land early.
       await fetch.step(priority: priority, cancelToken: cancelToken);
@@ -367,10 +376,18 @@ final class _RangedCore {
     return null;
   }
 
-  _Fetch _start(int start, int? total, PriorityToken? priority) {
+  _Fetch _start(
+    int start,
+    int? total,
+    PriorityToken? priority, {
+    required bool toEnd,
+  }) {
     final ByteRange? range;
     if (sequentialOnly) {
       range = null;
+    } else if (toEnd) {
+      // To the next byte held, or the end: one GET for a whole body.
+      range = ByteRange(start, state.ranges.nextPresentFrom(start));
     } else {
       final next = state.ranges.nextPresentFrom(start);
       var end = start + owner.chunkBytes;
@@ -413,6 +430,28 @@ final class _RangedCore {
     if (bytes.isNotEmpty) {
       _emit(RangeLanded(ByteRange(offset, offset + bytes.length)));
     }
+  }
+
+  /// Records `[start, end)`, written into the sparse file by a transfer, and
+  /// announces it, after a reset when the record dropped spans the resource
+  /// had.
+  Future<void> record(
+    int start,
+    int end, {
+    required HttpCacheMeta? validator,
+    required int? totalLength,
+  }) async {
+    final before = state.ranges;
+    final after = await store.recordRange(
+      key,
+      start,
+      end - start,
+      validator: validator,
+      totalLength: totalLength,
+      quota: request.quota,
+    );
+    if (!_keepsAll(before, after.ranges)) _emit(const RangesReset());
+    if (end > start) _emit(RangeLanded(ByteRange(start, end)));
   }
 
   Future<void> reset({
@@ -574,16 +613,33 @@ final class _Fetch {
     final context = HttpBytesContext.empty();
     if (stored.validator?.etag case final etag?) context.etag = etag;
     final asked = range;
+    final client = core.owner._http;
+    // Off this isolate when the client can and the store names the file the
+    // worker writes into.
+    final offIsolate = client.canTransfer && core.lease.path.isNotEmpty;
     final HttpBytesResponse response;
+    HttpBytesTransfer? transfer;
     try {
-      response = await core.owner._http.stream(
-        core.request.url,
-        headers: core.request.headers,
-        range: asked,
-        cancelToken: _token,
-        priority: priority,
-        context: context,
-      );
+      if (offIsolate) {
+        transfer = await client.transfer(
+          core.request.url,
+          headers: core.request.headers,
+          range: asked,
+          cancelToken: _token,
+          priority: priority,
+          context: context,
+        );
+        response = transfer.head;
+      } else {
+        response = await client.stream(
+          core.request.url,
+          headers: core.request.headers,
+          range: asked,
+          cancelToken: _token,
+          priority: priority,
+          context: context,
+        );
+      }
     } on HttpBytesException$Request catch (error) {
       if (error.statusCode != 416) rethrow;
       // Past the end: the answer names the length, so the ask is settled.
@@ -602,6 +658,7 @@ final class _Fetch {
       case 206:
         final content = response.contentRange;
         if (content == null) {
+          transfer?.cancel();
           await response.stream.drain<void>();
           throw HttpBytesException$Internal(
             code: 'bad_content_range',
@@ -625,6 +682,25 @@ final class _Fetch {
         range = null;
     }
     cursor = offset;
+
+    if (transfer != null) {
+      await transfer.writeTo(
+        core.lease.path,
+        offset: offset,
+        onLanded: (start, end) async {
+          await core.record(
+            start,
+            end,
+            validator: validator,
+            totalLength: total,
+          );
+          cursor = end;
+          landedBytes += end - start;
+          _landed();
+        },
+      );
+      return;
+    }
 
     final pending = BytesBuilder(copy: false);
     Future<void> flush() async {

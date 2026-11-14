@@ -17,10 +17,11 @@ import 'package:path/path.dart' as p;
 /// `compute` spawn cost, and sync `dart:io` on the UI isolate would hitch
 /// scrolls. The worker runs sync IO; the host only awaits RPC.
 ///
-/// Writes at or above [transferByteThreshold] cross the isolate boundary as
-/// [TransferableTypedData] so the send itself stays O(1) after one preparation
-/// copy. Smaller bodies stay plain [Uint8List] (transferable setup would cost
-/// more than it saves). Writes go to `path.tmp` then rename. A crash mid-write
+/// Payloads at or above [transferByteThreshold] cross the isolate boundary as
+/// [TransferableTypedData], both ways: the one copy is made on the worker
+/// (reads) or before the send (writes), and the receiving isolate takes the
+/// buffer over without copying it again. Smaller bodies stay plain
+/// [Uint8List] (transferable setup would cost more than it saves). Writes go to `path.tmp` then rename. A crash mid-write
 /// leaves a temp (or nothing), never a truncated final path that [read] would
 /// treat as a hit.
 ///
@@ -120,7 +121,7 @@ final class BytesBlobStore$File$VM
         length: length,
       ),
     );
-    return response.bytes;
+    return _received(response.bytes);
   }
 
   @override
@@ -168,7 +169,7 @@ final class BytesBlobStore$File$VM
         length: 0,
       ),
     );
-    return response.bytes;
+    return _received(response.bytes);
   }
 
   /// Writes [bytes] to [path] via temp + rename on the worker.
@@ -410,11 +411,30 @@ typedef _BlobIoRequest = ({
   int length,
 });
 
+/// [bytes] is [Uint8List], [TransferableTypedData] (at or above the
+/// threshold), or null.
 typedef _BlobIoResponse = ({
   int id,
-  Uint8List? bytes,
+  Object? bytes,
   String? error,
 });
+
+/// The bytes of a read reply, taken over without a copy when they came as a
+/// transferable.
+Uint8List? _received(Object? bytes) => switch (bytes) {
+  final TransferableTypedData transferable =>
+    transferable.materialize().asUint8List(),
+  final Uint8List list => list,
+  _ => null,
+};
+
+/// The bytes a read sends back: a transferable from the threshold up, so
+/// the reading isolate does not copy them out of the message.
+Object? _outgoing(Uint8List? bytes) =>
+    bytes != null &&
+        bytes.lengthInBytes >= BytesBlobStore$File$VM.transferByteThreshold
+    ? TransferableTypedData.fromList([bytes])
+    : bytes;
 
 /// Isolate entry for [BytesBlobStore$File$VM].
 ///
@@ -429,7 +449,11 @@ Future<void> _fileBlobIoHandler(
     try {
       switch (request.op) {
         case .read:
-          send((id: request.id, bytes: _readFile(request.path), error: null));
+          send((
+            id: request.id,
+            bytes: _outgoing(_readFile(request.path)),
+            error: null,
+          ));
         case .write:
           _writeAtomic(request.path, _materializeWriteBytes(request.bytes));
           send((id: request.id, bytes: null, error: null));
@@ -458,7 +482,9 @@ Future<void> _fileBlobIoHandler(
         case .readAt:
           send((
             id: request.id,
-            bytes: _readAt(request.path, request.offset, request.length),
+            bytes: _outgoing(
+              _readAt(request.path, request.offset, request.length),
+            ),
             error: null,
           ));
         case .clear:

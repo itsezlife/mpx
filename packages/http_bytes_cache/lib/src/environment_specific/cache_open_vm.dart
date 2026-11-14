@@ -142,6 +142,23 @@ final class BytesCache$VM implements IRangedBytesStore {
   );
 
   @override
+  Future<RangedState> recordRange(
+    BytesCacheKey key,
+    int offset,
+    int length, {
+    HttpCacheMeta? validator,
+    int? totalLength,
+    BytesQuota? quota,
+  }) => _inner.recordRange(
+    key,
+    offset,
+    length,
+    validator: validator,
+    totalLength: totalLength,
+    quota: quota,
+  );
+
+  @override
   Future<RangedState> resetRanges(
     BytesCacheKey key, {
     HttpCacheMeta? validator,

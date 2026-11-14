@@ -4,9 +4,13 @@ import 'dart:typed_data';
 import 'package:cancel_token/cancel_token.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_bytes_cache/src/bytes_cache.dart';
+import 'package:http_bytes_cache/src/environment_specific/transfer_worker.dart'
+    as environment_specific;
 import 'package:http_bytes_cache/src/http/byte_range.dart';
+import 'package:http_bytes_cache/src/http/http_bytes_transfer.dart';
 import 'package:http_bytes_cache/src/http/middlewares/timeout_middleware.dart';
 import 'package:http_bytes_cache/src/http/request_priority.dart';
+import 'package:http_bytes_cache/src/http/transfer_worker.dart';
 import 'package:meta/meta.dart';
 
 /// Observes cumulative HTTP body bytes while a network GET consolidates.
@@ -418,6 +422,10 @@ final class HttpBytesResponse {
 /// completes with headers and an empty body (illegal non-empty 304 bodies are
 /// ignored). Empty-body-as-[HttpBytesException$Internal] still applies when a
 /// successful body was expected (non-304).
+///
+/// With [transfers], [transfer] runs file-bound GETs on a worker isolate: the
+/// socket, the body and the file writes stay there, and this isolate hears
+/// the head and each span written. [client] then serves every other request.
 /// {@endtemplate}
 final class HttpBytesClient {
   /// {@macro http_bytes_client}
@@ -426,7 +434,9 @@ final class HttpBytesClient {
     int maxConcurrent = 6,
     Iterable<HttpBytesMiddleware>? middlewares,
     this.validateStatus,
+    HttpBytesTransfers? transfers,
   }) : assert(maxConcurrent > 0, 'maxConcurrent must be > 0'),
+       _transfers = transfers,
        middlewares = List<HttpBytesMiddleware>.unmodifiable(
          middlewares ??
              <HttpBytesMiddleware>[const HttpBytesTimeoutMiddleware()],
@@ -483,6 +493,18 @@ final class HttpBytesClient {
   late final http.Client _client;
   late final bool _ownsClient;
   late final _PrioritySlots _slots;
+  final HttpBytesTransfers? _transfers;
+
+  /// Spawned with the first transfer.
+  late final TransferWorker _worker = environment_specific.$transferWorker(
+    _transfers!,
+  );
+  var _workerUsed = false;
+
+  /// Whether [transfer] is available: the client was given transfers, and
+  /// the platform has isolates (not the web).
+  bool get canTransfer =>
+      _transfers != null && environment_specific.$canTransfer;
 
   /// Composed middleware chain ending at [http.Client.send].
   late final HttpBytesHandler _handler;
@@ -594,6 +616,58 @@ final class HttpBytesClient {
       priority: priority,
     );
     return response.toBytes();
+  }
+
+  /// GETs [url] on the transfer worker and completes with the head, the body
+  /// held there until [HttpBytesTransfer.writeTo] writes it into a file (or
+  /// [HttpBytesTransfer.cancel] drops it): the body never enters this
+  /// isolate.
+  ///
+  /// [range] asks a single range, as [stream] does. The middlewares run on
+  /// the request and up to the head (Bearer and conditional headers, the
+  /// connect timeout, retries of a GET that failed before its head); the
+  /// body's idle timeout is [HttpBytesTransfers.receiveTimeout]. A transfer
+  /// is never coalesced and holds one of [maxConcurrent] slots, queued by
+  /// [priority], until its body ends, fails or is cancelled; cancelling
+  /// [cancelToken] aborts it at any point.
+  ///
+  /// Throws [UnsupportedError] unless [canTransfer].
+  Future<HttpBytesTransfer> transfer(
+    Uri url, {
+    Map<String, String>? headers,
+    ByteRange? range,
+    CancelToken? cancelToken,
+    PriorityToken? priority,
+    Map<String, Object?>? context,
+  }) async {
+    if (!canTransfer) {
+      throw UnsupportedError(
+        'This HttpBytesClient has no transfer worker: give it '
+        'HttpBytesTransfers (the VM only).',
+      );
+    }
+    if (_closed) {
+      throw const HttpBytesException$Internal(
+        code: 'closed',
+        message: 'HttpBytesClient is closed.',
+        statusCode: 0,
+      );
+    }
+    final callerToken = cancelToken ?? CancelToken();
+    final ctx = HttpBytesContext(context ?? <String, Object?>{})
+      ..callerCancelToken = callerToken
+      ..range = range;
+    ctx[_kTransfer] = true;
+    if (priority != null) ctx.priority = priority;
+    final request = http.Request('GET', url);
+    if (headers case final h?) request.headers.addAll(h);
+    if (range != null) request.headers['range'] = range.header;
+    final head = await _raceCallerCancel(
+      callerToken,
+      url,
+      () => _handler(HttpBytesRequest(request), ctx),
+    );
+    return (ctx[_kTransferBody]! as _Transfer)..head = head;
   }
 
   /// Seeds caller context and runs the middleware chain (coalesce at the center).
@@ -711,6 +785,9 @@ final class HttpBytesClient {
       final callerToken = context.callerCancelToken ?? CancelToken();
       if (context[_kStreamed] == true) {
         return _sendStreamed(clientSend, request, context, callerToken);
+      }
+      if (context[_kTransfer] == true) {
+        return _sendTransfer(request, context, callerToken);
       }
 
       // Explicit override (resolver cacheKey) wins for coalesce; otherwise
@@ -832,8 +909,82 @@ final class HttpBytesClient {
     );
   }
 
+  /// A [transfer] GET: its own flight (never shared), a slot held until the
+  /// body ends, and the request sent from the transfer worker. The head
+  /// comes back as a response with no body; the body waits on the worker
+  /// for the [_Transfer] left in [context].
+  Future<HttpBytesResponse> _sendTransfer(
+    HttpBytesRequest request,
+    HttpBytesContext context,
+    CancelToken callerToken,
+  ) async {
+    final flightToken = CancelToken();
+    context.cancelToken = flightToken;
+    final flight = _HttpBytesInFlight(
+      flightToken: flightToken,
+      onAbandoned: () {},
+    )..trackCaller(callerToken, priority: context.priority);
+
+    await _slots.acquire(flight);
+    var released = false;
+    void release() {
+      if (released) return;
+      released = true;
+      _slots.release();
+    }
+
+    unawaited(flightToken.whenCancel.then((_) => release()));
+    _workerUsed = true;
+    final record = _TransferLog(
+      url: request.url,
+      range: request.headers['range'],
+      onTransfer: _transfers!.onTransfer,
+    );
+    final TransferHead remote;
+    try {
+      remote = await _worker.get(
+        request.url,
+        request.headers,
+        abort: flightToken.whenCancel,
+      );
+    } on TransferFailed catch (failure, stackTrace) {
+      release();
+      record.end(failed: true);
+      Error.throwWithStackTrace(
+        _transferError(failure, request.url, _transfers.receiveTimeout),
+        stackTrace,
+      );
+    }
+    record.head(remote.statusCode);
+    final isSuccess =
+        context.validateStatus ?? validateStatus ?? _defaultValidateStatus;
+    if (!isSuccess(remote.statusCode)) {
+      _worker.discard(remote);
+      release();
+      record.end(failed: true);
+      throw _statusToException(remote.statusCode, remote.headers, request.url);
+    }
+    context[_kTransferBody] = _Transfer(
+      worker: _worker,
+      remote: remote,
+      cancelled: () => callerToken.isCancelled || flightToken.isCancelled,
+      url: request.url,
+      receiveTimeout: _transfers.receiveTimeout,
+      release: release,
+      record: record,
+    );
+    return HttpBytesResponse(
+      statusCode: remote.statusCode,
+      headers: remote.headers,
+      contentLength: remote.contentLength ?? 0,
+      request: request,
+      stream: const http.ByteStream(Stream<List<int>>.empty()),
+    );
+  }
+
   /// Closes the slot queue and, when this instance created the client, the
-  /// client. Queued GETs fail; running ones finish first.
+  /// client. Queued GETs fail; running ones finish first. A transfer worker
+  /// ends with the transfers it still runs.
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
@@ -841,6 +992,169 @@ final class HttpBytesClient {
     if (_ownsClient) {
       _client.close();
     }
+    if (_workerUsed) _worker.close();
+  }
+}
+
+/// Context marker for a [HttpBytesClient.transfer] GET.
+const _kTransfer = 'httpBytesTransfer';
+
+/// Context slot for the [_Transfer] a transfer's head leaves behind.
+const _kTransferBody = 'httpBytesTransferBody';
+
+/// The [HttpBytesException] a transfer that ended without its body throws.
+HttpBytesException _transferError(
+  TransferFailed failure,
+  Uri url,
+  Duration receiveTimeout,
+) {
+  final data = <String, Object?>{'url': url.toString()};
+  return switch (failure.kind) {
+    TransferFailure.network => HttpBytesException$Network(
+      code: 'network_error',
+      message: failure.message,
+      statusCode: 0,
+      error: failure,
+      data: data,
+    ),
+    TransferFailure.timeout => HttpBytesException$Timeout(
+      code: 'receive_timeout',
+      message: failure.message,
+      statusCode: 408,
+      duration: receiveTimeout,
+      error: failure,
+      data: data,
+    ),
+    TransferFailure.io => HttpBytesException$Internal(
+      code: 'write_failed',
+      message: failure.message,
+      statusCode: 0,
+      error: failure,
+      data: data,
+    ),
+    TransferFailure.cancelled => HttpBytesException$Cancelled(
+      error: failure,
+      data: data,
+    ),
+  };
+}
+
+/// One transfer's body on the worker, as [HttpBytesClient.transfer] hands
+/// it out.
+final class _Transfer implements HttpBytesTransfer {
+  _Transfer({
+    required TransferWorker worker,
+    required TransferHead remote,
+    required bool Function() cancelled,
+    required Uri url,
+    required Duration receiveTimeout,
+    required void Function() release,
+    required _TransferLog record,
+  }) : _worker = worker,
+       _remote = remote,
+       _cancelled = cancelled,
+       _url = url,
+       _receiveTimeout = receiveTimeout,
+       _release = release,
+       _record = record;
+
+  final TransferWorker _worker;
+  final TransferHead _remote;
+  final bool Function() _cancelled;
+  final Uri _url;
+  final Duration _receiveTimeout;
+  final void Function() _release;
+  final _TransferLog _record;
+  var _used = false;
+
+  @override
+  late final HttpBytesResponse head;
+
+  @override
+  Future<void> writeTo(
+    String path, {
+    required int offset,
+    required FutureOr<void> Function(int start, int end) onLanded,
+  }) async {
+    _use();
+    // Cancelled since the head: the abort may still be on its way to the
+    // worker, which would otherwise write a body nobody wants.
+    if (_cancelled()) {
+      _drop();
+      throw HttpBytesException$Cancelled(
+        data: <String, Object?>{'url': _url.toString()},
+      );
+    }
+    var failed = true;
+    try {
+      await _worker.write(_remote, path, offset, (start, end) {
+        _record.bytes += end - start;
+        return onLanded(start, end);
+      });
+      failed = false;
+    } on TransferFailed catch (failure, stackTrace) {
+      Error.throwWithStackTrace(
+        _transferError(failure, _url, _receiveTimeout),
+        stackTrace,
+      );
+    } finally {
+      _release();
+      _record.end(failed: failed);
+    }
+  }
+
+  @override
+  void cancel() {
+    _use();
+    _drop();
+  }
+
+  void _drop() {
+    _worker.discard(_remote);
+    _release();
+    _record.end(failed: true);
+  }
+
+  void _use() {
+    if (_used) throw StateError('A transfer is written or cancelled once.');
+    _used = true;
+  }
+}
+
+/// The timings of one transfer, reported once when it ends.
+final class _TransferLog {
+  _TransferLog({required this.url, required this.range, this.onTransfer});
+
+  final Uri url;
+  final String? range;
+  final void Function(HttpBytesTransferRecord record)? onTransfer;
+  final DateTime started = DateTime.now();
+  final Stopwatch _clock = Stopwatch()..start();
+  int statusCode = 0;
+  Duration? _head;
+  int bytes = 0;
+  var _ended = false;
+
+  void head(int status) {
+    statusCode = status;
+    _head = _clock.elapsed;
+  }
+
+  void end({required bool failed}) {
+    if (_ended) return;
+    _ended = true;
+    onTransfer?.call(
+      HttpBytesTransferRecord(
+        url: url,
+        range: range,
+        statusCode: statusCode,
+        started: started,
+        head: _head,
+        ended: _clock.elapsed,
+        bytes: bytes,
+        failed: failed,
+      ),
+    );
   }
 }
 
