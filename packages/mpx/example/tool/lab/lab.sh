@@ -150,7 +150,8 @@ corpus_log() {
 corpus_check() {
   sed 's/^/  /' "$1/corpus.txt"
   if [[ -f "$2/corpus.txt" ]] &&
-    ! cmp -s <(head -1 "$1/corpus.txt") <(head -1 "$2/corpus.txt"); then
+    ! cmp -s <(head -1 "$1/corpus.txt" | sed 's/ loopback=[^ ]*//') \
+      <(head -1 "$2/corpus.txt" | sed 's/ loopback=[^ ]*//'); then
     echo "  CORPUS DIFFERS from the tape's recording: $(head -1 "$2/corpus.txt")"
   fi
 }
