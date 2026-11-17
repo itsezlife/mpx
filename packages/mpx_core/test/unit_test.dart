@@ -77,6 +77,7 @@ import 'texture/platform/texture_table_test.dart' as texture_table_test;
 import 'texture/texture_frame_region_test.dart' as texture_frame_region_test;
 import 'widget/asset_cache_provider_test.dart' as asset_cache_provider_test;
 import 'widget/content_view_test.dart' as content_view_test;
+import 'widget/media_badge_test.dart' as media_badge_test;
 import 'widget/media_status_control_test.dart' as media_status_control_test;
 import 'widget/viewport_visibility_test.dart' as viewport_visibility_test;
 
@@ -97,6 +98,7 @@ void main() {
   group('asset_cache_churn_bench_test', asset_cache_churn_bench_test.main);
   group('asset_cache_ratio_bench_test', asset_cache_ratio_bench_test.main);
   group('device_inputs_test', device_inputs_test.main);
+  group('media_badge_test', media_badge_test.main);
   group('media_status_control_test', media_status_control_test.main);
   group('staged_preload_test', staged_preload_test.main);
   group('visible_fraction_test', visible_fraction_test.main);

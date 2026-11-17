@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `MediaBadge`: the label over media with its duration ("0:13", counting
+  down while it plays) or "GIF", and its size while it downloads ("1.2 /
+  4.5 MB", "NN%" when narrow) or waits for the user ("4.5 MB");
+  `MediaBadge.binding` reads it all from a binding. `MediaSizeFormat`
+  (`$Android` "1.2 MB / 4.5 MB", `$IOS` "1.2 / 4.5 MB", `$Desktop` tenths
+  of a megabyte), `MediaBadgeStrings` (English defaults) and
+  `MediaBadgeStyle` per platform, in `MediaLoadingStyle.badge`.
 - `MediaStatusControl`: the round control over media (disc, progress arc,
   download / cancel / play / pause icon, or a spinner), driven by a plain
   `MediaStatus` or by a binding (`MediaStatusControl.binding`, which maps

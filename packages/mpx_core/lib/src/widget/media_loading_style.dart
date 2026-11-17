@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:mpx_core/src/widget/media_badge_style.dart';
 import 'package:mpx_core/src/widget/media_status_control.dart';
 import 'package:mpx_core/src/widget/media_status_style.dart';
 
 /// The look and motion of what surfaces draw while media loads, as pure
-/// values: the status control ([status]).
+/// values: the status control ([status]) and the badge ([badge]).
 ///
 /// [$Android], [$IOS] and [$Desktop] are each platform's reference;
 /// [forPlatform] picks one, and `MediaLoadingStyleScope` lets a host adjust
@@ -11,24 +12,30 @@ import 'package:mpx_core/src/widget/media_status_style.dart';
 @immutable
 final class MediaLoadingStyle {
   /// Creates a style.
-  const MediaLoadingStyle({required this.status});
+  const MediaLoadingStyle({required this.status, required this.badge});
 
   /// The status control (`MediaStatusControl`).
   final MediaStatusStyle status;
 
+  /// The duration and size label (`MediaBadge`).
+  final MediaBadgeStyle badge;
+
   /// The Android reference.
   static const MediaLoadingStyle $Android = MediaLoadingStyle(
     status: MediaStatusStyle.$Android,
+    badge: MediaBadgeStyle.$Android,
   );
 
   /// The iOS reference.
   static const MediaLoadingStyle $IOS = MediaLoadingStyle(
     status: MediaStatusStyle.$IOS,
+    badge: MediaBadgeStyle.$IOS,
   );
 
   /// The desktop reference.
   static const MediaLoadingStyle $Desktop = MediaLoadingStyle(
     status: MediaStatusStyle.$Desktop,
+    badge: MediaBadgeStyle.$Desktop,
   );
 
   /// The reference of [platform]: [$IOS] on iOS, [$Desktop] on macOS,
@@ -44,15 +51,22 @@ final class MediaLoadingStyle {
       };
 
   /// This style with the given fields replaced.
-  MediaLoadingStyle copyWith({MediaStatusStyle? status}) =>
-      MediaLoadingStyle(status: status ?? this.status);
+  MediaLoadingStyle copyWith({
+    MediaStatusStyle? status,
+    MediaBadgeStyle? badge,
+  }) => MediaLoadingStyle(
+    status: status ?? this.status,
+    badge: badge ?? this.badge,
+  );
 
   @override
   bool operator ==(Object other) =>
-      other is MediaLoadingStyle && other.status == status;
+      other is MediaLoadingStyle &&
+      other.status == status &&
+      other.badge == badge;
 
   @override
-  int get hashCode => status.hashCode;
+  int get hashCode => Object.hash(status, badge);
 }
 
 /// Builds the status control of a surface in place of the default one: the
