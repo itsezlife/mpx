@@ -105,6 +105,7 @@ final class CorpusEntry {
     key: key,
     kind: kind.media,
     animated: kind != CorpusKind.still,
+    silentLoop: kind == CorpusKind.loop,
     byteSize: size,
     duration: switch (duration) {
       final seconds? when kind != CorpusKind.still => Duration(

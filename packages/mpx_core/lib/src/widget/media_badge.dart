@@ -13,7 +13,9 @@ import 'package:mpx_core/src/widget/media_loading_style.dart';
 ///
 /// [MediaBadge.binding] reads all of it from a binding: the descriptor's
 /// duration and kind, the transfer, and the playback position, so a clip
-/// that plays counts down. The style is the platform's
+/// that plays counts down. Only a video is timed: a GIF
+/// (`MediaDescriptor.isGif`) reads "GIF" and any other content has no
+/// first row. The style is the platform's
 /// (`MediaLoadingStyleScope`) unless [style] is given; [width] is the
 /// media's, below `MediaSizeFormat.narrowBelow` a download reads "NN%".
 class MediaBadge extends StatefulWidget {
@@ -149,8 +151,12 @@ class _MediaBadgeState extends State<MediaBadge>
       );
     }
     final descriptor = binding.descriptor;
-    final gif = descriptor?.kind == MediaKind.animatedImage;
-    var duration = descriptor?.duration;
+    final gif = descriptor?.isGif ?? false;
+    // Only a video with a timeline is timed: a GIF reads "GIF", and an
+    // animation (a sticker, an emoji) has no label.
+    var duration = descriptor?.kind == MediaKind.video && !gif
+        ? descriptor?.duration
+        : null;
     final playing = binding.isPlaying && duration != null;
     if (playing) {
       final position = binding.paintable.playbackPosition;

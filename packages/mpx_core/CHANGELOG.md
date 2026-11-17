@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `MediaDescriptor.silentLoop` marks a GIF sent as video, and
+  `MediaDescriptor.isGif` tells a GIF (an animated image or a silent
+  loop). The media badge times only a video: a GIF reads "GIF" whatever
+  its duration, and other content (a vector animation) has no first row.
+  Hosts that describe GIFs as video set `silentLoop`.
 - A playing `ContentView` that a parent did not paint (a zero opacity, an
   offstage page) measures again in the frame a parent first paints it, and
   when the tickers above turn on: a view a fade-in shows plays in the next

@@ -185,6 +185,70 @@ void main() {
       expect(find.text('1.2 / 4.5 MB'), findsOneWidget);
     });
 
+    // What the first row says per kind of content: a video its duration, a
+    // GIF (an animated image or a silent loop coded as video) "GIF" and
+    // never a duration, anything else nothing.
+    for (final (name, descriptor, label) in [
+      (
+        'a video: its duration',
+        const MediaDescriptor(
+          key: key,
+          kind: MediaKind.video,
+          animated: true,
+          duration: Duration(seconds: 13),
+        ),
+        '0:13',
+      ),
+      (
+        'a silent loop coded as video: GIF',
+        const MediaDescriptor(
+          key: key,
+          kind: MediaKind.video,
+          animated: true,
+          silentLoop: true,
+          duration: Duration(seconds: 13),
+        ),
+        'GIF',
+      ),
+      (
+        'an animated image with a duration: GIF',
+        const MediaDescriptor(
+          key: key,
+          kind: MediaKind.animatedImage,
+          animated: true,
+          duration: Duration(seconds: 3),
+        ),
+        'GIF',
+      ),
+      (
+        'a vector animation with a duration: nothing',
+        const MediaDescriptor(
+          key: key,
+          kind: MediaKind.vectorAnimation,
+          animated: true,
+          duration: Duration(seconds: 3),
+        ),
+        null,
+      ),
+    ]) {
+      testWidgets('labels by kind, $name', (tester) async {
+        final binding = scope.attach(
+          key,
+          const AssetSpec(pixelWidth: 8, pixelHeight: 8),
+          const AssetProfile(),
+        );
+        addTearDown(binding.detach);
+        producer.last.describe(descriptor);
+        await tester.pumpWidget(host(MediaBadge.binding(binding)));
+
+        final texts = [
+          for (final text in tester.widgetList<Text>(find.byType(Text)))
+            text.data,
+        ];
+        expect(texts, [?label]);
+      });
+    }
+
     testWidgets('counts down while the clip plays', (tester) async {
       final binding = scope.attach(
         key,

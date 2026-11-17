@@ -173,6 +173,7 @@ final class MediaDescriptor {
     this.thumbnail,
     this.preview,
     this.streamable = false,
+    this.silentLoop = false,
   }) : assert(byteSize == null || byteSize >= 0, 'byteSize is not negative.');
 
   /// The media this descriptor describes.
@@ -204,9 +205,18 @@ final class MediaDescriptor {
   /// for progressive playback). Defaults to false.
   final bool streamable;
 
+  /// Whether the media is a GIF sent as video: a silent loop that plays by
+  /// itself, with no timeline. Its badge reads "GIF", never a duration. An
+  /// [MediaKind.animatedImage] is one whatever this says. Defaults to false.
+  final bool silentLoop;
+
+  /// Whether the media is a GIF: an animated image, or a [silentLoop].
+  bool get isGif => kind == MediaKind.animatedImage || silentLoop;
+
   @override
   bool operator ==(Object other) =>
       other is MediaDescriptor &&
+      other.silentLoop == silentLoop &&
       other.key == key &&
       other.kind == kind &&
       other.animated == animated &&
@@ -228,6 +238,7 @@ final class MediaDescriptor {
     thumbnail,
     preview,
     streamable,
+    silentLoop,
   );
 
   @override
@@ -240,6 +251,7 @@ final class MediaDescriptor {
           MediaPreview$Outline() => 'outline',
         }}',
       if (streamable) 'streamable',
+      if (silentLoop) 'silent loop',
     ];
     return 'MediaDescriptor($key, ${facts.join(', ')})';
   }
