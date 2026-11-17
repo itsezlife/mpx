@@ -27,8 +27,9 @@ sealed class AssetTransfer {
 
   /// The content is missing and does not download by itself: the host's
   /// auto-download policy said so, or the user cancelled it. A tap on the
-  /// status control downloads it.
-  const factory AssetTransfer.awaitingUser([int? total]) =
+  /// status control downloads it, from the [received] bytes a download that
+  /// stopped short left (0 when none did).
+  const factory AssetTransfer.awaitingUser([int? total, int received]) =
       AssetTransfer$AwaitingUser;
 
   /// The last download failed after [received] bytes of [total]; [kind]
@@ -117,20 +118,25 @@ final class AssetTransfer$Receiving extends AssetTransfer {
 /// [AssetTransfer.awaitingUser].
 final class AssetTransfer$AwaitingUser extends AssetTransfer {
   /// See [AssetTransfer.awaitingUser].
-  const AssetTransfer$AwaitingUser([this.total]);
+  const AssetTransfer$AwaitingUser([this.total, this.received = 0]);
 
   @override
   final int? total;
 
+  /// The bytes a download that stopped short left; 0 when none did.
+  final int received;
+
   @override
   bool operator ==(Object other) =>
-      other is AssetTransfer$AwaitingUser && other.total == total;
+      other is AssetTransfer$AwaitingUser &&
+      other.total == total &&
+      other.received == received;
 
   @override
-  int get hashCode => Object.hash(AssetTransfer$AwaitingUser, total);
+  int get hashCode => Object.hash(AssetTransfer$AwaitingUser, total, received);
 
   @override
-  String toString() => 'AssetTransfer.awaitingUser($total)';
+  String toString() => 'AssetTransfer.awaitingUser($total, $received)';
 }
 
 /// [AssetTransfer.failed].

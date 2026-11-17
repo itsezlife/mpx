@@ -96,6 +96,16 @@ abstract interface class AssetBinding implements Listenable {
   /// the content downloads it again.
   void download();
 
+  /// Whether the surface requests the content while it shows it, as a
+  /// viewer page the user opened does: the content downloads whatever the
+  /// auto-download policy says while this binding is attached and asks. It
+  /// is not the user's download ([download]): when the binding detaches or
+  /// stops asking, a download no other surface or policy wants stops and
+  /// keeps its bytes, and the content awaits the user from there. False by
+  /// default.
+  bool get requestsDownload;
+  set requestsDownload(bool value);
+
   /// Stops the download of the content and keeps the stages it reached; the
   /// transfer reads [AssetTransfer.awaitingUser]. The scope remembers the
   /// cancel for the key until [download], so re-attaching the content later

@@ -81,6 +81,12 @@ class MediaBadge extends StatefulWidget {
             : format.progress(received, total, strings),
       AssetTransfer$Waiting(:final total?) =>
         narrow ? format.percent(0, total) : format.progress(0, total, strings),
+      // A download that stopped short shows the bytes it left.
+      AssetTransfer$AwaitingUser(:final received, :final total?)
+          when received > 0 =>
+        narrow
+            ? format.percent(received, total)
+            : format.progress(received, total, strings),
       AssetTransfer$AwaitingUser(:final total?) ||
       AssetTransfer$Failed(:final total?) => format.size(total, strings),
       _ => null,

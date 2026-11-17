@@ -84,6 +84,37 @@ void main() {
     expect(find.text('4.5 MB'), findsNothing);
   });
 
+  testWidgets('the badge sits inside the picture a contain fit letterboxes, '
+      'at the style offset from its corner', (tester) async {
+    const square = AssetPreset(
+      size: Size(160, 160),
+      spec: AssetSpec(pixelWidth: 160, pixelHeight: 160),
+      profile: AssetProfile(cornerRadius: 12),
+    );
+    await tester.pumpWidget(
+      host(const ContentView(content: _key, preset: square, badge: true)),
+    );
+    // A 2:1 picture: drawn 160 x 80 from y = 40 of the square box.
+    producer.last
+      ..describe(
+        const MediaDescriptor(
+          key: _key,
+          kind: MediaKind.video,
+          byteSize: 4718592,
+          duration: Duration(seconds: 20),
+          dimensions: MediaDimensions(320, 160),
+        ),
+      )
+      ..awaitingUser();
+    await tester.pump();
+    await tester.pump(_gone);
+
+    final box = tester.getTopLeft(find.byType(ContentView));
+    final badge = tester.getTopLeft(find.byType(MediaBadge));
+    // Android's offset is 4 x 4.
+    expect(badge - box, const Offset(4, 44));
+  });
+
   testWidgets('a failure turns the control back to download', (tester) async {
     await tester.pumpWidget(
       host(

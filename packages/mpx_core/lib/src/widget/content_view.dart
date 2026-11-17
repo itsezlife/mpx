@@ -6,6 +6,7 @@ import 'package:mpx_core/src/asset/asset_cache_scope.dart';
 import 'package:mpx_core/src/asset/asset_fade.dart';
 import 'package:mpx_core/src/asset/asset_paintable.dart';
 import 'package:mpx_core/src/asset/asset_preset.dart';
+import 'package:mpx_core/src/asset/asset_profile.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_texture_layer.dart';
 import 'package:mpx_core/src/asset/asset_transfer.dart';
@@ -226,9 +227,12 @@ class ContentView extends StatefulWidget {
   /// changes which entry the view attaches to.
   final AutoDownloadContext? downloadContext;
 
-  /// Whether showing the view is the user's request for the content, as a
-  /// page the user opened is: it downloads whatever the auto-download policy
-  /// says (`AssetBinding.download`), as soon as the view attaches.
+  /// Whether showing the view requests its content, as a page the user
+  /// opened does: it downloads whatever the auto-download policy says while
+  /// the view shows it and asks (`AssetBinding.requestsDownload`). It is not
+  /// the user's download: when the view goes or stops asking, a download
+  /// nothing else wants stops, keeping its bytes, and the content awaits
+  /// the user (a tap on a status control is the user's download).
   final bool requestsDownload;
 
   /// A fill of the picture's rounded area (the circle of a round preset)
@@ -378,11 +382,9 @@ class _ContentViewState extends State<ContentView> {
   @override
   void didUpdateWidget(ContentView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.requestsDownload && !oldWidget.requestsDownload) {
-      _binding?.download();
-    }
     _sync();
     _apply(_binding!);
+    _binding!.requestsDownload = widget.requestsDownload;
     if (widget.preset.profile.animate != oldWidget.preset.profile.animate) {
       _watchScreen();
     }
@@ -438,7 +440,7 @@ class _ContentViewState extends State<ContentView> {
       downloadContext: widget.downloadContext,
     );
     _apply(_binding!);
-    if (widget.requestsDownload) _binding!.download();
+    _binding!.requestsDownload = widget.requestsDownload;
     previous?.detach();
   }
 
@@ -1020,12 +1022,16 @@ class _Overlays extends StatefulWidget {
 
 class _OverlaysState extends State<_Overlays> {
   bool _streaming = false;
+  // The size of the picture, as far as it is known: the badge sits in the
+  // picture a contain fit letterboxes, not at the corner of the box.
+  Size? _picture;
 
   @override
   void initState() {
     super.initState();
     widget.binding.addListener(_bindingChanged);
     _streaming = _readStreaming();
+    _picture = _readPicture();
   }
 
   @override
@@ -1036,6 +1042,15 @@ class _OverlaysState extends State<_Overlays> {
       widget.binding.addListener(_bindingChanged);
     }
     _streaming = _readStreaming();
+    _picture = _readPicture();
+  }
+
+  Size? _readPicture() {
+    final binding = widget.binding;
+    if (binding.paintable.pictureSize case final size?) return size;
+    final dimensions = binding.descriptor?.dimensions;
+    if (dimensions == null) return null;
+    return Size(dimensions.width.toDouble(), dimensions.height.toDouble());
   }
 
   @override
@@ -1059,7 +1074,12 @@ class _OverlaysState extends State<_Overlays> {
 
   void _bindingChanged() {
     final streaming = _readStreaming();
-    if (streaming != _streaming) setState(() => _streaming = streaming);
+    final picture = _readPicture();
+    if (streaming == _streaming && picture == _picture) return;
+    setState(() {
+      _streaming = streaming;
+      _picture = picture;
+    });
   }
 
   Widget _control(MediaStatusControl control) {
@@ -1150,17 +1170,53 @@ class _OverlaysState extends State<_Overlays> {
         widget.child,
         ...controls,
         if (widget.badge)
-          Positioned(
-            // Beside the corner control while it shows, as one row.
-            left: _streaming
-                ? corner.dx + style.status.compactDiameter + 4
-                : badge.dx,
-            top: badge.dy,
-            child: MediaBadge.binding(binding, width: widget.width),
+          Positioned.fill(
+            child: CustomSingleChildLayout(
+              delegate: _BadgePlace(
+                profile: binding.profile,
+                picture: _picture,
+                // Beside the corner control while it shows, as one row.
+                offset: Offset(
+                  _streaming
+                      ? corner.dx + style.status.compactDiameter + 4
+                      : badge.dx,
+                  badge.dy,
+                ),
+              ),
+              child: MediaBadge.binding(binding, width: widget.width),
+            ),
           ),
       ],
     );
   }
+}
+
+// The badge at [offset] from the top-left of the picture's rounded area: the
+// picture a contain fit letterboxes in the box, or the box.
+class _BadgePlace extends SingleChildLayoutDelegate {
+  const _BadgePlace({
+    required this.profile,
+    required this.picture,
+    required this.offset,
+  });
+
+  final AssetProfile profile;
+  final Size? picture;
+  final Offset offset;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      constraints.loosen();
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) =>
+      profile.roundedArea(Offset.zero & size, picture).topLeft + offset;
+
+  @override
+  bool shouldRelayout(_BadgePlace oldDelegate) =>
+      oldDelegate.profile != profile ||
+      oldDelegate.picture != picture ||
+      oldDelegate.offset != offset;
 }
 
 /// The one measuring pass of every playing [ContentView], after the frame in

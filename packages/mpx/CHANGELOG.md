@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `RangedContentPublisher.publish(onProgress:, whole:)`: a published clip
+  reports its bytes as they land (the first stretch's and the reads'), so a
+  tile's arc and size move while it downloads; with `whole` (a user's
+  download, `FetchRequest.whole`) the native publisher fetches the rest
+  behind the reads until the content is released, so the clip is kept
+  whole and is downloaded after a restart. Breaking for implementers.
+
 - `MpxStack.create(fallbackDecoders:)` registers a fallback decoder per
   kind (`DecoderRegistry.registerFallback`).
 - `NetworkAutoDownloadPolicy` decides which missing media downloads by

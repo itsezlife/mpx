@@ -68,12 +68,14 @@ void main() {
   FetchRequest request(
     MediaDescriptor descriptor, {
     FetchProgress? onProgress,
+    bool whole = false,
   }) => FetchRequest(
     descriptor: descriptor,
     part: FetchPart.content,
     priority: AssetPriority.visible,
     cancellation: CancellationToken(),
     onProgress: onProgress ?? (_, _) {},
+    whole: whole,
   );
 
   BytesCacheKey keyOf(MediaDescriptor descriptor) =>
@@ -130,6 +132,55 @@ void main() {
       expect(publisher.released, 1);
     },
   );
+
+  test('a published kind reports its bytes as they land, and a user\'s '
+      'download asks for the whole', () async {
+    final publisher = FakeRangedContentPublisher(kinds: {MediaKind.video});
+    final reports = <(int, int?)>[];
+
+    final content = await fetcher(publisher: publisher).fetch(
+      request(
+        video,
+        whole: true,
+        onProgress: (received, total) => reports.add((received, total)),
+      ),
+    );
+    publisher.progress.single!(2000, 5000);
+
+    expect(publisher.wholes, [true]);
+    expect(reports, [(2000, 5000)]);
+    content.release();
+
+    final streamed = await fetcher(publisher: publisher).fetch(request(video));
+    expect(publisher.wholes.last, isFalse);
+    streamed.release();
+  });
+
+  test('a ranged resource fetched whole is downloaded after a restart, '
+      'whatever the policy', () async {
+    final resource = await ranged.open(
+      RangedRequest(
+        url: Uri.parse('https://cdn.test/${video.key.encoded}'),
+        cacheKey: keyOf(video),
+      ),
+    );
+    await resource.ensure(const ByteRange(0));
+    await resource.close();
+
+    await ranged.close();
+    await store.close();
+    store =
+        await BytesCache.open(directory: dir.path, throwOnOpenFailure: true)
+            as IRangedBytesStore;
+    ranged = RangedBytes(store: store, client: client);
+    final publisher = FakeRangedContentPublisher(kinds: {MediaKind.video});
+
+    expect(fetcher(publisher: publisher).needsDownload(video.key), isFalse);
+    final again = await fetcher(publisher: publisher).fetch(request(video));
+    expect(again, isA<FetchedFile>());
+    expect(publisher.published, isEmpty);
+    again.release();
+  });
 
   test('a held part of a published kind goes out as its file', () async {
     final publisher = FakeRangedContentPublisher(kinds: {MediaKind.video});

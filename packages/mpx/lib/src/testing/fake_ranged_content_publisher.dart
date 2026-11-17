@@ -23,13 +23,24 @@ final class FakeRangedContentPublisher implements RangedContentPublisher {
   /// How many publications were released.
   int released = 0;
 
+  /// Whether each publication was asked for the whole, oldest first.
+  final List<bool> wholes = [];
+
+  /// Where each publication reports its bytes, oldest first (null when
+  /// nobody listens): a test lands bytes by calling it.
+  final List<FetchProgress?> progress = [];
+
   @override
   Future<FetchedRanged> publish(
     RangedRequest request, {
     PriorityToken? priority,
     CancelToken? cancelToken,
+    FetchProgress? onProgress,
+    bool whole = false,
   }) async {
     published.add(request);
+    wholes.add(whole);
+    progress.add(onProgress);
     return FetchedRanged(
       readerApi: readerApi,
       key: request.cacheKey.value,

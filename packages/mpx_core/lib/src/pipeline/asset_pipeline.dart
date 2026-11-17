@@ -301,6 +301,10 @@ final class AssetPipeline implements AssetProducer {
           cancellation: token,
           onProgress: work.received,
           prefix: work.prefix,
+          whole:
+              work.part == FetchPart.content &&
+              work.prefix == null &&
+              work.job.demand.downloadRequested,
         ),
       );
     } on Object catch (error, stackTrace) {
@@ -807,7 +811,10 @@ final class _Work implements LaneWork {
 
   /// The fetcher's report of the bytes of this part's transfer.
   void received(int received, int? total) {
-    if (phase != _Phase.fetching) return;
+    // Streamed content reports its bytes after it was handed out, while it
+    // is decoded; any other report after the fetch is stale.
+    final streamed = content is FetchedRanged && phase != _Phase.done;
+    if (phase != _Phase.fetching && !streamed) return;
     _transferred = true;
     reportTransfer(received, total);
   }
@@ -845,7 +852,9 @@ final class _Work implements LaneWork {
       }
       return;
     }
-    if (part == FetchPart.content) {
+    // Content handed out while it still arrives is not all there: its bytes
+    // go on being reported as they land.
+    if (part == FetchPart.content && fetchedContent is! FetchedRanged) {
       job.contentFetched(transferred: _transferred);
     }
     content = fetchedContent;

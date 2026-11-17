@@ -44,6 +44,10 @@ final class FakeFetch {
     request.onProgress(received, total);
   }
 
+  /// Reports [received] bytes of [total] that landed after the fetch handed
+  /// out content still arriving (a [FetchedRanged] read as it plays).
+  void land(int received, int? total) => request.onProgress(received, total);
+
   /// Fails with [failure]. Does nothing once settled.
   void fail(FetchFailure failure) => failWith(failure);
 

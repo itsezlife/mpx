@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- A user's download is of the whole content: `AssetDemand.downloadRequested`
+  and `FetchRequest.whole` ask a fetcher that streams content as it plays
+  to fetch the rest behind the reads, so the content is kept and a
+  restart finds it downloaded. Streamed content (`FetchedRanged`) goes on
+  reporting its bytes after it was handed out, and is no longer reported
+  complete when handed out. Breaking for `AssetDemand` implementers: add
+  `downloadRequested`.
+- `AssetBinding.requestsDownload` (what `ContentView.requestsDownload`
+  sets): a surface that requests its content while it shows it (a viewer
+  page) downloads it whatever the policy, without it being the user's
+  download. When that surface goes or stops asking, a download nothing
+  else wants stops, keeping its bytes; one the user asked for is taken on
+  by another spec of the content still shown. Breaking for `AssetBinding`
+  implementers.
+- `AssetTransfer.awaitingUser(total, received)`: content awaiting the user
+  after a download stopped short (a cancel, a viewer closed) carries the
+  bytes it left, and the media badge reads "1.2 / 4.5 MB" for it.
+- Content streamed to a final first frame with only part of its bytes no
+  longer counts as downloaded for the other specs of the content.
+- The media badge sits inside the picture a contain fit letterboxes, at
+  the style's offset from its corner, not at the box's.
+- A texture layer of a rounded contain preset is clipped to the picture's
+  rounded rect from its first frame, from the texture's frame size while
+  the paintable does not know its picture's.
 - `ContentView.pictureIn(root)`: the repaint boundary of a view's picture
   alone, under its status control and badge, for a surface that reads the
   picture (a viewer's origin frame). A view with a status or a badge now

@@ -26,9 +26,17 @@ abstract interface class RangedContentPublisher {
   /// Publishes [request]'s ranged resource and completes once its index
   /// and first stretch are there, fetched at [priority]; releasing the
   /// content returned withdraws it. [cancelToken] stops the fetch.
+  ///
+  /// [onProgress] is told the bytes the resource holds of its total each
+  /// time bytes land, the first stretch's and the reads' alike, until the
+  /// content is released: the download a surface shows. With [whole] (a
+  /// user's download) the rest is fetched behind the reads too, so the
+  /// content is kept whole; releasing the content stops that.
   Future<FetchedRanged> publish(
     RangedRequest request, {
     PriorityToken? priority,
     CancelToken? cancelToken,
+    FetchProgress? onProgress,
+    bool whole = false,
   });
 }

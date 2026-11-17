@@ -33,7 +33,15 @@ final class FetchRequest {
     required this.cancellation,
     this.onProgress = _ignoreProgress,
     this.prefix,
+    this.whole = false,
   });
+
+  /// Whether the whole part is wanted, as a user's download is
+  /// (`AssetDemand.downloadRequested`): a fetcher that hands content out to
+  /// be read as it plays (a published ranged resource) still fetches the
+  /// rest behind it, telling [onProgress], so the content is kept whole.
+  /// Without it such a fetcher fetches only what is read.
+  final bool whole;
 
   /// What is known about the content. For [FetchPart.thumbnail] its
   /// `thumbnail` is set.
@@ -240,7 +248,9 @@ final class FetchFailure implements Exception {
 ///   no download for it. A transfer that several requests share reports to
 ///   each of them. Reports are on the UI isolate, before the future settles;
 ///   one transfer answered at once (a replayed recording) may report once,
-///   with everything.
+///   with everything. Content handed out while it still arrives (a
+///   [FetchedRanged] read as it plays) goes on being reported after the
+///   future settled, as its bytes land, until it is released or whole.
 /// - It may run many fetches at once; the pipeline's caps bound how many it is
 ///   given.
 /// - [needsDownload] answers at once, from what the host knows without

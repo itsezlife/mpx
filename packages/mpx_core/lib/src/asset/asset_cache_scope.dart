@@ -183,6 +183,9 @@ final class AssetCacheScope {
   AutoDownload _autoDownloadOf(_Entry entry, MediaDescriptor? descriptor) {
     if (_requestedByUser.contains(entry.key)) return AutoDownload.now;
     if (_cancelledByUser.contains(entry.key)) return AutoDownload.manual;
+    if (entry.bindings.any((binding) => binding._requestsDownload)) {
+      return AutoDownload.now;
+    }
     if (descriptor == null) return AutoDownload.now;
     final contexts = entry.downloadContexts;
     if (contexts.isEmpty) {
@@ -231,6 +234,35 @@ final class AssetCacheScope {
       return;
     }
     _restart(entry);
+  }
+
+  // A binding of [entry] began or stopped requesting the content while it
+  // shows it (AssetBinding.requestsDownload). Content awaiting the user that
+  // may download now starts; a download nothing wants any more (no other
+  // request, no user's download, a manual policy) stops where it is, its
+  // bytes kept, and the content awaits the user.
+  void _requestChanged(_Entry entry) {
+    if (_disposed || entry.isFinal) return;
+    if (_mayDownloadNow(entry)) {
+      _restart(entry);
+      return;
+    }
+    if (entry.transfer.isActive &&
+        _autoDownloadOf(entry, entry.descriptor) == AutoDownload.manual) {
+      _stopDownload(entry);
+    }
+  }
+
+  // Stops the download of [entry]; the next attempt fetches only the
+  // stand-ins and says the content awaits the user, and one that cannot
+  // tell leaves the scope to say it.
+  void _stopDownload(_Entry entry) {
+    final total = entry.transfer.total;
+    entry.attempt?.cancel();
+    if (entry.bindings.isNotEmpty) _start(entry);
+    if (entry.transfer == AssetTransfer.none) {
+      entry.setTransfer(AssetTransfer.awaitingUser(total));
+    }
   }
 
   // The transfer the surfaces of [entry] show. The bytes are the content's,
@@ -602,10 +634,23 @@ final class AssetCacheScope {
   // in the budget, or drops it.
   void _lastClaimGone(_Entry entry) {
     if (entry.bindings.isNotEmpty || entry.preloads.isNotEmpty) return;
+    final downloading = entry.transfer.isActive;
     entry.attempt?.cancel();
     // Nobody draws it any more; a re-attach starts an attempt that tells.
     entry.setTransfer(AssetTransfer.none);
     _release(entry);
+    // A download the user asked for, or the policy wants, outlives the
+    // surface that ran it (a viewer closed): another spec of the content
+    // still shown takes it on from the bytes stored. One only that surface
+    // requested stops here, and its siblings show the bytes it left.
+    if (downloading && !_disposed) {
+      for (final sibling in List<_Entry>.of(_byKey[entry.key] ?? const {})) {
+        if (!identical(sibling, entry) && _mayDownloadNow(sibling)) {
+          _restart(sibling);
+          break;
+        }
+      }
+    }
     _trim();
   }
 
@@ -771,13 +816,19 @@ final class AssetCacheScope {
   void _finish(_Entry entry) {
     entry.attempt?.ended = true;
     entry.attempt = null;
+    // Content streamed as it plays can be final for a spec (its first frame)
+    // with only part of its bytes here: the mark of what arrived stays for
+    // the other specs, which go on waiting for the rest.
+    final mark = _received[entry.key];
+    final whole =
+        mark == null || (mark.total != null && mark.received >= mark.total!);
+    if (whole) _received.remove(entry.key);
     entry.setTransfer(AssetTransfer.none);
-    _received.remove(entry.key);
     // The content's bytes are local now (a stand-in a spec stops at says
     // nothing about them). A spec still waiting for them, or whose download
     // stopped short, starts again and reads them; without it, a tile whose
     // viewer downloaded the content would show its old download for good.
-    if (entry.stage.index < AssetStage.firstFrame.index) return;
+    if (!whole || entry.stage.index < AssetStage.firstFrame.index) return;
     for (final sibling in List<_Entry>.of(_byKey[entry.key] ?? const {})) {
       if (identical(sibling, entry) ||
           sibling.isFinal ||
@@ -988,6 +1039,10 @@ final class _Demand implements AssetDemand {
   @override
   AutoDownload autoDownload(MediaDescriptor? descriptor) =>
       _entry.scope._autoDownloadOf(_entry, descriptor);
+
+  @override
+  bool get downloadRequested =>
+      _entry.scope._requestedByUser.contains(_entry.key);
 
   @override
   AssetPriority priority = AssetPriority.visible;
@@ -1228,7 +1283,17 @@ final class _EntryBinding extends AssetBindingBase {
   @override
   AssetTransfer get transfer {
     if (isDetached) return AssetTransfer.none;
-    final transfer = _scope._transferOf(entry);
+    var transfer = _scope._transferOf(entry);
+    // Content awaiting the user after a download stopped short shows the
+    // bytes that download left, which the next one resumes from.
+    if (transfer case AssetTransfer$AwaitingUser(:final total, received: 0)) {
+      if (_scope._received[entry.key] case (
+        :final received,
+        total: final of,
+      ) when received > 0) {
+        transfer = AssetTransfer.awaitingUser(total ?? of, received);
+      }
+    }
     final size = entry.descriptor?.byteSize;
     if (size == null || transfer.total != null) return transfer;
     // The source did not say how large the content is; the host did.
@@ -1238,7 +1303,10 @@ final class _EntryBinding extends AssetBindingBase {
         received,
         size,
       ),
-      AssetTransfer$AwaitingUser() => AssetTransfer.awaitingUser(size),
+      AssetTransfer$AwaitingUser(:final received) => AssetTransfer.awaitingUser(
+        size,
+        received,
+      ),
       AssetTransfer$Failed(:final kind, :final received) =>
         AssetTransfer.failed(kind, received, size),
       AssetTransfer$None() => transfer,
@@ -1248,6 +1316,18 @@ final class _EntryBinding extends AssetBindingBase {
   @override
   void download() {
     if (!isDetached) _scope._download(entry);
+  }
+
+  bool _requestsDownload = false;
+
+  @override
+  bool get requestsDownload => _requestsDownload;
+
+  @override
+  set requestsDownload(bool value) {
+    if (value == _requestsDownload) return;
+    _requestsDownload = value;
+    if (!isDetached) _scope._requestChanged(entry);
   }
 
   @override

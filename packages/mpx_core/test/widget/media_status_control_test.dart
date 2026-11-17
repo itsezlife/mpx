@@ -344,7 +344,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.byType(MediaStatusControl));
       expect(producer.attempts.first.isCancelled, isTrue);
-      expect(binding.transfer, const AssetTransfer.awaitingUser(100));
+      expect(binding.transfer, const AssetTransfer.awaitingUser(100, 10));
 
       producer.last.awaitingUser();
       await tester.pump(_ms(500));

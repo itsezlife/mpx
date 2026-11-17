@@ -37,9 +37,19 @@ final class NativeRangedContentPublisher implements RangedContentPublisher {
     RangedRequest request, {
     PriorityToken? priority,
     CancelToken? cancelToken,
+    FetchProgress? onProgress,
+    bool whole = false,
   }) async {
     final publication = await readers.publish(request);
     final resource = publication.resource;
+    // The bytes as they land, the head's and the reads' alike.
+    final reports = onProgress == null
+        ? null
+        : resource.events.listen((event) {
+            if (event is RangeLanded) {
+              onProgress(resource.ranges.coveredBytes, resource.totalLength);
+            }
+          });
     try {
       // The head, then the index wherever it is (the tail of a file whose
       // moov follows its media data), never the middle.
@@ -49,8 +59,24 @@ final class NativeRangedContentPublisher implements RangedContentPublisher {
         cancelToken: cancelToken,
       );
     } on Object {
+      await reports?.cancel();
       await publication.close();
       rethrow;
+    }
+    // A user's download: the rest behind the reads, until released.
+    final rest = CancelToken();
+    if (whole) {
+      unawaited(
+        resource
+            .ensure(const ByteRange(0), priority: priority, cancelToken: rest)
+            .then(
+              (_) {},
+              // A rest that fails or is stopped leaves the content partial,
+              // as a stream is: the reads ask for what they miss, and the
+              // next download for the rest.
+              onError: (Object _) {},
+            ),
+      );
     }
     return FetchedRanged(
       readerApi: NativeRangedReaders.apiAddress,
@@ -59,7 +85,11 @@ final class NativeRangedContentPublisher implements RangedContentPublisher {
       // Off screen: the rest of the chunk fetched ahead of its reads stops,
       // what landed stays, and its next reads ask from there.
       onPause: publication.stopHints,
-      onRelease: () => unawaited(publication.close()),
+      onRelease: () {
+        rest.cancel();
+        unawaited(reports?.cancel());
+        unawaited(publication.close());
+      },
     );
   }
 }

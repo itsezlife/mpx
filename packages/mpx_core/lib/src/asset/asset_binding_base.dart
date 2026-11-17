@@ -92,6 +92,9 @@ abstract base class AssetBindingBase
   void download() {}
 
   @override
+  bool requestsDownload = false;
+
+  @override
   void cancelDownload() {}
 
   @override

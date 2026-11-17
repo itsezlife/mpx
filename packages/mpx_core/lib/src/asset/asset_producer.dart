@@ -88,6 +88,12 @@ abstract interface class AssetDemand {
   /// the user cancelled. A producer asks only for content its fetcher reports
   /// missing; cached content ignores the policy.
   AutoDownload autoDownload(MediaDescriptor? descriptor);
+
+  /// Whether the user asked for the key's download (`AssetBinding.download`)
+  /// and has not cancelled it since, read live. A user's download is of the
+  /// whole content: a producer that streams content as it plays still
+  /// fetches all of it, so it is kept.
+  bool get downloadRequested;
 }
 
 /// Whether a failed attempt is worth repeating when the network comes back.

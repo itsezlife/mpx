@@ -172,7 +172,8 @@ void main() {
       binding.cancelDownload();
 
       expect(first.isCancelled, isTrue);
-      expect(binding.transfer, const AssetTransfer.awaitingUser(400));
+      // It keeps the bytes received, which the next download resumes from.
+      expect(binding.transfer, const AssetTransfer.awaitingUser(400, 100));
       expect(binding.readiness.stage, AssetStage.preview);
       // The next attempt only fetches the stand-ins.
       expect(producer.attempts, hasLength(2));
@@ -320,13 +321,30 @@ void main() {
       expect(tile.transfer, isA<AssetTransfer$Failed>());
 
       scope.attach(_key, _spec, _profile);
-      producer.last.advance(AssetStage.full);
+      producer.last
+        ..transfer(4000, 4000)
+        ..advance(AssetStage.full);
 
       expect(
         producer.attemptsFor(const AssetRequest(_key, _small)),
         hasLength(3),
       );
       expect(tile.transfer, AssetTransfer.none);
+    });
+
+    test('content streamed to a first frame with part of its bytes leaves '
+        'the others waiting, with the bytes that arrived', () {
+      scope.attach(_key, _spec, _profile);
+      producer.last
+        ..transfer(1000, 4000)
+        ..advance(AssetStage.firstFrame)
+        ..bestReached();
+
+      expect(
+        producer.attemptsFor(const AssetRequest(_key, _small)),
+        hasLength(1),
+      );
+      expect(tile.transfer, const AssetTransfer.awaitingUser(4000, 1000));
     });
 
     test('a stand-in that is the best a spec makes starts nothing', () {
@@ -350,6 +368,79 @@ void main() {
 
       expect(viewerAttempt.isCancelled, isTrue);
       expect(tile.transfer, isA<AssetTransfer$AwaitingUser>());
+    });
+  });
+
+  group('a surface that requests its content while it shows it', () {
+    // A tile waits for the user; a viewer page of the same content opens on
+    // it and requests it while it shows it.
+    late AssetBinding tile;
+
+    setUp(() {
+      scope.dispose();
+      scope = scopeWith(policy: FakeAutoDownloadPolicy());
+      tile = scope.attach(_key, _small, _profile);
+      producer.last
+        ..describe(_descriptor)
+        ..advance(AssetStage.preview)
+        ..awaitingUser();
+    });
+
+    AssetBinding openViewer() {
+      final viewer = scope.attach(_key, _spec, _profile);
+      producer.last
+        ..describe(_descriptor)
+        ..awaitingUser();
+      viewer.requestsDownload = true;
+      expect(producer.last.demand.autoDownload(_descriptor), AutoDownload.now);
+      producer.last.transfer(1000, 4000);
+      return viewer;
+    }
+
+    test('downloads whatever the policy; the tile shows it', () {
+      openViewer();
+
+      expect(tile.transfer, const AssetTransfer.receiving(1000, 4000));
+    });
+
+    test('stops when the surface goes; the tile offers the download with '
+        'the bytes received', () {
+      final viewer = openViewer();
+      final attempt = producer.last;
+      var signals = 0;
+      tile.addListener(() => signals++);
+
+      viewer.detach();
+
+      expect(attempt.isCancelled, isTrue);
+      expect(tile.transfer, const AssetTransfer.awaitingUser(4000, 1000));
+      expect(signals, greaterThan(0));
+    });
+
+    test('stops when the surface no longer requests it (paged away)', () {
+      final viewer = openViewer();
+      final attempt = producer.last;
+
+      viewer.requestsDownload = false;
+
+      expect(attempt.isCancelled, isTrue);
+      expect(
+        producer.last.demand.autoDownload(_descriptor),
+        AutoDownload.manual,
+      );
+    });
+
+    test("a user's download outlives the surface: the tile takes it on", () {
+      final viewer = openViewer();
+      viewer
+        ..download()
+        ..detach();
+
+      final taken = producer.attemptsFor(const AssetRequest(_key, _small)).last;
+      expect(taken.isCancelled, isFalse);
+      expect(taken.demand.autoDownload(_descriptor), AutoDownload.now);
+      taken.waiting();
+      expect(tile.transfer, const AssetTransfer.receiving(1000, 4000));
     });
   });
 

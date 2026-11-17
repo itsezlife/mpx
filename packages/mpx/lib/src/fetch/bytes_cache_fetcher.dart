@@ -198,6 +198,8 @@ final class BytesCacheFetcher implements ContentFetcher {
           rangedRequest,
           priority: PriorityToken(_priorityOf(request.priority)),
           cancelToken: cancel,
+          onProgress: request.onProgress,
+          whole: request.whole,
         );
       }
       return _fetchWhole(ranged, rangedRequest, request, cancel);

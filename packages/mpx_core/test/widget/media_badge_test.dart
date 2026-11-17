@@ -119,6 +119,13 @@ void main() {
       );
     });
 
+    test('a download that stopped short shows the bytes it left', () {
+      expect(
+        rows(transfer: const AssetTransfer.awaitingUser(_total, _received)),
+        ['1.2 / 4.5 MB'],
+      );
+    });
+
     test('nothing for cached content without a duration', () {
       expect(rows(), isEmpty);
     });

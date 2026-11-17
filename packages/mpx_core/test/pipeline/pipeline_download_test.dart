@@ -187,12 +187,12 @@ void main() {
 
         expect(content.isCancelled, isTrue);
         expect(binding.readiness.stage, AssetStage.placeholder);
-        expect(binding.transfer, const AssetTransfer.awaitingUser(4000));
+        expect(binding.transfer, const AssetTransfer.awaitingUser(4000, 100));
         // The cancel holds across a detach and an attach.
         binding.detach();
         final again = harness.attach(item);
         await harness.settle();
-        expect(again.transfer, const AssetTransfer.awaitingUser(4000));
+        expect(again.transfer, const AssetTransfer.awaitingUser(4000, 100));
         expect(harness.fetcher.fetchesOf(item.key, FetchPart.content), [
           content,
         ]);
@@ -251,6 +251,52 @@ void main() {
 
         expect(binding.readiness.stage, AssetStage.full);
         expect(binding.transfer, AssetTransfer.none);
+      });
+    });
+
+    test('a tap asks for the whole content; the policy does not', () {
+      final item = _video(1, thumbnail: false);
+      final harness = PipelineHarness(
+        known: [item],
+        autoFetch: false,
+        autoDownload: FakeAutoDownloadPolicy(),
+      );
+      addTearDown(harness.dispose);
+      harness.fetcher.missing.add(item.key);
+      final binding = harness.attach(item);
+
+      return Future(() async {
+        await harness.settle();
+        expect(
+          harness.fetcher.fetchesOf(item.key).every((f) => !f.request.whole),
+          isTrue,
+        );
+        binding.download();
+
+        expect(harness.fetcher.fetchesOf(item.key).last.request.whole, isTrue);
+      });
+    });
+
+    test('bytes of streamed content that land after it was handed out '
+        'reach the binding', () {
+      final item = _video(1, thumbnail: false);
+      final harness = PipelineHarness(
+        known: [item],
+        autoFetch: false,
+        autoDecode: false,
+      );
+      addTearDown(harness.dispose);
+      harness.fetcher.missing.add(item.key);
+      final binding = harness.attach(item);
+
+      return Future(() async {
+        final fetch = harness.fetcher.fetchesOf(item.key).single
+          ..receive(500, 4000)
+          ..complete(const FetchedRanged(readerApi: 1, key: 'video-1'));
+        await harness.settle();
+
+        fetch.land(2000, 4000);
+        expect(binding.transfer, const AssetTransfer.receiving(2000, 4000));
       });
     });
 
