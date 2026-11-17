@@ -122,12 +122,14 @@ final class AssetPipeline implements AssetProducer {
     _decodeLane = PriorityLane(
       capacity: limits.maxConcurrentDecodes,
       start: _startDecode,
+      waits: _held,
     );
     _fetchLane = PriorityLane(
       capacity: limits.maxConcurrentFetches,
       start: _startFetch,
       canStart: () =>
           _decodeLane.waitingCount < limits.maxFetchedAwaitingDecode,
+      waits: _held,
     );
   }
 
@@ -153,6 +155,21 @@ final class AssetPipeline implements AssetProducer {
       job.cancel();
     }
     _directory.dispose();
+  }
+
+  // Whether preload work waits ([holdPreloads]).
+  bool _preloadsHeld = false;
+
+  bool _held(_Work work) =>
+      _preloadsHeld && work.priority == AssetPriority.preload;
+
+  @override
+  void holdPreloads({required bool held}) {
+    if (_preloadsHeld == held) return;
+    _preloadsHeld = held;
+    if (held) return;
+    _decodeLane.pump();
+    _fetchLane.pump();
   }
 
   @override

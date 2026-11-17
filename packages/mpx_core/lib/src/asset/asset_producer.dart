@@ -162,4 +162,12 @@ abstract interface class AssetProducer {
     AssetProgress progress,
     AssetDemand demand,
   );
+
+  /// While [held], starts no new work whose demand is
+  /// [AssetPriority.preload] (it waits, in order); work already started
+  /// runs on, and visible work starts as usual. The scope holds preloads
+  /// while a background hold is on (`AssetCacheScope.holdBackground`): a
+  /// transition over the others runs without new decodes for what nobody
+  /// shows yet.
+  void holdPreloads({required bool held});
 }

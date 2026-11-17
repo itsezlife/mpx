@@ -244,6 +244,35 @@ void main() {
       );
     });
 
+    test('preloads held by the scope wait while visible work goes on, then '
+        'run', () async {
+      final noThumbnails = stickers(2);
+      harness = PipelineHarness(
+        known: noThumbnails,
+        autoFetch: false,
+        limits: const AssetPipelineLimits(maxConcurrentFetches: 1),
+      );
+      addTearDown(harness.dispose);
+      // The visible one holds the only slot; the hidden one queues.
+      harness.attach(noThumbnails[0]);
+      harness.attach(noThumbnails[1]).visible = false;
+      final hold = harness.scope.holdBackground();
+      await harness.settle();
+
+      harness.fetcher.fetches.single.complete();
+      await harness.settle();
+      // The slot is free, and the preload still waits.
+      expect(harness.fetcher.fetches, hasLength(1));
+
+      hold.release();
+      await harness.settle();
+      expect(harness.fetcher.fetches, hasLength(2));
+      expect(
+        harness.fetcher.fetches.last.request.descriptor.key,
+        noThumbnails[1].key,
+      );
+    });
+
     test('hands the fetcher the class of each fetch', () async {
       harness.attach(items[0]).visible = false;
       await drain();

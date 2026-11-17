@@ -188,5 +188,37 @@ void main() {
       expect(own.$1.isPlaying, isFalse);
       expect(own.$1.held, isTrue);
     });
+
+    test('leaves the content it is told to playing: a transition over the '
+        'others keeps its own item moving', () {
+      final moving = attach(_a, _cell, _plays);
+      final other = attach(_b, _cell, _plays);
+
+      final hold = scope.holdBackground(except: {_a});
+
+      expect(moving.$1.isPlaying, isTrue);
+      expect(other.$1.isPlaying, isFalse);
+      // A plain hold on top holds it as well; released, the first still
+      // leaves it playing.
+      final plain = scope.holdBackground();
+      expect(moving.$1.isPlaying, isFalse);
+      plain.release();
+      expect(moving.$1.isPlaying, isTrue);
+      hold.release();
+      expect(other.$1.isPlaying, isTrue);
+    });
+
+    test('holds the preloads of the producer while it is on', () {
+      expect(producer.preloadsHeld, isFalse);
+
+      final first = scope.holdBackground();
+      final second = scope.holdBackground(except: {_a});
+      expect(producer.preloadsHeld, isTrue);
+
+      first.release();
+      expect(producer.preloadsHeld, isTrue);
+      second.release();
+      expect(producer.preloadsHeld, isFalse);
+    });
   });
 }

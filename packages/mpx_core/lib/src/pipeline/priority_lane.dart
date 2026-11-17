@@ -29,17 +29,22 @@ final class PriorityLane<T extends LaneWork> {
     required this.capacity,
     required void Function(T work) start,
     bool Function()? canStart,
+    bool Function(T work)? waits,
   }) : _start = start,
        _canStart = canStart ?? _always,
+       _waits = waits ?? _never,
        assert(capacity > 0, 'A lane needs at least one slot.');
 
   static bool _always() => true;
+  static bool _never(Object? _) => false;
 
   /// How many pieces of work run at once.
   final int capacity;
 
   final void Function(T work) _start;
   final bool Function() _canStart;
+  // Work that must not start now (held preloads); it keeps its place.
+  final bool Function(T work) _waits;
   final List<T> _waiting = [];
   final Set<T> _running = Set.identity();
   bool _pumping = false;
@@ -74,6 +79,7 @@ final class PriorityLane<T extends LaneWork> {
     try {
       while (_running.length < capacity && _waiting.isNotEmpty && _canStart()) {
         final next = _mostUrgent();
+        if (next == null) break;
         _waiting.remove(next);
         _running.add(next);
         _start(next);
@@ -83,12 +89,18 @@ final class PriorityLane<T extends LaneWork> {
     }
   }
 
-  T _mostUrgent() {
-    var best = _waiting.first;
+  T? _mostUrgent() {
+    T? best;
     for (final work in _waiting) {
-      final byPriority = work.priority.index - best.priority.index;
+      if (_waits(work)) continue;
+      final current = best;
+      if (current == null) {
+        best = work;
+        continue;
+      }
+      final byPriority = work.priority.index - current.priority.index;
       if (byPriority > 0 ||
-          (byPriority == 0 && work.distance < best.distance)) {
+          (byPriority == 0 && work.distance < current.distance)) {
         best = work;
       }
     }

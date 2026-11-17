@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `AssetCacheScope.holdBackground(except:)` leaves the given content
+  playing, and while a background hold is on the producer starts no
+  preload work: breaking, `AssetProducer.holdPreloads` is new, and
+  `AssetPipeline` holds its preload fetches and decodes in their queues.
 - A playing `ContentView` measures where it is only when something may have
   moved it (a scroll position around it, the window, its attach), in one
   pass after that frame, and every playing view once a second; a still

@@ -206,4 +206,7 @@ final class _ThrowingProducer implements AssetProducer {
     AssetProgress progress,
     AssetDemand demand,
   ) => throw StateError('producer bug');
+
+  @override
+  void holdPreloads({required bool held}) {}
 }

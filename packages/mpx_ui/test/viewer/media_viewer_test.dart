@@ -78,6 +78,77 @@ void main() {
       expect(harness.backdrop.last, closeTo(1.1, 1e-9));
     });
 
+    testWidgets('holds every other surface and the preloads while the open '
+        'and the close morph run, never the item that morphs', (tester) async {
+      final harness = ViewerHarness();
+      // A cell of another item under the viewer, playing.
+      final other = harness.scope.attach(
+        photoKey(2),
+        const AssetSpec(pixelWidth: 64, pixelHeight: 64),
+        const AssetProfile(animate: true),
+      );
+      final item = harness.scope.attach(
+        photoKey(0),
+        const AssetSpec(pixelWidth: 64, pixelHeight: 64),
+        const AssetProfile(animate: true),
+      );
+      addTearDown(other.detach);
+      addTearDown(item.detach);
+      for (final key in [photoKey(2), photoKey(0)]) {
+        harness.producer
+            .attemptsFor(
+              AssetRequest(
+                key,
+                const AssetSpec(pixelWidth: 64, pixelHeight: 64),
+              ),
+            )
+            .last
+            .advance(
+              AssetStage.full,
+              tier: AssetTier.animated,
+              frames: List.filled(10, const Duration(milliseconds: 100)),
+            );
+      }
+      void paint() {
+        for (final binding in [other, item]) {
+          binding.paint(
+            ui.Canvas(ui.PictureRecorder()),
+            const Rect.fromLTWH(0, 0, 8, 8),
+          );
+        }
+      }
+
+      paint();
+      await harness.pump(tester, open: false);
+      await tester.pump(const Duration(milliseconds: 50));
+      paint();
+
+      expect(harness.scope.isBackgroundHeld, isTrue);
+      expect(other.isPlaying, isFalse);
+      expect(item.isPlaying, isTrue);
+      expect(harness.producer.preloadsHeld, isTrue);
+
+      await tester.pump(const Duration(milliseconds: 200));
+      paint();
+      expect(harness.state(tester).isOpen, isTrue);
+      expect(harness.scope.isBackgroundHeld, isFalse);
+      expect(other.isPlaying, isTrue);
+      expect(harness.producer.preloadsHeld, isFalse);
+
+      unawaited(harness.state(tester).close());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      paint();
+      expect(harness.scope.isBackgroundHeld, isTrue);
+      expect(other.isPlaying, isFalse);
+
+      await tester.pump(const Duration(milliseconds: 300));
+      paint();
+      expect(harness.closed, 1);
+      expect(harness.scope.isBackgroundHeld, isFalse);
+      expect(other.isPlaying, isTrue);
+    });
+
     testWidgets('asks the source around the item it opens on', (tester) async {
       final harness = ViewerHarness();
       await harness.pump(tester);

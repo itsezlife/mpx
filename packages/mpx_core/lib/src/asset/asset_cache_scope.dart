@@ -178,7 +178,13 @@ final class AssetCacheScope {
   final Map<AssetTier, int> _bytes = {
     for (final tier in AssetTier.values) tier: 0,
   };
-  int _backgroundHolds = 0;
+  // The background holds on, each with the content it leaves playing.
+  final List<Set<MediaKey>> _backgroundHolds = [];
+
+  // Whether a background hold holds the content [key]: one is on that does
+  // not leave it playing.
+  bool _backgroundHeldFor(MediaKey key) =>
+      _backgroundHolds.any((except) => !except.contains(key));
 
   /// The textures playing assets may take instead of a page slot, or null
   /// where the platform has no texture host.
@@ -201,25 +207,36 @@ final class AssetCacheScope {
     _trim();
   }
 
-  /// Holds every binding of the scope but the foreground ones until the hold
-  /// is released; see "Background hold" above. Holds count, so two surfaces
-  /// over the others keep the hold until both are gone. A binding attached
-  /// while a hold is on starts held.
+  /// Holds every binding of the scope but the foreground ones and those of
+  /// the content in [except] until the hold is released; see "Background
+  /// hold" above. Holds count, so two surfaces over the others keep the hold
+  /// until both are gone; a binding plays only while no hold holds it. A
+  /// binding attached while a hold is on starts held.
+  ///
+  /// While a hold is on the producer starts no preload work
+  /// (`AssetProducer.holdPreloads`): a surface that holds the others for a
+  /// transition gets the frames of its transition, not a queue of work for
+  /// what nobody shows yet.
   ///
   /// Throws a [StateError] after [dispose], as [attach] does.
-  AssetBackgroundHold holdBackground() {
+  AssetBackgroundHold holdBackground({Set<MediaKey> except = const {}}) {
     if (_disposed) {
       throw StateError('AssetCacheScope.holdBackground called after dispose.');
     }
-    if (_backgroundHolds++ == 0) _setBackgroundHeld(true);
+    final hold = Set<MediaKey>.of(except);
+    _backgroundHolds.add(hold);
+    _refreshBackgroundHeld();
+    if (_backgroundHolds.length == 1) _producer?.holdPreloads(held: true);
     return AssetBackgroundHold._(() {
       if (_disposed) return;
-      if (--_backgroundHolds == 0) _setBackgroundHeld(false);
+      _backgroundHolds.remove(hold);
+      _refreshBackgroundHeld();
+      if (_backgroundHolds.isEmpty) _producer?.holdPreloads(held: false);
     });
   }
 
   /// Whether a background hold is on.
-  bool get isBackgroundHeld => _backgroundHolds > 0;
+  bool get isBackgroundHeld => _backgroundHolds.isNotEmpty;
 
   /// Holds every binding of the entry for [key] at [spec], as if each
   /// surface held it (`AssetBinding.held`), until the hold is released: the
@@ -244,8 +261,9 @@ final class AssetCacheScope {
     });
   }
 
-  void _setBackgroundHeld(bool held) {
+  void _refreshBackgroundHeld() {
     for (final entry in List<_Entry>.of(_entries.values)) {
+      final held = _backgroundHeldFor(entry.key);
       for (final binding in List<_EntryBinding>.of(entry.bindings)) {
         binding.backgroundHeld = held;
       }
@@ -846,7 +864,7 @@ final class _EntryBinding extends AssetBindingBase {
          spec: entry.spec,
          placeholder: scope.placeholder,
          clock: scope.clock,
-         backgroundHeld: scope._backgroundHolds > 0,
+         backgroundHeld: scope._backgroundHeldFor(entry.key),
        );
 
   final AssetCacheScope _scope;

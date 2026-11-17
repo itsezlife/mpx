@@ -40,6 +40,9 @@ final class _LottieProducer implements AssetProducer {
   final LottieFrameScheduler scheduler;
 
   @override
+  void holdPreloads({required bool held}) {}
+
+  @override
   AssetTask produce(
     AssetRequest request,
     AssetProgress progress,

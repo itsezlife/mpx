@@ -445,7 +445,8 @@ class MediaViewerState extends State<MediaViewer>
     _controls.value = _isVideo(_index)
         ? _video.controlsVisibleOnOpen
         : _policy.controlsVisibleOnOpen;
-    _syncVideo();
+    // The first frame is the morph's start and nothing else: the player is
+    // leased after it (in _open), so the input to that frame stays short.
     WidgetsBinding.instance.addPostFrameCallback((_) => _open());
   }
 
@@ -458,6 +459,7 @@ class MediaViewerState extends State<MediaViewer>
 
   @override
   void dispose() {
+    _releaseTransitionHold();
     _spaceHold?.cancel();
     widget.controller?._detach(this);
     _releaseVideo();
@@ -833,8 +835,31 @@ class MediaViewerState extends State<MediaViewer>
 
   // --- Open -----------------------------------------------------------------
 
+  // --- Transition hold -----------------------------------------------------
+
+  // Held while the open or close morph runs: every other surface of the
+  // scope keeps its frame and asks no decode, and preloads wait, so the
+  // morph's frames have the UI isolate to themselves. The item that morphs
+  // plays on.
+  AssetBackgroundHold? _transitionHold;
+
+  void _holdForTransition() {
+    _transitionHold?.release();
+    final item = widget.source.itemAt(_index);
+    _transitionHold = _cache?.holdBackground(
+      except: {if (item != null) item.key},
+    );
+  }
+
+  void _releaseTransitionHold() {
+    _transitionHold?.release();
+    _transitionHold = null;
+  }
+
   void _open() {
     if (!mounted) return;
+    _syncVideo();
+    _holdForTransition();
     _restartLoop();
     final origin = widget.bridge?.originOf(_index);
     final fitted = _fittedRect(_index, origin);
@@ -851,6 +876,7 @@ class MediaViewerState extends State<MediaViewer>
       ..duration = _policy.openDuration
       ..forward(from: 0).whenComplete(() {
         if (!mounted || _phase != _Phase.opening) return;
+        _releaseTransitionHold();
         setState(() => _phase = _Phase.open);
         _session?.autoHide = true;
         _notifyController();
@@ -906,6 +932,7 @@ class MediaViewerState extends State<MediaViewer>
     final policy = _policy;
     _transition.stop();
     _springBack.stop();
+    _holdForTransition();
     setState(() {
       _phase = _Phase.closing;
       _closeFromBackground = startBackground;
@@ -938,6 +965,7 @@ class MediaViewerState extends State<MediaViewer>
     _notifyController();
     await _transition.forward(from: 0);
     if (!mounted) return;
+    _releaseTransitionHold();
     _hide(_index, hidden: false);
     setState(() => _phase = _Phase.closed);
     _notifyController();

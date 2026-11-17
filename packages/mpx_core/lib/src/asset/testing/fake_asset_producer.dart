@@ -70,6 +70,12 @@ final class FakeAssetAttempt implements AssetTask {
 /// An [AssetProducer] that does nothing by itself: every attempt waits for the
 /// test to report.
 final class FakeAssetProducer implements AssetProducer {
+  /// Whether the scope holds preloads now ([holdPreloads]).
+  bool preloadsHeld = false;
+
+  @override
+  void holdPreloads({required bool held}) => preloadsHeld = held;
+
   /// Every attempt started, oldest first.
   final List<FakeAssetAttempt> attempts = [];
 
