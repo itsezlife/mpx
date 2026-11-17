@@ -390,16 +390,43 @@ void main() {
       expect(last, isNot(same(attempt)));
     });
 
-    testWidgets('a video the player plays shows no download control', (
+    testWidgets('a video the player plays has one centre control: the '
+        'download radial until the first frame, then play / pause', (
       tester,
     ) async {
       final harness = ViewerHarness(
         items: ViewerHarness.videos(1),
         videoDuration: const Duration(minutes: 1),
+        autoFirstFrame: false,
       );
       await harness.pump(tester);
+      final attempt = harness.producer.attempts.lastWhere(
+        (attempt) => attempt.request.key == videoKey(0),
+      );
+      attempt.transfer(1000, 4000);
+      await tester.pump();
+      final playFade = find.byKey(const ValueKey('mpx-viewer-play-fade'));
+      double playOpacity() => tester.widget<Opacity>(playFade).opacity;
+      Finder spinner() => find.descendant(
+        of: find.byType(ViewerBufferingSpinner),
+        matching: find.byType(MediaStatusControl),
+      );
+
+      // Downloading, no frame yet: cancel and the arc, never play / pause.
+      final status = statusOf(tester, videoKey(0));
+      expect(status.icon, MediaStatusIcon.cancel);
+      expect(status.progress, 0.25);
+      expect(playOpacity(), 0);
+      // Past the spinner's delay the radial is still the one control.
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(spinner(), findsNothing);
+
+      harness.engine(0).renderFirstFrame();
+      await tester.pump();
+      await tester.pump();
 
       expect(find.byType(ViewerPageStatus), findsNothing);
+      expect(playOpacity(), 1);
     });
   });
 

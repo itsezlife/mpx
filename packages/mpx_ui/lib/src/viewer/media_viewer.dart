@@ -339,6 +339,8 @@ class MediaViewerState extends State<MediaViewer>
   // How much the buffering spinner shows: the share of the centre it takes
   // from the play button.
   final ValueNotifier<double> _spinnerShown = ValueNotifier(0);
+  // Whether the video page's download radial shows: the spinner holds back.
+  final ValueNotifier<bool> _pageStatusShows = ValueNotifier(false);
 
   _Phase _phase = _Phase.opening;
   Size _size = Size.zero;
@@ -495,6 +497,7 @@ class MediaViewerState extends State<MediaViewer>
     _pages.dispose();
     _controls.dispose();
     _spinnerShown.dispose();
+    _pageStatusShows.dispose();
     super.dispose();
   }
 
@@ -732,7 +735,9 @@ class MediaViewerState extends State<MediaViewer>
     // runs in builds and while the tree is locked, and the next session's
     // spinner waits its delay before it shows.
     SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _spinnerShown.value = 0;
+      if (!mounted) return;
+      _spinnerShown.value = 0;
+      _pageStatusShows.value = false;
     });
     _notifyController();
   }
@@ -1278,6 +1283,7 @@ class MediaViewerState extends State<MediaViewer>
                 lease: session.lease,
                 rules: _policy.loading,
                 presence: _spinnerShown,
+                suppressed: _pageStatusShows,
               ),
             // A video that failed says so over the controls, in the
             // middle, where the play button would be.
@@ -1422,26 +1428,42 @@ class MediaViewerState extends State<MediaViewer>
       ),
     );
     final loading = policy.loading;
-    // A video a player plays shows the player's spinner instead: the player
-    // streams it.
-    final shows =
-        (index == _index || !loading.hideStatusUntilCentral) &&
-        !(item.kind == GalleryMediaKind.video && widget.players != null);
+    final shows = index == _index || !loading.hideStatusUntilCentral;
     if (!shows) return page;
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        page,
-        ViewerPageStatus(
-          content: item.key,
-          spec: _presetOf(item, _boxOf(fitted)).spec,
-          kind: item.kind,
-          rules: loading,
-          scope: widget.scope,
-          downloadContext: item.downloadContext,
-        ),
-      ],
+    Widget status() => ViewerPageStatus(
+      content: item.key,
+      spec: _presetOf(item, _boxOf(fitted)).spec,
+      kind: item.kind,
+      rules: loading,
+      scope: widget.scope,
+      downloadContext: item.downloadContext,
+      shows: video ? _pageStatusShows : null,
     );
+    // A video a player plays has one centre control: the page's download
+    // radial until the player's first frame (the spinner holds back while
+    // it shows), then the controls' play / pause.
+    if (item.kind == GalleryMediaKind.video && widget.players != null) {
+      if (session == null) return page;
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          page,
+          ValueListenableBuilder<PlayerState>(
+            valueListenable: session.lease.state,
+            builder: (context, state, _) {
+              if (!state.firstFrameRendered) return status();
+              if (_pageStatusShows.value) {
+                SchedulerBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) _pageStatusShows.value = false;
+                });
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+        ],
+      );
+    }
+    return Stack(fit: StackFit.expand, children: [page, status()]);
   }
 
   Widget _morph() {

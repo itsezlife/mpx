@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- A viewer video a player plays has one centre control: the page's
+  download radial (cancel and the arc of the content's bytes) until the
+  player's first frame, with the buffering spinner held back while it
+  shows (`ViewerPageStatus.shows`, `ViewerBufferingSpinner.suppressed`),
+  then the controls' play / pause, which never shows before the first
+  frame. A viewer page's request for its content
+  (`ContentView.requestsDownload`) ends with the page: a download only it
+  started stops on close or paging away, keeping its bytes.
+
 - A viewer video page paged away from keeps the picture its player showed
   last as its stand-in, as an origin's frame, until its content has a frame
   of its own: a video still downloading no longer falls back to its blurred

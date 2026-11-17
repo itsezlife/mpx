@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -20,8 +21,13 @@ class ViewerBufferingSpinner extends StatefulWidget {
     required this.lease,
     required this.rules,
     this.presence,
+    this.suppressed,
     super.key,
   });
+
+  /// While true, another control holds the centre (the page's download
+  /// radial, [ViewerPageStatus.shows]) and the spinner does not show over it.
+  final ValueListenable<bool>? suppressed;
 
   /// Told how much the spinner shows, 0 to 1, as it fades in and goes: the
   /// share of the centre it takes from the play button
@@ -111,18 +117,26 @@ class _ViewerBufferingSpinnerState extends State<ViewerBufferingSpinner>
   @override
   Widget build(BuildContext context) {
     if (!_shown) return const SizedBox.shrink();
-    return IgnorePointer(
-      child: Center(
-        child: FadeTransition(
-          opacity: _fade,
-          child: MediaStatusControl(
-            status: const MediaStatus.spinner(),
-            style: widget.rules.status,
-          ),
-        ),
-      ),
+    final suppressed = widget.suppressed;
+    if (suppressed == null) return _spinner();
+    return ValueListenableBuilder<bool>(
+      valueListenable: suppressed,
+      builder: (context, held, _) =>
+          held ? const SizedBox.shrink() : _spinner(),
     );
   }
+
+  Widget _spinner() => IgnorePointer(
+    child: Center(
+      child: FadeTransition(
+        opacity: _fade,
+        child: MediaStatusControl(
+          status: const MediaStatus.spinner(),
+          style: widget.rules.status,
+        ),
+      ),
+    ),
+  );
 }
 
 /// The status control of a viewer page's content: what a page whose
@@ -148,8 +162,14 @@ class ViewerPageStatus extends StatefulWidget {
     this.scope,
     this.downloadContext,
     this.strings = const MediaStatusStrings(),
+    this.shows,
     super.key,
   });
+
+  /// Told whether the control shows anything, after the frame it changed
+  /// in: a buffering spinner of the same page holds back while it does
+  /// ([ViewerBufferingSpinner.suppressed]), so the centre has one control.
+  final ValueNotifier<bool>? shows;
 
   /// Which content.
   final MediaKey content;
@@ -239,6 +259,16 @@ class _ViewerPageStatusState extends State<ViewerPageStatus> {
     if (status != _status && mounted) setState(() => _status = status);
   }
 
+  // Tells [ViewerPageStatus.shows] after the frame: the status changes in
+  // builds and while the tree is locked.
+  void _tellShows() {
+    final shows = widget.shows;
+    if (shows == null) return;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (mounted) shows.value = _status.isVisible;
+    });
+  }
+
   MediaStatus _read() {
     final binding = _binding;
     if (binding == null) return MediaStatus.none;
@@ -289,17 +319,20 @@ class _ViewerPageStatusState extends State<ViewerPageStatus> {
   // Only an icon takes taps: the page under a spinner, an arc or nothing
   // keeps its gestures (paging, zoom, dismiss).
   @override
-  Widget build(BuildContext context) => IgnorePointer(
-    ignoring: _status.icon == MediaStatusIcon.none,
-    child: Center(
-      child: MediaStatusControl(
-        status: _status,
-        onTap: _onTap,
-        style: widget.rules.status,
-        strings: widget.strings,
+  Widget build(BuildContext context) {
+    _tellShows();
+    return IgnorePointer(
+      ignoring: _status.icon == MediaStatusIcon.none,
+      child: Center(
+        child: MediaStatusControl(
+          status: _status,
+          onTap: _onTap,
+          style: widget.rules.status,
+          strings: widget.strings,
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// A player over its stand-in: the stand-in until the player has its first

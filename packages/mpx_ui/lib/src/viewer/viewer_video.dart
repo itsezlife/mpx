@@ -445,16 +445,23 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
 
   // The play button, faded out by as much as another control takes the
   // centre: the reference's one centre control is either the spinner or
-  // play / pause, never both over each other.
-  Widget _centre(Widget button) {
-    Widget faded(double taken) => IgnorePointer(
-      ignoring: taken > 0,
-      child: Opacity(
-        key: const ValueKey('mpx-viewer-play-fade'),
-        opacity: (1 - taken).clamp(0.0, 1.0),
-        child: button,
-      ),
-    );
+  // play / pause, never both over each other. Before the player's first
+  // frame there is no play / pause at all: the page's download radial or
+  // the spinner is the centre, never a pause over a picture not playing.
+  Widget _centre(Widget button, PlayerState state) {
+    final unplayed = state.firstFrameRendered ? 0.0 : 1.0;
+    Widget faded(double spinner) {
+      final taken = math.max(spinner, unplayed);
+      return IgnorePointer(
+        ignoring: taken > 0,
+        child: Opacity(
+          key: const ValueKey('mpx-viewer-play-fade'),
+          opacity: (1 - taken).clamp(0.0, 1.0),
+          child: button,
+        ),
+      );
+    }
+
     final taken = widget.centreTaken;
     if (taken == null) return faded(0);
     return ValueListenableBuilder<double>(
@@ -492,6 +499,7 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
                     ),
                   ),
                 ),
+                state,
               ),
             ),
             Positioned(
