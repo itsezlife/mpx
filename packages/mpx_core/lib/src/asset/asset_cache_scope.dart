@@ -1082,11 +1082,27 @@ final class _EntryBinding extends AssetBindingBase {
   }
 
   @override
-  bool paintStandIn(Canvas canvas, Rect rect) {
+  bool paintStandIn(Canvas canvas, Rect rect, {double contentOpacity = 0}) {
     final standIn = entry.standIn;
     if (!_holdsStandIn || standIn == null || isDetached) return false;
-    standIn.paint(canvas, rect, AssetPaintContext(fit: profile.fit));
+    final opacity = _standInFadesOut ? 1 - contentOpacity.clamp(0.0, 1.0) : 1.0;
+    standIn.paint(
+      canvas,
+      rect,
+      AssetPaintContext(fit: profile.fit, opacity: opacity),
+    );
     return true;
+  }
+
+  // Whether the kept stand-in fades out under what rises over it rather than
+  // staying opaque: an outline has no pixels of the content's to hide behind,
+  // and content that may be transparent would show any stand-in through.
+  bool get _standInFadesOut {
+    final descriptor = entry.descriptor;
+    if (descriptor == null) return false;
+    if (descriptor.kind == MediaKind.vectorAnimation) return true;
+    return entry.standInStage == AssetStage.preview &&
+        descriptor.preview is MediaPreview$Outline;
   }
 
   @override

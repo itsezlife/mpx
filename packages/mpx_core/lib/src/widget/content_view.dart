@@ -9,8 +9,10 @@ import 'package:mpx_core/src/asset/asset_preset.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_texture_layer.dart';
 import 'package:mpx_core/src/asset/radial_progress.dart';
+import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 import 'package:mpx_core/src/widget/asset_cache_provider.dart';
+import 'package:mpx_core/src/widget/media_loading_style.dart';
 import 'package:mpx_core/src/widget/viewport_visibility.dart';
 
 /// Shows cache content: attaches `(content, preset.spec, preset.profile)` to
@@ -32,13 +34,18 @@ import 'package:mpx_core/src/widget/viewport_visibility.dart';
 ///
 /// ## Arrival
 ///
-/// Content that arrives after the view attached (fetched or decoded, not a
-/// memory hit) fades in over 150 ms, over the thumbnail the binding kept
-/// (`AssetBinding.paintStandIn`), which stays opaque beneath, or else over the
-/// placeholder (the view's own, or else the scope's), which fades out as the
-/// content rises. Content there at
-/// the attach shows at once, so a view built again over loaded content does
-/// not flicker.
+/// Each stage that arrives after the view attached rises as the loading
+/// style says (`MediaLoadingStyleScope.resolve`, `MediaStageStyle`): a
+/// preview shows at once; a thumbnail fades in over the preview it replaces
+/// (`stageFade`); content fades in over `stageFade`, or `gifFade` for a view
+/// that plays, with the platform's scale-in (`contentScaleIn`). A length of
+/// zero swaps at once. Each rises over the stand-in the binding kept
+/// (`AssetBinding.paintStandIn`): a raster one stays opaque beneath, an
+/// outline or one under content that may be transparent fades out. Without
+/// a stand-in the placeholder (the view's own, or else the scope's) fades
+/// out as the content rises. A stage there at the attach shows at once, so a
+/// view built again over loaded content does not flicker. A raster preview
+/// gets the style's wash (`previewWash`).
 ///
 /// ## Playback
 ///
@@ -92,6 +99,7 @@ class ContentView extends StatefulWidget {
     this.inView = true,
     this.visibleFraction = 1,
     this.holdsWhileTickersOff = false,
+    this.loadingStyle,
     super.key,
   }) : assert(opacity >= 0 && opacity <= 1, 'opacity must be within 0..1'),
        assert(
@@ -160,6 +168,10 @@ class ContentView extends StatefulWidget {
   /// surface whose tickers stop while it is still the one to come back (a
   /// surface that moves or is kept mounted while hidden).
   final bool holdsWhileTickersOff;
+
+  /// The loading style of this view, instead of the one
+  /// `MediaLoadingStyleScope.resolve` finds.
+  final MediaLoadingStyle? loadingStyle;
 
   @override
   State<ContentView> createState() => _ContentViewState();
@@ -328,6 +340,10 @@ class _ContentViewState extends State<ContentView> {
       opacity: widget.opacity,
       loadingRadius: widget.loadingRadius,
       ticking: _shown,
+      stages: MediaLoadingStyleScope.resolve(
+        context,
+        style: widget.loadingStyle,
+      ).stages,
     );
     if (preset.profile.animate) view = RepaintBoundary(child: view);
     final label = widget.semanticLabel;
@@ -348,6 +364,7 @@ class _ContentLeaf extends LeafRenderObjectWidget {
     required this.opacity,
     required this.loadingRadius,
     required this.ticking,
+    required this.stages,
   });
 
   final AssetBinding binding;
@@ -360,6 +377,7 @@ class _ContentLeaf extends LeafRenderObjectWidget {
   final double opacity;
   final double? loadingRadius;
   final bool ticking;
+  final MediaStageStyle stages;
 
   @override
   RenderObject createRenderObject(BuildContext context) => _RenderContent(
@@ -373,6 +391,7 @@ class _ContentLeaf extends LeafRenderObjectWidget {
     opacity: opacity,
     loadingRadius: loadingRadius,
     ticking: ticking,
+    stages: stages,
   );
 
   @override
@@ -387,7 +406,8 @@ class _ContentLeaf extends LeafRenderObjectWidget {
       ..tint = tint
       ..opacity = opacity
       ..loadingRadius = loadingRadius
-      ..ticking = ticking;
+      ..ticking = ticking
+      ..stages = stages;
   }
 }
 
@@ -403,6 +423,7 @@ class _RenderContent extends RenderBox {
     required double opacity,
     required double? loadingRadius,
     required bool ticking,
+    required MediaStageStyle stages,
   }) : _binding = binding,
        _fade = AssetFade(binding),
        _placeholder = placeholder,
@@ -413,7 +434,8 @@ class _RenderContent extends RenderBox {
        _tint = tint,
        _opacity = opacity,
        _loadingRadius = loadingRadius,
-       _ticking = ticking;
+       _ticking = ticking,
+       _stages = stages;
 
   AssetBinding _binding;
   AssetFade _fade;
@@ -498,6 +520,14 @@ class _RenderContent extends RenderBox {
     markNeedsPaint();
   }
 
+  MediaStageStyle _stages;
+
+  set stages(MediaStageStyle value) {
+    if (_stages == value) return;
+    _stages = value;
+    markNeedsPaint();
+  }
+
   set ticking(bool value) {
     if (_ticking == value) return;
     _ticking = value;
@@ -545,7 +575,15 @@ class _RenderContent extends RenderBox {
     // While the binding would paint the scope's placeholder (nothing exists
     // yet, or a first frame the profile does not show yet) the view's own
     // replaces it; nothing plays, so there is no texture to composite.
-    if (_standsIn && identical(_binding.paintable, _scopePlaceholder)) {
+    final bare = identical(_binding.paintable, _scopePlaceholder);
+    final fill = bare ? _stages.fill : null;
+    if (fill != null) {
+      context.canvas.drawRect(
+        box,
+        Paint()..color = fill.withValues(alpha: fill.a * _opacity),
+      );
+    }
+    if (_standsIn && bare) {
       _placeholder.paint(
         context.canvas,
         box,
@@ -554,14 +592,61 @@ class _RenderContent extends RenderBox {
       _paintLoading(context.canvas, box);
       return;
     }
-    final fade = _fade.opacityAt(_frameTime);
+    final fade = _fade.opacityAt(_frameTime, _riseLength);
     if (fade < 1) _paintUnderContent(context.canvas, box, fade);
     final opacity = _opacity * fade;
     if (AssetTextureLayer.composite(context, _binding, box, opacity: opacity)) {
       return;
     }
-    _binding.paint(context.canvas, box, tint: _tint, opacity: opacity);
-    _paintLoading(context.canvas, box);
+    final canvas = context.canvas;
+    final stage = _binding.readiness.stage;
+    final scale = fade < 1 && stage.index >= AssetStage.firstFrame.index
+        ? 1 + _stages.contentScaleIn * (1 - Curves.easeIn.transform(fade))
+        : 1.0;
+    if (scale != 1) {
+      final centre = box.center;
+      canvas
+        ..save()
+        ..translate(centre.dx, centre.dy)
+        ..scale(scale, scale)
+        ..translate(-centre.dx, -centre.dy);
+    }
+    _binding.paint(canvas, box, tint: _tint, opacity: opacity);
+    if (scale != 1) canvas.restore();
+    if (stage == AssetStage.preview && _stages.previewWash != null) {
+      _paintWash(canvas, box, opacity);
+    }
+    _paintLoading(canvas, box);
+  }
+
+  // How long the rise from [from] to [to] fades: a preview shows at once, a
+  // thumbnail fades over the preview it replaces, content over the stage
+  // fade, or the loop fade for moving content a view plays.
+  Duration _riseLength(AssetStage from, AssetStage to) => switch (to) {
+    AssetStage.none || AssetStage.preview => Duration.zero,
+    AssetStage.placeholder =>
+      from == AssetStage.preview ? _stages.stageFade : Duration.zero,
+    AssetStage.firstFrame ||
+    AssetStage.full => _plays ? _stages.gifFade : _stages.stageFade,
+  };
+
+  bool get _plays =>
+      _binding.profile.animate &&
+      (_binding.paintable.isAnimated ||
+          (_binding.descriptor?.animated ?? false));
+
+  // The wash over a raster preview; an outline is drawn in its own fill.
+  void _paintWash(Canvas canvas, Rect box, double opacity) {
+    final wash = _stages.previewWash!;
+    if (_binding.descriptor?.preview is MediaPreview$Outline) return;
+    final area = _binding.profile.roundedArea(
+      box,
+      _binding.paintable.pictureSize,
+    );
+    canvas.drawRect(
+      area,
+      Paint()..color = wash.withValues(alpha: wash.a * opacity),
+    );
   }
 
   static Duration get _frameTime {
@@ -571,11 +656,12 @@ class _RenderContent extends RenderBox {
         : scheduler.currentFrameTimeStamp;
   }
 
-  // What the content rises over while it fades in: the thumbnail the binding
-  // kept, opaque, or the placeholder fading out. The fade is a function of
-  // the frame time, so the next frame is asked for, as for the indicator.
+  // What a stage rises over while it fades in: the stand-in the binding
+  // kept (opaque, or fading out as the binding says), or the placeholder
+  // fading out. The fade is a function of the frame time, so the next frame
+  // is asked for, as for the indicator.
   void _paintUnderContent(Canvas canvas, Rect box, double fade) {
-    if (!_binding.paintStandIn(canvas, box)) {
+    if (!_binding.paintStandIn(canvas, box, contentOpacity: fade)) {
       _placeholder.paint(
         canvas,
         box,

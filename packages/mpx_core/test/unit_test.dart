@@ -78,6 +78,7 @@ import 'texture/platform/texture_table_test.dart' as texture_table_test;
 import 'texture/texture_frame_region_test.dart' as texture_frame_region_test;
 import 'widget/asset_cache_provider_test.dart' as asset_cache_provider_test;
 import 'widget/content_view_test.dart' as content_view_test;
+import 'widget/media_loading_style_test.dart' as media_loading_style_test;
 import 'widget/viewport_visibility_test.dart' as viewport_visibility_test;
 
 void main() {
@@ -156,5 +157,6 @@ void main() {
   group('texture_frame_region_test', texture_frame_region_test.main);
   group('asset_cache_provider_test', asset_cache_provider_test.main);
   group('content_view_test', content_view_test.main);
+  group('media_loading_style_test', media_loading_style_test.main);
   group('viewport_visibility_test', viewport_visibility_test.main);
 }

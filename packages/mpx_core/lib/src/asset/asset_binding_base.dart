@@ -232,7 +232,8 @@ abstract base class AssetBindingBase
   }
 
   @override
-  bool paintStandIn(Canvas canvas, Rect rect) => false;
+  bool paintStandIn(Canvas canvas, Rect rect, {double contentOpacity = 0}) =>
+      false;
 
   @override
   void releaseStandIn() {}

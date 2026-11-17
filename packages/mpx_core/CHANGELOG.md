@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- `MediaLoadingStyle` (`stages`: `MediaStageStyle`; `$Android`, `$IOS`,
+  `$Desktop`, `forPlatform`, `copyWith`) and `MediaLoadingStyleScope`,
+  resolved from the theme's platform. `ContentView` rises through stages
+  as the style says: a thumbnail fades over its preview, content over
+  `stageFade` (or `gifFade` for a playing loop) with Android's 5 %
+  scale-in, the desktop swaps at once, a raster preview gets the desktop
+  wash, and an outline or a stand-in under a vector animation fades out
+  (`AssetBinding.paintStandIn(contentOpacity:)`). `ContentView.loadingStyle`
+  overrides the resolved style.
 - `AssetStage.preview`, between `none` and `placeholder`: `AssetPipeline`
   decodes a descriptor's raster preview beside the fetches (no fetch slot),
   blurred once with `PreviewBlur` (`$Android`, `$IOS`, `$Desktop`,

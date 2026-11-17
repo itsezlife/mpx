@@ -170,7 +170,13 @@ abstract interface class AssetBinding implements Listenable {
   /// releases it too. Only a binding that was attached while the stand-in was
   /// showing has one: a binding attached after the rise has nothing to keep
   /// under it.
-  bool paintStandIn(Canvas canvas, Rect rect);
+  ///
+  /// [contentOpacity] is how far the stage over it has faded in. A raster
+  /// stand-in ignores it and stays opaque. An outline preview, or any stand-in
+  /// under content that may be transparent (a vector animation), is drawn at
+  /// `1 - contentOpacity`, so it never shows through the content's
+  /// transparent parts once the fade ends.
+  bool paintStandIn(Canvas canvas, Rect rect, {double contentOpacity = 0});
 
   /// Lets go of the stand-in of [paintStandIn]; the entry disposes the
   /// thumbnail when every binding that waited for the content has. Idempotent,

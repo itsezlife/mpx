@@ -68,4 +68,5 @@ export 'src/texture/platform/platform_frame_texture_host.dart';
 export 'src/texture/texture_frame_writer.dart';
 export 'src/widget/asset_cache_provider.dart';
 export 'src/widget/content_view.dart';
+export 'src/widget/media_loading_style.dart';
 export 'src/widget/viewport_visibility.dart';
