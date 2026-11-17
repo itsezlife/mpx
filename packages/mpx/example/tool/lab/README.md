@@ -66,7 +66,7 @@ or Back; both replay. A tape of the stress feed alone starts with
 | `replay.sh <tape> <s>` | one replay of a tape from a fresh start, with its report |
 | `ab.sh <label> <tape>` | `RUNS` replays (2) of one arm; `BUILD=1` builds first |
 | `scenario.sh feed\|swipe <s>` | the stress feed's cold or warm open; a synthetic fling (smoke test only) |
-| `session.py <trace> <tape>` | the per-segment report |
+| `session.py <trace> <tape>` | the per-segment report, with the player stages of each viewer open |
 | `seen.py <trace> <tape>` | scroll hitches over the whole trace |
 | `push_media.sh <dir>` | a folder as the device corpus (writes its manifest first) |
 | `fetch_corpus.sh` | the public corpus, verified against `corpus.sha256` |
@@ -173,6 +173,21 @@ summary, then a line per segment, every count with its denominator:
 
 The pointer windows come from the tape, never from the app's messages.
 `-` instead of a tape takes the app's input dispatches: a smoke test only.
+
+## Player stages
+
+Every viewer open also gets the player's way to its first frame, stage by
+stage from the same input, then a table of each stage's median and max
+over the run. They come from the player's own marks, `mpx.player <stage>
+<id>`, always on in profile builds: the pool's lease, the Dart engine
+(prepare, bytes published, create sent and answered, phase changes, first
+frame received), the platform player's sections (ExoPlayer built, surface
+set, prepare, each data source open and its first read, decoders set up
+with their set-up time, ready, first frame rendered) and the view building
+the texture, with the refresh it reached the screen on. `player_stages.py`
+lists the marks and how one open's are followed across the key, engine and
+platform player ids. A stage before the input (a player already warm) is
+left out of that open.
 
 ## Coverage
 

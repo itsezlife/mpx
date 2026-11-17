@@ -12,7 +12,9 @@ segments; each kind has its own metric and denominator:
   (the last finger lift before it) to the first viewer frame on screen, to
   the first frame where the morph moved, and to the player's first frame;
   morph hitches: refreshes where the morph's progress (`LABm`) failed to
-  advance or jumped, of the refreshes judged;
+  advance or jumped, of the refreshes judged. Then the player's way there,
+  stage by stage from the same input, out of the player's own marks
+  (`mpx.player <stage> <id>`, see player_stages.py);
 - viewer close (`viewer close-start` .. `viewer close-end`): input to the
   first moving frame, morph hitches, and the time from the close's end
   until the card's own picture moves again (`card moved`);
@@ -26,7 +28,8 @@ the lab.txt beside the trace, against the tape's recording (the lab.txt
 beside the tape). A run that drew much less than its recording is flagged
 COVERAGE DROPPED: its hitches are not comparable.
 
-Prints one summary table, then one line per segment. Exits non-zero when
+Prints one summary table, then one line per segment, then the player
+stages of every viewer open with their median and max. Exits non-zero when
 the trace holds no segment at all.
 """
 
@@ -36,6 +39,7 @@ import statistics
 import sys
 
 from labtrace import Capture, Hitches, clusters
+from player_stages import PlayerMarks, STAGES
 
 args = sys.argv[1:]
 hz = None
@@ -64,6 +68,8 @@ scroll_all = Hitches()
 morph = collections.defaultdict(lambda: [0, []])  # kind -> [judged, flags]
 lat = collections.defaultdict(list)  # name -> [ns]
 counts = collections.Counter()
+player_marks = PlayerMarks(cap)
+opens = []  # (open ts, tap or None, {stage label: ns from the input}, notes)
 
 
 def next_event(prefix, after, before=float("inf")):
@@ -101,6 +107,8 @@ for n, (ts, text) in enumerate(events):
                         ("open: player frame", player)):
             if t is not None:
                 lat[name].append(t - base)
+        stages, notes = player_marks.open_stages(base, close or ts + 10e9)
+        opens.append((ts, tap, stages, notes))
         hitches = sum(clusters(flags).values())
         segments.append(("viewer open", ts,
                          f"viewer open {word(text, 2)} {word(text, 3)}: input->content {ms(first and first - base)} ms, "
@@ -240,3 +248,21 @@ for why, k in (glide + drag).most_common(5):
 print("segments:")
 for kind, ts, text in sorted(segments, key=lambda s: s[1]):
     print(f"  {(ts - cap.refreshes[0]) / 1e9 if cap.refreshes else 0:7.2f}s {text}")
+
+if opens:
+    print("player stages per viewer open, ms from the input (- not reached in the open):")
+    labels = [label for label, *_ in STAGES]
+    by_stage = collections.defaultdict(list)
+    for ts, tap, stages, notes in opens:
+        at = (ts - cap.refreshes[0]) / 1e9 if cap.refreshes else 0
+        print(f"  {at:7.2f}s {' '.join(notes)}" + ("" if tap is not None else " (no input found)"))
+        print("    " + ", ".join(f"{label} {ms(stages.get(label))}" for label in labels
+                                   if label in stages))
+        for label, value in stages.items():
+            by_stage[label].append(value)
+    print("player stages, ms from the input:")
+    print(f"  {'stage':24} {'median':>7} {'max':>7} {'n':>4}")
+    for label in labels:
+        values = by_stage.get(label)
+        if values:
+            print(f"  {label:24} {ms(statistics.median(values)):>7} {ms(max(values)):>7} {len(values):>4}")
