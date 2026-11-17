@@ -76,7 +76,8 @@ class _ViewerBufferingSpinnerState extends State<ViewerBufferingSpinner>
     if (identical(widget.lease, oldWidget.lease)) return;
     oldWidget.lease.state.removeListener(_onState);
     widget.lease.state.addListener(_onState);
-    _hide();
+    // The build that follows shows the new state: no setState in an update.
+    _hide(rebuild: false);
     _onState();
   }
 
@@ -104,14 +105,32 @@ class _ViewerBufferingSpinnerState extends State<ViewerBufferingSpinner>
     unawaited(_fade.forward(from: 0));
   }
 
-  void _tellPresence() => widget.presence?.value = _fade.value;
+  // The presence is heard by the play button, outside this subtree: a change
+  // made while the tree builds (a new lease handed over in didUpdateWidget)
+  // is told after that frame.
+  void _tellPresence() {
+    final presence = widget.presence;
+    if (presence == null) return;
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (mounted) presence.value = _fade.value;
+      });
+      return;
+    }
+    presence.value = _fade.value;
+  }
 
-  void _hide() {
+  void _hide({bool rebuild = true}) {
     _delay?.cancel();
     _delay = null;
     if (!_shown) return;
     _fade.value = 0;
-    if (mounted) setState(() => _shown = false);
+    if (!rebuild) {
+      _shown = false;
+    } else if (mounted) {
+      setState(() => _shown = false);
+    }
   }
 
   @override
@@ -240,7 +259,7 @@ class _ViewerPageStatusState extends State<ViewerPageStatus> {
       const AssetProfile(),
       downloadContext: widget.downloadContext,
     )..addListener(_onBinding);
-    _status = _read();
+    _sync();
   }
 
   void _detach() {
@@ -252,16 +271,66 @@ class _ViewerPageStatusState extends State<ViewerPageStatus> {
       ..detach();
     _binding = null;
     _scope = null;
-    _status = MediaStatus.none;
+    _setStatus(MediaStatus.none);
   }
 
+  // The binding changes in builds too (a tile of the content mounting, a
+  // picture in memory): the page rebuilds after that frame, never inside
+  // another widget's build.
   void _onBinding() {
-    final status = _read();
-    if (status != _status && mounted) setState(() => _status = status);
+    if (!mounted) return;
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      if (_syncScheduled) return;
+      _syncScheduled = true;
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        _syncScheduled = false;
+        if (mounted) setState(_sync);
+      });
+      return;
+    }
+    setState(_sync);
   }
 
-  // Tells [ViewerPageStatus.shows] after the frame: the status changes in
-  // builds and while the tree is locked.
+  bool _syncScheduled = false;
+
+  // Reads the status and keeps the photo progress's delay in step with it:
+  // the timer runs while a photo downloads below its first frame and has
+  // not waited its delay yet.
+  void _sync() {
+    final binding = _binding;
+    final downloading =
+        binding != null &&
+        widget.kind == GalleryMediaKind.photo &&
+        binding.transfer.isActive &&
+        binding.readiness.stage.index < AssetStage.firstFrame.index;
+    if (!downloading) {
+      _delay?.cancel();
+      _delay = null;
+      _delayed = false;
+    } else if (!_delayed && _delay == null) {
+      final wait = widget.rules.photoProgressDelay;
+      if (wait > Duration.zero) {
+        _delay = Timer(wait, () {
+          _delay = null;
+          _delayed = true;
+          _onBinding();
+        });
+      } else {
+        _delayed = true;
+      }
+    }
+    _setStatus(_read());
+  }
+
+  void _setStatus(MediaStatus status) {
+    if (status == _status) return;
+    _status = status;
+    _tellShows();
+  }
+
+  // Tells [ViewerPageStatus.shows] after the frame the status changed in:
+  // it changes in builds and while the tree is locked.
   void _tellShows() {
     final shows = widget.shows;
     if (shows == null) return;
@@ -270,32 +339,21 @@ class _ViewerPageStatusState extends State<ViewerPageStatus> {
     });
   }
 
+  // What the control shows now; reads only.
   MediaStatus _read() {
     final binding = _binding;
     if (binding == null) return MediaStatus.none;
     final transfer = binding.transfer;
     final stage = binding.readiness.stage;
     // A video and an animation (a GIF) show cancel and the arc of their
-    // bytes alike, one radial for both; a photo shows the
-    // policy's photo progress.
-    if (widget.kind != GalleryMediaKind.photo) {
+    // bytes alike, one radial for both; a photo shows the policy's photo
+    // progress.
+    if (widget.kind != GalleryMediaKind.photo ||
+        !transfer.isActive ||
+        stage.index >= AssetStage.firstFrame.index) {
       return MediaStatus.forTransfer(transfer, stage);
     }
-    if (!transfer.isActive || stage.index >= AssetStage.firstFrame.index) {
-      _delay?.cancel();
-      _delay = null;
-      _delayed = false;
-      return MediaStatus.forTransfer(transfer, stage);
-    }
-    final wait = widget.rules.photoProgressDelay;
-    if (!_delayed && wait > Duration.zero) {
-      _delay ??= Timer(wait, () {
-        _delay = null;
-        _delayed = true;
-        _onBinding();
-      });
-      return MediaStatus.none;
-    }
+    if (!_delayed) return MediaStatus.none;
     return switch (widget.rules.photoProgress) {
       ViewerPhotoProgress.spinner => const MediaStatus.spinner(),
       ViewerPhotoProgress.arc => MediaStatus.progress(
@@ -323,20 +381,17 @@ class _ViewerPageStatusState extends State<ViewerPageStatus> {
   // Only an icon takes taps: the page under a spinner, an arc or nothing
   // keeps its gestures (paging, zoom, dismiss).
   @override
-  Widget build(BuildContext context) {
-    _tellShows();
-    return IgnorePointer(
-      ignoring: _status.icon == MediaStatusIcon.none,
-      child: Center(
-        child: MediaStatusControl(
-          status: _status,
-          onTap: _onTap,
-          style: widget.rules.status,
-          strings: widget.strings,
-        ),
+  Widget build(BuildContext context) => IgnorePointer(
+    ignoring: _status.icon == MediaStatusIcon.none,
+    child: Center(
+      child: MediaStatusControl(
+        status: _status,
+        onTap: _onTap,
+        style: widget.rules.status,
+        strings: widget.strings,
       ),
-    );
-  }
+    ),
+  );
 }
 
 /// A player over its stand-in: the stand-in until the player has its first

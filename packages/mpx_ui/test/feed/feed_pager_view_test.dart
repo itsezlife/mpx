@@ -122,6 +122,55 @@ void main() {
     expect(spinner(), findsNothing);
   });
 
+  testWidgets('a page that downloads has one centre control: no spinner '
+      'beside its status radial', (tester) async {
+    tester.view.physicalSize = _viewport;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: FeedPagerView(
+          pool: pool,
+          itemCount: 3,
+          itemOf: (index) => FeedItem(_key(index)),
+          presetOf: preset,
+          scope: scope,
+          status: const MediaStatusMode.control(),
+        ),
+      ),
+    );
+    await tester.pump();
+    for (final attempt in producer.attempts) {
+      if (attempt.request.key == _key(0)) attempt.transfer(1000, 4000);
+    }
+    backend.latestFor(_key(0))!.stall();
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(
+      find.descendant(
+        of: find.byType(ViewerBufferingSpinner),
+        matching: find.byType(MediaStatusControl),
+      ),
+      findsNothing,
+    );
+
+    // Once the bytes are no longer shown, a stalled player shows its spinner.
+    for (final attempt in producer.attempts) {
+      if (attempt.request.key == _key(0)) attempt.advance(AssetStage.full);
+    }
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      find.descendant(
+        of: find.byType(ViewerBufferingSpinner),
+        matching: find.byType(MediaStatusControl),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('tells the cache the descriptors its items carry', (
     tester,
   ) async {

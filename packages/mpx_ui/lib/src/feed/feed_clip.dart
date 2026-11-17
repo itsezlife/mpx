@@ -1,7 +1,9 @@
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_ui/src/viewer/viewer_loading.dart';
+import 'package:mpx_ui/src/viewer/viewer_policy.dart';
 import 'package:mpx_ui/src/viewer/viewer_policy_scope.dart';
 
 /// The media of the closest `FeedSlot`'s item, drawn the way the slot's
@@ -12,7 +14,8 @@ import 'package:mpx_ui/src/viewer/viewer_policy_scope.dart';
 /// it has its first frame, for the viewer policy's
 /// `ViewerLoadingRules.playerFadeIn` (`ViewerPolicyScope.resolve`); with
 /// [showsBuffering] the policy's buffering spinner shows over a player that
-/// waits for its media past the delay. Otherwise, when the controller gives the item a clip profile (list
+/// waits for its media past the delay, unless the item's status control
+/// shows (one centre control). Otherwise, when the controller gives the item a clip profile (list
 /// mode: looping, advancing only above the advance floor, held on its frame
 /// while it does not play), it attaches the item through the asset cache
 /// with it and its visible fraction; else it shows its [poster]. A released
@@ -110,11 +113,26 @@ class FeedClip extends StatelessWidget {
               handedOverFadeIn: loading.playerFadeInHandedOver,
             );
             if (!showsBuffering) return player;
+            final statusShown =
+                status is! MediaStatusMode$None &&
+                item != null &&
+                presetOf != null &&
+                scope != null;
             return Stack(
               fit: StackFit.expand,
               children: [
                 player,
-                ViewerBufferingSpinner(lease: lease, rules: loading),
+                if (statusShown)
+                  _SpinnerUnderStatus(
+                    lease: lease,
+                    rules: loading,
+                    content: item.key,
+                    spec: presetOf(const AssetProfile()).spec,
+                    scope: scope,
+                    downloadContext: item.downloadContext,
+                  )
+                else
+                  ViewerBufferingSpinner(lease: lease, rules: loading),
               ],
             );
           }
@@ -178,4 +196,104 @@ class FeedClip extends StatelessWidget {
     if (shared == null) return null;
     return (profile) => shared(index, profile);
   }
+}
+
+/// The buffering spinner of a page whose status control is laid over it:
+/// it holds back while the control shows (the download's radial, or the
+/// download icon), so the centre has one control.
+class _SpinnerUnderStatus extends StatefulWidget {
+  const _SpinnerUnderStatus({
+    required this.lease,
+    required this.rules,
+    required this.content,
+    required this.spec,
+    required this.scope,
+    required this.downloadContext,
+  });
+
+  final PlayerLease lease;
+  final ViewerLoadingRules rules;
+  final MediaKey content;
+  final AssetSpec spec;
+  final AssetCacheScope scope;
+  final AutoDownloadContext? downloadContext;
+
+  @override
+  State<_SpinnerUnderStatus> createState() => _SpinnerUnderStatusState();
+}
+
+class _SpinnerUnderStatusState extends State<_SpinnerUnderStatus> {
+  final ValueNotifier<bool> _statusShows = ValueNotifier(false);
+  AssetBinding? _binding;
+
+  @override
+  void initState() {
+    super.initState();
+    _attach();
+  }
+
+  @override
+  void didUpdateWidget(_SpinnerUnderStatus oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.content != oldWidget.content ||
+        widget.spec != oldWidget.spec ||
+        !identical(widget.scope, oldWidget.scope) ||
+        widget.downloadContext != oldWidget.downloadContext) {
+      _detach();
+      _attach();
+    }
+  }
+
+  @override
+  void dispose() {
+    _detach();
+    _statusShows.dispose();
+    super.dispose();
+  }
+
+  // The entry the page's status control reads: one entry, one transfer.
+  void _attach() {
+    _binding = widget.scope.attach(
+      widget.content,
+      widget.spec,
+      const AssetProfile(),
+      downloadContext: widget.downloadContext,
+    )..addListener(_onBinding);
+    _statusShows.value = _shows();
+  }
+
+  void _detach() {
+    _binding
+      ?..removeListener(_onBinding)
+      ..detach();
+    _binding = null;
+  }
+
+  bool _shows() {
+    final binding = _binding;
+    if (binding == null) return false;
+    return MediaStatus.forTransfer(
+      binding.transfer,
+      binding.readiness.stage,
+    ).isVisible;
+  }
+
+  // Heard in builds too: the spinner hears it after that frame.
+  void _onBinding() {
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _statusShows.value = _shows();
+      });
+      return;
+    }
+    _statusShows.value = _shows();
+  }
+
+  @override
+  Widget build(BuildContext context) => ViewerBufferingSpinner(
+    lease: widget.lease,
+    rules: widget.rules,
+    suppressed: _statusShows,
+  );
 }

@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_player/mpx_player.dart';
+import 'package:mpx_ui/src/known_descriptors.dart';
 import 'package:mpx_ui/src/viewer/gallery_source.dart';
 import 'package:mpx_ui/src/viewer/origin_bridge.dart';
 import 'package:mpx_ui/src/viewer/viewer_actions.dart';
@@ -330,6 +331,10 @@ enum _Phase { opening, open, closing, closed }
 class MediaViewerState extends State<MediaViewer>
     with TickerProviderStateMixin {
   late int _index = widget.initialIndex;
+
+  // The item the viewer opened on, by its content: indexes move when the
+  // source learns of items before it. Null until the source has loaded it.
+  late MediaKey? _opened = widget.source.itemAt(widget.initialIndex)?.key;
   late final PageController _pages = PageController(
     initialPage: widget.initialIndex,
   );
@@ -574,6 +579,7 @@ class MediaViewerState extends State<MediaViewer>
 
   void _onSource() {
     if (!mounted) return;
+    _opened ??= widget.source.itemAt(widget.initialIndex)?.key;
     _syncVideo();
     _syncNeighbours();
     setState(() {});
@@ -1629,16 +1635,11 @@ class MediaViewerState extends State<MediaViewer>
 
   static Size _boxOf(Size size) => size.isEmpty ? const Size(1, 1) : size;
 
-  // The descriptors told to the cache, so each is told once.
-  final Set<MediaDescriptor> _known = Set.identity();
+  final KnownDescriptors _known = KnownDescriptors();
 
   // Tells the cache what the host knows about [item] before a page of it
   // attaches: its preview and thumbnail show though the cache never saw it.
-  void _know(GalleryItem item) {
-    final descriptor = item.descriptor;
-    if (descriptor == null || !_known.add(descriptor)) return;
-    _cache?.know(descriptor);
-  }
+  void _know(GalleryItem item) => _known.tell(_cache, item.descriptor);
 
   // Whether the page of [item] at [index] asks for its content whatever the
   // auto-download policy says: the page shown, which the user opened or
@@ -1647,7 +1648,7 @@ class MediaViewerState extends State<MediaViewer>
   // the download). The neighbours follow the policy.
   bool _requestsDownload(int index, GalleryItem item) =>
       index == _index &&
-      (item.kind != GalleryMediaKind.video || index == widget.initialIndex);
+      (item.kind != GalleryMediaKind.video || item.key == _opened);
 
   // The size, decode and use of [item]'s content in a box of [box].
   AssetPreset _presetOf(GalleryItem item, Size box) {

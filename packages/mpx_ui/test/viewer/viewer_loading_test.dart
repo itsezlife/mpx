@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_player/testing.dart';
 import 'package:mpx_ui/mpx_ui.dart';
@@ -386,6 +387,34 @@ void main() {
       expect(harness.producer.attempts.length, greaterThan(attempts));
     });
 
+    testWidgets('only the video the viewer opened on asks for its content, '
+        'wherever the source moves it', (tester) async {
+      final harness = ViewerHarness(items: ViewerHarness.videos(1));
+      await harness.pump(tester);
+      bool asks(MediaKey key) => find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is ContentView &&
+                widget.content == key &&
+                widget.requestsDownload,
+          )
+          .evaluate()
+          .isNotEmpty;
+      expect(asks(videoKey(0)), isTrue);
+
+      // The host learns of a video before it: the page shown is that one
+      // now, at the index the viewer opened on.
+      const earlier = GalleryItem(
+        MediaKey.remote('earlier'),
+        kind: GalleryMediaKind.video,
+        size: Size(1200, 900),
+      );
+      harness.source.insert(0, earlier);
+      await tester.pump();
+
+      expect(asks(earlier.key), isFalse);
+    });
+
     testWidgets('a video paged to without players offers its download, and '
         'a tap downloads it', (tester) async {
       final harness = ViewerHarness(items: ViewerHarness.videos(2));
@@ -716,6 +745,106 @@ void main() {
       await tester.pump(const Duration(milliseconds: 101));
       await tester.pump();
       expect(find.text('still'), findsNothing);
+    });
+  });
+
+  group('changes heard while the tree builds', () {
+    testWidgets('the status hears its binding change in a build, and shows it '
+        'after the frame', (tester) async {
+      final producer = FakeAssetProducer();
+      final scope = AssetCacheScope(
+        producer: producer,
+        clock: PlaybackClock(ticks: ManualPlaybackTickSource()),
+      );
+      addTearDown(scope.dispose);
+      const key = MediaKey.remote('clip');
+      var tile = false;
+      late StateSetter setTile;
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Stack(
+            children: [
+              ViewerPageStatus(
+                content: key,
+                spec: const AssetSpec(pixelWidth: 400, pixelHeight: 400),
+                kind: GalleryMediaKind.video,
+                rules: ViewerLoadingRules.$Android,
+                scope: scope,
+              ),
+              // Another subtree (a grid under the viewer) that builds alone.
+              StatefulBuilder(
+                builder: (context, setState) {
+                  setTile = setState;
+                  return tile
+                      ? ContentView(
+                          content: key,
+                          scope: scope,
+                          preset: const AssetPreset(
+                            size: Size(100, 100),
+                            spec: AssetSpec(pixelWidth: 100, pixelHeight: 100),
+                            profile: AssetProfile(),
+                          ),
+                        )
+                      : const SizedBox();
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+      producer.last.awaitingUser();
+      await tester.pump();
+      expect(find.bySemanticsLabel('Download'), findsOneWidget);
+
+      // A tile of the content mounts and its picture is in memory: the page
+      // shows it at once, heard while the tile builds.
+      producer.onProduce = (attempt) => attempt.advance(AssetStage.full);
+      setTile(() => tile = true);
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.bySemanticsLabel('Download'), findsNothing);
+    });
+
+    testWidgets('a spinner handed another player tells its presence after '
+        'the frame', (tester) async {
+      final backend = FakePlayerBackend();
+      final pool = PlayerPool(backend: backend);
+      addTearDown(pool.dispose);
+      final presence = ValueNotifier<double>(0);
+      addTearDown(presence.dispose);
+      final first = pool.lease(const MediaKey.remote('a'));
+      final second = pool.lease(const MediaKey.remote('b'));
+      Widget tree(PlayerLease lease) => Directionality(
+        textDirection: TextDirection.ltr,
+        child: Stack(
+          children: [
+            ValueListenableBuilder<double>(
+              valueListenable: presence,
+              builder: (context, value, _) => Text('$value'),
+            ),
+            ViewerBufferingSpinner(
+              lease: lease,
+              rules: ViewerLoadingRules.$Android,
+              presence: presence,
+            ),
+          ],
+        ),
+      );
+      await tester.pumpWidget(tree(first));
+      first.prepare();
+      await tester.pump();
+      backend.latestFor(const MediaKey.remote('a'))!.stall();
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(presence.value, greaterThan(0));
+
+      await tester.pumpWidget(tree(second));
+      expect(tester.takeException(), isNull);
+      await tester.pump();
+      expect(presence.value, 0);
     });
   });
 }

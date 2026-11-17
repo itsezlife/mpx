@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_ui/src/feed/feed_clip.dart';
+import 'package:mpx_ui/src/feed/feed_items_known.dart';
 
 /// Builds the page of [index] around its [media]: the player's picture, or
 /// the poster while the page holds no player.
@@ -103,7 +104,8 @@ class FeedPagerView extends StatefulWidget {
 
 /// The state of a [FeedPagerView]; [feed] is the controller it drives and
 /// [pager] the pager that holds its leases.
-class FeedPagerViewState extends State<FeedPagerView> {
+class FeedPagerViewState extends State<FeedPagerView>
+    with FeedItemsKnown<FeedPagerView> {
   late final PageController _pages = PageController(
     initialPage: widget.initialIndex,
   );
@@ -113,7 +115,7 @@ class FeedPagerViewState extends State<FeedPagerView> {
     policy: widget.policy,
     pool: widget.pool,
     itemCount: widget.itemCount,
-    itemOf: _itemOf,
+    itemOf: knownItemOf,
     presetOf: widget.presetOf == null
         ? null
         : (index, profile) => widget.presetOf!(index, profile),
@@ -132,8 +134,7 @@ class FeedPagerViewState extends State<FeedPagerView> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _providedScope = AssetCacheProvider.maybeOf(context);
-    _feed.scope = widget.scope ?? _providedScope;
+    _feed.scope = itemsScope;
   }
 
   @override
@@ -155,23 +156,11 @@ class FeedPagerViewState extends State<FeedPagerView> {
     super.dispose();
   }
 
-  // The closest provider's cache, read before the controller is made.
-  AssetCacheScope? _providedScope;
+  @override
+  FeedItem hostItemOf(int index) => widget.itemOf(index);
 
-  // The descriptors told to the cache, so each is told once.
-  final Set<MediaDescriptor> _known = Set.identity();
-
-  // The host's item, whose descriptor the cache hears before the controller
-  // preloads it or a page attaches it.
-  FeedItem _itemOf(int index) {
-    final item = widget.itemOf(index);
-    final scope = widget.scope ?? _providedScope;
-    if (item.descriptor case final descriptor?
-        when scope != null && _known.add(descriptor)) {
-      scope.know(descriptor);
-    }
-    return item;
-  }
+  @override
+  AssetCacheScope? get hostScope => widget.scope;
 
   void _pageChanged() {
     final index = _feed.inView.value;
@@ -204,7 +193,7 @@ class FeedPagerViewState extends State<FeedPagerView> {
         );
         return FeedSlot(
           index: index,
-          item: _itemOf(index),
+          item: knownItemOf(index),
           child: widget.cellBuilder?.call(context, index, media) ?? media,
         );
       },

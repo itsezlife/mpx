@@ -27,6 +27,18 @@ final class FakeGallerySource extends ChangeNotifier implements GallerySource {
   @override
   void loadAround(int index) => requests.add(index);
 
+  /// Puts [item] at [index], loaded, moving the items from there one on (a
+  /// host that learned of an item before them), and tells the listeners.
+  void insert(int index, GalleryItem item) {
+    _items.insert(index, item);
+    final moved = {for (final at in _loaded) at >= index ? at + 1 : at};
+    _loaded
+      ..clear()
+      ..addAll(moved)
+      ..add(index);
+    notifyListeners();
+  }
+
   /// Makes [indexes] answer their items and tells the listeners.
   void load(Iterable<int> indexes) {
     _loaded.addAll(indexes);
