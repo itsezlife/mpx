@@ -889,7 +889,11 @@ class _OverlaysState extends State<_Overlays> {
         MediaStatusMode$None() => const <Widget>[],
         MediaStatusMode$Arc(:final radius) => [
           Positioned.fill(
+            // The control keeps its style's size whatever the box: never
+            // stretched to a large tile, free to overflow a small one.
             child: OverflowBox(
+              minWidth: 0,
+              minHeight: 0,
               maxWidth: double.infinity,
               maxHeight: double.infinity,
               child: _control(
@@ -904,7 +908,11 @@ class _OverlaysState extends State<_Overlays> {
         ],
         MediaStatusMode$Control() when _streaming => [
           Positioned.fill(
+            // The control keeps its style's size whatever the box: never
+            // stretched to a large tile, free to overflow a small one.
             child: OverflowBox(
+              minWidth: 0,
+              minHeight: 0,
               maxWidth: double.infinity,
               maxHeight: double.infinity,
               child: _control(
@@ -919,7 +927,11 @@ class _OverlaysState extends State<_Overlays> {
         ],
         MediaStatusMode$Control(:final playAction) => [
           Positioned.fill(
+            // The control keeps its style's size whatever the box: never
+            // stretched to a large tile, free to overflow a small one.
             child: OverflowBox(
+              minWidth: 0,
+              minHeight: 0,
               maxWidth: double.infinity,
               maxHeight: double.infinity,
               child: _control(

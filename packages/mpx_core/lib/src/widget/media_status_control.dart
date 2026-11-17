@@ -286,8 +286,12 @@ class _MediaStatusControlState extends State<MediaStatusControl>
       );
     }
     final label = _label;
-    if (label == null) return control;
-    return Semantics(button: tappable, label: label, child: control);
+    if (label != null) {
+      control = Semantics(button: tappable, label: label, child: control);
+    }
+    // Sized by its style, never by the box it is put in: tight constraints
+    // (a large tile) centre the disc instead of stretching it.
+    return Align(widthFactor: 1, heightFactor: 1, child: control);
   }
 }
 

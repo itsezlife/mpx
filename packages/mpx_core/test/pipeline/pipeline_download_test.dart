@@ -127,7 +127,7 @@ void main() {
       expect(binding.transfer, const AssetTransfer.waiting());
     });
 
-    test('runs none, waiting, receiving, failed, waiting again, none', () {
+    test('runs none, waiting, receiving, failed, receiving again, none', () {
       final item = _video(1, thumbnail: false);
       final harness = PipelineHarness(
         known: [item],
@@ -152,7 +152,8 @@ void main() {
         );
 
         binding.download();
-        expect(binding.transfer, const AssetTransfer.waiting(4000));
+        // The retry starts where the bytes got to, not from 0.
+        expect(binding.transfer, const AssetTransfer.receiving(1000, 4000));
 
         harness.fetcher.fetchesOf(item.key).last.complete();
         await harness.settle();

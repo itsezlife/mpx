@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The status control keeps its style's size whatever box it is put in: a
+  large tile centres a 44 px disc instead of stretching it. A download a
+  surface comes back to is drawn where its bytes got to: the scope keeps
+  the most bytes any attempt of missing content reported until it is final,
+  so a new attempt that counts from 0 does not reset the arc.
 - `ContentView.status` (`MediaStatusMode`: `none`, `arc(radius)`,
   `control(playAction:)`, `compact`) lays the status control over the
   content, and `badge` the media badge; `onPlay` takes play taps, and

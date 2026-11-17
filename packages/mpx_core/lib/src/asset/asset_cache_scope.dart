@@ -150,6 +150,33 @@ final class AssetCacheScope {
   final Set<MediaKey> _cancelledByUser = {};
   final Set<MediaKey> _requestedByUser = {};
 
+  // The most of each missing content's bytes any attempt reported, kept
+  // until the content is final: a surface that comes back to a download
+  // draws it where it was, not from 0 again, whatever the next attempt's
+  // transfer reports first (a fresh request counts from 0, and the bytes
+  // stored meanwhile are not lost).
+  final Map<MediaKey, ({int received, int? total})> _received = {};
+
+  // [value] as the surfaces see it: a waiting or receiving transfer of a
+  // content that has received more before reads that much.
+  AssetTransfer _monotonic(MediaKey key, AssetTransfer value) {
+    final mark = _received[key];
+    switch (value) {
+      case AssetTransfer$Receiving(:final received, :final total):
+        if (mark != null &&
+            mark.received > received &&
+            (total == null || mark.total == null || mark.total == total)) {
+          return AssetTransfer.receiving(mark.received, total ?? mark.total);
+        }
+        _received[key] = (received: received, total: total ?? mark?.total);
+        return value;
+      case AssetTransfer$Waiting() when mark != null && mark.received > 0:
+        return AssetTransfer.receiving(mark.received, mark.total);
+      default:
+        return value;
+    }
+  }
+
   // The scope's answer for [entry]; see AssetDemand.autoDownload.
   AutoDownload _autoDownloadOf(_Entry entry, MediaDescriptor? descriptor) {
     if (_requestedByUser.contains(entry.key)) return AutoDownload.now;
@@ -709,6 +736,7 @@ final class AssetCacheScope {
       entry.attempt?.ended = true;
       entry.attempt = null;
       entry.setTransfer(AssetTransfer.none);
+      _received.remove(entry.key);
     }
     for (final binding in List<_EntryBinding>.of(entry.bindings)) {
       binding.entryChanged();
@@ -988,16 +1016,21 @@ final class _Attempt implements AssetProgress {
   @override
   void waiting() {
     if (!_live || _scope._disposed) return;
-    _entry.setTransfer(const AssetTransfer.waiting());
+    _entry.setTransfer(
+      _scope._monotonic(_entry.key, const AssetTransfer.waiting()),
+    );
   }
 
   @override
   void transfer(int received, int? total) {
     if (!_live || _scope._disposed) return;
     _entry.setTransfer(
-      AssetTransfer.receiving(
-        received < 0 ? 0 : received,
-        total == null || total <= 0 ? null : total,
+      _scope._monotonic(
+        _entry.key,
+        AssetTransfer.receiving(
+          received < 0 ? 0 : received,
+          total == null || total <= 0 ? null : total,
+        ),
       ),
     );
   }

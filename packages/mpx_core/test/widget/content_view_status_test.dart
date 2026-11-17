@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -212,5 +214,83 @@ void main() {
     );
 
     expect(find.text('mine true'), findsOneWidget);
+  });
+
+  testWidgets('the control keeps its style size over a large tile', (
+    tester,
+  ) async {
+    const tile = AssetPreset(
+      size: Size(300, 300),
+      spec: AssetSpec(pixelWidth: 300, pixelHeight: 300),
+      profile: AssetProfile(),
+    );
+    await tester.pumpWidget(
+      host(
+        const ContentView(
+          content: _key,
+          preset: tile,
+          status: MediaStatusMode.control(),
+        ),
+      ),
+    );
+    producer.last.transfer(10, 100);
+    await tester.pump(_gone);
+
+    final control = find.byType(MediaStatusControl);
+    expect(tester.getSize(find.byType(ContentView)), const Size(300, 300));
+    expect(tester.getSize(control), const Size(44, 44));
+    expect(
+      tester.getCenter(control),
+      tester.getCenter(find.byType(ContentView)),
+    );
+  });
+
+  testWidgets('a control alone in tight constraints keeps its size', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.android),
+        home: const SizedBox(
+          width: 300,
+          height: 300,
+          child: MediaStatusControl(
+            status: MediaStatus.icon(MediaStatusIcon.download),
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.getSize(find.byType(CustomPaint).last), const Size(44, 44));
+  });
+
+  testWidgets('rebinding a tile mid-download paints the current fraction on '
+      'its first frame', (tester) async {
+    Widget tile() => host(
+      ContentView(
+        key: UniqueKey(),
+        content: _key,
+        preset: _preset,
+        status: const MediaStatusMode.control(),
+      ),
+    );
+    await tester.pumpWidget(tile());
+    producer.last.transfer(50, 100);
+    await tester.pump(_gone);
+    // The tile leaves the screen; its attempt is cancelled.
+    await tester.pumpWidget(host(const SizedBox()));
+
+    // The next attempt starts again from what its request reports.
+    producer.onProduce = (attempt) => attempt
+      ..waiting()
+      ..transfer(5, 100);
+    await tester.pumpWidget(tile());
+
+    expect(
+      find.byType(MediaStatusControl),
+      paints
+        ..circle()
+        ..arc(sweepAngle: math.pi),
+    );
   });
 }
