@@ -681,8 +681,33 @@ final class _Job implements AssetTask {
   void contentDone() {
     if (_ended) return;
     _ended = true;
+    _contentDone = true;
     _thumbnail?.cancel();
     pipeline._jobs.remove(this);
+    if (_restFailure case (:final error, :final stackTrace, :final kind)) {
+      _restFailure = null;
+      progress.fail(error, stackTrace, kind);
+    }
+  }
+
+  // Whether the content reached its final stage, its rest possibly still
+  // arriving.
+  bool _contentDone = false;
+
+  // A failure of the rest that came before the final stage, reported once
+  // the spec is final: until then the decode goes on with what the reads
+  // fetch, and a failure of theirs ends the attempt anyway.
+  ({Object error, StackTrace stackTrace, AssetFailureKind kind})? _restFailure;
+
+  /// The rest behind the reads of streamed content failed. Reported after
+  /// the final stage, where the scope counts it as the content's failed
+  /// download (AssetProgress.fail); a running attempt is not ended by it.
+  void restFailed(Object error, StackTrace stackTrace, AssetFailureKind kind) {
+    if (_contentDone) {
+      progress.fail(error, stackTrace, kind);
+    } else if (!_ended) {
+      _restFailure = (error: error, stackTrace: stackTrace, kind: kind);
+    }
   }
 
   void _fail(Object error, StackTrace? stackTrace, AssetFailureKind kind) {
@@ -725,8 +750,13 @@ final class _Job implements AssetTask {
   /// reached for its spec: that stage is final.
   void contentBestReached() {
     if (_ended) return;
+    final failure = _restFailure;
+    _restFailure = null;
     contentDone();
     progress.bestReached();
+    if (failure case (:final error, :final stackTrace, :final kind)) {
+      progress.fail(error, stackTrace, kind);
+    }
   }
 
   /// A part failed. A thumbnail's failure is only its own.
@@ -812,8 +842,10 @@ final class _Work implements LaneWork {
   /// The fetcher's report of the bytes of this part's transfer.
   void received(int received, int? total) {
     // Streamed content reports its bytes after it was handed out, while it
-    // is decoded; any other report after the fetch is stale.
-    final streamed = content is FetchedRanged && phase != _Phase.done;
+    // is decoded and after its spec is final, until it is released: the
+    // scope counts them for the content, so its completion reaches every
+    // spec. Any other report after the fetch is stale.
+    final streamed = content is FetchedRanged;
     if (phase != _Phase.fetching && !streamed) return;
     _transferred = true;
     reportTransfer(received, total);
@@ -858,20 +890,31 @@ final class _Work implements LaneWork {
       job.contentFetched(transferred: _transferred);
     }
     content = fetchedContent;
+    if (fetchedContent case FetchedRanged(:final rest?)) {
+      rest.then<void>((_) {}, onError: restFailed);
+    }
     phase = _Phase.queuedDecode;
     _pipeline._decodeLane.enqueue(this);
     _pipeline._fetchLane.release(this);
   }
 
+  // The rest behind the reads of streamed content failed: the content's
+  // download failed, which its surfaces show as the retry.
+  void restFailed(Object error, StackTrace stackTrace) {
+    if (_cancelled || part != FetchPart.content) return;
+    job.restFailed(error, stackTrace, _kindOf(error));
+  }
+
+  static AssetFailureKind _kindOf(Object error) => switch (error) {
+    FetchFailure(:final kind) => kind,
+    _ => AssetFailureKind.transient,
+  };
+
   void fetchFailed(Object error, StackTrace stackTrace) {
     if (_cancelled) return;
     phase = _Phase.done;
     _pipeline._fetchLane.release(this);
-    final kind = switch (error) {
-      FetchFailure(:final kind) => kind,
-      _ => AssetFailureKind.transient,
-    };
-    job.workFailed(this, error, stackTrace, kind);
+    job.workFailed(this, error, stackTrace, _kindOf(error));
   }
 
   void cancel() {

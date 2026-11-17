@@ -162,6 +162,7 @@ final class FetchedRanged extends FetchedContent {
     required this.readerApi,
     required this.key,
     this.landed,
+    this.rest,
     FetchRelease? onPause,
     FetchRelease? onRelease,
   }) : _onPause = onPause,
@@ -176,6 +177,14 @@ final class FetchedRanged extends FetchedContent {
   /// An event each time bytes of the resource landed, or null when the
   /// fetcher's side tells nothing (a decoder then tries again on a timer).
   final Stream<void>? landed;
+
+  /// The fetch of the rest behind the reads, for a request that wanted the
+  /// whole part (`FetchRequest.whole`): completes once the resource is
+  /// whole, or with the error that stopped it (a [FetchFailure] says whether
+  /// connectivity helps), which the pipeline reports as the content's failed
+  /// download. Null when only what is read is fetched. Releasing the content
+  /// stops it; that is no failure to report.
+  final Future<void>? rest;
 
   final FetchRelease? _onPause;
   final FetchRelease? _onRelease;

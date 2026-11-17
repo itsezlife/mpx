@@ -597,7 +597,8 @@ void main() {
 
       // A platform player pulling the content nobody asked for: its bytes
       // show as received, never as a download under way.
-      scope.reportContentBytes(photoKey(0), 2097152, 4718592);
+      final player = scope.openOutsideReader(photoKey(0))
+        ..report(2097152, 4718592);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(tileBadge(), contains('2.0 MB / 4.5 MB'));
@@ -611,7 +612,7 @@ void main() {
           matching: find.byType(MediaStatusControl),
         ),
       );
-      scope.reportContentBytes(photoKey(0), 3145728, 4718592);
+      player.report(3145728, 4718592);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(tileBadge(), contains('3.0 MB / 4.5 MB'));
@@ -625,7 +626,7 @@ void main() {
           matching: find.byType(MediaStatusControl),
         ),
       );
-      scope.endContentBytes(photoKey(0));
+      player.close();
       for (final attempt in producer.attempts) {
         if (!attempt.isCancelled) attempt.awaitingUser();
       }

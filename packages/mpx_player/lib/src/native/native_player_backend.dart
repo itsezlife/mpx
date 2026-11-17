@@ -21,10 +21,12 @@ import 'package:mpx_player/src/player/player_trace.dart';
 typedef PlayerBytesPublisher =
     Future<Future<void> Function()> Function(RangedRequest request);
 
-/// Told the bytes a player's [source] holds of its total as they land, while
-/// the player reads it.
-typedef PlayerSourceBytes =
-    void Function(RangedRequest source, int received, int? total);
+/// The account a player's [source] is reported to while the player reads
+/// it: the bytes it holds of its total as they land, then a close when the
+/// player lets it go. The host maps the source to its content
+/// (`AssetCacheScope.openOutsideReader`); null when it is no content the
+/// host shows.
+typedef PlayerSourceWatch = AssetOutsideReader? Function(RangedRequest source);
 
 /// Resolves one HLS playlist's bytes through the bytes cache.
 typedef PlayerPlaylistLoader = Future<Uint8List> Function(BytesRequest request);
@@ -78,29 +80,28 @@ final class NativePlayerBackend implements PlayerBackend {
   /// [playlists] resolves HLS playlists; it should read the store [readers]
   /// serves. Defaults to [BytesResolver.shared].
   ///
-  /// [onSourceBytes] is told the bytes of each source a player reads as
-  /// they land, and [onSourceClosed] when the player lets it go: the bytes
-  /// a player pulls are the content's download, which a host tells its
-  /// cache (`AssetCacheScope.reportContentBytes`, `endContentBytes`).
+  /// [watchSource] opens, per source a player reads, the account its bytes
+  /// are told to as they land, closed when the player lets the source go:
+  /// the bytes a player pulls are the content's download, which a host
+  /// tells its cache (`AssetCacheScope.openOutsideReader`).
   NativePlayerBackend({
     required NativeRangedReaders readers,
     required PlayerSourcesOf sourcesOf,
     IBytesResolver? playlists,
     bool backgroundAudio = false,
     PreparedBuffer preparedBuffer = PreparedBuffer.standard,
-    PlayerSourceBytes? onSourceBytes,
-    void Function(RangedRequest source)? onSourceClosed,
+    PlayerSourceWatch? watchSource,
   }) : this.over(
          host: PlayerHostApi(),
          publish: (request) async {
            final publication = await readers.publish(request);
            final resource = publication.resource;
-           final watch = onSourceBytes == null
+           final reader = watchSource?.call(request);
+           final watch = reader == null
                ? null
                : resource.events.listen((event) {
                    if (event is RangeLanded) {
-                     onSourceBytes(
-                       request,
+                     reader.report(
                        resource.ranges.coveredBytes,
                        resource.totalLength,
                      );
@@ -108,7 +109,7 @@ final class NativePlayerBackend implements PlayerBackend {
                  });
            return () async {
              await watch?.cancel();
-             onSourceClosed?.call(request);
+             reader?.close();
              await publication.close();
            };
          },

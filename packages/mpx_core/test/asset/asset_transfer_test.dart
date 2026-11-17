@@ -365,14 +365,14 @@ void main() {
       var signals = 0;
       tile.addListener(() => signals++);
 
-      scope.reportContentBytes(_key, 1000, 4000);
+      final player = scope.openOutsideReader(_key)..report(1000, 4000);
       expect(tile.transfer, const AssetTransfer.receiving(1000, 4000));
       expect(signals, greaterThan(0));
 
-      scope.endContentBytes(_key);
+      player.close();
       expect(tile.transfer, const AssetTransfer.awaitingUser(4000, 1000));
 
-      scope.reportContentBytes(_key, 4000, 4000);
+      scope.openOutsideReader(_key).report(4000, 4000);
       expect(tileAttempt.isCancelled, isTrue);
       expect(
         producer.attemptsFor(const AssetRequest(_key, _small)),
@@ -471,7 +471,7 @@ void main() {
 
     test('bytes a player pulls for content nobody asked for show as bytes '
         'received, not as a download under way; cancel keeps it so', () {
-      scope.reportContentBytes(_key, 1000, 4000);
+      final player = scope.openOutsideReader(_key)..report(1000, 4000);
       expect(tile.transfer, const AssetTransfer.awaitingUser(4000, 1000));
 
       final viewer = scope.attach(_key, _spec, _profile)
@@ -482,24 +482,190 @@ void main() {
 
       tile.download();
       producer.last.waiting();
-      scope.reportContentBytes(_key, 2000, 4000);
+      player.report(2000, 4000);
       expect(tile.transfer, isA<AssetTransfer$Receiving>());
       tile.cancelDownload();
       expect(tile.transfer, isA<AssetTransfer$AwaitingUser>());
     });
 
-    test("a user's download outlives the surface: the tile takes it on", () {
+    test("a user's download outlives the surface; the tile shows it", () {
       final viewer = openViewer();
+      final attempt = producer.last;
       viewer
         ..download()
         ..detach();
 
-      final taken = producer.attemptsFor(const AssetRequest(_key, _small)).last;
-      expect(taken.isCancelled, isFalse);
-      expect(taken.demand.autoDownload(_descriptor), AutoDownload.now);
-      taken.waiting();
+      expect(attempt.isCancelled, isFalse);
+      expect(
+        producer.attemptsFor(const AssetRequest(_key, _small)),
+        hasLength(1),
+      );
       expect(tile.transfer, const AssetTransfer.receiving(1000, 4000));
     });
+  });
+
+  group('a user\'s download', () {
+    setUp(() {
+      scope.dispose();
+      scope = scopeWith(policy: FakeAutoDownloadPolicy());
+    });
+
+    test('goes on with no surface attached, until the content is whole', () {
+      final viewer = scope.attach(_key, _spec, _profile);
+      producer.last
+        ..describe(_descriptor)
+        ..awaitingUser();
+      viewer.download();
+      final attempt = producer.last..transfer(1000, 4000);
+
+      viewer.detach();
+
+      expect(attempt.isCancelled, isFalse);
+      // A surface that comes back shows the download that went on.
+      final tile = scope.attach(_key, _small, _profile);
+      producer.last
+        ..describe(_descriptor)
+        ..awaitingUser();
+      attempt.transfer(3000, 4000);
+      expect(tile.transfer, const AssetTransfer.receiving(3000, 4000));
+
+      attempt
+        ..transfer(4000, 4000)
+        ..advance(AssetStage.full);
+      expect(scope.contains(_key, _spec), isTrue);
+      expect(tile.transfer, AssetTransfer.none);
+    });
+
+    test('with no surface attached stops on a cancel', () {
+      final viewer = scope.attach(_key, _spec, _profile);
+      producer.last.describe(_descriptor);
+      viewer.download();
+      final attempt = producer.last..transfer(1000, 4000);
+      viewer.detach();
+      final tile = scope.attach(_key, _small, _profile);
+      producer.last.awaitingUser();
+
+      tile.cancelDownload();
+
+      expect(attempt.isCancelled, isTrue);
+      expect(tile.transfer, isA<AssetTransfer$AwaitingUser>());
+    });
+  });
+
+  test("a user's cancel wins over a surface that requests the content", () {
+    scope.dispose();
+    scope = scopeWith(policy: FakeAutoDownloadPolicy());
+    final tile = scope.attach(_key, _small, _profile);
+    producer.last
+      ..describe(_descriptor)
+      ..awaitingUser();
+    final viewer = scope.attach(_key, _spec, _profile)..requestsDownload = true;
+    producer.last.transfer(1000, 4000);
+    final reader = scope.openOutsideReader(_key)..report(1000, 4000);
+
+    tile.cancelDownload();
+
+    expect(tile.transfer, const AssetTransfer.awaitingUser(4000, 1000));
+    expect(viewer.transfer, const AssetTransfer.awaitingUser(4000, 1000));
+    expect(producer.last.demand.autoDownload(_descriptor), AutoDownload.manual);
+    reader.close();
+  });
+
+  group('readers outside the cache', () {
+    late AssetBinding tile;
+
+    setUp(() {
+      tile = scope.attach(_key, _small, _profile);
+      producer.last
+        ..describe(_descriptor)
+        ..advance(AssetStage.preview)
+        ..awaitingUser();
+    });
+
+    test('each reader is its own lease: one closing leaves the other', () {
+      final first = scope.openOutsideReader(_key)..report(1000, 4000);
+      final second = scope.openOutsideReader(_key)..report(2000, 4000);
+      expect(tile.transfer, const AssetTransfer.receiving(2000, 4000));
+
+      second.close();
+      first.report(2500, 4000);
+      expect(tile.transfer, const AssetTransfer.receiving(2500, 4000));
+
+      first.close();
+      expect(tile.transfer, const AssetTransfer.awaitingUser(4000, 2500));
+    });
+
+    test('a closed reader reports nothing more; close is idempotent', () {
+      scope.openOutsideReader(_key)
+        ..report(1000, 4000)
+        ..close()
+        ..close()
+        ..report(4000, 4000);
+
+      expect(tile.transfer, const AssetTransfer.awaitingUser(4000, 1000));
+    });
+  });
+
+  test('the policy is asked once per content until something it weighs '
+      'changes', () {
+    scope.dispose();
+    final policy = FakeAutoDownloadPolicy();
+    scope = scopeWith(policy: policy);
+    final binding = scope.attach(_key, _spec, _profile);
+    producer.last
+      ..describe(_descriptor)
+      ..awaitingUser();
+    policy.asked.clear();
+
+    for (var i = 0; i < 5; i++) {
+      binding.transfer;
+      producer.last.demand.autoDownload(_descriptor);
+    }
+    expect(policy.asked, isEmpty);
+
+    policy.changed();
+    producer.last.demand.autoDownload(_descriptor);
+    expect(policy.asked, hasLength(1));
+  });
+
+  test('the contents nobody holds keep their bytes for a while, and the '
+      "user's cancel for good", () {
+    void leave(MediaKey key, {bool cancel = false}) {
+      final binding = scope.attach(key, _spec, _profile);
+      producer.last.transfer(1000, 4000);
+      if (cancel) binding.cancelDownload();
+      binding.detach();
+    }
+
+    leave(_key, cancel: true);
+    leave(const MediaKey.remote('recent'));
+    for (var i = 0; i < 300; i++) {
+      leave(MediaKey.remote('other-$i'));
+    }
+    leave(const MediaKey.remote('last'));
+
+    AssetTransfer back(MediaKey key) {
+      final binding = scope.attach(key, _spec, _profile);
+      producer.last
+        ..describe(_descriptor)
+        ..awaitingUser();
+      return binding.transfer;
+    }
+
+    expect(
+      back(const MediaKey.remote('last')),
+      isA<AssetTransfer$AwaitingUser>().having(
+        (transfer) => transfer.received,
+        'received',
+        1000,
+      ),
+    );
+    expect(back(_key), const AssetTransfer.awaitingUser(4000));
+    expect(producer.last.demand.autoDownload(_descriptor), AutoDownload.manual);
+    expect(
+      back(const MediaKey.remote('recent')),
+      const AssetTransfer.awaitingUser(4000),
+    );
   });
 
   group('auto-download', () {
@@ -586,6 +752,30 @@ void main() {
       policy.changed();
 
       expect(producer.attempts, hasLength(2));
+    });
+
+    test('a policy change starts one transfer per content', () {
+      final tile = scope.attach(
+        _key,
+        _small,
+        _profile,
+        downloadContext: channels,
+      );
+      producer.last
+        ..describe(_descriptor)
+        ..awaitingUser();
+      scope.attach(_key, _spec, _profile, downloadContext: channels);
+      producer.last
+        ..describe(_descriptor)
+        ..awaitingUser();
+      final before = producer.attempts.length;
+
+      policy.byContext[channels] = AutoDownload.now;
+      policy.changed();
+
+      expect(producer.attempts, hasLength(before + 1));
+      producer.last.transfer(1000, 4000);
+      expect(tile.transfer, const AssetTransfer.receiving(1000, 4000));
     });
 
     test('a binding with no tag uses the default context', () {

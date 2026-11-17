@@ -65,23 +65,23 @@ final class NativeRangedContentPublisher implements RangedContentPublisher {
     }
     // A user's download: the rest behind the reads, until released.
     final rest = CancelToken();
-    if (whole) {
-      unawaited(
-        resource
-            .ensure(const ByteRange(0), priority: priority, cancelToken: rest)
-            .then(
-              (_) {},
-              // A rest that fails or is stopped leaves the content partial,
-              // as a stream is: the reads ask for what they miss, and the
-              // next download for the rest.
-              onError: (Object _) {},
-            ),
-      );
-    }
     return FetchedRanged(
       readerApi: NativeRangedReaders.apiAddress,
       key: request.cacheKey.value,
       landed: resource.events.where((event) => event is RangeLanded),
+      // A rest that fails leaves the content partial, as a stream is: the
+      // reads ask for what they miss, and the pipeline shows the download
+      // failed, whose retry asks for the rest again. One the release stopped
+      // is no failure.
+      rest: whole
+          ? resource
+                .ensure(
+                  const ByteRange(0),
+                  priority: priority,
+                  cancelToken: rest,
+                )
+                .catchError((Object _) {}, test: (_) => rest.isCancelled)
+          : null,
       // Off screen: the rest of the chunk fetched ahead of its reads stops,
       // what landed stays, and its next reads ask from there.
       onPause: publication.stopHints,

@@ -196,15 +196,9 @@ Future<PlayerPool?> _players(
       ],
       null => const [],
     },
-    onSourceBytes: (source, received, total) {
-      if (contentOf[source.cacheKey] case final key?) {
-        scope.reportContentBytes(key, received, total);
-      }
-    },
-    onSourceClosed: (source) {
-      if (contentOf[source.cacheKey] case final key?) {
-        scope.endContentBytes(key);
-      }
+    watchSource: (source) => switch (contentOf[source.cacheKey]) {
+      final key? => scope.openOutsideReader(key),
+      null => null,
     },
   );
   // Prepared players only where the device can hold them.

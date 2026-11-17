@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
@@ -297,6 +299,78 @@ void main() {
 
         fetch.land(2000, 4000);
         expect(binding.transfer, const AssetTransfer.receiving(2000, 4000));
+      });
+    });
+
+    test('bytes of streamed content that land after its spec is final '
+        'complete the content: a spec waiting for it starts again', () {
+      final item = _video(1, thumbnail: false);
+      final harness = PipelineHarness(
+        known: [item],
+        autoFetch: false,
+        autoDecode: false,
+      );
+      addTearDown(harness.dispose);
+      harness.fetcher.missing.add(item.key);
+      final binding = harness.attach(item);
+
+      return Future(() async {
+        final fetch = harness.fetcher.fetchesOf(item.key).single
+          ..receive(500, 4000)
+          ..complete(const FetchedRanged(readerApi: 1, key: 'video-1'));
+        await harness.settle();
+        // Another spec of the content waits for the download under way.
+        final tile = harness.attach(item, firstFrameSpec);
+        await harness.settle();
+        harness.decoder.decodes.single.complete();
+        await harness.settle();
+        expect(binding.readiness.isFinal, isTrue);
+        expect(tile.transfer, isA<AssetTransfer$AwaitingUser>());
+
+        harness.fetcher.missing.remove(item.key);
+        fetch.land(4000, 4000);
+        await harness.settle();
+
+        expect(tile.transfer, AssetTransfer.none);
+        expect(harness.fetcher.fetchesOf(item.key), hasLength(2));
+      });
+    });
+
+    test('a rest of streamed content that fails turns into failed, and '
+        'download() tries again', () {
+      final item = _video(1, thumbnail: false);
+      final harness = PipelineHarness(
+        known: [item],
+        autoFetch: false,
+        autoDecode: false,
+      );
+      addTearDown(harness.dispose);
+      harness.fetcher.missing.add(item.key);
+      final binding = harness.attach(item)..download();
+      final rest = Completer<void>();
+
+      return Future(() async {
+        harness.fetcher.fetchesOf(item.key).last
+          ..receive(500, 4000)
+          ..complete(
+            FetchedRanged(readerApi: 1, key: 'video-1', rest: rest.future),
+          );
+        await harness.settle();
+        harness.decoder.decodes.single.complete();
+        await harness.settle();
+        expect(binding.readiness.isFinal, isTrue);
+
+        rest.completeError(const FetchFailure.transient('offline'));
+        await harness.settle();
+
+        expect(
+          binding.transfer,
+          const AssetTransfer.failed(AssetFailureKind.transient, 500, 4000),
+        );
+        final fetches = harness.fetcher.fetchesOf(item.key).length;
+        binding.download();
+        expect(harness.fetcher.fetchesOf(item.key), hasLength(fetches + 1));
+        expect(harness.fetcher.fetchesOf(item.key).last.request.whole, isTrue);
       });
     });
 

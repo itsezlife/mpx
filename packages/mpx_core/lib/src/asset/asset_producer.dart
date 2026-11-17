@@ -113,7 +113,11 @@ enum AssetFailureKind {
 /// Calls after the attempt ended (a final stage, [fail], [cancelled], or the
 /// scope cancelling the task) are ignored, and a paintable passed to [advance]
 /// then is disposed at once, so a late result cannot leak or corrupt a newer
-/// attempt.
+/// attempt. One exception: content streamed as it plays can be final for its
+/// spec before all its bytes are here, and its [transfer] reports and a
+/// [fail] of the rest that follow the final stage still count, for the
+/// content's download (every spec of it sees it complete, or fail), never
+/// for the entry's stage.
 abstract interface class AssetProgress {
   /// Offers a better stage: [paintable] is the picture at [stage] and costs
   /// [bytes] while the entry keeps it. The cache owns [paintable] from this

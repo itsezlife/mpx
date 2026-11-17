@@ -8,7 +8,7 @@
 library;
 
 export 'src/native/native_player_backend.dart'
-    show NativePlayerBackend, PlayerSourceBytes, PreparedBuffer;
+    show NativePlayerBackend, PlayerSourceWatch, PreparedBuffer;
 export 'src/native/platform_still.dart';
 export 'src/native/platform_still_decoder.dart';
 export 'src/native/player_source.dart';
