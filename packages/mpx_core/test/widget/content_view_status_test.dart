@@ -293,4 +293,26 @@ void main() {
         ..arc(sweepAngle: math.pi),
     );
   });
+
+  testWidgets('a view that is the user request downloads whatever the policy '
+      'says', (tester) async {
+    scope.dispose();
+    scope = AssetCacheScope(
+      producer: producer,
+      clock: PlaybackClock(ticks: ManualPlaybackTickSource()),
+      autoDownload: FakeAutoDownloadPolicy(),
+    );
+    addTearDown(scope.dispose);
+    await tester.pumpWidget(
+      host(
+        const ContentView(
+          content: _key,
+          preset: _preset,
+          requestsDownload: true,
+        ),
+      ),
+    );
+
+    expect(producer.last.demand.autoDownload(_clip), AutoDownload.now);
+  });
 }

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Android: the prepared-buffer load control forwards every overload of
+  `LoadControl` to the default one (a JVM test checks none is left out);
+  Media3 1.11 called one it did not, whose default throws, and every video
+  failed to play.
 - A player that has not played yet buffers only `PreparedBuffer` ahead
   (`NativePlayerBackend.preparedBuffer`, about 2 s and 2 MiB by default):
   a prepared, paused neighbour no longer fills its whole forward buffer.

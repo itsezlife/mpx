@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `ContentView.requestsDownload`: a view that is the user's request for
+  its content (a page the user opened) downloads it whatever the
+  auto-download policy says.
 - The status control keeps its style's size whatever box it is put in: a
   large tile centres a 44 px disc instead of stretching it. A download a
   surface comes back to is drawn where its bytes got to: the scope keeps

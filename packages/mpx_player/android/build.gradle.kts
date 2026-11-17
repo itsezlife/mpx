@@ -44,6 +44,9 @@ android {
         getByName("main") {
             java.srcDirs("src/main/kotlin")
         }
+        getByName("test") {
+            java.srcDirs("src/test/kotlin")
+        }
     }
 
     defaultConfig {
@@ -69,4 +72,6 @@ dependencies {
     // The media session that keeps the sound owner playing in the background
     // (MpxPlaybackService; the host declares the service).
     implementation("androidx.media3:media3-session:1.11.1")
+    // JVM unit tests (src/test): the load control wrapper's guard.
+    testImplementation("junit:junit:4.13.2")
 }

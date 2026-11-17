@@ -1613,6 +1613,9 @@ class _OriginContentState extends State<_OriginContent> {
     scope: widget.scope,
     preset: widget.preset,
     placeholder: _standIn ?? const ClearPlaceholder(),
+    // Opening the viewer is the user's request for the content: it streams
+    // and downloads whatever the auto-download policy said in the list.
+    requestsDownload: true,
   );
 }
 

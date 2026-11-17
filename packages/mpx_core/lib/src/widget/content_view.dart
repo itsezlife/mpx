@@ -131,6 +131,7 @@ class ContentView extends StatefulWidget {
     this.holdsWhileTickersOff = false,
     this.loadingStyle,
     this.downloadContext,
+    this.requestsDownload = false,
     super.key,
   }) : assert(opacity >= 0 && opacity <= 1, 'opacity must be within 0..1'),
        assert(
@@ -214,6 +215,11 @@ class ContentView extends StatefulWidget {
   /// [AutoDownloadContext.channels]. Null uses the policy's default. It never
   /// changes which entry the view attaches to.
   final AutoDownloadContext? downloadContext;
+
+  /// Whether showing the view is the user's request for the content, as a
+  /// page the user opened is: it downloads whatever the auto-download policy
+  /// says (`AssetBinding.download`), as soon as the view attaches.
+  final bool requestsDownload;
 
   @override
   State<ContentView> createState() => _ContentViewState();
@@ -312,6 +318,9 @@ class _ContentViewState extends State<ContentView> {
   @override
   void didUpdateWidget(ContentView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.requestsDownload && !oldWidget.requestsDownload) {
+      _binding?.download();
+    }
     _sync();
     _apply(_binding!);
     if (widget.preset.profile.animate != oldWidget.preset.profile.animate) {
@@ -369,6 +378,7 @@ class _ContentViewState extends State<ContentView> {
       downloadContext: widget.downloadContext,
     );
     _apply(_binding!);
+    if (widget.requestsDownload) _binding!.download();
     previous?.detach();
   }
 

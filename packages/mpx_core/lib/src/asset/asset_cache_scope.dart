@@ -222,7 +222,12 @@ final class AssetCacheScope {
     _cancelledByUser.remove(entry.key);
     _requestedByUser.add(entry.key);
     if (entry.isFinal) return;
-    if (entry.transfer.isActive && entry.attempt != null) return;
+    // A running attempt that is not holding the content back (it downloads,
+    // or reads it from a cache) already does what was asked.
+    if (entry.attempt != null &&
+        entry.transfer is! AssetTransfer$AwaitingUser) {
+      return;
+    }
     _restart(entry);
   }
 

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Opening the viewer is the user's request for its content: a page
+  downloads it whatever the auto-download policy said in the list
+  (`ContentView.requestsDownload`).
 - A page of an item not loaded yet, and a page whose content shows
   nothing, are the black page with nothing on it, never a box.
 - `MediaViewer` holds every other surface and the preloads while its open
