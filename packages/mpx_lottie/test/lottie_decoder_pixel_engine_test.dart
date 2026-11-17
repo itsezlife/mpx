@@ -263,5 +263,8 @@ final class _Report implements AssetProgress {
   void awaitingUser() {}
 
   @override
+  void bestReached() {}
+
+  @override
   void cancelled() {}
 }

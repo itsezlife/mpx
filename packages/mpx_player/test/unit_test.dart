@@ -17,6 +17,7 @@ import 'feed/feed_pager_test.dart' as feed_pager_test;
 import 'feed/feed_signals_test.dart' as feed_signals_test;
 import 'feed/feed_slot_test.dart' as feed_slot_test;
 import 'native/native_player_backend_test.dart' as native_player_backend_test;
+import 'native/platform_still_decoder_test.dart' as platform_still_decoder_test;
 import 'pool/handoff_test.dart' as handoff_test;
 import 'pool/picture_in_picture_test.dart' as picture_in_picture_test;
 import 'pool/player_pool_test.dart' as player_pool_test;
@@ -36,6 +37,7 @@ void main() {
   group('feed_signals_test', feed_signals_test.main);
   group('feed_slot_test', feed_slot_test.main);
   group('native_player_backend_test', native_player_backend_test.main);
+  group('platform_still_decoder_test', platform_still_decoder_test.main);
   group('handoff_test', handoff_test.main);
   group('picture_in_picture_test', picture_in_picture_test.main);
   group('player_pool_test', player_pool_test.main);

@@ -19,6 +19,7 @@ final class LocalMedia {
     this._client,
     this._ranged,
     this._readers,
+    this._origin,
     this.backend,
   );
 
@@ -38,6 +39,7 @@ final class LocalMedia {
   final HttpBytesClient _client;
   final RangedBytes _ranged;
   final NativeRangedReaders _readers;
+  final Uri _origin;
 
   /// The platform backend over the cache.
   final NativePlayerBackend backend;
@@ -115,7 +117,23 @@ final class LocalMedia {
       client,
       ranged,
       readers,
+      origin,
       backend,
+    );
+  }
+
+  /// Publishes [key]'s bytes to the native reader as content a decoder
+  /// reads in place (a still extractor); releasing it withdraws them.
+  Future<FetchedContent> publish(MediaKey key) async {
+    final id = (key as MediaKey$Remote).id;
+    final cacheKey = BytesCacheKey('content-$id');
+    final publication = await _readers.publish(
+      RangedRequest(url: _origin.resolve('/$id'), cacheKey: cacheKey),
+    );
+    return FetchedContent.ranged(
+      readerApi: NativeRangedReaders.apiAddress,
+      key: cacheKey.value,
+      onRelease: () => unawaited(publication.close()),
     );
   }
 

@@ -88,6 +88,9 @@ final class _Report implements AssetProgress {
   void awaitingUser() {}
 
   @override
+  void bestReached() {}
+
+  @override
   void cancelled() => cancels++;
 }
 
@@ -95,6 +98,7 @@ void main() {
   final good = Uint8List.fromList([1, 2, 3]);
   final wide = Uint8List.fromList([4, 5, 6]);
   final refused = Uint8List.fromList([7]);
+  final damaged = Uint8List.fromList([8]);
   final bad = Uint8List.fromList([9]);
 
   late FakeVideoEngine fake;
@@ -109,7 +113,8 @@ void main() {
     fake = FakeVideoEngine()
       ..accept(good, _info(64, 64), frameCount: 3)
       ..accept(wide, _info(32, 16), frameCount: 3)
-      ..reject(refused, VideoRejection.unsupported);
+      ..reject(refused, VideoRejection.unsupported)
+      ..reject(damaged, VideoRejection.malformed);
     engine = GatedVideoEngine(fake);
     ticks = ManualPlaybackTickSource();
     clock = PlaybackClock(ticks: ticks);
@@ -246,7 +251,7 @@ void main() {
       () async {
         final report = _Report();
 
-        decoder.decode(_request(refused), report);
+        decoder.decode(_request(damaged), report);
         await pumpEventQueue();
 
         final failure = report.failures.single;
@@ -256,13 +261,38 @@ void main() {
           isA<VideoDecodeRejected>().having(
             (e) => e.reason,
             'reason',
-            VideoRejection.unsupported,
+            VideoRejection.malformed,
           ),
         );
         expect(report.advances, isEmpty);
         expect(fake.openClips, 0);
       },
     );
+
+    test('a clip this build cannot read fails as unsupported, so the pipeline '
+        'tries the fallback', () async {
+      final report = _Report();
+
+      decoder.decode(_request(refused), report);
+      await pumpEventQueue();
+
+      final failure = report.failures.single;
+      expect(failure.kind, AssetFailureKind.permanent);
+      expect(
+        failure.error,
+        isA<DecodeFailure>().having(
+          (e) => e.cause,
+          'cause',
+          isA<VideoDecodeRejected>().having(
+            (e) => e.reason,
+            'reason',
+            VideoRejection.unsupported,
+          ),
+        ),
+      );
+      expect(report.advances, isEmpty);
+      expect(fake.openClips, 0);
+    });
 
     test(
       'decodes at the size class the spec snaps to, keeping the aspect',

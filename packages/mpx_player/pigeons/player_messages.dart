@@ -237,6 +237,59 @@ abstract class PlayerHostApi {
   void setBackgroundAudio(bool enabled);
 }
 
+/// What a platform still extractor reads and draws: the ranged resource
+/// [cacheKey] of the native reader at [readerApi], or the file at [path];
+/// its first frame drawn within [maxWidth] x [maxHeight], aspect kept,
+/// rotation applied.
+class NativeStillRequest {
+  NativeStillRequest({
+    required this.requestId,
+    required this.maxWidth,
+    required this.maxHeight,
+    this.cacheKey,
+    this.readerApi,
+    this.path,
+    this.mimeType,
+  });
+
+  /// Names the request for `cancelStill`.
+  int requestId;
+  int maxWidth;
+  int maxHeight;
+  String? cacheKey;
+  int? readerApi;
+  String? path;
+
+  /// The container's MIME type, when the host knows it (Apple's resource
+  /// loader needs one; MP4 by default).
+  String? mimeType;
+}
+
+/// A still the platform drew: [width] x [height] pixels as premultiplied
+/// RGBA, four bytes each, rows packed.
+class NativeStill {
+  NativeStill({required this.width, required this.height, required this.rgba});
+
+  int width;
+  int height;
+  Uint8List rgba;
+}
+
+/// The platform's still extractor: the first frame of a video whose codec
+/// the software decoder cannot read, drawn by the platform's own decoders.
+@HostApi()
+abstract class PlayerStillHostApi {
+  /// Draws the first frame of [request]'s video; null when the platform
+  /// cannot either. Reads block on bytes still downloading, off the main
+  /// thread.
+  @async
+  NativeStill? extractStill(NativeStillRequest request);
+
+  /// Wakes the reads of request [requestId], which then ends; its answer
+  /// no longer matters.
+  void cancelStill(int requestId);
+}
+
 @FlutterApi()
 abstract class PlayerFlutterApi {
   void onSnapshot(NativePlayerSnapshot snapshot);

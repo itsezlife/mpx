@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Fallback decoders: `DecoderRegistry.registerFallback(kind, decoder)`
+  decodes content the kind's decoder reports as
+  `DecodeFailure.unsupported` (a codec this build was built without). The
+  pipeline fetches the content again and hands it to the fallback once; a
+  fallback that draws a still ends the entry at `firstFrame`, final for its
+  spec (`AssetProgress.bestReached`), and the still becomes the content's
+  derived preview. Content with a stored derived preview is not handed to
+  the fallback again. `FakeDecoder(firstFrameOnly:)` and
+  `DecoderContract.run(stillsOnly:)` cover such decoders. Breaking for
+  `AssetProgress` implementers: add `bestReached`. `StillImagePaintable`
+  is exported.
 - `ContentView.requestsDownload`: a view that is the user's request for
   its content (a page the user opened) downloads it whatever the
   auto-download policy says.

@@ -737,12 +737,7 @@ final class AssetCacheScope {
       ..lastError = null
       ..failureKind = null;
     _bytes[tier] = _bytes[tier]! + bytes;
-    if (entry.isFinal) {
-      entry.attempt?.ended = true;
-      entry.attempt = null;
-      entry.setTransfer(AssetTransfer.none);
-      _received.remove(entry.key);
-    }
+    if (entry.isFinal) _finish(entry);
     for (final binding in List<_EntryBinding>.of(entry.bindings)) {
       binding.entryChanged();
     }
@@ -755,6 +750,29 @@ final class AssetCacheScope {
       }
     }
     _trim();
+  }
+
+  // The entry reached its final stage: no attempt runs any more, and its
+  // content is no longer missing.
+  void _finish(_Entry entry) {
+    entry.attempt?.ended = true;
+    entry.attempt = null;
+    entry.setTransfer(AssetTransfer.none);
+    _received.remove(entry.key);
+  }
+
+  // The producer can make nothing better than the entry's stage for its spec
+  // (AssetProgress.bestReached): that stage is final.
+  void _bestReached(_Entry entry) {
+    if (entry.stage == AssetStage.none) {
+      entry.attempt?._end();
+      return;
+    }
+    entry.bestReached = true;
+    _finish(entry);
+    for (final binding in List<_EntryBinding>.of(entry.bindings)) {
+      binding.entryChanged();
+    }
   }
 
   // --- Budget ---------------------------------------------------------------
@@ -913,10 +931,15 @@ final class _Entry {
     standInHolders = 0;
   }
 
+  // Whether the producer said the stage reached is the best it can make for
+  // the spec (AssetProgress.bestReached).
+  bool bestReached = false;
+
   bool get isFinal =>
       stage == AssetStage.full ||
       (stage == AssetStage.firstFrame &&
-          spec.variant == AssetVariant.firstFrame);
+          spec.variant == AssetVariant.firstFrame) ||
+      (bestReached && stage != AssetStage.none);
 }
 
 final class _Demand implements AssetDemand {
@@ -1072,6 +1095,12 @@ final class _Attempt implements AssetProgress {
   void cancelled() {
     if (!_live) return;
     _end();
+  }
+
+  @override
+  void bestReached() {
+    if (!_live || _scope._disposed) return;
+    _scope._bestReached(_entry);
   }
 
   /// Called by the scope: stops the work for good.

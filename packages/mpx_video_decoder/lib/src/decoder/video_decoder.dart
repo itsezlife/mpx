@@ -37,8 +37,10 @@ Future<ui.Image> _imageFromPixels(Uint8List pixels, int width, int height) {
 /// Why a clip did not decode: the binding refused the file.
 ///
 /// The decode ends with `AssetProgress.fail` carrying this, so a host's
-/// diagnostics can tell a file this build cannot play ([VideoRejection.unsupported])
-/// from a damaged one. The surface keeps its placeholder either way.
+/// diagnostics can tell why. A file this build cannot play
+/// ([VideoRejection.unsupported]) fails with a `DecodeFailure.unsupported`
+/// whose cause is this instead, so the pipeline tries the kind's fallback
+/// decoder (a platform still). The surface keeps its stage either way.
 final class VideoDecodeRejected implements Exception {
   /// Creates the error for a file refused for [reason].
   const VideoDecodeRejected(this.reason);
@@ -355,6 +357,12 @@ final class _VideoDecode implements AssetTask {
         case VideoClipRejected(reason: VideoRejection.stalled):
           _stage('stalled before the open');
           await _untilLanded();
+        // A codec this build was built without: another decoder of the
+        // kind (the host's fallback) may still draw it.
+        case VideoClipRejected(reason: VideoRejection.unsupported):
+          throw const DecodeFailure.unsupported(
+            VideoDecodeRejected(VideoRejection.unsupported),
+          );
         case VideoClipRejected(:final reason):
           throw VideoDecodeRejected(reason);
       }

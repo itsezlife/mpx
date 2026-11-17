@@ -32,7 +32,8 @@ final class FakeDecode implements AssetTask {
 
   /// Reports the stages a decoder of this request ends with: a placeholder
   /// for a thumbnail; for content the first frame (when the decoder is set to
-  /// report it early and the spec wants more) and the final stage. Fails
+  /// report it early and the spec wants more) and the final stage, or only
+  /// the first frame for a [FakeDecoder.firstFrameOnly] decoder. Fails
   /// instead when the data is [FakeDecoder.corrupt]. Does nothing once
   /// settled.
   void complete() {
@@ -46,7 +47,9 @@ final class FakeDecode implements AssetTask {
       case FetchPart.thumbnail:
         _advance(AssetStage.placeholder, last: true);
       case FetchPart.content:
-        final firstFrameOnly = request.spec.variant == AssetVariant.firstFrame;
+        final firstFrameOnly =
+            _decoder.firstFrameOnly ||
+            request.spec.variant == AssetVariant.firstFrame;
         if (_decoder.reportFirstFrame && !firstFrameOnly) {
           _advance(AssetStage.firstFrame);
         }
@@ -110,12 +113,16 @@ final class FakeDecode implements AssetTask {
 /// [FakeAssetPaintable] and either answers at once or waits for the test.
 ///
 /// Follows the whole seam contract. Bytes equal to [corrupt] cannot be
-/// decoded.
+/// decoded. A [firstFrameOnly] decoder plays a fallback that draws stills.
 final class FakeDecoder implements Decoder {
   /// Creates a decoder. With [autoRespond] each decode ends inside `decode`;
   /// without it each waits for [FakeDecode.complete]. [reportFirstFrame] makes
   /// a full-variant content decode report `firstFrame` before `full`.
-  FakeDecoder({this.autoRespond = true, this.reportFirstFrame = false});
+  FakeDecoder({
+    this.autoRespond = true,
+    this.reportFirstFrame = false,
+    this.firstFrameOnly = false,
+  });
 
   /// Bytes this decoder cannot decode.
   static final Uint8List corrupt = Uint8List.fromList(const [0xBA, 0xD0]);
@@ -125,6 +132,10 @@ final class FakeDecoder implements Decoder {
 
   /// Whether a content decode reports the first frame early.
   final bool reportFirstFrame;
+
+  /// Whether every content decode ends at the first frame, whatever the
+  /// spec asks: a still-only fallback decoder.
+  final bool firstFrameOnly;
 
   /// Every decode, oldest first.
   final List<FakeDecode> decodes = [];

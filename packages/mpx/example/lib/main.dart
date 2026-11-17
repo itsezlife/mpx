@@ -114,6 +114,11 @@ Future<void> main() async {
     cacheDirectory: cacheDirectory,
     registeredQuotas: {BytesQuota.lottieFrames: frames.evict},
     decoders: (context) => _decoders(context, frames),
+    // A clip whose codec the software decoder was built without (AV1, HEVC)
+    // still gets a first-frame still, drawn once by the platform.
+    fallbackDecoders: {
+      if (_hasPlatformStill) MediaKind.video: PlatformStillDecoder(),
+    },
     // The example's origin answers from the app bundle so it runs offline; a
     // real host leaves `client` out and gets the network. A lab run on a
     // corpus takes the network, every request recorded.
@@ -193,6 +198,17 @@ String? _fileOf(MediaKey key) =>
         if (known == key) file,
     ].firstOrNull ??
     (kMpxLab ? StressItems.fileOf(key) : null);
+
+/// Whether the platform draws stills of video (`PlatformStillDecoder`):
+/// Android, iOS and macOS.
+bool get _hasPlatformStill =>
+    !kIsWeb &&
+    switch (defaultTargetPlatform) {
+      TargetPlatform.android ||
+      TargetPlatform.iOS ||
+      TargetPlatform.macOS => true,
+      _ => false,
+    };
 
 /// The heavy decoders, each over its own native engine. One that cannot start
 /// (no native library in this build) is left out, and its kind shows the

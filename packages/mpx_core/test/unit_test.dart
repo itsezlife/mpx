@@ -43,6 +43,7 @@ import 'pipeline/fake_media_resolver_contract_test.dart'
 import 'pipeline/pipeline_derived_preview_test.dart'
     as pipeline_derived_preview_test;
 import 'pipeline/pipeline_download_test.dart' as pipeline_download_test;
+import 'pipeline/pipeline_fallback_test.dart' as pipeline_fallback_test;
 import 'pipeline/pipeline_flow_test.dart' as pipeline_flow_test;
 import 'pipeline/pipeline_offline_test.dart' as pipeline_offline_test;
 import 'pipeline/pipeline_orchestration_test.dart'
@@ -125,6 +126,7 @@ void main() {
   );
   group('pipeline_derived_preview_test', pipeline_derived_preview_test.main);
   group('pipeline_download_test', pipeline_download_test.main);
+  group('pipeline_fallback_test', pipeline_fallback_test.main);
   group('pipeline_flow_test', pipeline_flow_test.main);
   group('pipeline_offline_test', pipeline_offline_test.main);
   group('pipeline_orchestration_test', pipeline_orchestration_test.main);

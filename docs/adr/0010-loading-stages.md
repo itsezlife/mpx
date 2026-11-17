@@ -118,10 +118,14 @@ drawn; the leaf keeps the best stage it reached.
 
 A decoder that cannot read a codec says so (`DecodeFailure.unsupported`),
 and the pipeline tries the fallback registered for the kind
-(`DecoderRegistry.registerFallback`). The player package registers a
-platform still extractor that reads through the bytes cache's native
-reader. Its frame becomes a derived preview, so the cost is paid once per
-item.
+(`DecoderRegistry.registerFallback`), with the content fetched again. The
+player package provides a platform still extractor (`PlatformStillDecoder`)
+that the host registers; it reads through the bytes cache's native reader
+or a cached file, never bytes in memory. A fallback that draws only a still
+ends the entry at its first frame, final for the spec
+(`AssetProgress.bestReached`). Its frame becomes a derived preview, and
+content with a stored derived preview is not handed to the extractor
+again, so the cost is paid once per item.
 
 ## Why
 

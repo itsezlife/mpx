@@ -37,12 +37,14 @@ void main() {
 
   Future<MpxStack> create({
     MpxDecoderFactory? decoders,
+    Map<MediaKind, Decoder> fallbackDecoders = const {},
     Map<BytesQuota, QuotaEvictor> registeredQuotas = const {},
   }) async {
     final stack = await MpxStack.create(
       locate: (descriptor, _) =>
           MediaLocation('https://cdn.test/${descriptor.key.encoded}'),
       decoders: decoders,
+      fallbackDecoders: fallbackDecoders,
       registeredQuotas: registeredQuotas,
       signals: signals,
       client: client,
@@ -104,6 +106,37 @@ void main() {
     final content = decoder.decodes.single.request.content as FetchedBytes;
     expect(content.bytes, _body);
     expect(stack.fetcher.needsDownload(_key), isFalse);
+    binding.detach();
+  });
+
+  testWidgets('content its decoder cannot read goes to the kind\'s '
+      'fallback', (tester) async {
+    final decoder = FakeDecoder(autoRespond: false);
+    final fallback = FakeDecoder(firstFrameOnly: true);
+    final stack = await create(
+      decoders: (_) => {MediaKind.video: decoder},
+      fallbackDecoders: {MediaKind.video: fallback},
+    );
+    stack.pipeline.know(
+      const MediaDescriptor(key: _key, kind: MediaKind.video, byteSize: 16),
+    );
+
+    final binding = stack.scope.attach(
+      _key,
+      const AssetSpec(pixelWidth: 8, pixelHeight: 8),
+      const AssetProfile(),
+    );
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+    decoder.decodes.single.fail(const DecodeFailure.unsupported());
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+
+    expect(fallback.decodes, hasLength(1));
+    expect(
+      binding.readiness,
+      const AssetReadiness(AssetStage.firstFrame, isFinal: true),
+    );
     binding.detach();
   });
 

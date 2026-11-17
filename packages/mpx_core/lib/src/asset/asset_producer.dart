@@ -168,6 +168,13 @@ abstract interface class AssetProgress {
   /// Ends the attempt because it was cancelled, which is not a failure: no
   /// error is recorded.
   void cancelled();
+
+  /// Ends the attempt at the stage the entry reached, which becomes final
+  /// for its spec although the spec asks for more: the producer can make
+  /// nothing better (a fallback decoder draws a still of content whose
+  /// moving picture this build cannot decode). The entry is not attempted
+  /// again while it lives.
+  void bestReached();
 }
 
 /// A running attempt, as the scope sees it.

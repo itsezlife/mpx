@@ -84,6 +84,9 @@ final class _Progress implements AssetProgress {
   void awaitingUser() {}
 
   @override
+  void bestReached() {}
+
+  @override
   void cancelled() {}
 }
 
@@ -121,6 +124,9 @@ final class _ThrowingProgress implements AssetProgress {
 
   @override
   void awaitingUser() {}
+
+  @override
+  void bestReached() {}
 
   @override
   void cancelled() {}

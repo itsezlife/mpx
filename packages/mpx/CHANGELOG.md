@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `MpxStack.create(fallbackDecoders:)` registers a fallback decoder per
+  kind (`DecoderRegistry.registerFallback`).
 - `NetworkAutoDownloadPolicy` decides which missing media downloads by
   itself from `AutoDownloadPresets` (a row per context tag, a `fallback`
   for the rest; per network class, `AutoDownloadLimits` per kind) and the

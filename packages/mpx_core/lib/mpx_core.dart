@@ -51,6 +51,7 @@ export 'src/asset/svg_path_data.dart';
 export 'src/identity/media_descriptor.dart';
 export 'src/identity/media_key.dart';
 export 'src/image/image_codec_decoder.dart';
+export 'src/image/image_paintable.dart' show StillImagePaintable;
 export 'src/pipeline/asset_pipeline.dart';
 export 'src/pipeline/auto_download.dart';
 export 'src/pipeline/cancellation_token.dart';

@@ -103,6 +103,10 @@ final class MpxStack {
   /// - [decoders] builds the host's decoders. The still and animated-image
   ///   kinds default to the engine codecs (`ImageCodecDecoder`); a decoder
   ///   the factory returns for them replaces the default.
+  /// - [fallbackDecoders] decode, per kind, the content its decoder reports
+  ///   as `DecodeFailure.unsupported` (a platform still for video codecs the
+  ///   software decoder was built without); see
+  ///   `DecoderRegistry.registerFallback`.
   /// - [registeredQuotas] are folders other owners keep (rendered frames,
   ///   glyph pages), registered with the store so one budget covers them.
   /// - [signals] defaults to the platform's [DeviceSignals]. Power saving and
@@ -131,6 +135,7 @@ final class MpxStack {
     required MediaLocator locate,
     String? cacheDirectory,
     MpxDecoderFactory? decoders,
+    Map<MediaKind, Decoder> fallbackDecoders = const {},
     MediaResolver? resolver,
     Map<BytesQuota, QuotaEvictor> registeredQuotas = const {},
     IDeviceSignals? signals,
@@ -213,6 +218,7 @@ final class MpxStack {
       ...?hostDecoders,
     };
     byKind.forEach(registry.register);
+    fallbackDecoders.forEach(registry.registerFallback);
 
     final fetcher = BytesCacheFetcher(
       store: store,

@@ -666,6 +666,129 @@ data class NativeDeviceProbe (
     return "NativeDeviceProbe(lowRam=$lowRam, totalMemoryBytes=$totalMemoryBytes, cpuCount=$cpuCount, memoryClassMb=$memoryClassMb, performanceClass=$performanceClass, decoders=$decoders, containers=$containers, failedCodecs=$failedCodecs)"
   }
 }
+
+/**
+ * What a platform still extractor reads and draws: the ranged resource
+ * [cacheKey] of the native reader at [readerApi], or the file at [path];
+ * its first frame drawn within [maxWidth] x [maxHeight], aspect kept,
+ * rotation applied.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class NativeStillRequest (
+  /** Names the request for `cancelStill`. */
+  val requestId: Long,
+  val maxWidth: Long,
+  val maxHeight: Long,
+  val cacheKey: String? = null,
+  val readerApi: Long? = null,
+  val path: String? = null,
+  /**
+   * The container's MIME type, when the host knows it (Apple's resource
+   * loader needs one; MP4 by default).
+   */
+  val mimeType: String? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): NativeStillRequest {
+      val requestId = pigeonVar_list[0] as Long
+      val maxWidth = pigeonVar_list[1] as Long
+      val maxHeight = pigeonVar_list[2] as Long
+      val cacheKey = pigeonVar_list[3] as String?
+      val readerApi = pigeonVar_list[4] as Long?
+      val path = pigeonVar_list[5] as String?
+      val mimeType = pigeonVar_list[6] as String?
+      return NativeStillRequest(requestId, maxWidth, maxHeight, cacheKey, readerApi, path, mimeType)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      requestId,
+      maxWidth,
+      maxHeight,
+      cacheKey,
+      readerApi,
+      path,
+      mimeType,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as NativeStillRequest
+    return PlayerMessagesPigeonUtils.deepEquals(this.requestId, other.requestId) && PlayerMessagesPigeonUtils.deepEquals(this.maxWidth, other.maxWidth) && PlayerMessagesPigeonUtils.deepEquals(this.maxHeight, other.maxHeight) && PlayerMessagesPigeonUtils.deepEquals(this.cacheKey, other.cacheKey) && PlayerMessagesPigeonUtils.deepEquals(this.readerApi, other.readerApi) && PlayerMessagesPigeonUtils.deepEquals(this.path, other.path) && PlayerMessagesPigeonUtils.deepEquals(this.mimeType, other.mimeType)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.requestId)
+    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.maxWidth)
+    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.maxHeight)
+    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.cacheKey)
+    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.readerApi)
+    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.path)
+    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.mimeType)
+    return result
+  }
+  override fun toString(): String {
+    return "NativeStillRequest(requestId=$requestId, maxWidth=$maxWidth, maxHeight=$maxHeight, cacheKey=$cacheKey, readerApi=$readerApi, path=$path, mimeType=$mimeType)"
+  }
+}
+
+/**
+ * A still the platform drew: [width] x [height] pixels as premultiplied
+ * RGBA, four bytes each, rows packed.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class NativeStill (
+  val width: Long,
+  val height: Long,
+  val rgba: ByteArray
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): NativeStill {
+      val width = pigeonVar_list[0] as Long
+      val height = pigeonVar_list[1] as Long
+      val rgba = pigeonVar_list[2] as ByteArray
+      return NativeStill(width, height, rgba)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      width,
+      height,
+      rgba,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as NativeStill
+    return PlayerMessagesPigeonUtils.deepEquals(this.width, other.width) && PlayerMessagesPigeonUtils.deepEquals(this.height, other.height) && PlayerMessagesPigeonUtils.deepEquals(this.rgba, other.rgba)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.width)
+    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.height)
+    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.rgba)
+    return result
+  }
+  override fun toString(): String {
+    return "NativeStill(width=$width, height=$height, rgba=${rgba.contentToString()})"
+  }
+}
 private open class PlayerMessagesPigeonCodec : StandardMessageCodec() {
   override fun readValueOfType(type: Byte, buffer: ByteBuffer): Any? {
     return when (type) {
@@ -709,6 +832,16 @@ private open class PlayerMessagesPigeonCodec : StandardMessageCodec() {
           NativeDeviceProbe.fromList(it)
         }
       }
+      137.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          NativeStillRequest.fromList(it)
+        }
+      }
+      138.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          NativeStill.fromList(it)
+        }
+      }
       else -> super.readValueOfType(type, buffer)
     }
   }
@@ -746,10 +879,19 @@ private open class PlayerMessagesPigeonCodec : StandardMessageCodec() {
         stream.write(136)
         writeValue(stream, value.toList())
       }
+      is NativeStillRequest -> {
+        stream.write(137)
+        writeValue(stream, value.toList())
+      }
+      is NativeStill -> {
+        stream.write(138)
+        writeValue(stream, value.toList())
+      }
       else -> super.writeValue(stream, value)
     }
   }
 }
+
 
 /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
 interface PlayerHostApi {
@@ -1058,6 +1200,75 @@ interface PlayerHostApi {
             val enabledArg = args[0] as Boolean
             val wrapped: List<Any?> = try {
               api.setBackgroundAudio(enabledArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlayerMessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+    }
+  }
+}
+/**
+ * The platform's still extractor: the first frame of a video whose codec
+ * the software decoder cannot read, drawn by the platform's own decoders.
+ *
+ * Generated interface from Pigeon that represents a handler of messages from Flutter.
+ */
+interface PlayerStillHostApi {
+  /**
+   * Draws the first frame of [request]'s video; null when the platform
+   * cannot either. Reads block on bytes still downloading, off the main
+   * thread.
+   */
+  fun extractStill(request: NativeStillRequest, callback: (Result<NativeStill?>) -> Unit)
+  /**
+   * Wakes the reads of request [requestId], which then ends; its answer
+   * no longer matters.
+   */
+  fun cancelStill(requestId: Long)
+
+  companion object {
+    /** The codec used by PlayerStillHostApi. */
+    val codec: MessageCodec<Any?> by lazy {
+      PlayerMessagesPigeonCodec()
+    }
+    /** Sets up an instance of `PlayerStillHostApi` to handle messages through the `binaryMessenger`. */
+    @JvmOverloads
+    fun setUp(binaryMessenger: BinaryMessenger, api: PlayerStillHostApi?, messageChannelSuffix: String = "") {
+      val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.mpx_player.PlayerStillHostApi.extractStill$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val requestArg = args[0] as NativeStillRequest
+            api.extractStill(requestArg) { result: Result<NativeStill?> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlayerMessagesPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlayerMessagesPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.mpx_player.PlayerStillHostApi.cancelStill$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val requestIdArg = args[0] as Long
+            val wrapped: List<Any?> = try {
+              api.cancelStill(requestIdArg)
               listOf(null)
             } catch (exception: Throwable) {
               PlayerMessagesPigeonUtils.wrapError(exception)

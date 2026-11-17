@@ -22,6 +22,7 @@ class MpxPlayerPlugin : FlutterPlugin, ActivityAware, PlayerHostApi {
     private lateinit var pictureInPicture: MpxPictureInPicture
     private lateinit var background: MpxBackgroundAudio
     private lateinit var parts: StreamParts
+    private var stills: MpxStillExtractor? = null
     private val players = HashMap<Long, MpxVideoPlayer>()
     private var nextId = 1L
 
@@ -40,10 +41,14 @@ class MpxPlayerPlugin : FlutterPlugin, ActivityAware, PlayerHostApi {
         // where Pigeon's Flutter API must be called.
         focus = MpxAudioFocus(context) { change -> flutter.onAudioFocusChange(change) {} }
         PlayerHostApi.setUp(binding.binaryMessenger, this)
+        stills = MpxStillExtractor().also { PlayerStillHostApi.setUp(binding.binaryMessenger, it) }
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         PlayerHostApi.setUp(binding.binaryMessenger, null)
+        PlayerStillHostApi.setUp(binding.binaryMessenger, null)
+        stills?.dispose()
+        stills = null
         reset()
         focus.abandon()
         background.enabled = false

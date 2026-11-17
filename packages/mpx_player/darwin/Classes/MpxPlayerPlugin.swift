@@ -22,6 +22,8 @@ public class MpxPlayerPlugin: NSObject, FlutterPlugin, PlayerHostApi {
   // not pause a backgrounded player for showing video; the host declares
   // the audio background mode, and the Dart side pauses on hide without it.
   private var backgroundAudio = false
+  // The platform's still extractor, served on its own channel.
+  let stills = MpxStillExtractor()
 
   init(registry: FlutterTextureRegistry, messenger: FlutterBinaryMessenger) {
     self.registry = registry
@@ -47,6 +49,7 @@ public class MpxPlayerPlugin: NSObject, FlutterPlugin, PlayerHostApi {
     #endif
     let plugin = MpxPlayerPlugin(registry: registry, messenger: messenger)
     PlayerHostApiSetup.setUp(binaryMessenger: messenger, api: plugin)
+    PlayerStillHostApiSetup.setUp(binaryMessenger: messenger, api: plugin.stills)
     registrar.publish(plugin)
   }
 

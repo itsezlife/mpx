@@ -128,6 +128,14 @@ final class AssetPipelineError implements Exception {
 ///   decoded) for `seconds`, after the first frame for `firstFrame`. It ends
 ///   as cancelled, not failed. Among preloads, the nearest
 ///   (`AssetDemand.distance`) is served first.
+/// - **Fallback decoders.** Content the kind's decoder reports as
+///   `DecodeFailure.unsupported` is fetched again (from the cache that now
+///   holds it) and decoded by the kind's fallback
+///   (`DecoderRegistry.registerFallback`), once per attempt. A fallback that
+///   draws only a still ends the entry at `AssetStage.firstFrame`, final for
+///   its spec, and the still becomes the content's derived preview. Content
+///   that already has a stored derived preview is not handed to the fallback
+///   again: its still was drawn once, and the preview stands for it.
 /// - **Downloads.** Content the fetcher reports missing
 ///   (`ContentFetcher.needsDownload`) is announced from the start of the
 ///   attempt (`AssetProgress.waiting`), and the bytes of its transfer are
@@ -532,12 +540,12 @@ final class _Job implements AssetTask {
         final store = pipeline._previewStore;
         if (store == null) return;
         if (previews.take(key) case final image?) {
-          _hasPreview = true;
+          _hasPreview = _derivedPreview = true;
           _advancePreview(image);
           return;
         }
         if (store.peek(key) case final png?) {
-          _hasPreview = true;
+          _hasPreview = _derivedPreview = true;
           _landPreview(previews.decode(key, png, pipeline._previewBlur));
           return;
         }
@@ -546,7 +554,7 @@ final class _Job implements AssetTask {
           store.read(key).then((png) {
             _readingStore = false;
             if (png == null || _cancelled) return null;
-            _hasPreview = true;
+            _hasPreview = _derivedPreview = true;
             return previews.decode(key, png, pipeline._previewBlur);
           }),
         );
@@ -594,6 +602,10 @@ final class _Job implements AssetTask {
 
   // Whether the content has a preview: the descriptor's, or a stored one.
   bool _hasPreview = false;
+
+  // Whether the preview is one this or an earlier process derived (from the
+  // store or the decoded previews), not one the descriptor carries.
+  bool _derivedPreview = false;
 
   // Whether the store is still asked for one.
   bool _readingStore = false;
@@ -689,6 +701,30 @@ final class _Job implements AssetTask {
     }
   }
 
+  /// Hands the content [work]'s decoder could not read to the kind's
+  /// fallback decoder: the content is fetched again (its decoder released
+  /// it) and decoded by the fallback. False when there is none to try.
+  bool fallBack(_Work work) {
+    final known = descriptor;
+    if (_ended || work.isFallback || known == null || _derivedPreview) {
+      return false;
+    }
+    final fallback = pipeline._decoders.fallbackFor(known.kind);
+    if (fallback == null) return false;
+    final retry = _content = _Work(this, FetchPart.content, fallback)
+      ..isFallback = true;
+    pipeline._fetchLane.enqueue(retry);
+    return true;
+  }
+
+  /// The content's decoder can make nothing better than the stage the entry
+  /// reached for its spec: that stage is final.
+  void contentBestReached() {
+    if (_ended) return;
+    contentDone();
+    progress.bestReached();
+  }
+
   /// A part failed. A thumbnail's failure is only its own.
   void workFailed(
     _Work work,
@@ -749,6 +785,9 @@ final class _Work implements LaneWork {
   // Whether only the head of the content is fetched (AutoDownload.prefix):
   // held, not decoded, and not shown as a download.
   bool headOnly = false;
+  // Whether [decoder] is the kind's fallback, decoding content its decoder
+  // reported unsupported.
+  bool isFallback = false;
   FetchedContent? content;
   _DecodeProgress? decodeProgress;
   bool _cancelled = false;
@@ -891,6 +930,15 @@ final class _DecodeProgress implements AssetProgress {
         stage == AssetStage.full ||
         (stage == AssetStage.firstFrame &&
             spec.variant == AssetVariant.firstFrame);
+    // A fallback's first frame is the best it draws: a still of content
+    // whose moving picture this build cannot decode.
+    if (!isFinal &&
+        _work.isFallback &&
+        stage.index >= AssetStage.firstFrame.index) {
+      _end();
+      job.contentBestReached();
+      return;
+    }
     if (!isFinal &&
         stage == AssetStage.firstFrame &&
         _work.part == FetchPart.content &&
@@ -946,8 +994,24 @@ final class _DecodeProgress implements AssetProgress {
   ]) {
     if (!_live) return;
     _end();
+    if (error is DecodeFailure &&
+        _work.part == FetchPart.content &&
+        _work.job.fallBack(_work)) {
+      return;
+    }
     // Decoding the same data again cannot succeed, whatever the network does.
     _work.job.workFailed(_work, error, stackTrace, AssetFailureKind.permanent);
+  }
+
+  @override
+  void bestReached() {
+    if (!_live) return;
+    _end();
+    if (_work.part == FetchPart.content) {
+      _work.job.contentBestReached();
+    } else {
+      _work.job.settleIfIdle();
+    }
   }
 
   @override

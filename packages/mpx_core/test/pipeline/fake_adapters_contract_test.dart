@@ -51,6 +51,27 @@ void main() {
     ),
   );
 
+  group('a still-only fallback', () {
+    DecoderContract.run(
+      () => DecoderHarness(
+        decoder: FakeDecoder(firstFrameOnly: true),
+        valid: (part, spec) => DecodeRequest(
+          descriptor: available,
+          spec: spec,
+          part: part,
+          content: bytes,
+        ),
+        invalid: () => DecodeRequest(
+          descriptor: available,
+          spec: const AssetSpec(pixelWidth: 64, pixelHeight: 64),
+          part: FetchPart.content,
+          content: FetchedContent.bytes(FakeDecoder.corrupt),
+        ),
+      ),
+      stillsOnly: true,
+    );
+  });
+
   group('FakeFetcher', () {
     test('answers after its latency on the manual clock', () async {
       final clock = ManualClock();

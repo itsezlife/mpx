@@ -81,6 +81,9 @@ final class _Report implements AssetProgress {
     _complete();
   }
 
+  @override
+  void bestReached() => _complete();
+
   AssetStage? finalStage;
 
   void _maybeDone() {
@@ -95,7 +98,11 @@ final class _Report implements AssetProgress {
 /// The contract every [Decoder] meets; see its documentation.
 abstract final class DecoderContract {
   /// Runs it as a test group. [create] builds a fresh harness for each test.
-  static void run(DecoderHarness Function() create) {
+  ///
+  /// [stillsOnly] runs it for a fallback that draws stills only
+  /// (`DecoderRegistry.registerFallback`): it is asked for content only, and
+  /// ends every content request at `AssetStage.firstFrame`.
+  static void run(DecoderHarness Function() create, {bool stillsOnly = false}) {
     group('Decoder contract', () {
       late DecoderHarness harness;
 
@@ -122,24 +129,32 @@ abstract final class DecoderContract {
         variant: AssetVariant.firstFrame,
       );
 
-      test('ends a thumbnail with one placeholder', () async {
-        final report = await decode(
-          harness.valid(FetchPart.thumbnail, full),
-          until: AssetStage.placeholder,
-        );
+      test(
+        'ends a thumbnail with one placeholder',
+        skip: stillsOnly
+            ? 'a still-only fallback is asked for content only'
+            : false,
+        () async {
+          final report = await decode(
+            harness.valid(FetchPart.thumbnail, full),
+            until: AssetStage.placeholder,
+          );
 
-        expect(report.failed, isFalse);
-        expect(report.advances.map((a) => a.stage), [AssetStage.placeholder]);
-      });
+          expect(report.failed, isFalse);
+          expect(report.advances.map((a) => a.stage), [AssetStage.placeholder]);
+        },
+      );
 
-      test('ends content with the full stage, improving only', () async {
+      test('ends content with the stage final for it, improving only '
+          '(full; the first frame for a still-only fallback)', () async {
+        final last = stillsOnly ? AssetStage.firstFrame : AssetStage.full;
         final report = await decode(
           harness.valid(FetchPart.content, full),
-          until: AssetStage.full,
+          until: last,
         );
 
         final stages = report.advances.map((a) => a.stage).toList();
-        expect(stages.last, AssetStage.full);
+        expect(stages.last, last);
         expect(stages, isNot(contains(AssetStage.placeholder)));
         for (var i = 1; i < stages.length; i++) {
           expect(
@@ -164,7 +179,7 @@ abstract final class DecoderContract {
       test('reports what each paintable costs', () async {
         final report = await decode(
           harness.valid(FetchPart.content, full),
-          until: AssetStage.full,
+          until: stillsOnly ? AssetStage.firstFrame : AssetStage.full,
         );
 
         expect(report.advances, isNotEmpty);

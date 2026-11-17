@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A clip this build cannot play (`VideoRejection.unsupported`) fails with
+  `DecodeFailure.unsupported` (its cause the `VideoDecodeRejected`), so the
+  pipeline tries the host's fallback for video; other rejections are
+  unchanged.
 - A clip whose decodes cannot keep up with its frame rate no longer plays
   in ever slower motion: when its newest frame falls more than
   `VideoFrameScheduler.catchUpLag` (1 s) behind its clock it seeks to the

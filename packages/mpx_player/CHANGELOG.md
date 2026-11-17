@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- `PlatformStillDecoder` (`native.dart`): a fallback decoder for video
+  that draws a clip's first frame with the platform (Android's metadata
+  retriever over the bytes cache's native reader; Apple's asset image
+  generator over the player's resource loader), for codecs the software
+  decoder cannot read. Register it with
+  `DecoderRegistry.registerFallback(MediaKind.video, ...)`.
+  `PlatformStillBackend` is its seam; `FakePlatformStillBackend` is in
+  `testing.dart`.
+- `FeedItem.descriptor` and `FeedItem.downloadContext`: what the host
+  knows about an item and its auto-download tag.
 - Android: the prepared-buffer load control forwards every overload of
   `LoadControl` to the default one (a JVM test checks none is left out);
   Media3 1.11 called one it did not, whose default throws, and every video
