@@ -274,10 +274,31 @@ final class AssetCacheScope {
     for (final sibling in _byKey[entry.key] ?? const <_Entry>{}) {
       if (sibling.transfer.isActive) return sibling.transfer;
     }
-    if (_pulled[entry.key] case (:final received, :final total)) {
+    // Bytes an outside reader pulls are the download only when someone
+    // wants the content: the user, a surface that requests it, or the
+    // policy. Otherwise they are bytes received, which the content awaiting
+    // the user shows (a feed player warming content nobody asked for).
+    if (_pulled[entry.key] case (
+      :final received,
+      :final total,
+    ) when _wanted(entry)) {
       return AssetTransfer.receiving(received, total);
     }
     return entry.transfer;
+  }
+
+  // Whether anyone wants [entry]'s content downloaded now: the user, a
+  // surface of any spec of it that requests it, or the policy.
+  bool _wanted(_Entry entry) {
+    if (_autoDownloadOf(entry, entry.descriptor) == AutoDownload.now) {
+      return true;
+    }
+    for (final sibling in _byKey[entry.key] ?? const <_Entry>{}) {
+      if (sibling.bindings.any((binding) => binding._requestsDownload)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   // The bytes of each content a reader outside the cache pulls now
@@ -357,6 +378,10 @@ final class AssetCacheScope {
       if (sibling.transfer == AssetTransfer.none) {
         sibling.setTransfer(AssetTransfer.awaitingUser(total));
       }
+    }
+    // A download an outside reader ran is no longer shown as one.
+    if (_pulled.containsKey(entry.key)) {
+      _signalKey(entry.key, bytesOnly: false);
     }
   }
 
@@ -948,6 +973,12 @@ final class AssetCacheScope {
     entry.demand.refresh(entry);
     if (binding.holdsFrame) entry.syncKeep();
     entry.syncShown();
+    // A surface that requested the content left while others of the same
+    // spec stay (a viewer page of a tile's own spec): its download stops
+    // if nothing else wants it, as on the last claim.
+    if (binding._requestsDownload && entry.bindings.isNotEmpty) {
+      _requestChanged(entry);
+    }
     _lastClaimGone(entry);
   }
 }
@@ -1059,24 +1090,22 @@ final class _Entry {
   void signalTransfer({required bool bytesOnly}) {
     // A scope going away detaches every binding: nobody is to hear more.
     if (scope._disposed) return;
-    for (final binding in List<_EntryBinding>.of(bindings)) {
-      binding.transferChanged(bytesOnly: bytesOnly);
-    }
-    final siblings = [
+    final hearing = [
+      ...bindings,
       for (final entry in scope._byKey[key] ?? const <_Entry>{})
         if (!identical(entry, this)) ...entry.bindings,
     ];
-    if (siblings.isEmpty) return;
+    if (hearing.isEmpty) return;
     void tell() {
       if (scope._disposed) return;
-      for (final binding in siblings) {
+      for (final binding in hearing) {
         binding.transferChanged(bytesOnly: bytesOnly);
       }
     }
 
     // Inside a frame the change may come from a surface leaving the tree
-    // (its binding detached while the tree is locked): the other specs'
-    // surfaces hear it after the frame, when they may rebuild.
+    // (its binding detached while the tree is locked): the surfaces of the
+    // content hear it after the frame, when they may rebuild.
     if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.idle) {
       tell();
     } else {

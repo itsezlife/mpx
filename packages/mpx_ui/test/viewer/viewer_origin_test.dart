@@ -595,20 +595,44 @@ void main() {
       expect(tileControl(), const MediaStatusStrings().download);
       expect(tileBadge(), contains('1.2 MB / 4.5 MB'));
 
-      // A platform player streaming the content (the bytes it pulls
-      // through the native reader): the tile shows them, then what they
-      // left.
+      // A platform player pulling the content nobody asked for: its bytes
+      // show as received, never as a download under way.
       scope.reportContentBytes(photoKey(0), 2097152, 4718592);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(tileBadge(), contains('2.0 MB / 4.5 MB'));
+      expect(tileControl(), const MediaStatusStrings().download);
+
+      // Asked for by the user, the player's pulls are the download, and a
+      // cancel shows it stopped.
+      await tester.tap(
+        find.descendant(
+          of: find.byType(ViewerOrigin),
+          matching: find.byType(MediaStatusControl),
+        ),
+      );
+      scope.reportContentBytes(photoKey(0), 3145728, 4718592);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tileBadge(), contains('3.0 MB / 4.5 MB'));
       expect(tileControl(), const MediaStatusStrings().cancel);
 
+      // The cancel stops it showing: the tile offers the download again,
+      // with the bytes the player left.
+      await tester.tap(
+        find.descendant(
+          of: find.byType(ViewerOrigin),
+          matching: find.byType(MediaStatusControl),
+        ),
+      );
       scope.endContentBytes(photoKey(0));
+      for (final attempt in producer.attempts) {
+        if (!attempt.isCancelled) attempt.awaitingUser();
+      }
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(tileControl(), const MediaStatusStrings().download);
-      expect(tileBadge(), contains('2.0 MB / 4.5 MB'));
+      expect(tileBadge(), contains('3.0 MB / 4.5 MB'));
     });
   }
 

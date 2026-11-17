@@ -451,6 +451,43 @@ void main() {
       );
     });
 
+    test('a surface of the same spec as the tile stops its download when it '
+        'goes, though the tile stays attached', () {
+      final viewer = scope.attach(_key, _small, _profile)
+        ..requestsDownload = true;
+      final attempt = producer.last..transfer(1000, 4000);
+      expect(attempt.demand.autoDownload(_descriptor), AutoDownload.now);
+      expect(tile.transfer, const AssetTransfer.receiving(1000, 4000));
+
+      viewer.detach();
+
+      expect(attempt.isCancelled, isTrue);
+      expect(
+        producer.last.demand.autoDownload(_descriptor),
+        AutoDownload.manual,
+      );
+      expect(tile.transfer, const AssetTransfer.awaitingUser(4000, 1000));
+    });
+
+    test('bytes a player pulls for content nobody asked for show as bytes '
+        'received, not as a download under way; cancel keeps it so', () {
+      scope.reportContentBytes(_key, 1000, 4000);
+      expect(tile.transfer, const AssetTransfer.awaitingUser(4000, 1000));
+
+      final viewer = scope.attach(_key, _spec, _profile)
+        ..requestsDownload = true;
+      expect(tile.transfer, const AssetTransfer.receiving(1000, 4000));
+      viewer.detach();
+      expect(tile.transfer, const AssetTransfer.awaitingUser(4000, 1000));
+
+      tile.download();
+      producer.last.waiting();
+      scope.reportContentBytes(_key, 2000, 4000);
+      expect(tile.transfer, isA<AssetTransfer$Receiving>());
+      tile.cancelDownload();
+      expect(tile.transfer, isA<AssetTransfer$AwaitingUser>());
+    });
+
     test("a user's download outlives the surface: the tile takes it on", () {
       final viewer = openViewer();
       viewer
