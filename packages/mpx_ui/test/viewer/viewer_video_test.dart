@@ -161,6 +161,131 @@ void main() {
     });
   });
 
+  group('the neighbours', () {
+    testWidgets('a tap open leases the player before the morph\'s first '
+        'frame', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+        autoFirstFrame: false,
+      );
+      // Runs as the first frame ends, before anything the viewer schedules
+      // for after it.
+      int? createdByFirstFrame;
+      tester.binding.addPostFrameCallback(
+        (_) => createdByFirstFrame = harness.backend!.created.length,
+      );
+      await harness.pump(tester, firstFrameOnly: true);
+
+      expect(createdByFirstFrame, 1);
+      expect(harness.backend!.created.map((e) => e.key), [videoKey(0)]);
+      expect(harness.engine(0).prepareCount, 1);
+    });
+
+    testWidgets('settling on a page prepares the videos beside it, paused, '
+        'and gives back those that leave the window', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(5),
+        videoDuration: const Duration(seconds: 60),
+      );
+      await harness.pump(tester);
+      await tester.pump();
+
+      final viewer = harness.state(tester);
+      expect(viewer.preparedNeighbours, {1});
+      expect(harness.engine(1).state.value.phase, PlayerPhase.ready);
+      expect(harness.engine(1).state.value.playing, isFalse);
+      expect(harness.players!.soundOwner, videoKey(0));
+
+      await tester.dragFrom(const Offset(300, 300), const Offset(-300, 0));
+      await _settle(tester);
+      expect(viewer.index, 1);
+      expect(viewer.preparedNeighbours, {0, 2});
+      // The prepared player is the one that plays: no new engine.
+      expect(harness.backend!.created.where((e) => e.key == videoKey(1)), [
+        harness.engine(1),
+      ]);
+      expect(harness.engine(1).state.value.playing, isTrue);
+      expect(harness.engine(0).state.value.playing, isFalse);
+      expect(harness.engine(2).state.value.playing, isFalse);
+
+      await tester.dragFrom(const Offset(300, 300), const Offset(-300, 0));
+      await _settle(tester);
+      expect(viewer.index, 2);
+      expect(viewer.preparedNeighbours, {1, 3});
+      expect(harness.players!.soundOwner, videoKey(2));
+      // Within the pool's budget: the one left out lost its engine.
+      expect(harness.players!.engineCount, 3);
+      expect(harness.engine(0).isDisposed, isTrue);
+    });
+
+    testWidgets('the pool\'s prepared budget caps them, the next first', (
+      tester,
+    ) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(3),
+        videoDuration: const Duration(seconds: 60),
+      );
+      harness.players!.budget = const PlayerBudget(prepared: 1);
+      await harness.pump(tester);
+      await tester.dragFrom(const Offset(300, 300), const Offset(-300, 0));
+      await _settle(tester);
+
+      expect(harness.state(tester).preparedNeighbours, {2});
+    });
+
+    testWidgets('they wait for the item shown to have its first frame', (
+      tester,
+    ) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(2),
+        videoDuration: const Duration(seconds: 60),
+        autoFirstFrame: false,
+      );
+      await harness.pump(tester);
+      await tester.pump();
+      expect(harness.state(tester).preparedNeighbours, isEmpty);
+      expect(harness.backend!.latestFor(videoKey(1)), isNull);
+
+      harness.engine(0).renderFirstFrame();
+      await tester.pump();
+      expect(harness.state(tester).preparedNeighbours, {1});
+      expect(harness.engine(1).state.value.playing, isFalse);
+    });
+
+    testWidgets('closing gives them back', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(2),
+        videoDuration: const Duration(seconds: 60),
+      );
+      await harness.pump(tester);
+      await tester.pump();
+      expect(harness.state(tester).preparedNeighbours, {1});
+
+      unawaited(harness.state(tester).close());
+      await tester.pump();
+      expect(harness.state(tester).preparedNeighbours, isEmpty);
+      await _settle(tester);
+    });
+
+    testWidgets('a policy without them prepares none', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(2),
+        videoDuration: const Duration(seconds: 60),
+      );
+      await harness.pump(
+        tester,
+        policy: ViewerPolicy.$Android.copyWith(
+          video: ViewerPolicy.$Android.video.copyWith(prepareNeighbours: false),
+        ),
+      );
+      await tester.pump();
+
+      expect(harness.state(tester).preparedNeighbours, isEmpty);
+      expect(harness.backend!.latestFor(videoKey(1)), isNull);
+    });
+  });
+
   group('the surface\'s own loop of the content', () {
     final seconds = List.filled(60, const Duration(seconds: 1));
 

@@ -3,9 +3,12 @@
 ## Unreleased
 
 - `MediaViewer` holds every other surface and the preloads while its open
-  and close morphs run (the item that morphs plays on), and leases its
-  player after the first frame, so the tap to that frame does no player
-  work.
+  and close morphs run (the item that morphs plays on).
+- `MediaViewer` leases the opened video's player before the morph's first
+  frame, so its way to a first frame overlaps the morph, and prepares the
+  video items beside the one shown, paused, up to the pool's prepared
+  budget (`ViewerVideoRules.prepareNeighbours`): paging to one shows its
+  first frame at once.
 - A video that fails says so over its picture with a retry
   (`ViewerVideoFailure`, `ViewerVideoStrings.failed` and `retry`), not a
   black page. The speed presets are 48 px targets sharing the row, with press

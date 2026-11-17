@@ -83,6 +83,7 @@ final class ViewerHarness {
     ViewerPolicy policy = ViewerPolicy.$Android,
     ViewerChrome? chrome,
     bool open = true,
+    bool firstFrameOnly = false,
     List<ViewerQuality> Function(int index, GalleryItem item)? qualitiesOf,
     ViewerController? controller,
     TextStyle? hostTextStyle,
@@ -123,6 +124,7 @@ final class ViewerHarness {
         ),
       ),
     );
+    if (firstFrameOnly) return;
     await tester.pump();
     if (open)
       await tester.pump(policy.openDuration + const Duration(milliseconds: 1));

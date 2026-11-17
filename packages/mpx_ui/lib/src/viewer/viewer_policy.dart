@@ -450,6 +450,7 @@ final class ViewerVideoRules {
     this.start = ViewerVideoStart.beginning,
     this.originReturn = ViewerOriginReturn.atPlayer,
     this.loopOpen = ViewerLoopOpen.continues,
+    this.prepareNeighbours = true,
   });
 
   /// Where the player starts as the viewer opens on a video with sound.
@@ -461,6 +462,12 @@ final class ViewerVideoRules {
 
   /// What an animation does as the viewer opens on it.
   final ViewerLoopOpen loopOpen;
+
+  /// Whether the video items next to the one shown are prepared, paused,
+  /// while the viewer is open: up to the pool's prepared budget, the next
+  /// first, once the item shown has its first frame (or is no video). Paging
+  /// to one then shows its first frame at once.
+  final bool prepareNeighbours;
 
   /// Whether the controls show when a video opens.
   final bool controlsVisibleOnOpen;
@@ -515,6 +522,7 @@ final class ViewerVideoRules {
     bool? doubleTapFullscreen,
     ViewerHoldSpeed? hold,
     Size? seekPreviewBox,
+    bool? prepareNeighbours,
   }) => ViewerVideoRules(
     start: start ?? this.start,
     originReturn: originReturn ?? this.originReturn,
@@ -527,6 +535,7 @@ final class ViewerVideoRules {
     doubleTapFullscreen: doubleTapFullscreen ?? this.doubleTapFullscreen,
     hold: hold ?? this.hold,
     seekPreviewBox: seekPreviewBox ?? this.seekPreviewBox,
+    prepareNeighbours: prepareNeighbours ?? this.prepareNeighbours,
   );
 }
 

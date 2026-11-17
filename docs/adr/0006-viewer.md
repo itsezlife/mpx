@@ -220,7 +220,11 @@ rises, so content with transparency never shows it beneath.
 `ViewerDoubleTapSeek`, double tap for fullscreen, `ViewerSpeedRule`,
 `ViewerHoldSpeed`, the loop rule, the seek-preview box). `$IOS` and
 `$Desktop` sit beside `$Android`. Video plays through `MediaViewer.players`
-(only the item on screen holds a lease), hands off from the origin
+(the item on screen holds a playing lease from before the open morph's
+first frame; with `ViewerVideoRules.prepareNeighbours`, on by default,
+the video items beside it hold paused, prepared leases while the viewer
+is open, up to the pool's prepared budget, the next first, once the item
+shown has its first frame), hands off from the origin
 (`GalleryOrigin.position`, `OriginBridge.handBack`), and is drawn under
 `ViewerVideoControls`. Fullscreen on desktop is the host's window through
 `MediaViewer.onFullscreenChanged`; the package takes no window plugin.

@@ -356,6 +356,12 @@ class MediaViewerState extends State<MediaViewer>
   int? _sessionIndex;
   // Holds the origin's loop of the video the player plays.
   AssetPlaybackHold? _loopHold;
+  // The prepared players of the video items next to the one shown, by
+  // index (_syncNeighbours).
+  final Map<int, PlayerLease> _neighbours = {};
+  // The lease of the item shown, while the neighbours wait for its first
+  // frame.
+  PlayerLease? _neighboursWaitOn;
   // The session whose player has moved, so every picture of it (the page,
   // the morph) shows the player from the start.
   ViewerVideoSession? _movingSession;
@@ -394,6 +400,11 @@ class MediaViewerState extends State<MediaViewer>
   /// The lease of the video on screen, or null when the item is not a video
   /// or the viewer has no players.
   PlayerLease? get videoLease => _session?.lease;
+
+  /// The indexes of the video items whose players the viewer holds
+  /// prepared beside the one on screen ([ViewerVideoRules.prepareNeighbours]).
+  @visibleForTesting
+  Set<int> get preparedNeighbours => _neighbours.keys.toSet();
 
   /// The background's opacity now.
   double get backgroundOpacity => switch (_phase) {
@@ -445,8 +456,11 @@ class MediaViewerState extends State<MediaViewer>
     _controls.value = _isVideo(_index)
         ? _video.controlsVisibleOnOpen
         : _policy.controlsVisibleOnOpen;
-    // The first frame is the morph's start and nothing else: the player is
-    // leased after it (in _open), so the input to that frame stays short.
+    // The player is leased before the first frame, so its way to a first
+    // frame of its own (creating, reading, decoding, all off the UI
+    // isolate) overlaps the whole morph. The rest of the open waits for that
+    // frame, the morph's start.
+    _syncVideo();
     WidgetsBinding.instance.addPostFrameCallback((_) => _open());
   }
 
@@ -463,6 +477,7 @@ class MediaViewerState extends State<MediaViewer>
     _spaceHold?.cancel();
     widget.controller?._detach(this);
     _releaseVideo();
+    _releaseNeighbours();
     _focus.dispose();
     widget.source.removeListener(_onSource);
     for (final index in _hidden) {
@@ -490,7 +505,9 @@ class MediaViewerState extends State<MediaViewer>
       widget.source.loadAround(_index);
       // The index may name another item now.
       _releaseVideo();
+      _releaseNeighbours();
       _syncVideo();
+      _syncNeighbours();
     }
     if (!identical(widget.bridge, oldWidget.bridge)) {
       // The new surface hides what the viewer stands over; the old one shows
@@ -548,6 +565,7 @@ class MediaViewerState extends State<MediaViewer>
   void _onSource() {
     if (!mounted) return;
     _syncVideo();
+    _syncNeighbours();
     setState(() {});
   }
 
@@ -568,19 +586,7 @@ class MediaViewerState extends State<MediaViewer>
     if (_sessionIndex == _index && _session != null) return;
     _releaseVideo();
     final cache = _cache;
-    // Where the origin's loop is: the host's word for it, else the loop of
-    // the content the surface plays through the cache, which the page draws
-    // too.
-    final startAt =
-        widget.videoStartOf?.call(_index, item) ??
-        switch (_video.start) {
-          ViewerVideoStart.origin =>
-            (_index == widget.initialIndex
-                    ? widget.bridge?.originOf(_index)?.position
-                    : null) ??
-                cache?.playbackPosition(item.key, _loopSpec),
-          ViewerVideoStart.beginning => null,
-        };
+    final startAt = _startOf(_index, item);
     // The loop stands still while the player plays the item: one decode of
     // the content at a time.
     _loopHold = cache?.holdPlayback(item.key, _loopSpec);
@@ -595,6 +601,97 @@ class MediaViewerState extends State<MediaViewer>
     )..addListener(_onSession);
     _sessionIndex = _index;
     _notifyController();
+  }
+
+  // Where the player of the item at [index] starts: the host's word for
+  // it, else where the origin's loop is (the loop of the content the
+  // surface plays through the cache, which the page draws too).
+  Duration? _startOf(int index, GalleryItem item) =>
+      widget.videoStartOf?.call(index, item) ??
+      switch (_video.start) {
+        ViewerVideoStart.origin =>
+          (index == widget.initialIndex
+                  ? widget.bridge?.originOf(index)?.position
+                  : null) ??
+              _cache?.playbackPosition(item.key, _loopSpec),
+        ViewerVideoStart.beginning => null,
+      };
+
+  // Prepares the players of the video items next to the one shown, paused,
+  // so paging to one shows its first frame at once: while the viewer is
+  // open, up to the pool's prepared budget, the next first. They wait for
+  // the item shown to have its first frame, so they never compete with it
+  // for the decoders. A neighbour that falls out of the window is given
+  // back; the pool keeps it warm until its budget needs it.
+  void _syncNeighbours() {
+    final players = widget.players;
+    final wanted = <int>{};
+    if (players != null &&
+        !players.isDisposed &&
+        _video.prepareNeighbours &&
+        _phase == _Phase.open &&
+        _shownIsReady()) {
+      final room = players.budget.prepared;
+      for (final index in [_index + 1, _index - 1]) {
+        if (wanted.length >= room) break;
+        if (index >= 0 && index < widget.source.count && _isVideo(index)) {
+          wanted.add(index);
+        }
+      }
+    }
+    _neighbours.removeWhere((index, lease) {
+      if (wanted.contains(index)) return false;
+      lease.release();
+      return true;
+    });
+    for (final index in wanted) {
+      if (_neighbours.containsKey(index)) continue;
+      final item = widget.source.itemAt(index)!;
+      final lease = players!.lease(item.key);
+      // A warm player stays where it was left.
+      if (!lease.state.value.holdsEngine) {
+        final startAt = _startOf(index, item);
+        if (startAt != null) lease.seekTo(startAt);
+      }
+      lease.prepare();
+      _neighbours[index] = lease;
+    }
+  }
+
+  // Whether the item shown lets the neighbours prepare: it is no video, or
+  // its player has its first frame (or failed). Else waits for that.
+  bool _shownIsReady() {
+    final lease = _session?.lease;
+    final state = lease?.state.value;
+    final ready =
+        state == null ||
+        state.firstFrameRendered ||
+        state.phase == PlayerPhase.failed;
+    if (ready) {
+      _waitForShown(null);
+    } else {
+      _waitForShown(lease);
+    }
+    return ready;
+  }
+
+  void _waitForShown(PlayerLease? lease) {
+    if (identical(lease, _neighboursWaitOn)) return;
+    _neighboursWaitOn?.state.removeListener(_onShownState);
+    _neighboursWaitOn = lease;
+    lease?.state.addListener(_onShownState);
+  }
+
+  void _onShownState() {
+    if (mounted) _syncNeighbours();
+  }
+
+  void _releaseNeighbours() {
+    _waitForShown(null);
+    for (final lease in _neighbours.values) {
+      lease.release();
+    }
+    _neighbours.clear();
   }
 
   void _onSession() {
@@ -880,6 +977,7 @@ class MediaViewerState extends State<MediaViewer>
         setState(() => _phase = _Phase.open);
         _session?.autoHide = true;
         _notifyController();
+        _syncNeighbours();
       });
   }
 
@@ -888,6 +986,8 @@ class MediaViewerState extends State<MediaViewer>
   /// Closes the viewer on the item it shows.
   Future<void> close() async {
     if (_phase == _Phase.closing || _phase == _Phase.closed) return;
+    // The surface the viewer closes onto gets the decoders back.
+    _releaseNeighbours();
     final session = _session;
     if (session != null) {
       final position = session.lease.position;
@@ -1213,6 +1313,7 @@ class MediaViewerState extends State<MediaViewer>
               _dropOriginFrames(around: index);
               _notifyController();
               _syncVideo();
+              _syncNeighbours();
               widget.source.loadAround(index);
               widget.onIndexChanged?.call(index);
             },
