@@ -194,7 +194,11 @@ final class BytesCacheFetcher implements ContentFetcher {
           request.part == FetchPart.content &&
           request.prefix == null &&
           publisher.kinds.contains(request.descriptor.kind)) {
-        return publisher.publish(rangedRequest);
+        return publisher.publish(
+          rangedRequest,
+          priority: PriorityToken(_priorityOf(request.priority)),
+          cancelToken: cancel,
+        );
       }
       return _fetchWhole(ranged, rangedRequest, request, cancel);
     }

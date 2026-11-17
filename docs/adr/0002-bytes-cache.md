@@ -183,11 +183,14 @@ resume, the whole body buffered by design.
   contract gained a release point, ADR 0003); a missing part whose location
   is immutable is fetched as a ranged resource in one GET to the end, and
   the content kinds a host's `RangedContentPublisher` takes go out
-  published to the native reader, read as they download. Publishing is
-  opt-in: a published clip blocks its decode worker (and every clip on it)
-  and a pipeline decode slot on each byte the network has not brought, which
-  on a device starved the software decoder until no list clip played; the
-  example downloads clips whole instead. Elsewhere (memory,
+  published to the native reader, read as they download, once their index
+  and a first stretch are there. A first cut let the decoder block on
+  missing bytes, which held its worker (and every clip on it) and a
+  pipeline decode slot: on a device no list clip played. Readers that must
+  not wait ask `hbc_reader_available` (ABI 3) and stall instead; its asks
+  are hints (`HBC_FETCH_HINT`) a publication stops when its surface leaves
+  the screen, so an unseen clip stops downloading and keeps what it has
+  (resuming it is the ranged path's ordinary ask). Elsewhere (memory,
   the web, revalidated locations) content goes out as bytes through the
   ladder. Settled 2026-11-14, after a CPU profile of a media-heavy list
   showed the UI isolate copying whole clips to hand them to the decoder.

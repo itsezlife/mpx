@@ -75,7 +75,7 @@ public class MpxPlayerPlugin: NSObject, FlutterPlugin, PlayerHostApi {
     else {
       throw PigeonError(
         code: "unreadable",
-        message: "The bytes cache reader table is missing or of another version.",
+        message: "The bytes cache reader table is missing or of an older version.",
         details: nil)
     }
     players[id] = player

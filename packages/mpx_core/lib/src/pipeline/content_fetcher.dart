@@ -94,6 +94,8 @@ sealed class FetchedContent {
   const factory FetchedContent.ranged({
     required int readerApi,
     required String key,
+    Stream<void>? landed,
+    FetchRelease? onPause,
     FetchRelease? onRelease,
   }) = FetchedRanged;
 
@@ -135,13 +137,13 @@ final class FetchedFile extends FetchedContent {
 
 /// [FetchedContent] read natively, at offsets, as it downloads.
 ///
-/// A native reader serves the resource [key]: a read of bytes already there
-/// returns at once, a read of bytes still missing asks the fetcher's side to
-/// fetch them and blocks the reading thread until they land. [readerApi] is
-/// the address of the reader's function table (the bytes cache's native
-/// reader, `hbc_api` version 2), which a decoder's native code calls; Dart
-/// never reads the bytes. The resource stays readable until [release];
-/// releasing it wakes a blocked read, which then fails.
+/// A native reader serves the resource [key]: it says which bytes are there
+/// without waiting, and asks the fetcher's side for the ones that are not.
+/// [readerApi] is the address of the reader's function table (the bytes
+/// cache's native reader, `hbc_api` version 3 or later), which a decoder's
+/// native code calls; Dart never reads the bytes. A decoder that finds its
+/// bytes missing tries again when [landed] says more arrived. The resource
+/// stays readable until [release].
 ///
 /// Only a decoder whose codec reads through such a reader takes it; a
 /// fetcher hands it out only for the kinds the host says decode that way.
@@ -151,8 +153,11 @@ final class FetchedRanged extends FetchedContent {
   const FetchedRanged({
     required this.readerApi,
     required this.key,
+    this.landed,
+    FetchRelease? onPause,
     FetchRelease? onRelease,
-  }) : _onRelease = onRelease;
+  }) : _onPause = onPause,
+       _onRelease = onRelease;
 
   /// Address of the native reader's function table.
   final int readerApi;
@@ -160,7 +165,18 @@ final class FetchedRanged extends FetchedContent {
   /// The resource the reader opens.
   final String key;
 
+  /// An event each time bytes of the resource landed, or null when the
+  /// fetcher's side tells nothing (a decoder then tries again on a timer).
+  final Stream<void>? landed;
+
+  final FetchRelease? _onPause;
   final FetchRelease? _onRelease;
+
+  /// Its reader stopped reading for now (the surface left the screen): the
+  /// fetcher's side stops fetching ahead of it, keeping what landed. Reads
+  /// ask again as usual when it goes on. Any number of times, until
+  /// [release].
+  void pause() => _onPause?.call();
 
   @override
   void release() => _onRelease?.call();

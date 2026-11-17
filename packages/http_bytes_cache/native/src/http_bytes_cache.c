@@ -495,6 +495,29 @@ int64_t hbc_reader_read(hbc_reader *reader, int64_t offset, uint8_t *buffer,
   return result;
 }
 
+int64_t hbc_reader_available(hbc_reader *reader, int64_t offset,
+                             int64_t length) {
+  if (reader == NULL) return HBC_ERR_CLOSED;
+  if (offset < 0) offset = 0;
+  pthread_mutex_lock(&g_lock);
+  hbc_resource *r = reader->resource;
+  int64_t result;
+  if (!r->published) {
+    result = HBC_ERR_CLOSED;
+  } else if (r->total >= 0 && offset >= r->total) {
+    result = offset;
+  } else {
+    result = contiguous_from(r, offset);
+    int64_t want = offset + (length > 0 ? length : 1);
+    if (r->total >= 0 && want > r->total) want = r->total;
+    if (result < want) {
+      request_fetch(r, result, want - result, reader->priority | HBC_FETCH_HINT);
+    }
+  }
+  pthread_mutex_unlock(&g_lock);
+  return result;
+}
+
 void hbc_reader_set_priority(hbc_reader *reader, int32_t priority) {
   if (reader == NULL) return;
   pthread_mutex_lock(&g_lock);
@@ -522,9 +545,9 @@ void hbc_reader_close(hbc_reader *reader) {
 }
 
 static const hbc_api g_api = {
-    HBC_ABI_VERSION,     hbc_reader_open,   hbc_reader_length,
+    HBC_ABI_VERSION,     hbc_reader_open,         hbc_reader_length,
     hbc_reader_read,     hbc_reader_set_priority, hbc_reader_cancel,
-    hbc_reader_close,
+    hbc_reader_close,    hbc_reader_available,
 };
 
 const hbc_api *hbc_get_api(void) { return &g_api; }

@@ -54,6 +54,11 @@ enum VideoRejection {
   /// that is not published, or bytes whose fetch failed or that were
   /// withdrawn. Not a verdict on the file either.
   source,
+
+  /// A ranged source has not brought the bytes the open needs yet (its
+  /// length, its index): nothing is held, and an open once more landed may
+  /// succeed.
+  stalled,
 }
 
 /// What an open video declares about itself.

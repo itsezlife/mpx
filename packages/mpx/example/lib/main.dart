@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:http_bytes_cache/native_reader.dart';
 import 'package:mpx/mpx.dart';
+import 'package:mpx/native.dart';
 import 'package:mpx_core/frame_pool.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_example/feed_page.dart';
@@ -84,6 +85,11 @@ Future<void> main() async {
     directoryPath: framesDirectory,
     diskBudgetBytes: null,
   );
+  // The process's one native reader, over the stack's ranged resources:
+  // the software decoder streams clips through it (index and first stretch
+  // first, then what plays, never waiting on a decode worker), and the
+  // players read their sources through it.
+  NativeRangedReaders? readers;
   final stack = await MpxStack.create(
     // Where each key's bytes are. A real host maps its keys to its CDN.
     locate: (descriptor, part) => switch (_fileOf(descriptor.key)) {
@@ -99,23 +105,16 @@ Future<void> main() async {
     client:
         (kMpxLab ? Lab.httpClient() : null) ??
         HttpBytesClient(client: _BundleOrigin()),
+    publisher: (ranged) => NativeRangedReaders.isAvailable
+        ? NativeRangedContentPublisher(readers = NativeRangedReaders(ranged))
+        : null,
   );
   for (final (key, kind, _, _) in _media) {
     stack.pipeline.know(
       MediaDescriptor(key: key, kind: kind, animated: kind != MediaKind.still),
     );
   }
-  // The process's one native reader, over the stack's ranged resources:
-  // the players read their sources through it. The software decoder reads
-  // whole files instead (no publisher): a clip opened on the reader blocks
-  // its decode worker, and the other clips on it, on every byte the
-  // network has not brought yet.
-  final ranged = stack.ranged;
-  final players = await _players(
-    ranged != null && NativeRangedReaders.isAvailable
-        ? NativeRangedReaders(ranged)
-        : null,
-  );
+  final players = await _players(readers);
   if (kMpxLab) Lab.attach(stack, players);
   runApp(MediaApp(stack: stack, players: players));
 }
@@ -227,6 +226,7 @@ Future<Map<MediaKind, Decoder>> _decoders(
     // A clip that does not open says why in the log, instead of staying on
     // its placeholder in silence.
     VideoDecoder.logFailures = true;
+    VideoFrameScheduler.logPlayback = true;
     decoders[MediaKind.video] = VideoDecoder(
       engine: engine,
       scheduler: scheduler,

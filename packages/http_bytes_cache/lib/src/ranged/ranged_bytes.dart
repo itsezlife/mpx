@@ -527,9 +527,15 @@ final class _Fetch {
   /// Bytes this GET wrote so far.
   int landedBytes = 0;
 
+  /// How far ahead of a running GET's next byte an ask still joins it. A
+  /// byte further on gets a GET of its own: an index at the end of a file
+  /// is fetched now, not after the body that comes before it.
+  static const int joinWindow = 32 * 1024;
+
   bool covers(int offset) =>
       !_done.isCompleted &&
       cursor <= offset &&
+      offset - cursor < joinWindow &&
       switch (range?.end) {
         final end? => offset < end,
         null => true,

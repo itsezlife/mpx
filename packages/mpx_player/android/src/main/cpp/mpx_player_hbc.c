@@ -17,7 +17,8 @@
 
 typedef struct hbc_reader hbc_reader;
 
-/* Mirror of hbc_api (http_bytes_cache.h, HBC_ABI_VERSION 2). */
+/* Mirror of the start of hbc_api (http_bytes_cache.h): version 2 laid it
+ * out, later versions only append. */
 typedef struct mpx_hbc_api {
   int32_t version;
   hbc_reader *(*reader_open)(const char *key);

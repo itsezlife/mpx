@@ -15,12 +15,13 @@ abstract final class MpxVideoAbi {
   static const expectedVersion = 3;
 
   /// The version of the ranged reader table `mpx_video_open_reader` reads.
-  static const readerVersion = 2;
+  static const readerVersion = 3;
 }
 
 /// The status numbers of `mpx_video.h`, in one place so no other file
 /// carries a bare literal. A test compares them with the header.
 abstract final class MpxVideoStatus {
+  static const stalled = 2;
   static const endOfStream = 1;
   static const ok = 0;
   static const invalidArgument = -1;
@@ -81,11 +82,12 @@ external int mpxVideoOpenFile(
   Pointer<Pointer<Void>> outHandle,
 );
 
-/// Not a leaf: it blocks while the bytes it reads have not landed.
+/// Not a leaf: it probes the container, from the bytes that have landed.
 @Native<
   Int32 Function(
     Pointer<Void>,
     Pointer<Utf8>,
+    Int64,
     Uint32,
     Uint32,
     Pointer<Pointer<Void>>,
@@ -94,6 +96,7 @@ external int mpxVideoOpenFile(
 external int mpxVideoOpenReader(
   Pointer<Void> readerApi,
   Pointer<Utf8> key,
+  int lookahead,
   int targetW,
   int targetH,
   Pointer<Pointer<Void>> outHandle,

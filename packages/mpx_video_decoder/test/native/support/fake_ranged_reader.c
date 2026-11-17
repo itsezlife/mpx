@@ -16,6 +16,7 @@
 
 #define EXPORT __attribute__((visibility("default")))
 #define MAX_RESOURCES 16
+#define MAX_SPANS 16
 #define ERR_CLOSED (-3)
 #define ERR_IO (-4)
 
@@ -24,6 +25,9 @@ typedef struct {
   char path[1024];
   int64_t length;   /* the file's length */
   int64_t landed;   /* bytes [0, landed) may be read */
+  int64_t spans[MAX_SPANS][2]; /* and these, landed out of order */
+  int span_count;
+  int64_t asked;    /* calls of reader_available that found bytes missing */
   int length_known; /* the length is told only once this is set */
   int withdrawn;
   int64_t waits;    /* reads that blocked */
@@ -46,6 +50,22 @@ static resource *find(const char *key) {
     if (strcmp(resources[i].key, key) == 0) return &resources[i];
   }
   return NULL;
+}
+
+/* End of the bytes present without a gap from [offset]; [offset] when the
+ * byte there is missing. Under the lock. */
+static int64_t present_from(const resource *r, int64_t offset) {
+  int64_t end = offset < r->landed ? r->landed : offset;
+  for (int moved = 1; moved;) {
+    moved = 0;
+    for (int i = 0; i < r->span_count; i++) {
+      if (r->spans[i][0] <= end && end < r->spans[i][1]) {
+        end = r->spans[i][1];
+        moved = 1;
+      }
+    }
+  }
+  return end < r->length ? end : r->length;
 }
 
 static reader *reader_open(const char *key) {
@@ -86,7 +106,7 @@ static int64_t reader_read(reader *rd, int64_t offset, uint8_t *buffer,
     pthread_mutex_unlock(&lock);
     return 0;
   }
-  while (!r->withdrawn && r->landed <= offset) {
+  while (!r->withdrawn && present_from(r, offset) <= offset) {
     r->waits++;
     pthread_cond_wait(&changed, &lock);
   }
@@ -94,12 +114,30 @@ static int64_t reader_read(reader *rd, int64_t offset, uint8_t *buffer,
     pthread_mutex_unlock(&lock);
     return ERR_CLOSED;
   }
-  int64_t n = r->landed - offset;
+  int64_t n = present_from(r, offset) - offset;
   pthread_mutex_unlock(&lock);
   if (n > length) n = length;
   if (fseek(rd->file, (long)offset, SEEK_SET) != 0) return ERR_IO;
   size_t got = fread(buffer, 1, (size_t)n, rd->file);
   return got == 0 ? ERR_IO : (int64_t)got;
+}
+
+static int64_t reader_available(reader *rd, int64_t offset, int64_t length) {
+  pthread_mutex_lock(&lock);
+  resource *r = rd->r;
+  int64_t out;
+  if (r->withdrawn) {
+    out = ERR_CLOSED;
+  } else if (offset >= r->length) {
+    out = offset;
+  } else {
+    out = present_from(r, offset);
+    int64_t want = offset + (length > 0 ? length : 1);
+    if (want > r->length) want = r->length;
+    if (out < want) r->asked++;
+  }
+  pthread_mutex_unlock(&lock);
+  return out;
 }
 
 static void reader_set_priority(reader *rd, int32_t priority) {
@@ -126,14 +164,16 @@ typedef struct {
   void (*reader_set_priority)(reader *reader, int32_t priority);
   void (*reader_cancel)(reader *reader);
   void (*reader_close)(reader *reader);
+  int64_t (*reader_available)(reader *reader, int64_t offset, int64_t length);
 } api;
 
-static api table = {2,           reader_open,         reader_length,
+static api table = {3,           reader_open,         reader_length,
                     reader_read, reader_set_priority, reader_cancel,
-                    reader_close};
-static api old_table = {1,           reader_open,         reader_length,
+                    reader_close, reader_available};
+/* Version 2: no reader_available. */
+static api old_table = {2,           reader_open,         reader_length,
                         reader_read, reader_set_priority, reader_cancel,
-                        reader_close};
+                        reader_close, NULL};
 
 EXPORT const void *fake_reader_api(void) { return &table; }
 
@@ -187,6 +227,20 @@ EXPORT void fake_reader_land(const char *key, int64_t landed) {
   update(key, landed, 1, 0);
 }
 
+/* Bytes [start, end) of [key] are present too, its length known. */
+EXPORT void fake_reader_land_span(const char *key, int64_t start, int64_t end) {
+  pthread_mutex_lock(&lock);
+  resource *r = find(key);
+  if (r && r->span_count < MAX_SPANS) {
+    r->spans[r->span_count][0] = start;
+    r->spans[r->span_count][1] = end;
+    r->span_count++;
+    r->length_known = 1;
+    pthread_cond_broadcast(&changed);
+  }
+  pthread_mutex_unlock(&lock);
+}
+
 /* Withdraws [key]: blocked and later reads fail. */
 EXPORT void fake_reader_withdraw(const char *key) { update(key, 0, 0, 1); }
 
@@ -196,7 +250,8 @@ static int64_t stat_of(const char *key, int which) {
   int64_t out = !r                ? -1
                 : which == 0      ? r->waits
                 : which == 1      ? r->opens
-                                  : r->open_readers;
+                : which == 2      ? r->open_readers
+                                  : r->asked;
   pthread_mutex_unlock(&lock);
   return out;
 }
@@ -206,6 +261,9 @@ EXPORT int64_t fake_reader_waits(const char *key) { return stat_of(key, 0); }
 
 /* How many readers of [key] were opened. */
 EXPORT int64_t fake_reader_opens(const char *key) { return stat_of(key, 1); }
+
+/* How many times reader_available found bytes of [key] missing. */
+EXPORT int64_t fake_reader_asked(const char *key) { return stat_of(key, 3); }
 
 /* How many readers of [key] are open now. */
 EXPORT int64_t fake_reader_open_readers(const char *key) {

@@ -24,7 +24,11 @@ final class FakeRangedContentPublisher implements RangedContentPublisher {
   int released = 0;
 
   @override
-  Future<FetchedRanged> publish(RangedRequest request) async {
+  Future<FetchedRanged> publish(
+    RangedRequest request, {
+    PriorityToken? priority,
+    CancelToken? cancelToken,
+  }) async {
     published.add(request);
     return FetchedRanged(
       readerApi: readerApi,

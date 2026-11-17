@@ -8,6 +8,12 @@ enum VideoFrameStatus {
   /// The stream has no more frames. Stays so until `VideoBinding.rewind`.
   endOfStream,
 
+  /// A ranged source has not brought the bytes the next frame needs: nothing
+  /// waited, the handle is as it was, and the next call goes on from the
+  /// same place once more landed. The caller keeps its frame and asks again
+  /// when the source says bytes landed.
+  stalled,
+
   /// An unknown or disposed handle, or a null target.
   badArgument,
 

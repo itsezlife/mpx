@@ -7,23 +7,28 @@ import 'package:mpx_core/mpx_core.dart';
 ///
 /// The [BytesCacheFetcher] asks it for missing content of [kinds] instead of
 /// downloading the content first. It publishes the content's ranged resource
-/// to the bytes cache's native reader and hands it out as a
-/// [FetchedRanged]; the reader fetches what its reads miss, and releasing the
-/// content withdraws the publication. `NativeRangedContentPublisher` in
-/// `package:mpx/native.dart` is the VM implementation.
+/// to the bytes cache's native reader, fetches what an open needs (the
+/// index and a first stretch), and hands it out as a [FetchedRanged]; from
+/// then on the decoder's reads ask for the bytes ahead of them, so only
+/// what plays is fetched, and a clip that stops playing (off screen) stops
+/// fetching, keeping what it has. Releasing the content withdraws the
+/// publication. `NativeRangedContentPublisher` in `package:mpx/native.dart`
+/// is the VM implementation.
 ///
-/// Opt-in, and only for a decoder that can afford to wait: a read of bytes
-/// the network has not brought blocks the thread that decodes, and the
-/// pipeline's decode slot stays taken meanwhile. On a pool of worker
-/// isolates (`IsolateVideoEngine`) every clip sharing the worker waits with
-/// it, so a few clips still downloading from a far origin hold back clips
-/// that are already held. Without a publisher the fetcher downloads the
-/// content whole (on the client's transfer worker) before it decodes.
+/// For a decoder that never waits on its source: one whose reads of
+/// missing bytes answer at once (the software video decoder stalls the
+/// clip and tries again on [FetchedRanged.landed]), so no shared thread or
+/// slot is held while the network catches up.
 abstract interface class RangedContentPublisher {
   /// The kinds whose missing content goes out published, not downloaded.
   Set<MediaKind> get kinds;
 
-  /// Publishes [request]'s ranged resource; releasing the content returned
-  /// withdraws it.
-  Future<FetchedRanged> publish(RangedRequest request);
+  /// Publishes [request]'s ranged resource and completes once its index
+  /// and first stretch are there, fetched at [priority]; releasing the
+  /// content returned withdraws it. [cancelToken] stops the fetch.
+  Future<FetchedRanged> publish(
+    RangedRequest request, {
+    PriorityToken? priority,
+    CancelToken? cancelToken,
+  });
 }

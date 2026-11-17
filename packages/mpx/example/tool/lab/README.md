@@ -185,6 +185,25 @@ replay reached under 90 % of the recording's items of a kind, or under half
 its video frames; `replay.sh` also counts `mpx_video:` lines, the reasons
 clips failed to decode. A flagged run is not an A/B result.
 
+## Video stages in the log
+
+The software video decoder logs each clip's stages as `mpx_video:` lines
+(`adb logcat -s flutter | grep mpx_video`):
+
+| Line | Means |
+| --- | --- |
+| `<key> decode VideoSource.…` | the content reached the decoder (fetch done) |
+| `<key> stalled before the open` / `… the first frame` | its bytes are on their way |
+| `<key> opened VideoInfo(…) at WxH as clip <id>` | open done |
+| `<key> first frame` | first frame decoded |
+| `<key> still uploaded` | first frame on screen next frame: the time to first frame |
+| `<key> (content) did not decode: <reason>` | why it stays on its placeholder |
+| `clip <id> … decoded N, shown M in 2000 ms, …` | every two seconds while it plays |
+
+Time to first frame of a clip is the logcat time of its `still uploaded`
+line minus the time its tile came on screen (or the app start for tiles
+on the first screen); `decode` to `still uploaded` is the decoder's share.
+
 ## Before trusting a number
 
 - The engine's marks reach the trace only with `trace-systrace`, which

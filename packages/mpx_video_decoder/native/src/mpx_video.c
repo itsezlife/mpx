@@ -27,6 +27,8 @@ typedef struct {
   void (*reader_set_priority)(mpx_video_reader *reader, int32_t priority);
   void (*reader_cancel)(mpx_video_reader *reader);
   void (*reader_close)(mpx_video_reader *reader);
+  int64_t (*reader_available)(mpx_video_reader *reader, int64_t offset,
+                              int64_t length);
 } ReaderApi;
 
 /* --- Handle ----------------------------------------------------------- */
@@ -56,6 +58,15 @@ struct MpxVideo {
   /* A read of the source failed (not the end): the open or the decode that
    * ran into it reports MPX_VIDEO_SOURCE_FAILED, not a damaged file. */
   int source_failed;
+  /* A read of a ranged source found its bytes missing: the call answers
+   * MPX_VIDEO_STALLED. */
+  int stalled;
+  /* A packet was cut short by a stall: the next next goes back to the
+   * frame after `resume_ms` first (-1 for the start). */
+  int resume;
+  int64_t resume_ms;
+  /* Bytes past the position next wants present before a packet. */
+  int64_t lookahead;
 
   AVIOContext *avio;
   AVFormatContext *fmt;
@@ -102,11 +113,20 @@ static int read_source(void *opaque, uint8_t *buf, int buf_size) {
         return AVERROR_EOF; /* shorter than it was at open */
       }
       break;
-    case SOURCE_READER:
+    case SOURCE_READER: {
+      /* Only what is there: a missing byte is asked for, never waited on. */
+      int64_t end = h->api->reader_available(h->reader, h->pos, want);
+      if (end < 0) goto failed;
+      if (end <= h->pos) {
+        h->stalled = 1;
+        return AVERROR(EAGAIN);
+      }
+      if (end - h->pos < want) want = end - h->pos;
       n = h->api->reader_read(h->reader, h->pos, buf, want);
       if (n == 0) return AVERROR_EOF;
       if (n < 0) goto failed;
       break;
+    }
   }
   h->pos += n;
   return (int)n;
@@ -175,9 +195,15 @@ static int32_t open_decoder(MpxVideo *h) {
   int r = avformat_open_input(&h->fmt, NULL, NULL, &opts);
   av_dict_free(&opts);
   /* h->fmt is freed and NULL on failure. */
+  if (r < 0)
+    return h->stalled         ? MPX_VIDEO_STALLED
+           : h->source_failed ? MPX_VIDEO_SOURCE_FAILED
+                              : MPX_VIDEO_MALFORMED;
+  r = avformat_find_stream_info(h->fmt, NULL);
+  /* Probing reads packets: one cut short means the bytes are on their way,
+   * not a damaged file. */
+  if (h->stalled) return MPX_VIDEO_STALLED;
   if (r < 0) return h->source_failed ? MPX_VIDEO_SOURCE_FAILED : MPX_VIDEO_MALFORMED;
-  if (avformat_find_stream_info(h->fmt, NULL) < 0)
-    return h->source_failed ? MPX_VIDEO_SOURCE_FAILED : MPX_VIDEO_MALFORMED;
 
   h->stream = av_find_best_stream(h->fmt, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
   if (h->stream < 0) return MPX_VIDEO_UNSUPPORTED;
@@ -314,8 +340,8 @@ int32_t mpx_video_open_file(const char *path, uint32_t target_w, uint32_t target
 }
 
 int32_t mpx_video_open_reader(const void *reader_api, const char *key,
-                              uint32_t target_w, uint32_t target_h,
-                              MpxVideo **out_handle) {
+                              int64_t lookahead, uint32_t target_w,
+                              uint32_t target_h, MpxVideo **out_handle) {
   if (!out_handle) return MPX_VIDEO_INVALID_ARGUMENT;
   *out_handle = NULL;
   const ReaderApi *api = reader_api;
@@ -326,9 +352,19 @@ int32_t mpx_video_open_reader(const void *reader_api, const char *key,
   MpxVideo *h = new_handle(SOURCE_READER, target_w, target_h);
   if (!h) return MPX_VIDEO_INTERNAL;
   h->api = api;
+  h->lookahead = lookahead > 0 ? lookahead : MPX_VIDEO_READER_LOOKAHEAD;
   h->reader = api->reader_open(key);
-  /* Blocks until a response names the length. */
-  int64_t size = h->reader ? api->reader_length(h->reader, 1) : -1;
+  int64_t size = -1;
+  if (h->reader) {
+    size = api->reader_length(h->reader, 0);
+    /* Unknown until a response names it: ask for the first bytes, which
+     * tells it, and come back. */
+    if (size == -1) {
+      int64_t asked = api->reader_available(h->reader, 0, MPX_VIDEO_READER_LOOKAHEAD);
+      mpx_video_free(h);
+      return asked < 0 ? MPX_VIDEO_SOURCE_FAILED : MPX_VIDEO_STALLED;
+    }
+  }
   if (size < 0) {
     mpx_video_free(h);
     return MPX_VIDEO_SOURCE_FAILED;
@@ -415,11 +451,33 @@ static int32_t end_of_stream(MpxVideo *h, uint8_t *dst, size_t stride, int64_t *
   return status == MPX_VIDEO_OK ? MPX_VIDEO_OK : spend(h, status);
 }
 
+/* A stall cut a packet short: the demuxer's state is past bytes it never
+ * got. The AVIO's error is cleared and the stream sought back to the frame
+ * after the last one returned, whose predecessors the seek drops. */
+static int32_t resume_after_stall(MpxVideo *h) {
+  int64_t last = h->resume_ms;
+  int32_t status = last < 0 ? mpx_video_rewind(h) : mpx_video_seek(h, last + 1);
+  /* The seek itself needed bytes that are not there: still to do. */
+  if (status == MPX_VIDEO_OK && h->resume) return MPX_VIDEO_STALLED;
+  return status;
+}
+
+/* Marks a stall that cut a packet short. */
+static int32_t stall_mid_packet(MpxVideo *h) {
+  h->resume = 1;
+  h->resume_ms = h->last_pts_ms;
+  return MPX_VIDEO_STALLED;
+}
+
 int32_t mpx_video_next(MpxVideo *h, uint8_t *dst, size_t stride, int64_t *out_pts_ms) {
   if (!h || !dst || !out_pts_ms) return MPX_VIDEO_INVALID_ARGUMENT;
   if (stride < (size_t)h->target_w * 4) return MPX_VIDEO_BAD_SIZE;
   if (h->state == STATE_DONE) return MPX_VIDEO_END_OF_STREAM;
   if (h->state == STATE_SPENT) return MPX_VIDEO_DECODE_FAILED;
+  if (h->resume) {
+    int32_t status = resume_after_stall(h);
+    if (status != MPX_VIDEO_OK) return status == MPX_VIDEO_STALLED ? status : spend(h, status);
+  }
 
   for (;;) {
     int r = avcodec_receive_frame(h->dec, h->frame);
@@ -457,7 +515,20 @@ int32_t mpx_video_next(MpxVideo *h, uint8_t *dst, size_t stride, int64_t *out_pt
 
     /* The decoder wants a packet. */
     if (h->packets >= MPX_VIDEO_MAX_PACKETS_PER_PASS) return spend(h, MPX_VIDEO_LIMIT_EXCEEDED);
+    if (h->source == SOURCE_READER) {
+      /* No packet is started without room to finish it: the demuxer's
+       * state stays where it is, and nothing needs undoing. */
+      int64_t want = h->lookahead;
+      int64_t need = h->pos + want < h->size ? h->pos + want : h->size;
+      int64_t end = h->api->reader_available(h->reader, h->pos, want);
+      if (end < 0) return spend(h, MPX_VIDEO_SOURCE_FAILED);
+      if (end < need) return MPX_VIDEO_STALLED;
+    }
     r = av_read_frame(h->fmt, h->pkt);
+    if (h->stalled) {
+      av_packet_unref(h->pkt);
+      return stall_mid_packet(h);
+    }
     if (r == AVERROR_EOF && !h->source_failed) {
       h->state = STATE_DRAINING;
       if (avcodec_send_packet(h->dec, NULL) < 0) return spend(h, MPX_VIDEO_DECODE_FAILED);
@@ -477,8 +548,18 @@ int32_t mpx_video_next(MpxVideo *h, uint8_t *dst, size_t stride, int64_t *out_pt
   }
 }
 
+/* A seek starts over from what is there: a stall or a resume pending from
+ * before it no longer applies. */
+static void forget_stall(MpxVideo *h) {
+  h->stalled = 0;
+  h->resume = 0;
+  h->avio->eof_reached = 0;
+  h->avio->error = 0;
+}
+
 int32_t mpx_video_rewind(MpxVideo *h) {
   if (!h) return MPX_VIDEO_INVALID_ARGUMENT;
+  forget_stall(h);
   AVStream *st = h->fmt->streams[h->stream];
   int64_t start = st->start_time != AV_NOPTS_VALUE ? st->start_time : 0;
   /* Fallback chain: by timestamp, by a seek window,
@@ -486,6 +567,13 @@ int32_t mpx_video_rewind(MpxVideo *h) {
   int r = av_seek_frame(h->fmt, h->stream, start, AVSEEK_FLAG_BACKWARD);
   if (r < 0) r = avformat_seek_file(h->fmt, h->stream, INT64_MIN, start, start, 0);
   if (r < 0) r = av_seek_frame(h->fmt, h->stream, 0, AVSEEK_FLAG_BYTE);
+  if (r < 0 && h->stalled) {
+    /* The seek needs bytes that are not there: done by the next next. */
+    h->stalled = 0;
+    h->resume = 1;
+    h->resume_ms = -1;
+    return MPX_VIDEO_OK;
+  }
   if (r < 0) return spend(h, MPX_VIDEO_DECODE_FAILED);
   avcodec_flush_buffers(h->dec);
   h->state = STATE_RUNNING;
@@ -501,6 +589,7 @@ int32_t mpx_video_rewind(MpxVideo *h) {
 
 int32_t mpx_video_seek(MpxVideo *h, int64_t position_ms) {
   if (!h || position_ms < 0) return MPX_VIDEO_INVALID_ARGUMENT;
+  forget_stall(h);
   if (position_ms == 0) return mpx_video_rewind(h);
   AVStream *st = h->fmt->streams[h->stream];
   int64_t start = st->start_time != AV_NOPTS_VALUE ? st->start_time : 0;
@@ -510,6 +599,12 @@ int32_t mpx_video_seek(MpxVideo *h, int64_t position_ms) {
    * dropped all the same. */
   int r = av_seek_frame(h->fmt, h->stream, ts, AVSEEK_FLAG_BACKWARD);
   if (r < 0) r = avformat_seek_file(h->fmt, h->stream, INT64_MIN, ts, ts, 0);
+  if (r < 0 && h->stalled) {
+    h->stalled = 0;
+    h->resume = 1;
+    h->resume_ms = position_ms - 1;
+    return MPX_VIDEO_OK;
+  }
   if (r < 0) {
     int32_t rewound = mpx_video_rewind(h);
     if (rewound != MPX_VIDEO_OK) return rewound;

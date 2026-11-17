@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
@@ -76,11 +77,21 @@ final class VideoAnimationPaintable extends AssetPaintable {
     required ui.Image firstFrame,
     required VideoFrameScheduler scheduler,
     VoidCallback? onDispose,
+    Stream<void>? landed,
+    VoidCallback? onLeftScreen,
   }) : _key = key,
+       _onLeftScreen = onLeftScreen,
        _clip = clip,
        _still = VideoStillPaintable(firstFrame),
        _scheduler = scheduler,
-       _onDispose = onDispose;
+       _onDispose = onDispose {
+    // A clip stalled on its source goes on as soon as bytes land, not at the
+    // scheduler's retry.
+    _landed = landed?.listen((_) => _lease?.wake());
+  }
+
+  StreamSubscription<void>? _landed;
+  final VoidCallback? _onLeftScreen;
 
   /// The largest step of the clock between two paints that counts as time
   /// played; a longer one is a pause that ended.
@@ -191,7 +202,11 @@ final class VideoAnimationPaintable extends AssetPaintable {
   // shows at once, and it plays on from there (the scheduler's *Coming
   // back*).
   @override
-  void leftScreen() => _lease?.releaseUnlessPainted();
+  void leftScreen() {
+    _lease?.releaseUnlessPainted();
+    // Its source stops fetching ahead of a clip nobody sees.
+    _onLeftScreen?.call();
+  }
 
   void _beginPass() {
     _holding = false;
@@ -303,6 +318,7 @@ final class VideoAnimationPaintable extends AssetPaintable {
 
   @override
   void dispose() {
+    unawaited(_landed?.cancel());
     if (_disposed) return;
     _disposed = true;
     _cover?.dispose();

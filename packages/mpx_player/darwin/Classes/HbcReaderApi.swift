@@ -8,7 +8,8 @@ import Foundation
 /// The table's layout mirrors `native/include/http_bytes_cache.h` of
 /// `http_bytes_cache` (a published plugin cannot include a sibling
 /// package's header): an `int32_t` version, then six function pointers. A
-/// table of another version is refused rather than misread.
+/// table of an older version is refused rather than misread; later versions
+/// only append to it, so the six stay where they are.
 final class HbcReaderApi {
   typealias Reader = OpaquePointer
 
@@ -19,7 +20,7 @@ final class HbcReaderApi {
   private typealias PriorityFn = @convention(c) (Reader?, Int32) -> Void
   private typealias ReaderFn = @convention(c) (Reader?) -> Void
 
-  /// The `HBC_ABI_VERSION` this layout matches.
+  /// The oldest `HBC_ABI_VERSION` whose table starts with this layout.
   static let abiVersion: Int32 = 2
 
   /// `HBC_ERR_CANCELLED`: `cancel` woke the read.
@@ -32,11 +33,11 @@ final class HbcReaderApi {
   private let cancelFn: ReaderFn
   private let closeFn: ReaderFn
 
-  /// The table at [address], or nil when there is none or it speaks another
-  /// version.
+  /// The table at [address], or nil when there is none or it speaks an
+  /// older version.
   init?(address: Int64) {
     guard let base = UnsafeRawPointer(bitPattern: Int(address)),
-      base.load(as: Int32.self) == HbcReaderApi.abiVersion
+      base.load(as: Int32.self) >= HbcReaderApi.abiVersion
     else { return nil }
     // The pointers follow the version at pointer alignment.
     let stride = MemoryLayout<UnsafeRawPointer>.stride

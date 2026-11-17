@@ -77,13 +77,19 @@ final class NativeVideoBinding implements VideoBinding {
             height,
             out,
           ),
-          VideoRangedSource(:final readerApi, :final key) => mpxVideoOpenReader(
-            Pointer<Void>.fromAddress(readerApi),
-            key.toNativeUtf8(allocator: arena),
-            width,
-            height,
-            out,
-          ),
+          VideoRangedSource(
+            :final readerApi,
+            :final key,
+            :final lookaheadBytes,
+          ) =>
+            mpxVideoOpenReader(
+              Pointer<Void>.fromAddress(readerApi),
+              key.toNativeUtf8(allocator: arena),
+              lookaheadBytes,
+              width,
+              height,
+              out,
+            ),
         },
       );
       if (status == MpxVideoStatus.invalidArgument &&
@@ -150,6 +156,9 @@ final class NativeVideoBinding implements VideoBinding {
         MpxVideoStatus.endOfStream => const VideoFrameResult(
           VideoFrameStatus.endOfStream,
         ),
+        MpxVideoStatus.stalled => const VideoFrameResult(
+          VideoFrameStatus.stalled,
+        ),
         MpxVideoStatus.invalidArgument => const VideoFrameResult(
           VideoFrameStatus.badArgument,
         ),
@@ -212,6 +221,7 @@ final class NativeVideoBinding implements VideoBinding {
     MpxVideoStatus.badSize => VideoRejection.badSize,
     MpxVideoStatus.internal => VideoRejection.internal,
     MpxVideoStatus.sourceFailed => VideoRejection.source,
+    MpxVideoStatus.stalled => VideoRejection.stalled,
     _ => VideoRejection.malformed,
   };
 }

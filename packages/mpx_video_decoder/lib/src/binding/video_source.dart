@@ -24,6 +24,7 @@ sealed class VideoSource {
   const factory VideoSource.ranged({
     required int readerApi,
     required String key,
+    int lookaheadBytes,
   }) = VideoRangedSource;
 }
 
@@ -61,20 +62,30 @@ final class VideoFileSource extends VideoSource {
 /// A [VideoSource] read through a native ranged reader as its bytes arrive.
 ///
 /// [readerApi] is the address of the reader's function table (the bytes
-/// cache's `hbc_api`, version 2) and [key] the resource it serves. Reads of
-/// bytes that have not landed block the decoding thread until they do, so a
-/// clip opens once its head is there rather than once the whole file is. The
-/// resource must stay published while the clip is open; withdrawing it wakes
-/// a blocked read, which then fails.
+/// cache's `hbc_api`, version 3 or later) and [key] the resource it serves.
+/// Nothing waits for bytes that have not landed: an open or a frame that
+/// needs them asks for them and answers stalled at once
+/// (`VideoRejection.stalled`, `VideoFrameStatus.stalled`), and the caller
+/// tries again when more landed. A clip thus opens once its index and its
+/// first stretch are there, and never holds the decoding thread meanwhile.
+/// The resource must stay published while the clip is open.
 final class VideoRangedSource extends VideoSource {
   /// Creates a source over resource [key] of the reader at [readerApi].
-  const VideoRangedSource({required this.readerApi, required this.key});
+  const VideoRangedSource({
+    required this.readerApi,
+    required this.key,
+    this.lookaheadBytes = 0,
+  });
 
   /// Address of the reader's function table.
   final int readerApi;
 
   /// The resource the reader opens.
   final String key;
+
+  /// Bytes past its read position a clip wants present before it starts
+  /// the next packet; 0 for the wrapper's default (512 KiB).
+  final int lookaheadBytes;
 
   @override
   bool operator ==(Object other) =>

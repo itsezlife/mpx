@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `FetchedRanged.landed` and `FetchedRanged.pause`: a decoder that finds
+  its bytes missing tries again when more landed, and pauses the fetching
+  of content its surface stopped showing.
 - `FetchedContent.ranged`: content read natively as it downloads. Fetched
   content has a release point: the decoder that takes it releases it once
   it no longer reads it, the pipeline releases content no decode takes, and

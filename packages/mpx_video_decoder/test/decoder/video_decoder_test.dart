@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -338,6 +339,43 @@ void main() {
         AssetStage.full,
       ]);
       expect(fake.opensOf(source), 1);
+    });
+
+    test('a ranged clip whose index has not landed opens when bytes land, '
+        'and its playing clip wakes on each landing', () async {
+      const source = VideoSource.ranged(readerApi: 0x1000, key: 'clip');
+      fake.acceptSource(source, _info(64, 64), frameCount: 3);
+      final landed = StreamController<void>.broadcast();
+      addTearDown(landed.close);
+      engine.stalledOpens = 2;
+      final report = _Report();
+
+      decoder.decode(
+        _request(
+          good,
+          content: FetchedContent.ranged(
+            readerApi: 0x1000,
+            key: 'clip',
+            landed: landed.stream,
+          ),
+        ),
+        report,
+      );
+      await pumpEventQueue();
+      expect(report.advances, isEmpty);
+      expect(engine.opens, 1);
+
+      landed.add(null);
+      await pumpEventQueue();
+      landed.add(null);
+      await pumpEventQueue();
+
+      expect(engine.opens, 3);
+      expect(report.advances.map((a) => a.stage), [
+        AssetStage.firstFrame,
+        AssetStage.full,
+      ]);
+      expect(report.failures, isEmpty);
     });
 
     test('a clip read in place costs its frame, not its file', () async {

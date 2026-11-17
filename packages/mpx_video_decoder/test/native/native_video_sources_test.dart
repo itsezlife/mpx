@@ -1,7 +1,6 @@
-import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
-import 'dart:isolate';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -10,6 +9,8 @@ import 'package:mpx_video_decoder/src/binding/binding.dart';
 
 // ignore: always_use_package_imports
 import 'support/fixtures.dart';
+// ignore: always_use_package_imports
+import 'support/mp4_layout.dart';
 // ignore: always_use_package_imports
 import 'support/ranged_reader_table.dart';
 
@@ -106,37 +107,162 @@ void main() {
         }
       });
 
-      test('waits for the bytes it reads, and opens once they land', () async {
+      test('opens without waiting: stalled until its length is told', () {
         final key = freshKey();
-        table!.publish(key, webm.path, landed: 0, lengthKnown: false);
+        table!.publish(key, mp4.path, landed: 0, lengthKnown: false);
+        final source = VideoSource.ranged(readerApi: table.api, key: key);
 
-        var done = false;
-        final opened = _openOnWorker(table, key);
-        unawaited(opened.whenComplete(() => done = true));
-        await _until(() => table.waitsOf(key) == 1);
-        // Blocked on the length. Half the file lands: the reads go on until
-        // they pass it, and wait there.
-        final length = File(webm.path).lengthSync();
-        table.land(key, length ~/ 2);
-        await _until(() => table.waitsOf(key) == 2);
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-        expect(done, isFalse);
+        // On this isolate: nothing blocks, so nothing else has to land it.
+        final before = binding.open(source, width: 32, height: 24);
+        table.land(key, File(mp4.path).lengthSync());
+        final after = binding.open(source, width: 32, height: 24);
 
-        table.land(key, length);
-
-        expect(await opened, (status: 'opened', frames: webm.frames));
+        expect((before as VideoRejected).reason, VideoRejection.stalled);
+        expect(after, isA<VideoOpened>());
+        expect(table.waitsOf(key), 0);
+        binding.dispose((after as VideoOpened).handle);
       });
 
-      test('that is withdrawn while a read waits fails as a source', () async {
+      for (final lookahead in [4096, 1]) {
+        test(
+          'a clip that runs out of bytes stalls and goes on with the '
+          'next frame, none skipped and none twice (lookahead $lookahead)',
+          () {
+            final key = freshKey();
+            final length = File(mp4.path).lengthSync();
+            // The index and a little of the media data.
+            final (_, moovEnd) = boxSpan(mp4.bytes, 'moov');
+            table!.publish(key, mp4.path, landed: moovEnd + 2000);
+            final source = VideoSource.ranged(
+              readerApi: table.api,
+              key: key,
+              lookaheadBytes: lookahead,
+            );
+
+            final frames = <(int, int)>[];
+            var stalls = 0;
+            var landed = moovEnd + 2000;
+            // Probing the stream reads its first packets: the open stalls
+            // until they are there, then opens long before the end.
+            var opened = binding.open(source, width: 32, height: 24);
+            while (opened is VideoRejected &&
+                opened.reason == VideoRejection.stalled) {
+              landed = math.min(landed + 3000, length);
+              table.land(key, landed);
+              opened = binding.open(source, width: 32, height: 24);
+            }
+            // ignore: avoid_print
+            print('opened with $landed of $length bytes');
+            expect(landed, lessThan(length));
+            final handle = (opened as VideoOpened).handle;
+            final target = calloc<Uint8>(32 * 24 * 4);
+            addTearDown(() {
+              calloc.free(target);
+              binding.dispose(handle);
+            });
+            while (true) {
+              final result = binding.nextFrame(
+                handle,
+                target: target,
+                strideBytes: 32 * 4,
+              );
+              if (result.status == VideoFrameStatus.stalled) {
+                stalls++;
+                landed = math.min(landed + 3000, length);
+                table.land(key, landed);
+                continue;
+              }
+              if (result.status != VideoFrameStatus.frame) {
+                expect(result.status, VideoFrameStatus.endOfStream);
+                break;
+              }
+              frames.add((
+                result.ptsMs,
+                _hash(target.asTypedList(32 * 24 * 4)),
+              ));
+            }
+
+            expect(stalls, greaterThan(3));
+            expect(frames, _decodeAll(binding, VideoSource.file(mp4.path)));
+            expect(table.waitsOf(key), 0, reason: 'no read ever waited');
+          },
+        );
+      }
+
+      test('with its moov after the media data, opens once the head and '
+          'the tail are there, not the middle', () {
         final key = freshKey();
-        table!.publish(key, mp4.path, landed: 1024);
+        final file = File('${Directory.systemTemp.path}/moov-at-end-$pid.mp4')
+          ..writeAsBytesSync(moovAtEnd(mp4.bytes));
+        addTearDown(file.deleteSync);
+        final bytes = file.readAsBytesSync();
+        final (moovStart, moovEnd) = boxSpan(bytes, 'moov');
+        table!.publish(key, file.path, landed: 4096);
+        final source = VideoSource.ranged(
+          readerApi: table.api,
+          key: key,
+          lookaheadBytes: 1,
+        );
 
-        final opened = _openOnWorker(table, key);
-        await _until(() => table.waitsOf(key) > 0);
+        final headOnly = binding.open(source, width: 32, height: 24);
+        table.landSpan(key, moovStart, moovEnd);
+        // The index is there; probing wants the first packets of the media
+        // data, from the head on.
+        var landed = 4096;
+        var opened = binding.open(source, width: 32, height: 24);
+        while (opened is VideoRejected &&
+            opened.reason == VideoRejection.stalled) {
+          landed += 3000;
+          table.land(key, landed);
+          opened = binding.open(source, width: 32, height: 24);
+        }
+
+        expect((headOnly as VideoRejected).reason, VideoRejection.stalled);
+        expect(opened, isA<VideoOpened>());
+        final target = calloc<Uint8>(32 * 24 * 4);
+        addTearDown(() => calloc.free(target));
+        final handle = (opened as VideoOpened).handle;
+        addTearDown(() => binding.dispose(handle));
+        var first = binding.nextFrame(
+          handle,
+          target: target,
+          strideBytes: 32 * 4,
+        );
+        while (first.status == VideoFrameStatus.stalled) {
+          landed += 3000;
+          table.land(key, landed);
+          first = binding.nextFrame(
+            handle,
+            target: target,
+            strideBytes: 32 * 4,
+          );
+        }
+        expect(first.status, VideoFrameStatus.frame);
+        expect(landed, lessThan(moovStart));
+      });
+
+      test('that is withdrawn fails as a source, at once', () {
+        final key = freshKey();
+        table!.publish(key, mp4.path);
+        final opened =
+            binding.open(
+                  VideoSource.ranged(readerApi: table.api, key: key),
+                  width: 32,
+                  height: 24,
+                )
+                as VideoOpened;
+        addTearDown(() => binding.dispose(opened.handle));
+        final target = calloc<Uint8>(32 * 24 * 4);
+        addTearDown(() => calloc.free(target));
+
         table.withdraw(key);
+        final result = binding.nextFrame(
+          opened.handle,
+          target: target,
+          strideBytes: 32 * 4,
+        );
 
-        expect(await opened, (status: 'source', frames: 0));
-        expect(table.openReadersOf(key), 0);
+        expect(result.status, VideoFrameStatus.failed);
       });
 
       test('that is not published is rejected as a source', () {
@@ -165,58 +291,6 @@ void main() {
       });
     },
   );
-}
-
-/// Opens [key] of [table] on another isolate, as the decode worker does
-/// (the reads block that isolate), and decodes every frame there.
-Future<({String status, int frames})> _openOnWorker(
-  RangedReaderTable table,
-  String key,
-) {
-  final library = table.libraryPath;
-  return Isolate.run(() {
-    final api = RangedReaderTable.at(library).api;
-    final binding = NativeVideoBinding.probe();
-    final result = binding.open(
-      VideoSource.ranged(readerApi: api, key: key),
-      width: 32,
-      height: 24,
-    );
-    return switch (result) {
-      VideoRejected(:final reason) => (status: reason.name, frames: 0),
-      VideoOpened() => (
-        status: 'opened',
-        frames: _countFrames(binding, result.handle),
-      ),
-    };
-  });
-}
-
-int _countFrames(VideoBinding binding, VideoHandle handle) {
-  final target = calloc<Uint8>(32 * 24 * 4);
-  try {
-    var frames = 0;
-    while (binding
-            .nextFrame(handle, target: target, strideBytes: 32 * 4)
-            .status ==
-        VideoFrameStatus.frame) {
-      frames++;
-    }
-    return frames;
-  } finally {
-    calloc.free(target);
-    binding.dispose(handle);
-  }
-}
-
-Future<void> _until(bool Function() condition) async {
-  final clock = Stopwatch()..start();
-  while (!condition()) {
-    if (clock.elapsed > const Duration(seconds: 10)) {
-      fail('the condition did not hold within 10 seconds');
-    }
-    await Future<void>.delayed(const Duration(milliseconds: 2));
-  }
 }
 
 /// Every frame of [source] at 32 x 24, as its time and a hash of its pixels.

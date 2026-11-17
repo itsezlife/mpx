@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Native reader, ABI 3: `hbc_reader_available` (`NativeRangedReader.available`)
+  says which bytes are there without waiting and asks for the rest as a
+  hint (`HBC_FETCH_HINT`); `NativePublication.stopHints` stops the hints of
+  a reader that stopped reading, keeping what landed. Versions only append
+  to the `hbc_api` table.
+- Ranged resources: an ask more than 32 KiB past a running GET's next byte
+  gets a GET of its own, so the index at the end of a file is fetched before
+  the body that comes before it.
 - `HttpBytesClient(transfers: HttpBytesTransfers())` and
   `HttpBytesClient.transfer`: a GET whose socket, body and file writes run
   on a worker isolate, the calling isolate hearing only the head and each

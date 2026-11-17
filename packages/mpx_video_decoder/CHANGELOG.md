@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- A clip read through a ranged source never waits for bytes: the wrapper
+  asks the reader what is there (`reader_available`) and answers
+  `MPX_VIDEO_STALLED` (`VideoRejection.stalled`, `VideoFrameStatus.stalled`)
+  instead of blocking its worker. It starts no packet without
+  `lookaheadBytes` past its position, and when a packet was cut short it
+  goes back to the frame after the last one returned. The scheduler keeps a
+  stalled clip's frame and clock and gives its turn up until
+  `VideoFrameLease.wake` (the source's `landed` signal) or `stallRetry`; the
+  decoder retries a stalled open or first frame on the same signal; a
+  paintable that leaves the screen pauses its source's fetching. Ranged
+  reader table version 3.
+- `VideoFrameScheduler.logPlayback`: every playing clip logs frames decoded
+  and shown every two seconds, for a clip that does not move on a device.
 - Breaking: `VideoBinding.open` and `VideoEngine.open` take a `VideoSource`:
   bytes, a file path, or a ranged resource of the bytes cache's native
   reader. A file or ranged source is read in place by the decode worker, at

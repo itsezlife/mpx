@@ -80,7 +80,7 @@ final class RangedReaderTable {
       )()
       .address;
 
-  /// Address of a table that claims version 1.
+  /// Address of a table that claims version 2 (no `reader_available`).
   int get oldApi => _library
       .lookupFunction<Pointer<Void> Function(), Pointer<Void> Function()>(
         'fake_reader_api_v1',
@@ -119,6 +119,22 @@ final class RangedReaderTable {
           void Function(Pointer<Utf8>, int)
         >('fake_reader_land')(key.toNativeUtf8(allocator: arena), landed),
   );
+
+  /// Bytes `[start, end)` of [key] are present too, its length known.
+  void landSpan(String key, int start, int end) => using(
+    (arena) =>
+        _library.lookupFunction<
+          Void Function(Pointer<Utf8>, Int64, Int64),
+          void Function(Pointer<Utf8>, int, int)
+        >('fake_reader_land_span')(
+          key.toNativeUtf8(allocator: arena),
+          start,
+          end,
+        ),
+  );
+
+  /// How many times a decoder found bytes of [key] missing and asked.
+  int askedOf(String key) => _stat('fake_reader_asked', key);
 
   /// Withdraws [key]: blocked and later reads fail.
   void withdraw(String key) => using(

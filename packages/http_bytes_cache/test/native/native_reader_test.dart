@@ -55,6 +55,30 @@ void main() {
       expect(NativeRangedReaders.apiAddress, isNot(0));
     });
 
+    test('available answers at once: the bytes present from an offset, and '
+        'asks for what is missing', () async {
+      final publication = await publish();
+      await publication.resource.ensure(const ByteRange(0, 2000));
+      final reader = NativeRangedReader.open(key)!;
+      addTearDown(reader.close);
+      final before = server.requests.length;
+
+      // Never blocks, so it runs on this isolate, which serves the fetches.
+      expect(reader.available(100, 500), 2000);
+      expect(server.requests, hasLength(before));
+      expect(reader.available(5000, 500), 5000);
+
+      // The miss was asked for: it lands without a read waiting on it.
+      final clock = Stopwatch()..start();
+      while (reader.available(5000, 500) < 5500) {
+        if (clock.elapsed > const Duration(seconds: 5)) fail('never landed');
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      expect(server.rangeStarts, contains(5000));
+      // Past the end, everything is there.
+      expect(reader.available(20000, 10), 20000);
+    });
+
     test('a key nobody published opens no reader', () {
       expect(NativeRangedReader.open(const BytesCacheKey('nothing')), isNull);
     });

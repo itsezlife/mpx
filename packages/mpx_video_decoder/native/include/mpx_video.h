@@ -38,6 +38,7 @@ extern "C" {
 /* Status codes. 0 is success, END_OF_STREAM is the one positive non-failure,
  * every failure is negative, and a code means one thing across calls. */
 enum {
+  MPX_VIDEO_STALLED = 2,           /* open, next: a ranged source has not brought the bytes needed yet; nothing waited, try again when more landed */
   MPX_VIDEO_END_OF_STREAM = 1,     /* next: no more frames until a rewind */
   MPX_VIDEO_OK = 0,
   MPX_VIDEO_INVALID_ARGUMENT = -1, /* a null pointer */
@@ -91,8 +92,15 @@ MPX_VIDEO_API int32_t mpx_video_open(const uint8_t *data, size_t len, uint32_t t
 MPX_VIDEO_API int32_t mpx_video_open_file(const char *path, uint32_t target_w,
                         uint32_t target_h, MpxVideo **out_handle);
 
-/* The version of the ranged reader table mpx_video_open_reader reads. */
-enum { MPX_VIDEO_READER_ABI_VERSION = 2 };
+/* The oldest version of the ranged reader table mpx_video_open_reader
+ * reads (the one with reader_available). */
+enum { MPX_VIDEO_READER_ABI_VERSION = 3 };
+
+/* Bytes past the read position a ranged source must hold before next
+ * demuxes another packet, when the open passes no lookahead of its own
+ * (lookahead <= 0): below it, next answers MPX_VIDEO_STALLED and asks for
+ * them, instead of starting a packet it cannot finish. */
+enum { MPX_VIDEO_READER_LOOKAHEAD = 512 * 1024 };
 
 /* Opens the ranged resource `key` through the reader table at reader_api,
  * for frames of target_w x target_h. The table is the bytes cache's native
@@ -101,15 +109,20 @@ enum { MPX_VIDEO_READER_ABI_VERSION = 2 };
  * MPX_VIDEO_INVALID_ARGUMENT). The handle opens a reader of its own, reads
  * through it at offsets, and closes it when freed.
  *
- * Reads block while their bytes are missing: the reader asks its host to
- * fetch them and waits until they land. Open, next, rewind and seek may
- * therefore wait on the network, and must run on a thread that is not the
- * one serving the reader's fetches. A resource withdrawn by its host wakes
- * a blocked read, which then fails with MPX_VIDEO_SOURCE_FAILED. The open
- * waits until the resource's length is known. No byte cap applies, as for
- * mpx_video_open_file. */
+ * Nothing waits for bytes that have not landed: the reader is asked what is
+ * there (reader_available) before each read, and a call that needs missing
+ * bytes asks for them and answers MPX_VIDEO_STALLED at once. An open that
+ * stalls holds nothing: open again when more landed. A next that stalls
+ * keeps the handle: it reads no further packet until `lookahead` bytes
+ * past its position are there (MPX_VIDEO_READER_LOOKAHEAD for <= 0), and
+ * when a packet was cut short it goes back to the frame after the last one
+ * it returned, so the frames come out as they would have, none skipped and
+ * none twice. The open needs the resource's length (it asks for the first
+ * bytes and returns STALLED until a response named it). No byte cap
+ * applies, as for mpx_video_open_file. A resource withdrawn by its host
+ * fails with MPX_VIDEO_SOURCE_FAILED. */
 MPX_VIDEO_API int32_t mpx_video_open_reader(const void *reader_api, const char *key,
-                        uint32_t target_w, uint32_t target_h,
+                        int64_t lookahead, uint32_t target_w, uint32_t target_h,
                         MpxVideo **out_handle);
 
 /* Describes the open video. */
