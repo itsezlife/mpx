@@ -174,33 +174,73 @@ class _ContentViewState extends State<ContentView> {
   // Whether the binding plays: tickers on and in view.
   bool get _shown => _tickers && widget.inView;
 
-  // Whether the view was inside every viewport around it at the last frame
-  // ([ViewportVisibility]). A playing view measures itself after each frame:
-  // a cell laid out and painted outside the window (a shrink-wrapped grid in
-  // a list builds and paints all of them) is hidden as one scrolled out of
-  // a strip is, so only the cells on screen play.
+  // Whether the view was inside every viewport around it when it last
+  // measured ([ViewportVisibility]): a cell laid out and painted outside the
+  // window (a shrink-wrapped grid in a list builds and paints all of them)
+  // is hidden as one scrolled out of a strip is, so only the cells on screen
+  // play. A playing view measures only when something may have moved it
+  // (one of the scroll positions around it, the window, its attach), in the
+  // one pass after the frame; see [_ScreenPass].
   bool _onScreen = true;
-  bool _measuring = false;
 
-  void _measureAfterFrame() {
-    if (_measuring || !widget.preset.profile.animate) return;
-    _measuring = true;
-    // Never asks for a frame: it rides the ones the view or a scroll makes.
-    SchedulerBinding.instance.addPostFrameCallback(_measure);
+  // The scroll positions around the view, innermost first, listened to while
+  // the view plays.
+  List<ScrollPosition> _positions = const [];
+
+  // Re-reads the scroll positions around the view and listens to them; one
+  // that does not play listens to none and counts as on screen.
+  void _watchScreen() {
+    final watch = widget.preset.profile.animate;
+    final positions = <ScrollPosition>[];
+    if (watch) {
+      var scrollable = Scrollable.maybeOf(context);
+      while (scrollable != null) {
+        positions.add(scrollable.position);
+        scrollable = scrollable.context
+            .findAncestorStateOfType<ScrollableState>();
+      }
+      // The window's size moves every viewport: read as a dependency.
+      MediaQuery.maybeSizeOf(context);
+    }
+    if (!_samePositions(positions)) {
+      for (final position in _positions) {
+        position.removeListener(_moved);
+      }
+      _positions = positions;
+      for (final position in positions) {
+        position.addListener(_moved);
+      }
+    }
+    if (watch) {
+      _ScreenPass.watch(this);
+    } else {
+      _ScreenPass.unwatch(this);
+      _setOnScreen(true);
+    }
   }
 
-  void _measure(Duration _) {
-    _measuring = false;
+  bool _samePositions(List<ScrollPosition> positions) {
+    if (positions.length != _positions.length) return false;
+    for (var i = 0; i < positions.length; i++) {
+      if (!identical(positions[i], _positions[i])) return false;
+    }
+    return true;
+  }
+
+  void _moved() => _ScreenPass.mark(this);
+
+  void _measure() {
     if (!mounted) return;
     final box = context.findRenderObject();
     if (box is RenderBox) {
-      final onScreen = ViewportVisibility.of(box).fraction > 0;
-      if (onScreen != _onScreen) {
-        _onScreen = onScreen;
-        if (_binding case final binding?) _apply(binding);
-      }
+      _setOnScreen(ViewportVisibility.of(box).fraction > 0);
     }
-    _measureAfterFrame();
+  }
+
+  void _setOnScreen(bool onScreen) {
+    if (onScreen == _onScreen) return;
+    _onScreen = onScreen;
+    if (_binding case final binding?) _apply(binding);
   }
 
   @override
@@ -208,7 +248,7 @@ class _ContentViewState extends State<ContentView> {
     super.didChangeDependencies();
     _tickers = TickerMode.valuesOf(context).enabled;
     _sync();
-    _measureAfterFrame();
+    _watchScreen();
     _apply(_binding!);
   }
 
@@ -217,7 +257,9 @@ class _ContentViewState extends State<ContentView> {
     super.didUpdateWidget(oldWidget);
     _sync();
     _apply(_binding!);
-    _measureAfterFrame();
+    if (widget.preset.profile.animate != oldWidget.preset.profile.animate) {
+      _watchScreen();
+    }
   }
 
   // A held binding stays visible; the hold goes first when it plays again,
@@ -237,6 +279,10 @@ class _ContentViewState extends State<ContentView> {
 
   @override
   void dispose() {
+    _ScreenPass.unwatch(this);
+    for (final position in _positions) {
+      position.removeListener(_moved);
+    }
     _binding?.detach();
     super.dispose();
   }
@@ -554,6 +600,71 @@ class _RenderContent extends RenderBox {
       scheduler.addPostFrameCallback((_) {
         if (attached) markNeedsPaint();
       });
+    }
+  }
+}
+
+/// The one measuring pass of every playing [ContentView], after the frame in
+/// which something may have moved one: a scroll position around it changed,
+/// the window changed, it attached. A view nothing moved is not measured, so
+/// a still screen of playing cells costs no ancestor walks at all.
+///
+/// A view can also move with no scroll (a list item inserted above it, a
+/// route sliding in): every [_resweep] of frames each watched view is
+/// measured once more, so such a view is right within that time.
+abstract final class _ScreenPass {
+  static final Set<_ContentViewState> _watched = {};
+  static final Set<_ContentViewState> _dirty = {};
+  static bool _scheduled = false;
+  static bool _counting = false;
+  static Duration? _sweptAt;
+
+  /// How often every watched view measures again, whatever moved.
+  static const Duration _resweep = Duration(seconds: 1);
+
+  static void watch(_ContentViewState view) {
+    if (_watched.add(view)) mark(view);
+    if (_counting) return;
+    _counting = true;
+    // Runs in every frame from now on (it cannot be removed): one time
+    // check, and a mark of every view once a second while any is watched.
+    SchedulerBinding.instance.addPersistentFrameCallback(_onFrame);
+  }
+
+  static void unwatch(_ContentViewState view) {
+    _watched.remove(view);
+    _dirty.remove(view);
+  }
+
+  static void mark(_ContentViewState view) {
+    _dirty.add(view);
+    if (_scheduled) return;
+    _scheduled = true;
+    // Never asks for a frame: it rides the one the move made.
+    SchedulerBinding.instance.addPostFrameCallback(_run);
+  }
+
+  static void _onFrame(Duration now) {
+    if (_watched.isEmpty) {
+      _sweptAt = null;
+      return;
+    }
+    final last = _sweptAt;
+    if (last == null || now < last) {
+      _sweptAt = now;
+      return;
+    }
+    if (now - last < _resweep) return;
+    _sweptAt = now;
+    _watched.forEach(mark);
+  }
+
+  static void _run(Duration _) {
+    _scheduled = false;
+    final dirty = List.of(_dirty);
+    _dirty.clear();
+    for (final view in dirty) {
+      view._measure();
     }
   }
 }

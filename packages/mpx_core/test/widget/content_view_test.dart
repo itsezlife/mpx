@@ -118,6 +118,51 @@ void main() {
       expect(priorityOf(keys.first), AssetPriority.preload);
     });
 
+    testWidgets('views measure where they are only when something moved: '
+        'none while nothing does, one pass per frame of a scroll', (
+      tester,
+    ) async {
+      tester.view
+        ..physicalSize = const Size(200, 200)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final keys = [for (var i = 0; i < 30; i++) MediaKey.remote('cell-$i')];
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: AssetCacheProvider(
+            scope: scope,
+            child: ListView(
+              children: [
+                Column(
+                  children: [
+                    for (final key in keys)
+                      ContentView(content: key, preset: _preset),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Playing frames that move nothing: no measuring.
+      ViewportVisibility.debugMeasures = 0;
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(ViewportVisibility.debugMeasures, 0);
+
+      // A scroll: each view measured once in the frame after it moved.
+      final gesture = await tester.startGesture(const Offset(100, 100));
+      await gesture.moveBy(const Offset(0, -40));
+      await tester.pump();
+      await tester.pump();
+      expect(ViewportVisibility.debugMeasures, keys.length);
+      await gesture.up();
+    });
+
     testWidgets('is as large as the preset', (tester) async {
       await tester.pumpWidget(
         host(ContentView(content: _sticker, preset: _preset)),

@@ -28,6 +28,7 @@ final class ViewportVisibility {
 
   /// Measures [box] now; call it after layout.
   factory ViewportVisibility.of(RenderBox box) {
+    debugMeasures++;
     if (!box.attached || !box.hasSize || box.size.isEmpty) return unseen;
     final rect = MatrixUtils.transformRect(
       box.getTransformTo(null),
@@ -73,6 +74,11 @@ final class ViewportVisibility {
       viewportsAway: fraction > 0 ? 0 : _away(rect, closest),
     );
   }
+
+  /// How many times [ViewportVisibility.of] measured, for tests of what
+  /// measuring costs.
+  @visibleForTesting
+  static int debugMeasures = 0;
 
   /// A box that is out of every view: unattached, unsized, empty or not
   /// painted.

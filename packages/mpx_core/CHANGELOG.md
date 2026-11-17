@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A playing `ContentView` measures where it is only when something may have
+  moved it (a scroll position around it, the window, its attach), in one
+  pass after that frame, and every playing view once a second; a still
+  screen of playing cells no longer walks its viewports every frame.
 - A playing `ContentView` measures itself after each frame and is hidden
   when no viewport shows it, so cells laid out and painted off screen (a
   shrink-wrapped grid in a list) stop playing; a hidden binding painted
