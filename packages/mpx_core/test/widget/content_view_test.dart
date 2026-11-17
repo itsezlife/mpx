@@ -1464,6 +1464,42 @@ void main() {
       expect(textures(tester).single.textureId, 9);
     });
 
+    testWidgets('a rounded contain preset clips its texture to the picture\'s '
+        'rounded rect from the first frame, whatever the paintable knows of '
+        'its size', (tester) async {
+      const size = Size(40, 40);
+      final rounded = AssetPreset(
+        size: size,
+        spec: AssetSpec.atDensity(
+          logicalWidth: size.width,
+          logicalHeight: size.height,
+          devicePixelRatio: 2,
+        ),
+        profile: const AssetProfile(animate: true, cornerRadius: 6),
+      );
+      await tester.pumpWidget(
+        host(ContentView(content: _sticker, preset: rounded)),
+      );
+      // A landscape frame 64 x 32: letterboxed in the square box. The
+      // paintable says nothing of its picture's size, as a video's first
+      // frames do not.
+      producer.last.advance(AssetStage.full, animated: true).textureOnAdvance =
+          const AssetTexture(id: 9, width: 64, height: 32);
+      await tester.pump();
+      ticks.tick(const Duration(milliseconds: 16));
+      await tester.pump();
+
+      final layer = textures(tester).single;
+      final clip = _ancestors(layer).whereType<ClipRRectLayer>().first;
+      final box = Offset.zero & size;
+      final picture = Rect.fromCenter(
+        center: box.center,
+        width: 40,
+        height: 20,
+      );
+      expect(clip.clipRRect, RRect.fromRectXY(picture, 6, 6));
+    });
+
     testWidgets('a cover preset fills its box with the frame and is clipped '
         'to the box', (tester) async {
       const size = Size(40, 20);

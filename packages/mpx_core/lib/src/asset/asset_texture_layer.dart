@@ -55,7 +55,14 @@ abstract final class AssetTextureLayer {
 
     final radius = profile.cornerRadius;
     if (radius > 0) {
-      final area = profile.roundedArea(box, paintable.pictureSize);
+      // The frame's own size when the paintable does not know its picture's
+      // yet (a video's first frames): else the corners would round the box,
+      // not the letterboxed picture, until it learns it.
+      final area = profile.roundedArea(
+        box,
+        paintable.pictureSize ??
+            Size(texture.frameWidth.toDouble(), texture.frameHeight.toDouble()),
+      );
       context.pushClipRRect(
         true,
         Offset.zero,
