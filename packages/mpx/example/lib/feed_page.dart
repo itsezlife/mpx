@@ -79,6 +79,10 @@ class _FeedPageState extends State<FeedPage> {
             itemOf: (index) =>
                 FeedItem(widget.clips[index % widget.clips.length]),
             presetOf: (index, profile) => _preset(dpr, profile),
+            // The status control and the badge over every clip, as the home
+            // grid's tiles have.
+            status: const MediaStatusMode.control(),
+            badge: true,
             cellBuilder: (context, index, clip) {
               LabViewer.card(
                 'feed',

@@ -21,6 +21,11 @@ import 'package:mpx_player/src/player/player_trace.dart';
 typedef PlayerBytesPublisher =
     Future<Future<void> Function()> Function(RangedRequest request);
 
+/// Told the bytes a player's [source] holds of its total as they land, while
+/// the player reads it.
+typedef PlayerSourceBytes =
+    void Function(RangedRequest source, int received, int? total);
+
 /// Resolves one HLS playlist's bytes through the bytes cache.
 typedef PlayerPlaylistLoader = Future<Uint8List> Function(BytesRequest request);
 
@@ -72,17 +77,40 @@ final class NativePlayerBackend implements PlayerBackend {
   ///
   /// [playlists] resolves HLS playlists; it should read the store [readers]
   /// serves. Defaults to [BytesResolver.shared].
+  ///
+  /// [onSourceBytes] is told the bytes of each source a player reads as
+  /// they land, and [onSourceClosed] when the player lets it go: the bytes
+  /// a player pulls are the content's download, which a host tells its
+  /// cache (`AssetCacheScope.reportContentBytes`, `endContentBytes`).
   NativePlayerBackend({
     required NativeRangedReaders readers,
     required PlayerSourcesOf sourcesOf,
     IBytesResolver? playlists,
     bool backgroundAudio = false,
     PreparedBuffer preparedBuffer = PreparedBuffer.standard,
+    PlayerSourceBytes? onSourceBytes,
+    void Function(RangedRequest source)? onSourceClosed,
   }) : this.over(
          host: PlayerHostApi(),
          publish: (request) async {
            final publication = await readers.publish(request);
-           return publication.close;
+           final resource = publication.resource;
+           final watch = onSourceBytes == null
+               ? null
+               : resource.events.listen((event) {
+                   if (event is RangeLanded) {
+                     onSourceBytes(
+                       request,
+                       resource.ranges.coveredBytes,
+                       resource.totalLength,
+                     );
+                   }
+                 });
+           return () async {
+             await watch?.cancel();
+             onSourceClosed?.call(request);
+             await publication.close();
+           };
          },
          readerApi: NativeRangedReaders.apiAddress,
          sourcesOf: sourcesOf,

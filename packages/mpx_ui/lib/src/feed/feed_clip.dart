@@ -25,6 +25,12 @@ import 'package:mpx_ui/src/viewer/viewer_policy_scope.dart';
 /// The preset comes from [preset], else the controller's `presetOf`; the
 /// cache from [scope], else the controller's, else the closest
 /// `AssetCacheProvider`. Without a preset or a cache it shows the poster.
+///
+/// [status] and [badge] lay the item's status control and media badge over
+/// it as a `ContentView` does (download, the arc and cancel, nothing once
+/// downloaded; duration, "GIF", the bytes), whatever draws the picture: the
+/// staged view, the clip, or a player over them. They follow the content's
+/// one transfer, so a download a viewer or a player runs shows on the tile.
 class FeedClip extends StatelessWidget {
   /// Shows the closest slot's item.
   const FeedClip({
@@ -33,8 +39,16 @@ class FeedClip extends StatelessWidget {
     this.fit = BoxFit.contain,
     this.scope,
     this.showsBuffering = false,
+    this.status = MediaStatusMode.none,
+    this.badge = false,
     super.key,
   });
+
+  /// The status control over the item (`ContentView.status`).
+  final MediaStatusMode status;
+
+  /// Whether the media badge shows over the item (`ContentView.badge`).
+  final bool badge;
 
   /// The size and decode of the item's media under a profile.
   final AssetPreset Function(AssetProfile profile)? preset;
@@ -84,35 +98,71 @@ class FeedClip extends StatelessWidget {
           );
         }
 
-        final lease = state.lease;
-        if (lease != null) {
-          final loading = ViewerPolicyScope.resolve(context).loading;
-          final player = PlayerOverStandIn(
-            lease: lease,
-            standIn: still(),
-            fit: fit,
-            fadeIn: loading.playerFadeIn,
-            handedOverFadeIn: loading.playerFadeInHandedOver,
-          );
-          if (!showsBuffering) return player;
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              player,
-              ViewerBufferingSpinner(lease: lease, rules: loading),
-            ],
+        Widget picture() {
+          final lease = state.lease;
+          if (lease != null) {
+            final loading = ViewerPolicyScope.resolve(context).loading;
+            final player = PlayerOverStandIn(
+              lease: lease,
+              standIn: still(),
+              fit: fit,
+              fadeIn: loading.playerFadeIn,
+              handedOverFadeIn: loading.playerFadeInHandedOver,
+            );
+            if (!showsBuffering) return player;
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                player,
+                ViewerBufferingSpinner(lease: lease, rules: loading),
+              ],
+            );
+          }
+          final clip = state.clip;
+          if (clip == null ||
+              item == null ||
+              presetOf == null ||
+              scope == null) {
+            return still();
+          }
+          return ContentView(
+            content: item.key,
+            preset: presetOf(clip),
+            scope: scope,
+            visibleFraction: state.fraction,
+            downloadContext: item.downloadContext,
           );
         }
-        final clip = state.clip;
-        if (clip == null || item == null || presetOf == null || scope == null) {
-          return still();
+
+        final overlays = status is! MediaStatusMode$None || badge;
+        if (!overlays ||
+            state.released ||
+            item == null ||
+            presetOf == null ||
+            scope == null) {
+          return picture();
         }
-        return ContentView(
-          content: item.key,
-          preset: presetOf(clip),
-          scope: scope,
-          visibleFraction: state.fraction,
-          downloadContext: item.downloadContext,
+        // The controls over whatever draws the picture: a view of the
+        // still's entry that paints nothing of its own, so the staged view,
+        // the clip and a player all get the same control and badge, and
+        // the control's taps download or cancel the content.
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            // The picture a viewer opens from: the player's frame or the
+            // view's, never the controls over them.
+            ContentPicture(child: picture()),
+            ContentView(
+              key: const ValueKey('mpx-feed-overlays'),
+              content: item.key,
+              preset: presetOf(const AssetProfile()),
+              scope: scope,
+              downloadContext: item.downloadContext,
+              opacity: 0,
+              status: status,
+              badge: badge,
+            ),
+          ],
         );
       },
     );

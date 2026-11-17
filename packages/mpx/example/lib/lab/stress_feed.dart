@@ -157,6 +157,9 @@ class _StressFeedPageState extends State<StressFeedPage> {
               hasAudio: items.sourceAt(index).kind == CorpusKind.video,
             ),
             presetOf: (index, profile) => _preset(dpr, profile),
+            // The status control and the badge over every clip.
+            status: const MediaStatusMode.control(),
+            badge: true,
             cellBuilder: (context, index, clip) {
               LabViewer.card(
                 'stress',
@@ -179,21 +182,7 @@ class _StressFeedPageState extends State<StressFeedPage> {
                       policy: LabViewer.policy(context),
                       onBackdropScale: LabViewer.onBackdropScale,
                     ),
-                    child: ViewerOrigin(
-                      index: index,
-                      child: Stack(
-                        children: [
-                          clip,
-                          // The status control and the badge over the clip.
-                          Positioned.fill(
-                            child: LoadingDemo.overlay(
-                              content: items.keyAt(index),
-                              preset: _preset(dpr, const AssetProfile()),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    child: ViewerOrigin(index: index, child: clip),
                   ),
                 ),
               );

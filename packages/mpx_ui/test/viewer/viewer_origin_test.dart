@@ -462,111 +462,155 @@ void main() {
     ], everyElement(0));
   });
 
-  testWidgets('a download the viewer ran shows on the tile while it runs; '
-      'closed, the tile offers the download with the bytes received', (
-    tester,
-  ) async {
-    scope.dispose();
-    scope = AssetCacheScope(
-      producer: producer,
-      clock: clock,
-      autoDownload: FakeAutoDownloadPolicy(),
-    );
-    final described = MediaDescriptor(
-      key: photoKey(0),
-      kind: MediaKind.still,
-      byteSize: 4718592,
-    );
-    await pumpHost(
+  // A tile of the home grid's kind (a view with its controls) and a feed
+  // tile (a feed list's clip with its controls) follow one rule.
+  for (final feed in [false, true]) {
+    testWidgets('${feed ? 'feed' : 'grid'}: a download the viewer ran shows '
+        'on the tile while it runs; closed, the tile offers the download '
+        'with the bytes received; bytes a player pulls show too', (
       tester,
-      Align(
-        alignment: Alignment.topLeft,
-        child: Builder(
-          builder: (context) => GestureDetector(
-            onTap: () => MediaViewer.show(
-              context,
-              source: source,
-              initialIndex: 0,
-              policy: _policy,
-              scope: scope,
-            ),
-            child: ViewerOrigin(
-              index: 0,
-              child: ContentView(
-                content: photoKey(0),
+    ) async {
+      scope.dispose();
+      scope = AssetCacheScope(
+        producer: producer,
+        clock: clock,
+        autoDownload: FakeAutoDownloadPolicy(),
+      );
+      final described = MediaDescriptor(
+        key: photoKey(0),
+        kind: MediaKind.still,
+        byteSize: 4718592,
+      );
+      AssetPreset preset(AssetProfile profile) => AssetPresets.media(
+        size: const Size(120, 90),
+        devicePixelRatio: 1,
+        profile: profile,
+      );
+      Widget opening(BuildContext context, Widget tile) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => MediaViewer.show(
+          context,
+          source: source,
+          initialIndex: 0,
+          policy: _policy,
+          scope: scope,
+        ),
+        child: ViewerOrigin(index: 0, child: tile),
+      );
+      await pumpHost(
+        tester,
+        feed
+            ? FeedListView(
+                itemCount: 1,
+                itemExtent: 90,
+                itemOf: (index) => FeedItem(photoKey(index)),
+                presetOf: (index, profile) => preset(profile),
                 scope: scope,
-                preset: AssetPresets.media(
-                  size: const Size(120, 90),
-                  devicePixelRatio: 1,
-                  profile: const AssetProfile(),
-                ),
                 status: const MediaStatusMode.control(),
                 badge: true,
+                cellBuilder: (context, index, clip) => Align(
+                  alignment: Alignment.topLeft,
+                  child: SizedBox(
+                    width: 120,
+                    height: 90,
+                    child: opening(context, clip),
+                  ),
+                ),
+              )
+            : Align(
+                alignment: Alignment.topLeft,
+                child: Builder(
+                  builder: (context) => opening(
+                    context,
+                    ContentView(
+                      content: photoKey(0),
+                      scope: scope,
+                      preset: preset(const AssetProfile()),
+                      status: const MediaStatusMode.control(),
+                      badge: true,
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ),
-        ),
-      ),
-    );
-    final tileSpec = producer.last.request.spec;
-    producer.last
-      ..describe(described)
-      ..awaitingUser();
-    String tileBadge() => [
-      for (final text in tester.widgetList<Text>(
-        find.descendant(
-          of: find.byType(ViewerOrigin),
-          matching: find.byType(Text),
-        ),
-      ))
-        text.data,
-    ].join(' | ');
-
-    await openedFrom(tester, 0);
-    await settleOpen(tester);
-    final page = producer.attempts.lastWhere(
-      (attempt) =>
-          attempt.request.key == photoKey(0) &&
-          attempt.request.spec != tileSpec,
-    );
-    expect(page.demand.autoDownload(described), AutoDownload.now);
-    page
-      ..describe(described)
-      ..transfer(1258291, 4718592);
-    await tester.pump();
-    // The tile, hidden under the viewer, follows the download.
-    expect(tileBadge(), contains('1.2 MB / 4.5 MB'));
-
-    viewer(tester).close().ignore();
-    await tester.pump();
-    await tester.pump(_policy.closeDuration + const Duration(milliseconds: 50));
-    await tester.pump(const Duration(milliseconds: 400));
-
-    expect(page.isCancelled, isTrue);
-    expect(
-      find.descendant(
-        of: find.byType(ViewerOrigin),
-        matching: find.byWidgetPredicate(
-          (widget) => widget is Semantics && widget.properties.label != null,
-        ),
-      ),
-      findsOneWidget,
-    );
-    final label = tester
-        .widget<Semantics>(
+      );
+      final tileSpec = producer.last.request.spec;
+      for (final attempt in producer.attempts) {
+        attempt
+          ..describe(described)
+          ..awaitingUser();
+      }
+      await tester.pump();
+      String tileBadge() => [
+        for (final text in tester.widgetList<Text>(
           find.descendant(
             of: find.byType(ViewerOrigin),
-            matching: find.byWidgetPredicate(
-              (widget) =>
-                  widget is Semantics && widget.properties.label != null,
-            ),
+            matching: find.byType(Text),
           ),
-        )
-        .properties
-        .label;
-    expect(label, const MediaStatusStrings().download);
-    expect(tileBadge(), contains('1.2 MB / 4.5 MB'));
-  });
+        ))
+          text.data,
+      ].join(' | ');
+      String? tileControl() => tester
+          .widget<Semantics>(
+            find.descendant(
+              of: find.byType(ViewerOrigin),
+              matching: find.byWidgetPredicate(
+                (widget) =>
+                    widget is Semantics && widget.properties.label != null,
+              ),
+            ),
+          )
+          .properties
+          .label;
+      expect(tileBadge(), contains('4.5 MB'));
+      expect(tileControl(), const MediaStatusStrings().download);
+
+      // A tap beside the control (the control downloads).
+      await tester.tapAt(
+        tester.getBottomRight(find.byType(ViewerOrigin)) - const Offset(6, 6),
+      );
+      await tester.pump();
+      await tester.pump();
+      await settleOpen(tester);
+      final page = producer.attempts.lastWhere(
+        (attempt) =>
+            attempt.request.key == photoKey(0) &&
+            attempt.request.spec != tileSpec,
+      );
+      expect(page.demand.autoDownload(described), AutoDownload.now);
+      page
+        ..describe(described)
+        ..transfer(1258291, 4718592);
+      await tester.pump();
+      // The tile, hidden under the viewer, follows the download.
+      expect(tileBadge(), contains('1.2 MB / 4.5 MB'));
+
+      viewer(tester).close().ignore();
+      await tester.pump();
+      await tester.pump(
+        _policy.closeDuration + const Duration(milliseconds: 50),
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(page.isCancelled, isTrue);
+      expect(tileControl(), const MediaStatusStrings().download);
+      expect(tileBadge(), contains('1.2 MB / 4.5 MB'));
+
+      // A platform player streaming the content (the bytes it pulls
+      // through the native reader): the tile shows them, then what they
+      // left.
+      scope.reportContentBytes(photoKey(0), 2097152, 4718592);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tileBadge(), contains('2.0 MB / 4.5 MB'));
+      expect(tileControl(), const MediaStatusStrings().cancel);
+
+      scope.endContentBytes(photoKey(0));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tileControl(), const MediaStatusStrings().download);
+      expect(tileBadge(), contains('2.0 MB / 4.5 MB'));
+    });
+  }
 
   group('ViewerController', () {
     testWidgets('observes the item, the open state and the controls', (

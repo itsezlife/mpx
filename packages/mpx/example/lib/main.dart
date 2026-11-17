@@ -151,7 +151,7 @@ Future<void> main() async {
       ),
     );
   }
-  final players = await _players(readers);
+  final players = await _players(readers, stack.scope);
   if (kMpxLab) Lab.attach(stack, players);
   runApp(MediaApp(stack: stack, players: players));
 }
@@ -169,11 +169,17 @@ Future<int?> _bundledSize(String file) async {
 /// The platform player over the stack's cache: the viewer plays videos with
 /// sound on it, reading their bytes through the cache's native reader. Null
 /// where there is no native reader (the viewer then shows stills).
-Future<PlayerPool?> _players(NativeRangedReaders? readers) async {
+Future<PlayerPool?> _players(
+  NativeRangedReaders? readers,
+  AssetCacheScope scope,
+) async {
   if (readers == null) return null;
   // The example logs the players' lifecycle, so a problem seen on a device
   // can be traced in its log.
   PlayerDiagnostics.enabled = true;
+  // Which content each source the players read is, so the bytes they pull
+  // count as that content's download on every surface of it.
+  final contentOf = <BytesCacheKey, MediaKey>{};
   final backend = NativePlayerBackend(
     readers: readers,
     sourcesOf: (key) => switch (_fileOf(key)) {
@@ -183,16 +189,35 @@ Future<PlayerPool?> _players(NativeRangedReaders? readers) async {
             url: _urlOf(file),
             // The content's own entry: the player and the software decoder
             // read one sparse file, so a clip is downloaded once.
-            cacheKey: BytesCacheFetcher.cacheKeyOf(key, FetchPart.content),
+            cacheKey: contentOf.keyOf(key),
           ),
           mimeType: _mimeOf(file),
         ),
       ],
       null => const [],
     },
+    onSourceBytes: (source, received, total) {
+      if (contentOf[source.cacheKey] case final key?) {
+        scope.reportContentBytes(key, received, total);
+      }
+    },
+    onSourceClosed: (source) {
+      if (contentOf[source.cacheKey] case final key?) {
+        scope.endContentBytes(key);
+      }
+    },
   );
   // Prepared players only where the device can hold them.
   return PlayerPool(backend: backend, budget: (await backend.device).budget);
+}
+
+extension on Map<BytesCacheKey, MediaKey> {
+  // The bytes cache key of [key]'s content, remembered as [key]'s.
+  BytesCacheKey keyOf(MediaKey key) {
+    final cacheKey = BytesCacheFetcher.cacheKeyOf(key, FetchPart.content);
+    this[cacheKey] = key;
+    return cacheKey;
+  }
 }
 
 String? _fileOf(MediaKey key) =>

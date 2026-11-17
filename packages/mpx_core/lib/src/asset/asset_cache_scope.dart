@@ -274,7 +274,71 @@ final class AssetCacheScope {
     for (final sibling in _byKey[entry.key] ?? const <_Entry>{}) {
       if (sibling.transfer.isActive) return sibling.transfer;
     }
+    if (_pulled[entry.key] case (:final received, :final total)) {
+      return AssetTransfer.receiving(received, total);
+    }
     return entry.transfer;
+  }
+
+  // The bytes of each content a reader outside the cache pulls now
+  // ([reportContentBytes]), while it does.
+  final Map<MediaKey, ({int received, int? total})> _pulled = {};
+
+  /// Tells the scope that a reader outside the cache (a platform player
+  /// streaming the content) holds [received] bytes of [total] of [key]'s
+  /// content now. The content's surfaces show it as the download while no
+  /// spec of the content runs its own, and remember the bytes once it stops
+  /// ([endContentBytes]). All of it completes the content: the specs still
+  /// waiting for it start again and read the local bytes.
+  void reportContentBytes(MediaKey key, int received, int? total) {
+    if (_disposed) return;
+    // Only the bytes changed when the reader was already pulling.
+    final bytesOnly = _pulled.containsKey(key);
+    final value = _monotonic(
+      key,
+      AssetTransfer.receiving(
+        received < 0 ? 0 : received,
+        total == null || total <= 0 ? null : total,
+      ),
+    );
+    if (value case AssetTransfer$Receiving(:final received, :final total)) {
+      if (total != null && received >= total) {
+        _pulled.remove(key);
+        _contentLocal(key);
+      } else {
+        _pulled[key] = (received: received, total: total);
+      }
+    }
+    _signalKey(key, bytesOnly: bytesOnly && _pulled.containsKey(key));
+  }
+
+  /// Tells the scope that the outside reader of [key]'s content stopped
+  /// (the player closed): its surfaces show the bytes it left and await
+  /// the user, unless a spec of the content downloads it.
+  void endContentBytes(MediaKey key) {
+    if (_disposed || _pulled.remove(key) == null) return;
+    _signalKey(key, bytesOnly: false);
+  }
+
+  void _signalKey(MediaKey key, {required bool bytesOnly}) {
+    final entries = _byKey[key];
+    if (entries == null || entries.isEmpty) return;
+    entries.first.signalTransfer(bytesOnly: bytesOnly);
+  }
+
+  // The content's bytes are local now: a spec still waiting for them, or
+  // whose download stopped short, starts again and reads them; one nobody
+  // binds drops its transfer.
+  void _contentLocal(MediaKey key) {
+    _received.remove(key);
+    for (final entry in List<_Entry>.of(_byKey[key] ?? const {})) {
+      if (entry.isFinal || entry.transfer == AssetTransfer.none) continue;
+      if (entry.bindings.isNotEmpty || entry.preloads.isNotEmpty) {
+        _restart(entry);
+      } else {
+        entry.setTransfer(AssetTransfer.none);
+      }
+    }
   }
 
   void _cancelDownload(_Entry entry) {
@@ -829,18 +893,8 @@ final class AssetCacheScope {
     // stopped short, starts again and reads them; without it, a tile whose
     // viewer downloaded the content would show its old download for good.
     if (!whole || entry.stage.index < AssetStage.firstFrame.index) return;
-    for (final sibling in List<_Entry>.of(_byKey[entry.key] ?? const {})) {
-      if (identical(sibling, entry) ||
-          sibling.isFinal ||
-          sibling.transfer == AssetTransfer.none) {
-        continue;
-      }
-      if (sibling.bindings.isNotEmpty || sibling.preloads.isNotEmpty) {
-        _restart(sibling);
-      } else {
-        sibling.setTransfer(AssetTransfer.none);
-      }
-    }
+    _pulled.remove(entry.key);
+    _contentLocal(entry.key);
   }
 
   // The producer can make nothing better than the entry's stage for its spec

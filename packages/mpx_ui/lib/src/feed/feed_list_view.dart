@@ -33,7 +33,15 @@ class FeedListView extends StatefulWidget {
     this.controller,
     this.cellBuilder,
     this.onInViewChanged,
+    this.status = MediaStatusMode.none,
+    this.badge = false,
   });
+
+  /// The status control over each item's media ([FeedClip.status]).
+  final MediaStatusMode status;
+
+  /// Whether the media badge shows over each item ([FeedClip.badge]).
+  final bool badge;
 
   /// How many items the list has.
   final int itemCount;
@@ -146,7 +154,7 @@ class FeedListViewState extends State<FeedListView> {
       itemCount: widget.itemCount,
       itemExtent: widget.itemExtent,
       itemBuilder: (context, index) {
-        const clip = FeedClip();
+        final clip = FeedClip(status: widget.status, badge: widget.badge);
         return FeedSlot(
           index: index,
           item: _itemOf(index),

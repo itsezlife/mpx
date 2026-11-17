@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- `AssetCacheScope.reportContentBytes(key, received, total)` and
+  `endContentBytes(key)`: bytes a reader outside the cache pulls (a
+  platform player streaming the content) show on every surface of the
+  content as its download while no spec runs its own, are kept once it
+  stops (the content then awaits the user with them), and complete the
+  content when they are all of it.
+- `ContentPicture` marks a surface's picture for `ContentView.pictureIn`
+  when it is more than one view (a player over a view).
 - A user's download is of the whole content: `AssetDemand.downloadRequested`
   and `FetchRequest.whole` ask a fetcher that streams content as it plays
   to fetch the rest behind the reads, so the content is kept and a

@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart';
 import 'package:mpx/mpx.dart';
 import 'package:mpx_core/mpx_core.dart';
 
@@ -33,24 +32,6 @@ abstract final class LoadingDemo {
         defaultTargetPlatform,
       ).withContext(manual, const AutoDownloadNetworkLimits.all(_manualRow)),
     ),
-  );
-
-  /// The status control and badge over [content] drawn by another widget
-  /// (a feed clip): a second, invisible view of the same spec, so it shares
-  /// the clip's entry and only lays its controls over it.
-  static Widget overlay({
-    required MediaKey content,
-    required AssetPreset preset,
-  }) => ContentView(
-    content: content,
-    preset: AssetPreset(
-      size: preset.size,
-      spec: preset.spec,
-      profile: const AssetProfile(),
-    ),
-    opacity: 0,
-    status: const MediaStatusMode.control(),
-    badge: true,
   );
 }
 

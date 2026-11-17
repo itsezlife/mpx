@@ -360,6 +360,27 @@ void main() {
       expect(tile.transfer, const AssetTransfer.awaitingUser(4000));
     });
 
+    test('bytes a reader outside the cache pulls (a platform player) show as '
+        'the download, stop with it, and complete the content', () {
+      var signals = 0;
+      tile.addListener(() => signals++);
+
+      scope.reportContentBytes(_key, 1000, 4000);
+      expect(tile.transfer, const AssetTransfer.receiving(1000, 4000));
+      expect(signals, greaterThan(0));
+
+      scope.endContentBytes(_key);
+      expect(tile.transfer, const AssetTransfer.awaitingUser(4000, 1000));
+
+      scope.reportContentBytes(_key, 4000, 4000);
+      expect(tileAttempt.isCancelled, isTrue);
+      expect(
+        producer.attemptsFor(const AssetRequest(_key, _small)),
+        hasLength(2),
+      );
+      expect(tile.transfer, AssetTransfer.none);
+    });
+
     test('cancel from the tile stops the download of the other spec', () {
       scope.attach(_key, _spec, _profile);
       final viewerAttempt = producer.last..transfer(1000, 4000);

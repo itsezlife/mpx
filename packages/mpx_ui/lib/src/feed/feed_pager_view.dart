@@ -40,7 +40,15 @@ class FeedPagerView extends StatefulWidget {
     this.scope,
     this.cellBuilder,
     this.onPageChanged,
+    this.status = MediaStatusMode.none,
+    this.badge = false,
   });
+
+  /// The status control over each page's media ([FeedClip.status]).
+  final MediaStatusMode status;
+
+  /// Whether the media badge shows over each page ([FeedClip.badge]).
+  final bool badge;
 
   /// The players.
   final PlayerPool pool;
@@ -191,6 +199,8 @@ class FeedPagerViewState extends State<FeedPagerView> {
           fit: widget.fit,
           poster: widget.posterBuilder?.call(context, index),
           showsBuffering: true,
+          status: widget.status,
+          badge: widget.badge,
         );
         return FeedSlot(
           index: index,

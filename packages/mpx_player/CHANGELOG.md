@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `NativePlayerBackend(onSourceBytes:, onSourceClosed:)`: told the bytes of
+  each source a player reads as they land, and when it lets the source go,
+  so a host counts what the player pulls as the content's download
+  (`AssetCacheScope.reportContentBytes`, `endContentBytes`).
+
 - `PlatformStillDecoder` (`native.dart`): a fallback decoder for video
   that draws a clip's first frame with the platform (Android's metadata
   retriever over the bytes cache's native reader; Apple's asset image

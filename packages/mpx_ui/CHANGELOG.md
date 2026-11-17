@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Feed items get the media stages contract of any tile:
+  `FeedClip(status:, badge:)`, and `status` / `badge` on `FeedListView` and
+  `FeedPagerView`, lay the status control and the media badge over the
+  item whatever draws it (staged view, clip, player). They follow the
+  content's one transfer, the auto-download policy of the item's tag and
+  the viewer-close rule; the picture under them is a `ContentPicture`, so
+  a viewer opening from the item morphs from the picture alone.
+
 - A viewer video a player plays has one centre control: the page's
   download radial (cancel and the arc of the content's bytes) until the
   player's first frame, with the buffering spinner held back while it
