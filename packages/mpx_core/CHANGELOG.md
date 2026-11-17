@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `PreviewStore` (`AssetPipeline.previews`; `FakePreviewStore` and
+  `PreviewStoreContract` in `testing.dart`): content whose descriptor has
+  no preview reads a stored one, and derives one from its first decoded
+  frame (at most 40 px, PNG, unblurred, once per content per process)
+  when the store has none. Vector animations derive none.
 - `MediaLoadingStyle` (`stages`: `MediaStageStyle`; `$Android`, `$IOS`,
   `$Desktop`, `forPlatform`, `copyWith`) and `MediaLoadingStyleScope`,
   resolved from the theme's platform. `ContentView` rises through stages

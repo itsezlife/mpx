@@ -13,6 +13,7 @@ export 'src/pipeline/testing/decoder_contract.dart';
 export 'src/pipeline/testing/fake_decoder.dart';
 export 'src/pipeline/testing/fake_fetcher.dart';
 export 'src/pipeline/testing/fake_media_resolver.dart';
+export 'src/pipeline/testing/fake_preview_store.dart';
 export 'src/pipeline/testing/manual_clock.dart';
 export 'src/pipeline/testing/media_resolver_contract.dart';
 export 'src/playback/testing/manual_playback_lifecycle_source.dart';

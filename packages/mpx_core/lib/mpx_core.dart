@@ -53,6 +53,7 @@ export 'src/pipeline/cancellation_token.dart';
 export 'src/pipeline/content_fetcher.dart';
 export 'src/pipeline/decoder.dart';
 export 'src/pipeline/media_resolver.dart';
+export 'src/pipeline/preview_store.dart';
 export 'src/playback/playback_activity.dart';
 export 'src/playback/playback_clock.dart'
     show PlaybackClock, PlaybackSubscription;

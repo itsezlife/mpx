@@ -39,6 +39,8 @@ import 'pipeline/fake_adapters_contract_test.dart'
     as fake_adapters_contract_test;
 import 'pipeline/fake_media_resolver_contract_test.dart'
     as fake_media_resolver_contract_test;
+import 'pipeline/pipeline_derived_preview_test.dart'
+    as pipeline_derived_preview_test;
 import 'pipeline/pipeline_download_test.dart' as pipeline_download_test;
 import 'pipeline/pipeline_flow_test.dart' as pipeline_flow_test;
 import 'pipeline/pipeline_offline_test.dart' as pipeline_offline_test;
@@ -112,6 +114,7 @@ void main() {
     'fake_media_resolver_contract_test',
     fake_media_resolver_contract_test.main,
   );
+  group('pipeline_derived_preview_test', pipeline_derived_preview_test.main);
   group('pipeline_download_test', pipeline_download_test.main);
   group('pipeline_flow_test', pipeline_flow_test.main);
   group('pipeline_offline_test', pipeline_offline_test.main);
