@@ -2,7 +2,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
-import 'package:mpx_core/src/image/image_paintable.dart';
 
 final class _Recording implements ui.Canvas {
   final List<({ui.Rect src, ui.Rect dst})> draws = [];

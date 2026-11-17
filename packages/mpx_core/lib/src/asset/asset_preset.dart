@@ -33,6 +33,14 @@ final class AssetPreset {
   /// How the surface uses the asset.
   final AssetProfile profile;
 
+  /// Whether the surface is a circle: its profile's corner radius rounds
+  /// the shorter side of [size] whole ([AssetPresets.round]). A round
+  /// surface draws its stand-ins enlarged inside the circle
+  /// (`MediaStageStyle.roundPreviewScale`) and its status control at the
+  /// round size (`MediaStatusStyle.roundVideoDiameter`).
+  bool get isRound =>
+      profile.cornerRadius > 0 && profile.cornerRadius * 2 >= size.shortestSide;
+
   @override
   bool operator ==(Object other) =>
       other is AssetPreset &&
@@ -47,8 +55,8 @@ final class AssetPreset {
   String toString() => 'AssetPreset($size, $spec, $profile)';
 }
 
-/// Recipes for the presets a host builds: a square box, and a box of the
-/// media's own proportion with a capped decode.
+/// Recipes for the presets a host builds: a square box, a circle, and a box
+/// of the media's own proportion with a capped decode.
 ///
 /// A host names the presets of its own surfaces (a grid cell, media set in
 /// text, media shown on its own) on top of these, with the size and playback
@@ -73,6 +81,19 @@ abstract final class AssetPresets {
       decodeMode: decodeMode,
     ),
     profile: profile,
+  );
+
+  /// A circle of [diameter] logical pixels decoded at [devicePixelRatio]
+  /// (a round video): a [square] whose profile, otherwise as [profile] says,
+  /// clips the picture to the circle (`AssetProfile.cornerRadius`).
+  static AssetPreset round({
+    required double diameter,
+    required double devicePixelRatio,
+    required AssetProfile profile,
+  }) => square(
+    extent: diameter,
+    devicePixelRatio: devicePixelRatio,
+    profile: profile.copyWith(cornerRadius: diameter / 2),
   );
 
   /// The longest side, in pixels, an animation is decoded at by

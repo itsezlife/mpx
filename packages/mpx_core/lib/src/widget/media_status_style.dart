@@ -186,6 +186,7 @@ final class MediaStatusStyle {
     this.discHoverColor,
     this.hoverDuration = Duration.zero,
     this.downloadCancelPhases = const (0.5, 0.2, 0.3),
+    this.roundBufferingDelay = const Duration(milliseconds: 500),
   });
 
   /// The disc of a control.
@@ -197,6 +198,10 @@ final class MediaStatusStyle {
 
   /// The disc over a round video.
   final double roundVideoDiameter;
+
+  /// How long a round video's playback buffers before a host shows the
+  /// buffering spinner over it: a spell shorter than this shows none.
+  final Duration roundBufferingDelay;
 
   /// Where a compact control sits from the top-left corner of the media.
   final Offset compactOffset;
@@ -328,11 +333,13 @@ final class MediaStatusStyle {
   /// least about 10°, the whole arc turning once per 1.5 s; a new progress
   /// moves linearly over 0.2 s plus up to 0.45 s for a step above a
   /// quarter. The disc scales from a dot and fades in 200 ms; icons scale
-  /// and fade in 200 ms. A compact control is 32 pt.
+  /// and fade in 200 ms. A compact control is 32 pt, a round video's 54 pt,
+  /// and a round video shows its buffering spinner after 750 ms.
   static const MediaStatusStyle $IOS = MediaStatusStyle(
     diameter: 50,
     compactDiameter: 32,
     roundVideoDiameter: 54,
+    roundBufferingDelay: Duration(milliseconds: 750),
     compactOffset: Offset(6, 6),
     discColor: Color.from(alpha: 0.45, red: 0, green: 0, blue: 0),
     discColorDark: Color.from(alpha: 0.6, red: 0, green: 0, blue: 0),
@@ -410,6 +417,7 @@ final class MediaStatusStyle {
     double? diameter,
     double? compactDiameter,
     double? roundVideoDiameter,
+    Duration? roundBufferingDelay,
     Offset? compactOffset,
     Color? discColor,
     Color? discColorDark,
@@ -439,6 +447,7 @@ final class MediaStatusStyle {
     diameter: diameter ?? this.diameter,
     compactDiameter: compactDiameter ?? this.compactDiameter,
     roundVideoDiameter: roundVideoDiameter ?? this.roundVideoDiameter,
+    roundBufferingDelay: roundBufferingDelay ?? this.roundBufferingDelay,
     compactOffset: compactOffset ?? this.compactOffset,
     discColor: discColor ?? this.discColor,
     discColorDark: discColorDark ?? this.discColorDark,
@@ -473,6 +482,7 @@ final class MediaStatusStyle {
       other.diameter == diameter &&
       other.compactDiameter == compactDiameter &&
       other.roundVideoDiameter == roundVideoDiameter &&
+      other.roundBufferingDelay == roundBufferingDelay &&
       other.compactOffset == compactOffset &&
       other.discColor == discColor &&
       other.discColorDark == discColorDark &&
@@ -504,6 +514,7 @@ final class MediaStatusStyle {
     diameter,
     compactDiameter,
     roundVideoDiameter,
+    roundBufferingDelay,
     compactOffset,
     discColor,
     discColorDark,

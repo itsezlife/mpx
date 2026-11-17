@@ -74,6 +74,9 @@ final class FakeAssetAttempt implements AssetTask {
   /// Reports that the work was cancelled by its own side.
   void cancelled() => _progress.cancelled();
 
+  /// Ends the attempt at the stage reached, final for its spec.
+  void bestReached() => _progress.bestReached();
+
   @override
   void cancel() => isCancelled = true;
 }

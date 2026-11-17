@@ -60,6 +60,10 @@ fetched, and a failure left the arc on.
 - Transitions are style values per platform (`MediaStageStyle`): a fade of a
   set length, a scale-in, or a hard swap (0 ms). A stage that arrives within
   the attach frame (a memory hit) is drawn without a fade.
+- A round surface (a round video; `AssetPresets.round`) draws its stand-ins
+  enlarged inside its circle (`MediaStageStyle.roundPreviewScale`), its
+  control at the round size, and an optional fill in the host's colour
+  under everything until the content has faded in (`ContentView.underlay`).
 
 ### Transfer
 

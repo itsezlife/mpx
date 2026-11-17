@@ -96,6 +96,15 @@ import 'package:mpx_core/src/widget/viewport_visibility.dart';
 /// that stage: a surface whose own picture is sharper than any stand-in (the
 /// frame a viewer opened from) keeps it until the content's frame.
 ///
+/// ## Round
+///
+/// A round preset (`AssetPreset.isRound`, `AssetPresets.round`) draws its
+/// stand-ins (preview, thumbnail) enlarged inside its circle by the style's
+/// `roundPreviewScale`, and its status control at the round size
+/// (`MediaStatusStyle.roundVideoDiameter`). An [underlay] fills the
+/// picture's rounded area (the circle) under everything until the content
+/// has faded in, as a round video sits on its bubble's colour.
+///
 /// ## Status and badge
 ///
 /// [status] lays a status control over the content (`MediaStatusMode`): a
@@ -132,6 +141,7 @@ class ContentView extends StatefulWidget {
     this.loadingStyle,
     this.downloadContext,
     this.requestsDownload = false,
+    this.underlay,
     super.key,
   }) : assert(opacity >= 0 && opacity <= 1, 'opacity must be within 0..1'),
        assert(
@@ -220,6 +230,11 @@ class ContentView extends StatefulWidget {
   /// page the user opened is: it downloads whatever the auto-download policy
   /// says (`AssetBinding.download`), as soon as the view attaches.
   final bool requestsDownload;
+
+  /// A fill of the picture's rounded area (the circle of a round preset)
+  /// under everything, until the content has faded in; null for none. A
+  /// round video passes its bubble's colour.
+  final Color? underlay;
 
   @override
   State<ContentView> createState() => _ContentViewState();
@@ -403,6 +418,8 @@ class _ContentViewState extends State<ContentView> {
         context,
         style: widget.loadingStyle,
       ).stages,
+      underlay: widget.underlay,
+      round: preset.isRound,
     );
     if (preset.profile.animate) view = RepaintBoundary(child: view);
     if (widget.status is! MediaStatusMode$None || widget.badge) {
@@ -413,6 +430,7 @@ class _ContentViewState extends State<ContentView> {
         onPlay: widget.onPlay,
         statusBuilder: widget.statusBuilder,
         width: preset.size.width,
+        round: preset.isRound,
         child: view,
       );
     }
@@ -436,6 +454,8 @@ class _ContentLeaf extends LeafRenderObjectWidget {
     required this.ticking,
     required this.clock,
     required this.stages,
+    required this.underlay,
+    required this.round,
   });
 
   final AssetBinding binding;
@@ -450,6 +470,8 @@ class _ContentLeaf extends LeafRenderObjectWidget {
   final bool ticking;
   final PlaybackClock clock;
   final MediaStageStyle stages;
+  final Color? underlay;
+  final bool round;
 
   @override
   RenderObject createRenderObject(BuildContext context) => _RenderContent(
@@ -465,6 +487,8 @@ class _ContentLeaf extends LeafRenderObjectWidget {
     ticking: ticking,
     clock: clock,
     stages: stages,
+    underlay: underlay,
+    round: round,
   );
 
   @override
@@ -481,7 +505,9 @@ class _ContentLeaf extends LeafRenderObjectWidget {
       ..placeholderUntil = placeholderUntil
       ..ticking = ticking
       ..clock = clock
-      ..stages = stages;
+      ..stages = stages
+      ..underlay = underlay
+      ..round = round;
   }
 }
 
@@ -499,6 +525,8 @@ class _RenderContent extends RenderBox {
     required bool ticking,
     required PlaybackClock clock,
     required MediaStageStyle stages,
+    required Color? underlay,
+    required bool round,
   }) : _binding = binding,
        _fade = AssetFade(binding),
        _placeholder = placeholder,
@@ -511,7 +539,9 @@ class _RenderContent extends RenderBox {
        _placeholderUntil = placeholderUntil,
        _ticking = ticking,
        _clock = clock,
-       _stages = stages;
+       _stages = stages,
+       _underlay = underlay,
+       _round = round;
 
   AssetBinding _binding;
   AssetFade _fade;
@@ -586,6 +616,23 @@ class _RenderContent extends RenderBox {
     markNeedsPaint();
   }
 
+  Color? _underlay;
+
+  set underlay(Color? value) {
+    if (_underlay == value) return;
+    _underlay = value;
+    markNeedsPaint();
+  }
+
+  // Whether the box is a circle: stand-ins are drawn enlarged inside it.
+  bool _round;
+
+  set round(bool value) {
+    if (_round == value) return;
+    _round = value;
+    markNeedsPaint();
+  }
+
   set placeholderUntil(AssetStage value) {
     if (_placeholderUntil == value) return;
     _placeholderUntil = value;
@@ -657,6 +704,7 @@ class _RenderContent extends RenderBox {
     // yet, or a first frame the profile does not show yet) the view's own
     // replaces it; nothing plays, so there is no texture to composite.
     final bare = identical(_binding.paintable, _scopePlaceholder);
+    if (_underlay != null) _paintUnderlay(context.canvas, box);
     final fill = bare ? _stages.fill : null;
     if (fill != null) {
       context.canvas.drawRect(
@@ -684,16 +732,16 @@ class _RenderContent extends RenderBox {
     }
     final canvas = context.canvas;
     final stage = _binding.readiness.stage;
-    final scale = fade < 1 && stage.index >= AssetStage.firstFrame.index
+    final enlarged = _enlargesStandIn(stage);
+    final scale = enlarged
+        ? _stages.roundPreviewScale
+        : fade < 1 && stage.index >= AssetStage.firstFrame.index
         ? 1 + _stages.contentScaleIn * (1 - Curves.easeIn.transform(fade))
         : 1.0;
     if (scale != 1) {
-      final centre = box.center;
-      canvas
-        ..save()
-        ..translate(centre.dx, centre.dy)
-        ..scale(scale, scale)
-        ..translate(-centre.dx, -centre.dy);
+      canvas.save();
+      if (enlarged) _clipRound(canvas, box);
+      _scaleAbout(canvas, box.center, scale);
     }
     _binding.paint(
       canvas,
@@ -706,6 +754,43 @@ class _RenderContent extends RenderBox {
     if (stage == AssetStage.preview && _stages.previewWash != null) {
       _paintWash(canvas, box, opacity);
     }
+  }
+
+  // Whether [stage] is a stand-in a round box draws enlarged in its circle.
+  bool _enlargesStandIn(AssetStage stage) =>
+      _round &&
+      _stages.roundPreviewScale != 1 &&
+      (stage == AssetStage.preview || stage == AssetStage.placeholder);
+
+  void _clipRound(Canvas canvas, Rect box) =>
+      canvas.clipRRect(_roundedArea(box));
+
+  static void _scaleAbout(Canvas canvas, Offset centre, double scale) => canvas
+    ..translate(centre.dx, centre.dy)
+    ..scale(scale, scale)
+    ..translate(-centre.dx, -centre.dy);
+
+  // The picture's rounded area: the circle of a round box.
+  RRect _roundedArea(Rect box) {
+    final profile = _binding.profile;
+    return RRect.fromRectAndRadius(
+      profile.roundedArea(box, _binding.paintable.pictureSize),
+      Radius.circular(profile.cornerRadius),
+    );
+  }
+
+  // The host's fill under everything until the content has faded in: below
+  // the first frame, and while the content still rises.
+  void _paintUnderlay(Canvas canvas, Rect box) {
+    final rising =
+        _binding.readiness.stage.index < AssetStage.firstFrame.index ||
+        _fade.opacityAt(_frameTime, _riseLength) < 1;
+    if (!rising) return;
+    final underlay = _underlay!;
+    canvas.drawRRect(
+      _roundedArea(box),
+      Paint()..color = underlay.withValues(alpha: underlay.a * _opacity),
+    );
   }
 
   // How long the rise from [from] to [to] fades: a preview shows at once, a
@@ -781,13 +866,7 @@ class _RenderContent extends RenderBox {
   ) {
     // An outranking placeholder was on screen until now, not the stand-in.
     final ownFirst = _standsIn && _placeholderUntil != AssetStage.none;
-    if (ownFirst ||
-        !_binding.paintStandIn(
-          canvas,
-          box,
-          contentOpacity: fade,
-          outline: outline,
-        )) {
+    if (ownFirst || !_paintStandIn(canvas, box, fade, outline)) {
       _placeholder.paint(
         canvas,
         box,
@@ -801,6 +880,31 @@ class _RenderContent extends RenderBox {
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (attached) markNeedsPaint();
     });
+  }
+
+  // The stand-in the binding kept, under content rising at [fade]; a round
+  // box draws it enlarged in its circle, as it was before the rise.
+  bool _paintStandIn(
+    Canvas canvas,
+    Rect box,
+    double fade,
+    OutlineLook? outline,
+  ) {
+    // A kept stand-in is a preview or a thumbnail, both enlarged.
+    final enlarged = _round && _stages.roundPreviewScale != 1;
+    if (enlarged) {
+      canvas.save();
+      _clipRound(canvas, box);
+      _scaleAbout(canvas, box.center, _stages.roundPreviewScale);
+    }
+    final painted = _binding.paintStandIn(
+      canvas,
+      box,
+      contentOpacity: fade,
+      outline: outline,
+    );
+    if (enlarged) canvas.restore();
+    return painted;
   }
 }
 
@@ -819,6 +923,7 @@ class _Overlays extends StatefulWidget {
     required this.onPlay,
     required this.statusBuilder,
     required this.width,
+    required this.round,
     required this.child,
   });
 
@@ -828,6 +933,8 @@ class _Overlays extends StatefulWidget {
   final VoidCallback? onPlay;
   final MediaStatusBuilder? statusBuilder;
   final double width;
+  // Whether the view is a circle: its centre control is the round size.
+  final bool round;
   final Widget child;
 
   @override
@@ -889,6 +996,7 @@ class _OverlaysState extends State<_Overlays> {
     final style = MediaLoadingStyleScope.resolve(context);
     final binding = widget.binding;
     final corner = style.status.compactOffset;
+    final centre = widget.round ? style.status.roundVideoDiameter : null;
     Widget compact() => Positioned(
       left: corner.dx,
       top: corner.dy,
@@ -929,6 +1037,7 @@ class _OverlaysState extends State<_Overlays> {
                 MediaStatusControl(
                   status: const MediaStatus.icon(MediaStatusIcon.play),
                   onTap: widget.onPlay,
+                  diameter: centre,
                 ),
               ),
             ),
@@ -949,6 +1058,7 @@ class _OverlaysState extends State<_Overlays> {
                   binding,
                   playAction: playAction,
                   onPlay: widget.onPlay,
+                  diameter: centre,
                 ),
               ),
             ),

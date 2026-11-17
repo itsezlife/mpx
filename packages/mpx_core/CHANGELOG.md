@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Round video: `AssetPresets.round(diameter:, devicePixelRatio:, profile:)`
+  clips a square to its circle, and `AssetPreset.isRound` tells such a
+  preset. A round `ContentView` draws its preview and thumbnail enlarged
+  inside the circle (`MediaStageStyle.roundPreviewScale`, 1.2) and its
+  centre control at `MediaStatusStyle.roundVideoDiameter` (44, iOS 54).
+  `ContentView.underlay` fills the picture's rounded area in a host colour
+  until the content has faded in. `MediaStatusStyle.roundBufferingDelay`
+  (500 ms, iOS 750 ms) is how long a round video buffers before a host
+  shows its spinner.
 - Fallback decoders: `DecoderRegistry.registerFallback(kind, decoder)`
   decodes content the kind's decoder reports as
   `DecodeFailure.unsupported` (a codec this build was built without). The

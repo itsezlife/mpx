@@ -81,6 +81,7 @@ import 'texture/platform/platform_host_test.dart' as platform_host_test;
 import 'texture/platform/texture_table_test.dart' as texture_table_test;
 import 'texture/texture_frame_region_test.dart' as texture_frame_region_test;
 import 'widget/asset_cache_provider_test.dart' as asset_cache_provider_test;
+import 'widget/content_view_round_test.dart' as content_view_round_test;
 import 'widget/content_view_status_test.dart' as content_view_status_test;
 import 'widget/content_view_test.dart' as content_view_test;
 import 'widget/media_badge_test.dart' as media_badge_test;
@@ -106,6 +107,7 @@ void main() {
   group('svg_path_parser_test', svg_path_parser_test.main);
   group('asset_cache_churn_bench_test', asset_cache_churn_bench_test.main);
   group('asset_cache_ratio_bench_test', asset_cache_ratio_bench_test.main);
+  group('content_view_round_test', content_view_round_test.main);
   group('content_view_status_test', content_view_status_test.main);
   group('device_inputs_test', device_inputs_test.main);
   group('media_badge_test', media_badge_test.main);
