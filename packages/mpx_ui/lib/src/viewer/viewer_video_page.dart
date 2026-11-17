@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_ui/src/viewer/gallery_source.dart';
+import 'package:mpx_ui/src/viewer/viewer_loading.dart';
 import 'package:mpx_ui/src/viewer/viewer_photo_page.dart';
 import 'package:mpx_ui/src/viewer/viewer_policy.dart';
 import 'package:mpx_ui/src/viewer/viewer_tokens.dart';
@@ -14,8 +15,10 @@ import 'package:mpx_ui/src/viewer/viewer_video_session.dart';
 ///
 /// While [active] it plays [item] on [players] through a
 /// [ViewerVideoSession] (the logic `MediaViewer` uses too) and shows
-/// [standIn] until the first frame; inactive it shows [standIn] and holds no
-/// player, so a pager keeps one lease for the page on screen.
+/// [standIn] until the first frame, then fades the player in over it
+/// (`ViewerLoadingRules.playerFadeIn`), with the policy's buffering spinner
+/// while the player waits for its media; inactive it shows [standIn] and
+/// holds no player, so a pager keeps one lease for the page on screen.
 class ViewerVideoPage extends StatefulWidget {
   /// Creates a page for [item].
   const ViewerVideoPage({
@@ -170,13 +173,19 @@ class ViewerVideoPageState extends State<ViewerVideoPage> {
       onHoldEnd: () => session?.holdEnd(),
       child: session == null
           ? standIn
-          : PlayerView(lease: session.lease, standIn: standIn),
+          : PlayerOverStandIn(
+              lease: session.lease,
+              standIn: standIn,
+              fadeIn: policy.loading.playerFadeIn,
+              handedOverFadeIn: policy.loading.playerFadeInHandedOver,
+            ),
     );
     if (session == null) return page;
     return Stack(
       fit: StackFit.expand,
       children: [
         page,
+        ViewerBufferingSpinner(lease: session.lease, rules: policy.loading),
         ValueListenableBuilder<bool>(
           valueListenable: _controls,
           builder: (context, visible, _) => ViewerVideoControls(

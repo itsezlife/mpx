@@ -25,6 +25,8 @@ export 'src/viewer/media_viewer.dart';
 export 'src/viewer/origin_bridge.dart';
 export 'src/viewer/viewer_actions.dart';
 export 'src/viewer/viewer_chrome_overlay.dart';
+export 'src/viewer/viewer_loading.dart'
+    show ViewerBufferingSpinner, ViewerPageStatus;
 export 'src/viewer/viewer_origin.dart';
 export 'src/viewer/viewer_photo_page.dart';
 export 'src/viewer/viewer_policy.dart';

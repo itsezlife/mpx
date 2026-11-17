@@ -24,6 +24,8 @@ final class GalleryItem {
     this.kind = GalleryMediaKind.photo,
     this.size,
     this.hasAudio = true,
+    this.descriptor,
+    this.downloadContext,
   });
 
   /// Which media.
@@ -40,16 +42,29 @@ final class GalleryItem {
   /// reads it.
   final bool hasAudio;
 
+  /// What the host knows about the media (its preview, thumbnail, size and
+  /// byte size), or null. The viewer tells the cache before a page of it
+  /// attaches, so the page draws the preview and the thumbnail of media the
+  /// cache has not seen.
+  final MediaDescriptor? descriptor;
+
+  /// Where the item shows, for the cache's auto-download policy: the page's
+  /// tag. Null uses the policy's default.
+  final AutoDownloadContext? downloadContext;
+
   @override
   bool operator ==(Object other) =>
       other is GalleryItem &&
       other.key == key &&
       other.kind == kind &&
       other.size == size &&
-      other.hasAudio == hasAudio;
+      other.hasAudio == hasAudio &&
+      other.descriptor == descriptor &&
+      other.downloadContext == downloadContext;
 
   @override
-  int get hashCode => Object.hash(key, kind, size, hasAudio);
+  int get hashCode =>
+      Object.hash(key, kind, size, hasAudio, descriptor, downloadContext);
 
   @override
   String toString() => 'GalleryItem($key, ${kind.name}, $size)';

@@ -14,6 +14,7 @@ import 'viewer/origin_bridge_contract_test.dart' as origin_bridge_contract_test;
 import 'viewer/viewer_chrome_test.dart' as viewer_chrome_test;
 import 'viewer/viewer_desktop_policy_test.dart' as viewer_desktop_policy_test;
 import 'viewer/viewer_ios_policy_test.dart' as viewer_ios_policy_test;
+import 'viewer/viewer_loading_test.dart' as viewer_loading_test;
 import 'viewer/viewer_origin_test.dart' as viewer_origin_test;
 import 'viewer/viewer_policy_scope_test.dart' as viewer_policy_scope_test;
 import 'viewer/viewer_video_test.dart' as viewer_video_test;
@@ -27,6 +28,7 @@ void main() {
   group('viewer_chrome_test', viewer_chrome_test.main);
   group('viewer_desktop_policy_test', viewer_desktop_policy_test.main);
   group('viewer_ios_policy_test', viewer_ios_policy_test.main);
+  group('viewer_loading_test', viewer_loading_test.main);
   group('viewer_origin_test', viewer_origin_test.main);
   group('viewer_policy_scope_test', viewer_policy_scope_test.main);
   group('viewer_video_test', viewer_video_test.main);

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/animation.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
+import 'package:mpx_core/mpx_core.dart';
 
 /// The layout of the viewer's chrome in one reference: bars, the "N of M"
 /// counter, the caption and the thumbnail strip. Logical pixels.
@@ -434,6 +435,224 @@ enum ViewerLoopOpen {
   own,
 }
 
+/// How a photo page shows its download.
+enum ViewerPhotoProgress {
+  /// A spinner turning without progress, no icon.
+  spinner,
+
+  /// An arc of the bytes received.
+  arc,
+}
+
+/// How a viewer page shows its content loading: the status control of the
+/// page shown, the buffering spinner of its player, and the player's fade
+/// in over the page's picture.
+@immutable
+final class ViewerLoadingRules {
+  /// Creates the rules.
+  const ViewerLoadingRules({
+    required this.status,
+    required this.photoProgress,
+    required this.bufferingFade,
+    required this.playerFadeIn,
+    required this.playerFadeInHandedOver,
+    this.photoProgressDelay = Duration.zero,
+    this.hideStatusUntilCentral = true,
+    this.bufferingDelay = const Duration(milliseconds: 500),
+  });
+
+  /// The look and motion of the page's status control and spinner.
+  final MediaStatusStyle status;
+
+  /// How a photo that downloads shows it.
+  final ViewerPhotoProgress photoProgress;
+
+  /// How long a photo has loaded before its progress shows: a photo that
+  /// arrives sooner never shows one.
+  final Duration photoProgressDelay;
+
+  /// Whether only the page shown has a status control; its neighbours show
+  /// their picture alone.
+  final bool hideStatusUntilCentral;
+
+  /// How long a player buffers (or prepares without a first frame) before
+  /// the spinner shows: a shorter spell shows none.
+  final Duration bufferingDelay;
+
+  /// How long the spinner takes to fade in once it shows. It goes at once
+  /// when playback resumes.
+  final Duration bufferingFade;
+
+  /// How long the player takes to fade in over the page's picture.
+  final Duration playerFadeIn;
+
+  /// [playerFadeIn] for a player that had its first frame when the page
+  /// took it (handed over from another surface, or kept warm).
+  final Duration playerFadeInHandedOver;
+
+  /// The Android reference: a 64 dp control, a spinner for photos, the
+  /// spinner after 500 ms fading in over 200 ms, the player fading in over
+  /// 200 ms (100 ms handed over).
+  static const ViewerLoadingRules $Android = ViewerLoadingRules(
+    status: MediaStatusStyle(
+      diameter: 64,
+      compactDiameter: 24,
+      roundVideoDiameter: 44,
+      compactOffset: Offset(8, 8),
+      discColor: Color(0x66000000),
+      arcColor: Color(0xFFFFFFFF),
+      iconColor: Color(0xFFFFFFFF),
+      arcStroke: 3,
+      minArcStroke: 2,
+      arcInset: 4,
+      minSweepDegrees: 4,
+      spinPeriod: Duration(milliseconds: 3000),
+      spinStartDegrees: 112,
+      smoothing: MediaArcSmoothing.eased(
+        duration: Duration(milliseconds: 300),
+        // A decelerate interpolator of factor 1.5: 1 - (1 - t)^3.
+        curve: Curves.easeOutCubic,
+        forwardOnly: true,
+      ),
+      spinner: MediaSpinnerStyle(
+        turn: Duration(milliseconds: 2000),
+        minSweepDegrees: 4,
+        maxSweepDegrees: 270,
+        sweepPeriod: Duration(milliseconds: 1000),
+      ),
+      appearance: MediaStatusAppearance.scale,
+      appearDuration: Duration(milliseconds: 200),
+      disappearDuration: Duration(milliseconds: 200),
+      // The page's control crossfades its icons.
+      iconMorph: MediaIconMorph.scaleFade,
+      morphDuration: Duration(milliseconds: 200),
+      playPauseDuration: Duration(milliseconds: 200),
+      downloadCancelDuration: Duration(milliseconds: 200),
+      iconSize: 0.3,
+      iconStroke: 3,
+    ),
+    photoProgress: ViewerPhotoProgress.spinner,
+    bufferingFade: Duration(milliseconds: 200),
+    playerFadeIn: Duration(milliseconds: 200),
+    playerFadeInHandedOver: Duration(milliseconds: 100),
+  );
+
+  /// The iOS reference: a 50 pt control on black at 0.5, an arc for
+  /// photos, the spinner after 500 ms fading in over 200 ms, the player
+  /// fading in over 100 ms.
+  static const ViewerLoadingRules $IOS = ViewerLoadingRules(
+    status: MediaStatusStyle(
+      diameter: 50,
+      compactDiameter: 32,
+      roundVideoDiameter: 54,
+      compactOffset: Offset(6, 6),
+      discColor: Color.from(alpha: 0.5, red: 0, green: 0, blue: 0),
+      arcColor: Color(0xFFFFFFFF),
+      iconColor: Color(0xFFFFFFFF),
+      arcStroke: 2.25,
+      minArcStroke: 1.6,
+      arcInset: 2.5,
+      minSweepDegrees: 0.027 * 360,
+      spinPeriod: Duration(milliseconds: 1500),
+      spinStartDegrees: -90,
+      smoothing: MediaArcSmoothing.eased(
+        duration: Duration(milliseconds: 200),
+        extraDuration: Duration(milliseconds: 450),
+        extraAbove: 0.25,
+      ),
+      spinner: MediaSpinnerStyle(
+        turn: Duration(milliseconds: 1250),
+        minSweepDegrees: 90,
+        maxSweepDegrees: 90,
+        sweepPeriod: Duration(milliseconds: 2500),
+      ),
+      appearance: MediaStatusAppearance.discScaleFade,
+      appearDuration: Duration(milliseconds: 200),
+      disappearDuration: Duration(milliseconds: 200),
+      iconMorph: MediaIconMorph.scaleFade,
+      morphDuration: Duration(milliseconds: 200),
+      playPauseDuration: Duration(milliseconds: 200),
+      downloadCancelDuration: Duration(milliseconds: 200),
+      iconSize: 0.28,
+      iconStroke: 2,
+    ),
+    photoProgress: ViewerPhotoProgress.arc,
+    bufferingFade: Duration(milliseconds: 200),
+    playerFadeIn: Duration(milliseconds: 100),
+    playerFadeInHandedOver: Duration(milliseconds: 100),
+  );
+
+  /// The desktop reference: a 50 px control on `#00000056`, an arc for
+  /// photos once one has loaded for 350 ms, the spinner after 500 ms fading
+  /// in over 500 ms, the player shown at once.
+  static const ViewerLoadingRules $Desktop = ViewerLoadingRules(
+    status: MediaStatusStyle(
+      diameter: 50,
+      compactDiameter: 44,
+      roundVideoDiameter: 44,
+      compactOffset: Offset(4, 4),
+      discColor: Color(0x56000000),
+      arcColor: Color(0xFFFFFFFF),
+      iconColor: Color(0xFFFFFFFF),
+      arcStroke: 3,
+      minArcStroke: 3,
+      arcInset: 3,
+      minSweepDegrees: 1,
+      spinPeriod: Duration(milliseconds: 3000),
+      spinStartDegrees: -90,
+      smoothing: MediaArcSmoothing.asymptotic(Duration(milliseconds: 350)),
+      spinner: MediaSpinnerStyle(
+        turn: Duration(milliseconds: 1000),
+        minSweepDegrees: 0.0625 * 360,
+        maxSweepDegrees: 0.75 * 360,
+        sweepPeriod: Duration(milliseconds: 3000),
+      ),
+      appearance: MediaStatusAppearance.fade,
+      appearDuration: Duration(milliseconds: 350),
+      disappearDuration: Duration(milliseconds: 350),
+      iconMorph: MediaIconMorph.scaleFade,
+      morphDuration: Duration(milliseconds: 200),
+      playPauseDuration: Duration(milliseconds: 200),
+      downloadCancelDuration: Duration(milliseconds: 200),
+      iconSize: 0.3,
+      iconStroke: 2,
+    ),
+    photoProgress: ViewerPhotoProgress.arc,
+    photoProgressDelay: Duration(milliseconds: 350),
+    bufferingFade: Duration(milliseconds: 500),
+    playerFadeIn: Duration.zero,
+    playerFadeInHandedOver: Duration.zero,
+  );
+
+  /// How long a player takes to fade in; [handedOver] when it had its first
+  /// frame as the page took it.
+  Duration playerFadeInFor({required bool handedOver}) =>
+      handedOver ? playerFadeInHandedOver : playerFadeIn;
+
+  /// These rules with the given fields changed.
+  ViewerLoadingRules copyWith({
+    MediaStatusStyle? status,
+    ViewerPhotoProgress? photoProgress,
+    Duration? photoProgressDelay,
+    bool? hideStatusUntilCentral,
+    Duration? bufferingDelay,
+    Duration? bufferingFade,
+    Duration? playerFadeIn,
+    Duration? playerFadeInHandedOver,
+  }) => ViewerLoadingRules(
+    status: status ?? this.status,
+    photoProgress: photoProgress ?? this.photoProgress,
+    photoProgressDelay: photoProgressDelay ?? this.photoProgressDelay,
+    hideStatusUntilCentral:
+        hideStatusUntilCentral ?? this.hideStatusUntilCentral,
+    bufferingDelay: bufferingDelay ?? this.bufferingDelay,
+    bufferingFade: bufferingFade ?? this.bufferingFade,
+    playerFadeIn: playerFadeIn ?? this.playerFadeIn,
+    playerFadeInHandedOver:
+        playerFadeInHandedOver ?? this.playerFadeInHandedOver,
+  );
+}
+
 /// The video rules of a viewer policy: controls, seek, speed and loop.
 @immutable
 final class ViewerVideoRules {
@@ -595,6 +814,7 @@ final class ViewerPolicy {
     required this.controlsSlide,
     required this.video,
     required this.chrome,
+    this.loading = ViewerLoadingRules.$Android,
     this.backgroundFadeDuration,
     this.dismissVelocity,
     this.backgroundFadeDistance,
@@ -745,6 +965,7 @@ final class ViewerPolicy {
       seekPreviewBox: Size(160, 90),
     ),
     chrome: ViewerChromeMetrics.ios,
+    loading: ViewerLoadingRules.$IOS,
   );
 
   /// The desktop reference, as an overlay over the app window: no open
@@ -800,6 +1021,7 @@ final class ViewerPolicy {
       hold: ViewerHoldSpeed(delay: Duration(milliseconds: 200), rate: 2),
     ),
     chrome: ViewerChromeMetrics.desktop,
+    loading: ViewerLoadingRules.$Desktop,
   );
 
   /// How the picture gets from its origin to its place and back.
@@ -916,6 +1138,10 @@ final class ViewerPolicy {
 
   /// The layout of the bars, counter, caption and strip.
   final ViewerChromeMetrics chrome;
+
+  /// How pages show their content loading: the status control, the
+  /// buffering spinner and the player's fade in.
+  final ViewerLoadingRules loading;
 
   /// Whether a drag of [dx], [dy] from its start has become a dismiss drag.
   bool startsDismiss(double dx, double dy) {
@@ -1057,6 +1283,7 @@ final class ViewerPolicy {
     bool? desktopInput,
     ViewerVideoRules? video,
     ViewerChromeMetrics? chrome,
+    ViewerLoadingRules? loading,
   }) => ViewerPolicy(
     openStyle: openStyle ?? this.openStyle,
     openDuration: openDuration ?? this.openDuration,
@@ -1095,5 +1322,6 @@ final class ViewerPolicy {
     desktopInput: desktopInput ?? this.desktopInput,
     video: video ?? this.video,
     chrome: chrome ?? this.chrome,
+    loading: loading ?? this.loading,
   );
 }

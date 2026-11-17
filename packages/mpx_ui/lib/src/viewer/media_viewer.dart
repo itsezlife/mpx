@@ -13,6 +13,7 @@ import 'package:mpx_ui/src/viewer/gallery_source.dart';
 import 'package:mpx_ui/src/viewer/origin_bridge.dart';
 import 'package:mpx_ui/src/viewer/viewer_actions.dart';
 import 'package:mpx_ui/src/viewer/viewer_chrome_overlay.dart';
+import 'package:mpx_ui/src/viewer/viewer_loading.dart';
 import 'package:mpx_ui/src/viewer/viewer_origin.dart';
 import 'package:mpx_ui/src/viewer/viewer_photo_page.dart';
 import 'package:mpx_ui/src/viewer/viewer_policy.dart';
@@ -1160,6 +1161,10 @@ class MediaViewerState extends State<MediaViewer>
     if (itemSize != null && !itemSize.isEmpty) {
       return itemSize.width / itemSize.height;
     }
+    if (item?.descriptor?.dimensions case final dimensions?
+        when dimensions.width > 0 && dimensions.height > 0) {
+      return dimensions.width / dimensions.height;
+    }
     final decoded = item == null ? null : _cache?.pictureSizeOf(item.key);
     if (decoded != null && !decoded.isEmpty) {
       return decoded.width / decoded.height;
@@ -1228,6 +1233,13 @@ class MediaViewerState extends State<MediaViewer>
                   previewFrame: widget.previewFrame,
                   strings: widget.videoStrings,
                 ),
+              ),
+            // A player that waits for its media longer than the policy's
+            // delay shows the spinner, under the controls.
+            if (_session case final session? when _phase == _Phase.open)
+              ViewerBufferingSpinner(
+                lease: session.lease,
+                rules: _policy.loading,
               ),
             // A video that failed says so over the controls, in the
             // middle, where the play button would be.
@@ -1343,7 +1355,7 @@ class MediaViewerState extends State<MediaViewer>
       BoxFit.contain,
       session: session,
     );
-    return ViewerPhotoPage(
+    final page = ViewerPhotoPage(
       key: _pageKeys.putIfAbsent(index, GlobalKey<ViewerPhotoPageState>.new),
       contentSize: fitted,
       policy: policy,
@@ -1370,6 +1382,27 @@ class MediaViewerState extends State<MediaViewer>
         key: _frameKeys.putIfAbsent(index, GlobalKey.new),
         child: still,
       ),
+    );
+    final loading = policy.loading;
+    // A video a player plays shows the player's spinner instead: the player
+    // streams it.
+    final shows =
+        (index == _index || !loading.hideStatusUntilCentral) &&
+        !(item.kind == GalleryMediaKind.video && widget.players != null);
+    if (!shows) return page;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        page,
+        ViewerPageStatus(
+          content: item.key,
+          spec: _presetOf(item, _boxOf(fitted)).spec,
+          kind: item.kind,
+          rules: loading,
+          scope: widget.scope,
+          downloadContext: item.downloadContext,
+        ),
+      ],
     );
   }
 
@@ -1497,38 +1530,16 @@ class MediaViewerState extends State<MediaViewer>
     BoxFit fit, {
     ViewerVideoSession? session,
   }) {
-    final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
-    final box = size.isEmpty ? const Size(1, 1) : size;
-    const loops = AssetProfile(animate: true, loop: true);
+    final box = _boxOf(size);
+    _know(item);
     final picture = _OriginContent(
       frame: _originFrame(index),
       originFit: widget.bridge?.originOf(index)?.fit ?? BoxFit.cover,
       content: item.key,
       scope: widget.scope,
-      preset: switch (item.kind) {
-        // A GIF loops muted on the software path: the origin's own
-        // playback, or one of the page's own at the page's size.
-        GalleryMediaKind.animation => switch (_video.loopOpen) {
-          ViewerLoopOpen.continues || ViewerLoopOpen.restart =>
-            AssetPresets.animation(size: box, profile: loops),
-          ViewerLoopOpen.own => AssetPresets.media(
-            size: box,
-            devicePixelRatio: dpr,
-            profile: loops,
-          ),
-        },
-        // A video's loop shows the frame it stands on until the player
-        // has one: the player is the one playback of it meanwhile.
-        GalleryMediaKind.video => AssetPresets.animation(
-          size: box,
-          profile: const AssetProfile(),
-        ),
-        GalleryMediaKind.photo => AssetPresets.media(
-          size: box,
-          devicePixelRatio: dpr,
-          profile: const AssetProfile(animate: true),
-        ),
-      },
+      preset: _presetOf(item, box),
+      downloadContext: item.downloadContext,
+      requestsDownload: _requestsDownload(index, item),
     );
     return FittedBox(
       fit: fit,
@@ -1545,15 +1556,70 @@ class MediaViewerState extends State<MediaViewer>
                 fit: BoxFit.cover,
                 shown: identical(_movingSession, session),
                 onMoving: () => _movingSession = session,
+                rules: _policy.loading,
               ),
       ),
     );
   }
+
+  static Size _boxOf(Size size) => size.isEmpty ? const Size(1, 1) : size;
+
+  // The descriptors told to the cache, so each is told once.
+  final Set<MediaDescriptor> _known = Set.identity();
+
+  // Tells the cache what the host knows about [item] before a page of it
+  // attaches: its preview and thumbnail show though the cache never saw it.
+  void _know(GalleryItem item) {
+    final descriptor = item.descriptor;
+    if (descriptor == null || !_known.add(descriptor)) return;
+    _cache?.know(descriptor);
+  }
+
+  // Whether the page of [item] at [index] asks for its content whatever the
+  // auto-download policy says: the page shown, which the user opened or
+  // paged to. A video is asked for only when the viewer opened on it; one
+  // paged to follows the policy (a player streams it, else its page offers
+  // the download). The neighbours follow the policy.
+  bool _requestsDownload(int index, GalleryItem item) =>
+      index == _index &&
+      (item.kind != GalleryMediaKind.video || index == widget.initialIndex);
+
+  // The size, decode and use of [item]'s content in a box of [box].
+  AssetPreset _presetOf(GalleryItem item, Size box) {
+    final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
+    const loops = AssetProfile(animate: true, loop: true);
+    return switch (item.kind) {
+      // A GIF loops muted on the software path: the origin's own
+      // playback, or one of the page's own at the page's size.
+      GalleryMediaKind.animation => switch (_video.loopOpen) {
+        ViewerLoopOpen.continues || ViewerLoopOpen.restart =>
+          AssetPresets.animation(size: box, profile: loops),
+        ViewerLoopOpen.own => AssetPresets.media(
+          size: box,
+          devicePixelRatio: dpr,
+          profile: loops,
+        ),
+      },
+      // A video's loop shows the frame it stands on until the player
+      // has one: the player is the one playback of it meanwhile.
+      GalleryMediaKind.video => AssetPresets.animation(
+        size: box,
+        profile: const AssetProfile(),
+      ),
+      GalleryMediaKind.photo => AssetPresets.media(
+        size: box,
+        devicePixelRatio: dpr,
+        profile: const AssetProfile(animate: true),
+      ),
+    };
+  }
 }
 
 /// The content of a page, with the origin's [frame] as its placeholder: the
-/// view draws it until the content has a stage and fades it out as the
-/// content rises, so content with transparency never shows it beneath.
+/// view draws it over the content's preview and thumbnail until the content
+/// has its first frame, and fades it out as the content rises, so content
+/// with transparency never shows it beneath. Without a frame the content's
+/// stand-ins show in turn (preview, thumbnail), on nothing.
 ///
 /// The placeholder holds a clone of [frame], so the viewer freeing its copy
 /// as it leaves the page never frees one a view still draws.
@@ -1564,6 +1630,8 @@ class _OriginContent extends StatefulWidget {
     required this.content,
     required this.scope,
     required this.preset,
+    required this.downloadContext,
+    required this.requestsDownload,
   });
 
   final ui.Image? frame;
@@ -1573,6 +1641,8 @@ class _OriginContent extends StatefulWidget {
   final MediaKey content;
   final AssetCacheScope? scope;
   final AssetPreset preset;
+  final AutoDownloadContext? downloadContext;
+  final bool requestsDownload;
 
   @override
   State<_OriginContent> createState() => _OriginContentState();
@@ -1613,9 +1683,15 @@ class _OriginContentState extends State<_OriginContent> {
     scope: widget.scope,
     preset: widget.preset,
     placeholder: _standIn ?? const ClearPlaceholder(),
-    // Opening the viewer is the user's request for the content: it streams
-    // and downloads whatever the auto-download policy said in the list.
-    requestsDownload: true,
+    // The origin's frame is sharper than the content's preview and
+    // thumbnail: it stays over them until the first frame.
+    placeholderUntil: _standIn == null
+        ? AssetStage.none
+        : AssetStage.firstFrame,
+    downloadContext: widget.downloadContext,
+    // Opening the viewer on an item is the user's request for its content:
+    // it downloads whatever the auto-download policy said in the list.
+    requestsDownload: widget.requestsDownload,
   );
 }
 
@@ -1715,11 +1791,15 @@ class _PlayerOverPicture extends StatefulWidget {
     required this.fit,
     required this.shown,
     required this.onMoving,
+    required this.rules,
   });
 
   final PlayerLease lease;
   final Widget picture;
   final BoxFit fit;
+
+  /// How long the player fades in.
+  final ViewerLoadingRules rules;
 
   /// Whether the player has moved already, under another picture of the
   /// item: it shows from the start.
@@ -1734,10 +1814,10 @@ class _PlayerOverPicture extends StatefulWidget {
 
 class _PlayerOverPictureState extends State<_PlayerOverPicture>
     with SingleTickerProviderStateMixin {
-  // How long the player fades in over the picture once it moves.
-  static const Duration _fadeIn = Duration(milliseconds: 120);
-
   late final Ticker _watch;
+  // Whether the player had its first frame when the page took it: handed
+  // over from another surface, or kept warm.
+  late bool _handedOver = widget.lease.state.value.firstFrameRendered;
   // Where the player stood when its first frame was seen; null before.
   Duration? _firstAt;
   bool _moving = false;
@@ -1757,6 +1837,7 @@ class _PlayerOverPictureState extends State<_PlayerOverPicture>
   void didUpdateWidget(_PlayerOverPicture oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (identical(widget.lease, oldWidget.lease)) return;
+    _handedOver = widget.lease.state.value.firstFrameRendered;
     _firstAt = null;
     _moving = widget.shown;
     _covered = widget.shown;
@@ -1800,7 +1881,9 @@ class _PlayerOverPictureState extends State<_PlayerOverPicture>
       TweenAnimationBuilder<double>(
         key: const ValueKey('mpx-viewer-player'),
         tween: Tween(begin: widget.shown ? 1 : 0, end: _moving ? 1 : 0),
-        duration: widget.shown ? Duration.zero : _fadeIn,
+        duration: widget.shown
+            ? Duration.zero
+            : widget.rules.playerFadeInFor(handedOver: _handedOver),
         // A fade that ends inside a build (a zero one) cannot rebuild
         // there: the picture goes on the next frame.
         onEnd: () => SchedulerBinding.instance.addPostFrameCallback((_) {

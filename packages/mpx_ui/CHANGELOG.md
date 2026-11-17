@@ -2,9 +2,21 @@
 
 ## Unreleased
 
-- Opening the viewer is the user's request for its content: a page
+- Viewer pages load in stages: the origin's frame stays over the content's
+  preview and thumbnail until its first frame; without one the preview,
+  then the thumbnail, fitted to the media's proportion on the black page.
+  `GalleryItem.descriptor` reaches the cache before a page attaches, and
+  `GalleryItem.downloadContext` is the page's auto-download tag.
+- `ViewerPolicy.loading` (`ViewerLoadingRules`, with `copyWith` and each
+  platform's values): the page shown has a status control
+  (`ViewerPageStatus`: a spinner or an arc for a photo, cancel and an arc
+  for a video, download when it waits or failed); a player that buffers,
+  or has no first frame, shows `ViewerBufferingSpinner` after 500 ms; the
+  player fades in over the picture for the policy's time.
+- Opening the viewer is the user's request for its content: the page shown
   downloads it whatever the auto-download policy said in the list
-  (`ContentView.requestsDownload`).
+  (`ContentView.requestsDownload`). A video paged to, and the neighbours,
+  follow the policy.
 - A page of an item not loaded yet, and a page whose content shows
   nothing, are the black page with nothing on it, never a box.
 - `MediaViewer` holds every other surface and the preloads while its open
