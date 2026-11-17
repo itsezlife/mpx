@@ -11,8 +11,6 @@ import 'asset/asset_cache_demand_test.dart' as asset_cache_demand_test;
 import 'asset/asset_cache_failure_test.dart' as asset_cache_failure_test;
 import 'asset/asset_cache_playback_test.dart' as asset_cache_playback_test;
 import 'asset/asset_cache_scope_test.dart' as asset_cache_scope_test;
-import 'asset/asset_download_progress_test.dart'
-    as asset_download_progress_test;
 import 'asset/asset_fit_test.dart' as asset_fit_test;
 import 'asset/asset_foreground_playback_test.dart'
     as asset_foreground_playback_test;
@@ -21,6 +19,7 @@ import 'asset/asset_profile_test.dart' as asset_profile_test;
 import 'asset/asset_sibling_stage_test.dart' as asset_sibling_stage_test;
 import 'asset/asset_spec_test.dart' as asset_spec_test;
 import 'asset/asset_stand_in_test.dart' as asset_stand_in_test;
+import 'asset/asset_transfer_test.dart' as asset_transfer_test;
 import 'benchmark/asset_cache_churn_bench_test.dart'
     as asset_cache_churn_bench_test;
 import 'benchmark/asset_cache_ratio_bench_test.dart'
@@ -86,7 +85,6 @@ void main() {
   group('asset_cache_failure_test', asset_cache_failure_test.main);
   group('asset_cache_playback_test', asset_cache_playback_test.main);
   group('asset_cache_scope_test', asset_cache_scope_test.main);
-  group('asset_download_progress_test', asset_download_progress_test.main);
   group('asset_fit_test', asset_fit_test.main);
   group('asset_foreground_playback_test', asset_foreground_playback_test.main);
   group('asset_playback_test', asset_playback_test.main);
@@ -94,6 +92,7 @@ void main() {
   group('asset_sibling_stage_test', asset_sibling_stage_test.main);
   group('asset_spec_test', asset_spec_test.main);
   group('asset_stand_in_test', asset_stand_in_test.main);
+  group('asset_transfer_test', asset_transfer_test.main);
   group('asset_cache_churn_bench_test', asset_cache_churn_bench_test.main);
   group('asset_cache_ratio_bench_test', asset_cache_ratio_bench_test.main);
   group('device_inputs_test', device_inputs_test.main);

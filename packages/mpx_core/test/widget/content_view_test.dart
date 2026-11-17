@@ -57,6 +57,23 @@ void main() {
       expect(producer.attempts.single.request.spec, _preset.spec);
     });
 
+    testWidgets('passes its download context to the attach', (tester) async {
+      await tester.pumpWidget(
+        host(
+          ContentView(
+            content: _sticker,
+            preset: _preset,
+            downloadContext: AutoDownloadContext.groups,
+          ),
+        ),
+      );
+
+      expect(producer.last.demand.downloadContexts, {
+        AutoDownloadContext.groups,
+      });
+      expect(scope.entryCount, 1);
+    });
+
     testWidgets('passes its visible fraction to the binding', (tester) async {
       await tester.pumpWidget(
         host(
@@ -463,7 +480,7 @@ void main() {
           ),
         );
 
-        producer.last.download(0);
+        producer.last.waiting();
         await tester.pump();
         // The disc of the indicator, centred in the 20 x 20 box, and its arc.
         expect(
@@ -476,7 +493,7 @@ void main() {
         );
 
         producer.last
-          ..download(1)
+          ..transfer(1, 1)
           ..advance(AssetStage.placeholder);
         await tester.pump();
         expect(box(tester), paints..circle(x: 10, y: 10, radius: 12));
@@ -486,7 +503,7 @@ void main() {
         expect(box(tester), isNot(paints..circle(radius: 12)));
       });
 
-      testWidgets('stays when the download fails, the content still missing', (
+      testWidgets('goes when the download fails: no arc without a retry', (
         tester,
       ) async {
         await tester.pumpWidget(
@@ -494,13 +511,13 @@ void main() {
             ContentView(content: _sticker, preset: _still, loadingRadius: 12),
           ),
         );
-        producer.last.download(0.3);
+        producer.last.transfer(3, 10);
         await tester.pump();
 
         producer.last.fail(StateError('offline'));
         await tester.pump();
 
-        expect(box(tester), paints..circle(x: 10, y: 10, radius: 12));
+        expect(box(tester), isNot(paints..circle(radius: 12)));
       });
 
       group('over a pipeline', () {
@@ -572,7 +589,7 @@ void main() {
           expect(box(tester), isNot(paints..circle(radius: 12)));
         });
 
-        testWidgets('a failed download keeps it', (tester) async {
+        testWidgets('a failed download hides it', (tester) async {
           fetcher.missing.add(gif.key);
           await tester.pumpWidget(view());
           await landThumbnail(tester);
@@ -583,7 +600,7 @@ void main() {
           await tester.pump();
           await tester.pump();
 
-          expect(box(tester), paints..circle(x: 10, y: 10, radius: 12));
+          expect(box(tester), isNot(paints..circle(radius: 12)));
         });
       });
 
@@ -591,7 +608,7 @@ void main() {
         await tester.pumpWidget(
           host(ContentView(content: _sticker, preset: _still)),
         );
-        producer.last.download(0.5);
+        producer.last.transfer(5, 10);
         await tester.pump();
 
         expect(box(tester), isNot(paints..circle(radius: 12)));
@@ -606,7 +623,7 @@ void main() {
         await tester.pump();
         expect(tester.binding.hasScheduledFrame, isFalse);
 
-        producer.last.download(0.5);
+        producer.last.transfer(5, 10);
         await tester.pump();
         expect(
           tester.hasRunningAnimations || tester.binding.hasScheduledFrame,

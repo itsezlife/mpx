@@ -30,6 +30,7 @@ final class PipelineHarness {
     AssetPipelineLimits limits = const AssetPipelineLimits(),
     Iterable<MediaDescriptor> known = const [],
     Iterable<MediaDescriptor> served = const [],
+    AutoDownloadPolicy autoDownload = AutoDownloadPolicy.always,
   }) : fetcher = FakeFetcher(autoRespond: autoFetch),
        decoder = FakeDecoder(
          autoRespond: autoDecode,
@@ -44,6 +45,7 @@ final class PipelineHarness {
     scope = AssetCacheScope(
       producer: pipeline,
       clock: PlaybackClock(ticks: ManualPlaybackTickSource()),
+      autoDownload: autoDownload,
     );
     for (final descriptor in [...known, ...served]) {
       fetcher.serve(descriptor.key, bytes);
@@ -59,8 +61,11 @@ final class PipelineHarness {
   late final AssetPipeline pipeline;
   late final AssetCacheScope scope;
 
-  AssetBinding attach(MediaDescriptor descriptor, [AssetSpec spec = spec]) =>
-      scope.attach(descriptor.key, spec, profile);
+  AssetBinding attach(
+    MediaDescriptor descriptor, [
+    AssetSpec spec = spec,
+    AutoDownloadContext? context,
+  ]) => scope.attach(descriptor.key, spec, profile, downloadContext: context);
 
   AssetBinding attachKey(MediaKey key, [AssetSpec spec = spec]) =>
       scope.attach(key, spec, profile);

@@ -75,7 +75,13 @@ final class _Progress implements AssetProgress {
   }
 
   @override
-  void download(double fraction) {}
+  void waiting() {}
+
+  @override
+  void transfer(int received, int? total) {}
+
+  @override
+  void awaitingUser() {}
 
   @override
   void cancelled() {}
@@ -108,7 +114,13 @@ final class _ThrowingProgress implements AssetProgress {
   ]) => failures.add(error);
 
   @override
-  void download(double fraction) {}
+  void waiting() {}
+
+  @override
+  void transfer(int received, int? total) {}
+
+  @override
+  void awaitingUser() {}
 
   @override
   void cancelled() {}

@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- Downloads have a state and verbs. `AssetBinding.transfer`
+  (`AssetTransfer`: `none`, `waiting`, `receiving` in bytes, `awaitingUser`,
+  `failed`) replaces `downloadProgress`; an unknown total reads the
+  descriptor's `byteSize`, and byte reports reach listeners once per frame.
+  `download()` fetches now (and retries a failure); `cancelDownload()`
+  stops the content fetch, keeps the stages, and is remembered per key for
+  the scope's life. A failed download reads `failed` instead of keeping a
+  spinning arc, and `ContentView.loadingRadius` hides its arc on failure.
+  Breaking: `AssetProgress.download(fraction)` is replaced by `waiting()`,
+  `transfer(received, total)` and `awaitingUser()`.
+- Auto-download: `AssetCacheScope(autoDownload:)` takes an
+  `AutoDownloadPolicy` (default `AutoDownloadPolicy.always`) that answers
+  `AutoDownload.now`, `prefix` or `manual` per descriptor and per
+  `AutoDownloadContext`, an opaque host tag a surface passes per attach
+  (`attach(downloadContext:)`, `ContentView.downloadContext`; well-known
+  `contacts`, `privateChats`, `groups`, `channels`). The most permissive tag
+  of the attached bindings wins, and the tag never enters the cache key.
+  `AssetPipeline` fetches only the stand-ins (and a 4 s head for `prefix`)
+  of missing content the policy holds back; the policy's `changes` and a
+  more permissive attach start it. Breaking: `AssetDemand` implementers add
+  `downloadContexts` and `autoDownload`. `FakeAutoDownloadPolicy` is in
+  `testing.dart`.
 - `AssetStage.preview`, between `none` and `placeholder`: `AssetPipeline`
   decodes a descriptor's raster preview beside the fetches (no fetch slot),
   blurred once with `PreviewBlur` (`$Android`, `$IOS`, `$Desktop`,

@@ -6,6 +6,7 @@ import 'package:mpx_core/src/asset/asset_playback.dart';
 import 'package:mpx_core/src/asset/asset_profile.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_spec.dart';
+import 'package:mpx_core/src/asset/asset_transfer.dart';
 import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 
@@ -26,11 +27,13 @@ import 'package:mpx_core/src/identity/media_key.dart';
 ///
 /// ## Failure
 ///
-/// There is none to see. An asset that cannot be produced keeps the stage it
-/// reached (a preview or a thumbnail, if any), whether the cause is a missing
-/// network, a server error or bad data, and is attempted again on the next
-/// attach, when the host reports connectivity (if the failure was transient)
-/// or on [retry]. [lastError] is for logs and diagnostics, not for painting.
+/// No failed picture is ever drawn. An asset that cannot be produced keeps
+/// the stage it reached (a preview or a thumbnail, if any), whether the cause
+/// is a missing network, a server error or bad data, and is attempted again
+/// on the next attach, when the host reports connectivity (if the failure
+/// was transient), on [retry] or on [download]. A download that failed reads
+/// `AssetTransfer.failed` ([transfer]), which a status control shows as
+/// download, the retry. [lastError] is for logs and diagnostics.
 abstract interface class AssetBinding implements Listenable {
   /// Which content.
   MediaKey get key;
@@ -67,20 +70,37 @@ abstract interface class AssetBinding implements Listenable {
   /// after the resolve, signalled to the listeners.
   MediaDescriptor? get descriptor;
 
-  /// How much of the content's download has arrived, 0 to 1, while the
-  /// content is missing and downloads; null when it is not downloading.
+  /// The download of the content as a surface shows it (see
+  /// [AssetTransfer]); an unknown total is the descriptor's
+  /// `MediaDescriptor.byteSize`.
   ///
-  /// It is set by the producer's reports (`AssetProgress.download`): from the
-  /// start of an attempt for content known to be missing (0, before its
-  /// thumbnail), or else from the start of the transfer, until the content's
-  /// final stage. A failed or cancelled attempt keeps it, since the content is
-  /// still missing; the next attempt starts without it and the last binding
-  /// leaving forgets it. Content the producer served from a cache, a memory
-  /// hit and a detached binding read null, so a surface that draws a
-  /// download indicator draws none for them. A change is signalled to the
-  /// listeners. It is the entry's own download: a sibling's stage this binding
-  /// borrows does not bring its download along.
-  double? get downloadProgress;
+  /// It is the entry's, so every binding of the entry reads the same:
+  /// [AssetTransfer.waiting] from the start of an attempt for content known
+  /// to be missing, [AssetTransfer.receiving] as bytes arrive,
+  /// [AssetTransfer.none] once the content's final stage exists,
+  /// [AssetTransfer.failed] after a failed download, and
+  /// [AssetTransfer.awaitingUser] while the content waits for [download]
+  /// (the auto-download policy or [cancelDownload] said so). Content the
+  /// producer served from a cache, a memory hit and a detached binding read
+  /// none. A change is signalled to the listeners, byte reports at most once
+  /// per frame. A sibling's stage this binding borrows does not bring its
+  /// transfer along.
+  AssetTransfer get transfer;
+
+  /// Downloads the content now, whatever the auto-download policy says, and
+  /// forgets a cancel of it: the user asked. An attempt that only fetches
+  /// stand-ins, or a failed one, starts again; a download under way and
+  /// final content are left alone. Remembered for the key until
+  /// [cancelDownload] or the scope's end, so a surface that comes back to
+  /// the content downloads it again.
+  void download();
+
+  /// Stops the download of the content and keeps the stages it reached; the
+  /// transfer reads [AssetTransfer.awaitingUser]. The scope remembers the
+  /// cancel for the key until [download], so re-attaching the content later
+  /// shows the download control and fetches nothing. Does nothing when no
+  /// download is under way.
+  void cancelDownload();
 
   /// The error of the latest failed attempt for this entry, or null. Cleared
   /// when an attempt advances. Diagnostics only.

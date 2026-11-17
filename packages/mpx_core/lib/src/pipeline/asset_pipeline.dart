@@ -13,6 +13,7 @@ import 'package:mpx_core/src/asset/mini_thumbnail.dart';
 import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 import 'package:mpx_core/src/image/image_paintable.dart';
+import 'package:mpx_core/src/pipeline/auto_download.dart';
 import 'package:mpx_core/src/pipeline/cancellation_token.dart';
 import 'package:mpx_core/src/pipeline/content_fetcher.dart';
 import 'package:mpx_core/src/pipeline/decoder.dart';
@@ -115,10 +116,21 @@ final class AssetPipelineError implements Exception {
 ///   decoded) for `seconds`, after the first frame for `firstFrame`. It ends
 ///   as cancelled, not failed. Among preloads, the nearest
 ///   (`AssetDemand.distance`) is served first.
+/// - **Downloads.** Content the fetcher reports missing
+///   (`ContentFetcher.needsDownload`) is announced from the start of the
+///   attempt (`AssetProgress.waiting`), and the bytes of its transfer are
+///   reported as they arrive (`AssetProgress.transfer`). Once its descriptor
+///   is known, the scope's auto-download answer (`AssetDemand.autoDownload`)
+///   decides: `now` fetches it; `prefix` fetches the stand-ins and a head of
+///   the content (its first 4 s, held, not decoded); `manual` fetches the
+///   stand-ins only. Both report the content as awaiting the user and end
+///   as cancelled once the stand-ins are done. Content held in a cache
+///   ignores the policy.
 ///
 /// ## Failure
 ///
-/// None of it is shown: a failed attempt ends and the entry keeps its stage.
+/// No failed picture: a failed attempt ends and the entry keeps its stage;
+/// a download under way reads as failed in its transfer.
 /// A failed fetch is transient or permanent as the fetcher says (anything but
 /// a `FetchFailure` counts as transient); a resolver that throws is
 /// transient; a key the resolver leaves out, no resolver, no decoder for the
@@ -218,6 +230,7 @@ final class AssetPipeline implements AssetProducer {
     work.phase = _Phase.fetching;
     final token = work.token = CancellationToken();
     work.prefix = switch (work.job.demand.preloadStage) {
+      _ when work.headOnly => _Job.prefixHead,
       AssetPreloadStage$Seconds(:final duration)
           when work.part == FetchPart.content =>
         duration,
@@ -285,18 +298,33 @@ final class _Job implements AssetTask {
   bool _ended = false;
   bool _resolving = false;
 
-  // Whether the attempt announced the download at its start: the content is
-  // known to be missing.
-  bool announcedDownload = false;
+  // Whether the fetcher reported the content missing at the start: its
+  // download is announced, and the auto-download decision applies to it.
+  bool _missing = false;
+
+  // The auto-download decision for missing content, as last announced.
+  AutoDownload _decision = AutoDownload.now;
+
+  // The total the last transfer report gave, if any.
+  int? _lastTotal;
+
+  // Whether the attempt fetches only the stand-ins (and a head of the
+  // content): the decision was not to download now. It ends as cancelled
+  // once they are done, with the content awaiting the user.
+  bool _standInsOnly = false;
+
+  /// How much of the content a [AutoDownload.prefix] decision fetches.
+  static const Duration prefixHead = Duration(seconds: 4);
 
   void start() {
-    // Before the resolve and the thumbnail, which may each take a round trip:
-    // a surface shows the download of missing content from its first frame.
-    if (pipeline._fetcher.needsDownload(request.key)) {
-      announcedDownload = true;
-      progress.download(0);
-    }
     final known = pipeline._directory.lookup(request.key);
+    // Before the resolve and the thumbnail, which may each take a round trip:
+    // a surface shows the download (or the download control) of missing
+    // content from its first frame.
+    if (pipeline._fetcher.needsDownload(request.key)) {
+      _missing = true;
+      _announce(demand.autoDownload(known));
+    }
     if (known != null) {
       _begin(known);
     } else if (pipeline._directory.canResolve) {
@@ -334,10 +362,24 @@ final class _Job implements AssetTask {
     }
   }
 
+  void _announce(AutoDownload decision) {
+    _decision = decision;
+    if (decision == AutoDownload.now) {
+      progress.waiting();
+    } else {
+      progress.awaitingUser();
+    }
+  }
+
   void _begin(MediaDescriptor known) {
     progress.describe(known);
     // describe may end the job: a scope disposed by a listener.
     if (_ended) return;
+    // The policy weighs the descriptor, which only now may be known.
+    if (_missing) {
+      final decision = demand.autoDownload(known);
+      if (decision != _decision) _announce(decision);
+    }
     final staged = demand.preloadStage;
     if (staged == AssetPreloadStage.metadata) {
       // The descriptor is all a metadata preload wants; the directory keeps
@@ -362,7 +404,16 @@ final class _Job implements AssetTask {
       return;
     }
     descriptor = known;
-    final content = _content = _Work(this, FetchPart.content, decoder);
+    _standInsOnly = _missing && _decision != AutoDownload.now;
+    // Content that waits for the user is not fetched, or only its head.
+    final content = switch (_decision) {
+      AutoDownload.manual when _standInsOnly => null,
+      _ => _content = _Work(
+        this,
+        FetchPart.content,
+        decoder,
+      )..headOnly = _standInsOnly,
+    };
     final thumbnail = switch (known.thumbnail) {
       null => null,
       _ when staged is AssetPreloadStage$Seconds => null,
@@ -370,8 +421,36 @@ final class _Job implements AssetTask {
     };
     // The lane picks by priority, so the order of these two only breaks ties.
     if (thumbnail != null) pipeline._fetchLane.enqueue(thumbnail);
-    if (!_ended) pipeline._fetchLane.enqueue(content);
+    if (!_ended && content != null) pipeline._fetchLane.enqueue(content);
     // enqueue may end the job when a fetcher answers by throwing.
+    settleIfIdle();
+  }
+
+  /// Ends an attempt that fetches only stand-ins once they are done: the
+  /// preview decoded, the thumbnail and the head of the content settled. It
+  /// ends as cancelled, not failed; the content awaits the user.
+  void settleIfIdle() {
+    if (!_standInsOnly || _ended || _previewDecoding != null) return;
+    if (_thumbnail case final work? when work.phase != _Phase.done) return;
+    if (_content case final work? when work.phase != _Phase.done) return;
+    _ended = true;
+    pipeline._jobs.remove(this);
+    progress.cancelled();
+  }
+
+  /// Relays the bytes of the content's transfer to the entry.
+  void reportTransfer(int received, int? total) {
+    if (total != null && total > 0) _lastTotal = total;
+    progress.transfer(received, total);
+  }
+
+  /// All of the content arrived, which a fetcher's last report need not say
+  /// (nor a fetch that found the announced content after all): a surface
+  /// that drew the download shows it complete until the decode.
+  void contentFetched({required bool transferred}) {
+    if (!transferred && !_missing) return;
+    final total = _lastTotal ?? descriptor?.byteSize;
+    if (total != null) progress.transfer(total, total);
   }
 
   // The preview still decoding, while one is.
@@ -391,14 +470,16 @@ final class _Job implements AssetTask {
           .decode(request.key, raster.encoded, pipeline._previewBlur)
           .then((image) {
             _previewDecoding = null;
-            if (image == null) return;
-            if (_cancelled) {
-              image.dispose();
-            } else {
-              // An attempt that ended already drops it (the scope disposes a
-              // report after the end), as it drops a stage below its own.
-              _advancePreview(image);
+            if (image != null) {
+              if (_cancelled) {
+                image.dispose();
+              } else {
+                // An attempt that ended already drops it (the scope disposes
+                // a report after the end), as it drops a stage below its own.
+                _advancePreview(image);
+              }
             }
+            settleIfIdle();
           });
     }
   }
@@ -447,7 +528,11 @@ final class _Job implements AssetTask {
     StackTrace? stackTrace,
     AssetFailureKind kind,
   ) {
-    if (work.part == FetchPart.content) _fail(error, stackTrace, kind);
+    if (work.part == FetchPart.content) {
+      _fail(error, stackTrace, kind);
+    } else {
+      settleIfIdle();
+    }
   }
 
   /// The attempt reached the stage of the preloads that hold the entry: it
@@ -493,6 +578,9 @@ final class _Work implements LaneWork {
   CancellationToken? token;
   // The prefix the running fetch asked for, or null for the whole part.
   Duration? prefix;
+  // Whether only the head of the content is fetched (AutoDownload.prefix):
+  // held, not decoded, and not shown as a download.
+  bool headOnly = false;
   FetchedContent? content;
   _DecodeProgress? decodeProgress;
   bool _cancelled = false;
@@ -510,19 +598,19 @@ final class _Work implements LaneWork {
   // Whether the fetch of this part reported a transfer.
   bool _transferred = false;
 
-  /// The fetcher's report of the bytes of this part's transfer. An unknown
-  /// total is a download at its start: the arc turns without growing.
+  /// The fetcher's report of the bytes of this part's transfer.
   void received(int received, int? total) {
     if (phase != _Phase.fetching) return;
     _transferred = true;
-    reportDownload(total == null || total <= 0 ? 0 : received / total);
+    reportTransfer(received, total);
   }
 
-  /// Relays the download of the content to the entry; a thumbnail is a stand
-  /// in, not the download a surface shows.
-  void reportDownload(double fraction) {
-    if (_cancelled || part != FetchPart.content) return;
-    job.progress.download(fraction);
+  /// Relays the transfer of the content to the entry; a thumbnail is a stand
+  /// in, and a head fetched for later a preload, not the download a surface
+  /// shows.
+  void reportTransfer(int received, int? total) {
+    if (_cancelled || part != FetchPart.content || headOnly) return;
+    job.reportTransfer(received, total);
   }
 
   void fetched(FetchedContent fetchedContent) {
@@ -531,15 +619,15 @@ final class _Work implements LaneWork {
       fetchedContent.release();
       return;
     }
-    // All of it arrived, which a fetcher's last report need not say (nor a
-    // fetch that found the announced content after all): a surface that drew
-    // the download shows it complete until the decode.
     if (prefix != null) {
       // A prefix is fetched to be held, not decoded.
       fetchedContent.release();
       prefix = null;
       _pipeline._fetchLane.release(this);
-      if (job.demand.preloadStage is AssetPreloadStage$Seconds) {
+      if (headOnly) {
+        phase = _Phase.done;
+        job.settleIfIdle();
+      } else if (job.demand.preloadStage is AssetPreloadStage$Seconds) {
         phase = _Phase.done;
         job.satisfied();
       } else {
@@ -550,7 +638,9 @@ final class _Work implements LaneWork {
       }
       return;
     }
-    if (_transferred || job.announcedDownload) reportDownload(1);
+    if (part == FetchPart.content) {
+      job.contentFetched(transferred: _transferred);
+    }
     content = fetchedContent;
     phase = _Phase.queuedDecode;
     _pipeline._decodeLane.enqueue(this);
@@ -642,7 +732,11 @@ final class _DecodeProgress implements AssetProgress {
     }
     if (!isFinal) return;
     _end();
-    if (_work.part == FetchPart.content) job.contentDone();
+    if (_work.part == FetchPart.content) {
+      job.contentDone();
+    } else {
+      job.settleIfIdle();
+    }
   }
 
   // The job described the content before the decode; a decoder that learns
@@ -655,8 +749,20 @@ final class _DecodeProgress implements AssetProgress {
   // A decoder that reads its content from the network (a stream it opens
   // itself) reports the download as a fetcher would.
   @override
-  void download(double fraction) {
-    if (_live) _work.reportDownload(fraction);
+  void waiting() {
+    if (_live && _work.part == FetchPart.content) _work.job.progress.waiting();
+  }
+
+  @override
+  void transfer(int received, int? total) {
+    if (_live) _work.reportTransfer(received, total);
+  }
+
+  @override
+  void awaitingUser() {
+    if (_live && _work.part == FetchPart.content) {
+      _work.job.progress.awaitingUser();
+    }
   }
 
   @override
@@ -675,7 +781,11 @@ final class _DecodeProgress implements AssetProgress {
   void cancelled() {
     if (!_live) return;
     _end();
-    if (_work.part == FetchPart.content) _work.job.contentCancelled();
+    if (_work.part == FetchPart.content) {
+      _work.job.contentCancelled();
+    } else {
+      _work.job.settleIfIdle();
+    }
   }
 
   void _end() {

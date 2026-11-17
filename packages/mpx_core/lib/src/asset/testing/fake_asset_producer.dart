@@ -55,8 +55,15 @@ final class FakeAssetAttempt implements AssetTask {
   /// Reports what the content is.
   void describe(MediaDescriptor descriptor) => _progress.describe(descriptor);
 
-  /// Reports that [fraction] of the content's download has arrived.
-  void download(double fraction) => _progress.download(fraction);
+  /// Reports that the content is missing and about to download.
+  void waiting() => _progress.waiting();
+
+  /// Reports [received] bytes of the content's download, of [total].
+  void transfer(int received, [int? total]) =>
+      _progress.transfer(received, total);
+
+  /// Reports that the content waits for the user to download it.
+  void awaitingUser() => _progress.awaitingUser();
 
   /// Reports a failed attempt.
   void fail(

@@ -9,8 +9,8 @@ import 'package:flutter/animation.dart';
 /// One indicator is one download on one surface, and it is stateful: the arc's
 /// start angle turns frame by frame, and a
 /// new fraction eases in from the arc the surface is showing. A surface makes
-/// one when a download starts for what it shows (`AssetBinding.
-/// downloadProgress` turns non-null), gives it each fraction with
+/// one when a download starts for what it shows (`AssetBinding.transfer`
+/// turns active), gives it each fraction with
 /// [setProgress], steps it once per frame it paints with [advance] and drops
 /// it when the download ends. A surface shows none for content that needs no
 /// download.

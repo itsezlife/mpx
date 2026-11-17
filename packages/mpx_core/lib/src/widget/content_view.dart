@@ -10,6 +10,7 @@ import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_texture_layer.dart';
 import 'package:mpx_core/src/asset/radial_progress.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
+import 'package:mpx_core/src/pipeline/auto_download.dart';
 import 'package:mpx_core/src/widget/asset_cache_provider.dart';
 import 'package:mpx_core/src/widget/viewport_visibility.dart';
 
@@ -26,7 +27,8 @@ import 'package:mpx_core/src/widget/viewport_visibility.dart';
 /// ## Lifetime
 ///
 /// The view attaches once and keeps its binding across rebuilds. It attaches
-/// again only when [content], the preset's spec or the scope change, giving
+/// again only when [content], the preset's spec, [downloadContext] or the
+/// scope change, giving
 /// the old attach back first, so a parent that rebuilds every frame costs no
 /// attach.
 ///
@@ -92,6 +94,7 @@ class ContentView extends StatefulWidget {
     this.inView = true,
     this.visibleFraction = 1,
     this.holdsWhileTickersOff = false,
+    this.downloadContext,
     super.key,
   }) : assert(opacity >= 0 && opacity <= 1, 'opacity must be within 0..1'),
        assert(
@@ -125,15 +128,13 @@ class ContentView extends StatefulWidget {
   /// drawn over the centre of the view while the content downloads and has
   /// no frame to show, or null for none.
   ///
-  /// It shows only while the binding reports a download
-  /// (`AssetBinding.downloadProgress`): from the first frame for content
-  /// known to be missing, and on after a failed download, while the content
-  /// is still missing. Content served from a cache (memory or disk) never
-  /// shows it, and its arc follows the fraction downloaded from where the
-  /// view first saw it. The view asks for a frame
-  /// after each one it paints the indicator in, and stops when the first
-  /// frame exists, the download ends or a [TickerMode] above it is off. A
-  /// grid media cell uses 12.
+  /// It shows only while the binding's download is under way
+  /// (`AssetBinding.transfer` waiting or receiving): from the first frame for
+  /// content known to be missing. Content served from a cache (memory or
+  /// disk) never shows it, and a failed download hides it (a bare arc offers
+  /// no retry). The view asks for a frame after each one it paints the
+  /// indicator in, and stops when the first frame exists, the download ends
+  /// or a [TickerMode] above it is off. A grid media cell uses 12.
   final double? loadingRadius;
 
   /// What the view paints before the content has a stage, and fades out
@@ -161,6 +162,12 @@ class ContentView extends StatefulWidget {
   /// surface that moves or is kept mounted while hidden).
   final bool holdsWhileTickersOff;
 
+  /// Where the surface shows the content, for the scope's auto-download
+  /// policy (`AssetCacheScope.attach`): a host's tag such as
+  /// [AutoDownloadContext.channels]. Null uses the policy's default. It never
+  /// changes which entry the view attaches to.
+  final AutoDownloadContext? downloadContext;
+
   @override
   State<ContentView> createState() => _ContentViewState();
 }
@@ -170,6 +177,7 @@ class _ContentViewState extends State<ContentView> {
   AssetCacheScope? _attachedScope;
   MediaKey? _attachedContent;
   AssetPreset? _attachedPreset;
+  AutoDownloadContext? _attachedContext;
   // Whether the tickers above are on.
   bool _tickers = true;
 
@@ -296,7 +304,8 @@ class _ContentViewState extends State<ContentView> {
     final scope = widget.scope ?? AssetCacheProvider.of(context);
     if (identical(scope, _attachedScope) &&
         widget.content == _attachedContent &&
-        widget.preset == _attachedPreset) {
+        widget.preset == _attachedPreset &&
+        widget.downloadContext == _attachedContext) {
       return;
     }
     // Attach first, so an entry both attaches share is never
@@ -305,10 +314,12 @@ class _ContentViewState extends State<ContentView> {
     _attachedScope = scope;
     _attachedContent = widget.content;
     _attachedPreset = widget.preset;
+    _attachedContext = widget.downloadContext;
     _binding = scope.attach(
       widget.content,
       widget.preset.spec,
       widget.preset.profile,
+      downloadContext: widget.downloadContext,
     );
     _apply(_binding!);
     previous?.detach();
@@ -598,9 +609,10 @@ class _RenderContent extends RenderBox {
   // mode is off holds the arc where it is.
   void _paintLoading(Canvas canvas, Rect box) {
     final radius = _loadingRadius;
-    final downloaded = _binding.downloadProgress;
+    final transfer = _binding.transfer;
+    final downloaded = transfer.fraction ?? 0;
     if (radius == null ||
-        downloaded == null ||
+        !transfer.isActive ||
         _binding.readiness.stage.index >= AssetStage.firstFrame.index) {
       _indicator = null;
       return;

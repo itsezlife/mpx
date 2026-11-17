@@ -10,6 +10,7 @@ export 'src/asset/testing/fake_asset_producer.dart';
 export 'src/asset/testing/manual_memory_pressure.dart';
 export 'src/pipeline/testing/asset_fetcher_contract.dart';
 export 'src/pipeline/testing/decoder_contract.dart';
+export 'src/pipeline/testing/fake_auto_download_policy.dart';
 export 'src/pipeline/testing/fake_decoder.dart';
 export 'src/pipeline/testing/fake_fetcher.dart';
 export 'src/pipeline/testing/fake_media_resolver.dart';

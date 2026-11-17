@@ -80,7 +80,13 @@ final class _Progress implements AssetProgress {
   ]) => paintable.completeError(error, stackTrace);
 
   @override
-  void download(double fraction) {}
+  void waiting() {}
+
+  @override
+  void transfer(int received, int? total) {}
+
+  @override
+  void awaitingUser() {}
 
   @override
   void cancelled() {}

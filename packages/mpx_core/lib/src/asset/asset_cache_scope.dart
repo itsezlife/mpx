@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'dart:ui' show Canvas, Color, Image, Rect, Size;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:mpx_core/src/asset/asset_binding.dart';
 import 'package:mpx_core/src/asset/asset_binding_base.dart';
 import 'package:mpx_core/src/asset/asset_cache_budgets.dart';
@@ -12,9 +13,11 @@ import 'package:mpx_core/src/asset/asset_producer.dart';
 import 'package:mpx_core/src/asset/asset_profile.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_spec.dart';
+import 'package:mpx_core/src/asset/asset_transfer.dart';
 import 'package:mpx_core/src/asset/clear_placeholder.dart';
 import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
+import 'package:mpx_core/src/pipeline/auto_download.dart';
 import 'package:mpx_core/src/playback/playback_clock.dart';
 import 'package:mpx_core/src/playback/playback_policy.dart';
 import 'package:mpx_core/src/texture/frame_texture_pool.dart';
@@ -81,6 +84,19 @@ import 'package:mpx_core/src/texture/frame_texture_pool.dart';
 /// clears. Running work is not stopped. Hidden bindings are not preloads and
 /// are never held back.
 ///
+/// ## Downloads
+///
+/// Every entry has one transfer (`AssetBinding.transfer`), which its
+/// bindings share. Content missing from every cache downloads when the
+/// [autoDownload] policy says so for the tags of the bindings attached to it
+/// ([attach]'s `downloadContext`; the most permissive answer wins), otherwise
+/// it shows its stand-ins and waits for `AssetBinding.download`. A user's
+/// cancel (`AssetBinding.cancelDownload`) is remembered per key for the
+/// scope's life, so content scrolled back into view is not fetched again
+/// until the user asks; a user's download is remembered the same way. When
+/// the policy changes, or a binding whose tag allows it attaches, waiting
+/// content that may download now starts.
+///
 /// ## Textures
 ///
 /// A platform with a texture host registers its [FrameTexturePool] as
@@ -111,6 +127,7 @@ final class AssetCacheScope {
     AssetPaintable? placeholder,
     this.textures,
     this.preloadPausingLayers = standardPreloadPausingLayers,
+    this.autoDownload = AutoDownloadPolicy.always,
   }) : _producer = producer,
        _budgets = budgets,
        _clock = clock ?? PlaybackClock(),
@@ -120,6 +137,84 @@ final class AssetCacheScope {
     memoryPressure?.addListener(_onMemoryPressure);
     _clock.addLayerListener(_onLayers);
     _preloadsPaused = _layersPausePreloads();
+    autoDownload.changes.addListener(_onAutoDownloadChanged);
+  }
+
+  /// Which missing content downloads by itself; [AutoDownloadPolicy.always]
+  /// unless the host says otherwise. See "Downloads" above.
+  final AutoDownloadPolicy autoDownload;
+
+  // Keys whose download the user cancelled, and keys the user asked to
+  // download; a key is in one at most.
+  final Set<MediaKey> _cancelledByUser = {};
+  final Set<MediaKey> _requestedByUser = {};
+
+  // The scope's answer for [entry]; see AssetDemand.autoDownload.
+  AutoDownload _autoDownloadOf(_Entry entry, MediaDescriptor? descriptor) {
+    if (_requestedByUser.contains(entry.key)) return AutoDownload.now;
+    if (_cancelledByUser.contains(entry.key)) return AutoDownload.manual;
+    if (descriptor == null) return AutoDownload.now;
+    final contexts = entry.downloadContexts;
+    if (contexts.isEmpty) {
+      return autoDownload.decide(descriptor, autoDownload.defaultContext);
+    }
+    var best = AutoDownload.manual;
+    for (final context in contexts) {
+      best = best.or(
+        autoDownload.decide(descriptor, context ?? autoDownload.defaultContext),
+      );
+      if (best == AutoDownload.now) break;
+    }
+    return best;
+  }
+
+  // Whether [entry] waits for the user although the scope would download it
+  // now: the policy or the tags attached changed since its attempt decided.
+  bool _mayDownloadNow(_Entry entry) =>
+      entry.transfer is AssetTransfer$AwaitingUser &&
+      entry.bindings.isNotEmpty &&
+      !entry.isFinal &&
+      !_cancelledByUser.contains(entry.key) &&
+      _autoDownloadOf(entry, entry.descriptor) == AutoDownload.now;
+
+  void _onAutoDownloadChanged() {
+    if (_disposed) return;
+    for (final entry in List<_Entry>.of(_entries.values)) {
+      if (_mayDownloadNow(entry)) _restart(entry);
+    }
+  }
+
+  // Ends the running attempt of [entry], if any, and starts another.
+  void _restart(_Entry entry) {
+    entry.attempt?.cancel();
+    _start(entry);
+  }
+
+  void _download(_Entry entry) {
+    _cancelledByUser.remove(entry.key);
+    _requestedByUser.add(entry.key);
+    if (entry.isFinal) return;
+    if (entry.transfer.isActive && entry.attempt != null) return;
+    _restart(entry);
+  }
+
+  void _cancelDownload(_Entry entry) {
+    if (!entry.transfer.isActive) return;
+    _requestedByUser.remove(entry.key);
+    _cancelledByUser.add(entry.key);
+    // Every spec of the content downloads the same bytes.
+    for (final sibling in List<_Entry>.of(_byKey[entry.key] ?? const {})) {
+      if (!sibling.transfer.isActive) continue;
+      final total = sibling.transfer.total;
+      sibling.attempt?.cancel();
+      // The stand-ins are still wanted: the next attempt fetches only them,
+      // and says the content awaits the user; one that cannot tell leaves
+      // the scope to say it.
+      if (sibling.bindings.isNotEmpty && !sibling.isFinal) _start(sibling);
+      if (sibling.transfer == AssetTransfer.none) {
+        sibling.setTransfer(AssetTransfer.awaitingUser(total));
+      }
+    }
   }
 
   /// The layers that hold back staged preloads unless a host says otherwise:
@@ -333,18 +428,35 @@ final class AssetCacheScope {
   ///
   /// Throws a [StateError] after [dispose]: a surface that outlives its scope
   /// is a lifecycle bug to see, not to absorb.
-  AssetBinding attach(MediaKey key, AssetSpec spec, AssetProfile profile) {
+  ///
+  /// [downloadContext] is the surface's tag for the [autoDownload] policy
+  /// (where it shows the content). It never changes which entry the binding
+  /// gets; a binding whose tag lets waiting content download starts it.
+  AssetBinding attach(
+    MediaKey key,
+    AssetSpec spec,
+    AssetProfile profile, {
+    AutoDownloadContext? downloadContext,
+  }) {
     if (_disposed) {
       throw StateError('AssetCacheScope.attach called after dispose.');
     }
     final entry = _entryFor(key, spec);
-    final binding = _EntryBinding(scope: this, entry: entry, profile: profile)
-      ..entryHeld = entry.playbackHolds > 0;
+    final binding = _EntryBinding(
+      scope: this,
+      entry: entry,
+      profile: profile,
+      downloadContext: downloadContext,
+    )..entryHeld = entry.playbackHolds > 0;
     _unpinned[entry.tier]!.remove(entry);
     entry.bindings.add(binding);
     entry.demand.refresh(entry);
     entry.syncShown();
-    if (entry.attempt == null && !entry.isFinal) _start(entry);
+    if (entry.attempt == null && !entry.isFinal) {
+      _start(entry);
+    } else if (_mayDownloadNow(entry)) {
+      _restart(entry);
+    }
     // After the start: a memory hit answered inside it needs no sibling.
     binding
       ..reborrow()
@@ -427,7 +539,7 @@ final class AssetCacheScope {
 
   _Entry _entryFor(MediaKey key, AssetSpec spec) =>
       _entries.putIfAbsent((key, spec), () {
-        final created = _Entry(key, spec);
+        final created = _Entry(this, key, spec);
         (_byKey[key] ??= Set<_Entry>.identity()).add(created);
         return created;
       });
@@ -445,7 +557,7 @@ final class AssetCacheScope {
     if (entry.bindings.isNotEmpty || entry.preloads.isNotEmpty) return;
     entry.attempt?.cancel();
     // Nobody draws it any more; a re-attach starts an attempt that tells.
-    entry.download = null;
+    entry.setTransfer(AssetTransfer.none);
     _release(entry);
     _trim();
   }
@@ -471,7 +583,9 @@ final class AssetCacheScope {
       if ((entry.bindings.isNotEmpty || entry.preloads.isNotEmpty) &&
           entry.attempt == null &&
           !entry.isFinal &&
-          entry.failureKind == AssetFailureKind.transient) {
+          entry.failureKind == AssetFailureKind.transient &&
+          !_cancelledByUser.contains(entry.key) &&
+          entry.transfer is! AssetTransfer$AwaitingUser) {
         _start(entry);
       }
     }
@@ -486,6 +600,7 @@ final class AssetCacheScope {
     _disposed = true;
     _memoryPressure?.removeListener(_onMemoryPressure);
     _clock.removeLayerListener(_onLayers);
+    autoDownload.changes.removeListener(_onAutoDownloadChanged);
     for (final entry in List<_Entry>.of(_entries.values)) {
       entry.attempt?.cancel();
       entry.preloads.toList().forEach((preload) => preload.cancelled = true);
@@ -507,11 +622,11 @@ final class AssetCacheScope {
     if (entry.bindings.isEmpty && _preloadsPaused) return;
     final attempt = _Attempt(this, entry);
     entry.attempt = attempt;
-    // The last attempt's download is no fact about this one: the producer
+    // The last attempt's transfer is no fact about this one: the producer
     // announces it again if the content is still missing, and a binding still
-    // drawing the old fraction hears when it does not.
-    final previousDownload = entry.download;
-    entry.download = null;
+    // drawing the old one hears when it does not.
+    final previousTransfer = entry.transfer;
+    entry.transfer = AssetTransfer.none;
     try {
       final task = producer.produce(
         AssetRequest(entry.key, entry.spec),
@@ -525,8 +640,9 @@ final class AssetCacheScope {
       // bug, recorded for diagnostics and not retried by connectivity.
       attempt.fail(error, stackTrace, AssetFailureKind.permanent);
     }
-    if (previousDownload != null && entry.download == null) {
-      entry.signalDownload();
+    if (previousTransfer != AssetTransfer.none &&
+        entry.transfer == AssetTransfer.none) {
+      entry.signalTransfer(bytesOnly: false);
     }
   }
 
@@ -591,7 +707,7 @@ final class AssetCacheScope {
     if (entry.isFinal) {
       entry.attempt?.ended = true;
       entry.attempt = null;
-      entry.download = null;
+      entry.setTransfer(AssetTransfer.none);
     }
     for (final binding in List<_EntryBinding>.of(entry.bindings)) {
       binding.entryChanged();
@@ -651,13 +767,14 @@ final class AssetCacheScope {
 // --- Internals --------------------------------------------------------------
 
 final class _Entry {
-  _Entry(this.key, this.spec);
+  _Entry(this.scope, this.key, this.spec);
 
+  final AssetCacheScope scope;
   final MediaKey key;
   final AssetSpec spec;
   final Set<_EntryBinding> bindings = {};
   final Set<_Preload> preloads = Set.identity();
-  final _Demand demand = _Demand();
+  late final _Demand demand = _Demand(this);
   AssetStage stage = AssetStage.none;
   AssetPaintable? paintable;
   // The stand-in the last rise replaced (a preview, a thumbnail), while a
@@ -670,10 +787,25 @@ final class _Entry {
   Object? lastError;
   AssetFailureKind? failureKind;
   _Attempt? attempt;
-  // The content's download, 0 to 1, as the last attempt reported it, or null
-  // when it reported none. It outlives a failed or cancelled attempt: the
-  // content is still missing.
-  double? download;
+  // The content's transfer as the last attempt reported it. A failed or
+  // waiting one outlives its attempt: the content is still missing.
+  AssetTransfer transfer = AssetTransfer.none;
+
+  // The tags of the attached bindings.
+  Set<AutoDownloadContext?> get downloadContexts => {
+    for (final binding in bindings) binding.downloadContext,
+  };
+
+  // Sets the transfer and tells the bindings when it changed; a change of
+  // bytes only is heard at most once per frame.
+  void setTransfer(AssetTransfer value) {
+    if (value == transfer) return;
+    final bytesOnly =
+        value is AssetTransfer$Receiving && transfer is AssetTransfer$Receiving;
+    transfer = value;
+    signalTransfer(bytesOnly: bytesOnly);
+  }
+
   // What the producer said the content is; kept beyond the attempt, since it
   // is a fact about the content, not about one attempt.
   MediaDescriptor? descriptor;
@@ -733,10 +865,10 @@ final class _Entry {
     if (!shown) paintable?.leftScreen();
   }
 
-  // Tells the bindings their download changed.
-  void signalDownload() {
+  // Tells the bindings their transfer changed.
+  void signalTransfer({required bool bytesOnly}) {
     for (final binding in List<_EntryBinding>.of(bindings)) {
-      binding.downloadChanged();
+      binding.transferChanged(bytesOnly: bytesOnly);
     }
   }
 
@@ -754,6 +886,17 @@ final class _Entry {
 }
 
 final class _Demand implements AssetDemand {
+  _Demand(this._entry);
+
+  final _Entry _entry;
+
+  @override
+  Set<AutoDownloadContext?> get downloadContexts => _entry.downloadContexts;
+
+  @override
+  AutoDownload autoDownload(MediaDescriptor? descriptor) =>
+      _entry.scope._autoDownloadOf(_entry, descriptor);
+
   @override
   AssetPriority priority = AssetPriority.visible;
 
@@ -842,12 +985,26 @@ final class _Attempt implements AssetProgress {
   }
 
   @override
-  void download(double fraction) {
+  void waiting() {
     if (!_live || _scope._disposed) return;
-    final value = fraction.clamp(0.0, 1.0);
-    if (_entry.download == value) return;
-    _entry.download = value;
-    _entry.signalDownload();
+    _entry.setTransfer(const AssetTransfer.waiting());
+  }
+
+  @override
+  void transfer(int received, int? total) {
+    if (!_live || _scope._disposed) return;
+    _entry.setTransfer(
+      AssetTransfer.receiving(
+        received < 0 ? 0 : received,
+        total == null || total <= 0 ? null : total,
+      ),
+    );
+  }
+
+  @override
+  void awaitingUser() {
+    if (!_live || _scope._disposed) return;
+    _entry.setTransfer(AssetTransfer.awaitingUser(_entry.transfer.total));
   }
 
   @override
@@ -860,6 +1017,15 @@ final class _Attempt implements AssetProgress {
     _entry
       ..lastError = error
       ..failureKind = kind;
+    // A download that was under way turns into the retry a control shows.
+    switch (_entry.transfer) {
+      case AssetTransfer$Waiting(:final total):
+        _entry.setTransfer(AssetTransfer.failed(kind, 0, total));
+      case AssetTransfer$Receiving(:final received, :final total):
+        _entry.setTransfer(AssetTransfer.failed(kind, received, total));
+      default:
+        break;
+    }
     _end();
   }
 
@@ -877,10 +1043,8 @@ final class _Attempt implements AssetProgress {
     running?.cancel();
   }
 
-  // The download stays: a failed or cancelled one leaves the content missing,
-  // and the surfaces keep drawing it there, with the arc kept while the file
-  // does not exist. The final stage, the last binding
-  // leaving and the next attempt clear it.
+  // The transfer stays: a failed or waiting one leaves the content missing.
+  // The final stage, the last binding leaving and the next attempt clear it.
   void _end() {
     ended = true;
     if (!identical(_entry.attempt, this)) return;
@@ -893,6 +1057,7 @@ final class _EntryBinding extends AssetBindingBase {
     required AssetCacheScope scope,
     required this.entry,
     required super.profile,
+    required this.downloadContext,
   }) : _scope = scope,
        super(
          key: entry.key,
@@ -904,6 +1069,7 @@ final class _EntryBinding extends AssetBindingBase {
 
   final AssetCacheScope _scope;
   final _Entry entry;
+  final AutoDownloadContext? downloadContext;
   bool _registered = false;
   // Waiting to release the entry's stand-in.
   bool _holdsStandIn = false;
@@ -928,14 +1094,63 @@ final class _EntryBinding extends AssetBindingBase {
   /// Called by the scope when the entry's descriptor became known.
   void descriptorChanged() => signal();
 
-  /// Called by the scope when the entry's download changed.
-  void downloadChanged() => signal();
+  // Whether a byte report was heard in the frame under way, and whether one
+  // waits for the next frame.
+  bool _bytesHeard = false;
+  bool _bytesPending = false;
+
+  /// Called by the scope when the entry's transfer changed. Bytes arrive per
+  /// chunk, several per frame on a fast network, and a surface needs one
+  /// repaint per frame: a byte report after the first of a frame is heard on
+  /// the next one.
+  void transferChanged({required bool bytesOnly}) {
+    if (bytesOnly && _bytesHeard) {
+      _bytesPending = true;
+      return;
+    }
+    signal();
+    if (_bytesHeard) return;
+    _bytesHeard = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _bytesHeard = false;
+      if (!_bytesPending) return;
+      _bytesPending = false;
+      signal();
+    });
+  }
 
   @override
   MediaDescriptor? get descriptor => isDetached ? null : entry.descriptor;
 
   @override
-  double? get downloadProgress => isDetached ? null : entry.download;
+  AssetTransfer get transfer {
+    if (isDetached) return AssetTransfer.none;
+    final transfer = entry.transfer;
+    final size = entry.descriptor?.byteSize;
+    if (size == null || transfer.total != null) return transfer;
+    // The source did not say how large the content is; the host did.
+    return switch (transfer) {
+      AssetTransfer$Waiting() => AssetTransfer.waiting(size),
+      AssetTransfer$Receiving(:final received) => AssetTransfer.receiving(
+        received,
+        size,
+      ),
+      AssetTransfer$AwaitingUser() => AssetTransfer.awaitingUser(size),
+      AssetTransfer$Failed(:final kind, :final received) =>
+        AssetTransfer.failed(kind, received, size),
+      AssetTransfer$None() => transfer,
+    };
+  }
+
+  @override
+  void download() {
+    if (!isDetached) _scope._download(entry);
+  }
+
+  @override
+  void cancelDownload() {
+    if (!isDetached) _scope._cancelDownload(entry);
+  }
 
   /// Called by the scope when the entry gained a stage.
   void entryChanged() {

@@ -6,6 +6,7 @@ import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_spec.dart';
 import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
+import 'package:mpx_core/src/pipeline/auto_download.dart';
 
 /// What a producer is asked to make: the entry's identity.
 @immutable
@@ -69,6 +70,24 @@ abstract interface class AssetDemand {
   /// binding is attached; otherwise the smallest distance of the entry's
   /// preloads.
   int get distance;
+
+  /// The auto-download tags of the attached bindings
+  /// (`AssetCacheScope.attach`), read live; null for a binding that gave
+  /// none. Empty while only preloads hold the entry.
+  Set<AutoDownloadContext?> get downloadContexts;
+
+  /// Whether content missing from every cache downloads now, only its head,
+  /// or waits for the user, for the content of [descriptor] as the surfaces
+  /// attached now show it.
+  ///
+  /// A user's download of the key answers [AutoDownload.now] and a user's
+  /// cancel [AutoDownload.manual], whatever the policy; otherwise it is the
+  /// most permissive answer of the scope's `AutoDownloadPolicy` over
+  /// [downloadContexts]. Without a [descriptor] (not resolved yet) the policy
+  /// cannot weigh the content, and the answer is [AutoDownload.now] unless
+  /// the user cancelled. A producer asks only for content its fetcher reports
+  /// missing; cached content ignores the policy.
+  AutoDownload autoDownload(MediaDescriptor? descriptor);
 }
 
 /// Whether a failed attempt is worth repeating when the network comes back.
@@ -112,23 +131,33 @@ abstract interface class AssetProgress {
   /// attempt; a report equal to the last one changes nothing.
   void describe(MediaDescriptor descriptor);
 
-  /// Reports how much of the content's download has arrived, [fraction] from
-  /// 0 to 1 (clamped), for the surfaces that show a download
-  /// (`AssetBinding.downloadProgress`).
+  /// Reports that the content is missing and its download is about to
+  /// start: no byte has arrived yet (`AssetTransfer.waiting`). Called from
+  /// the start of the attempt for content known to be missing, before its
+  /// thumbnail, so a surface shows the download from its first frame.
+  void waiting();
+
+  /// Reports the bytes of the content's download: [received] so far, of
+  /// [total] (null when the source did not say), for the surfaces that show
+  /// a download (`AssetBinding.transfer`).
   ///
-  /// Only a producer that is transferring the content, or knows it must,
-  /// calls it: from the start of the attempt for content known to be missing
-  /// (0), or else from the start of the transfer (0, or what had already
-  /// arrived), as bytes arrive, and 1 when they all have. Content served from
-  /// a cache (memory or disk) is never reported, so a surface shows no
-  /// download for it. The fraction outlives a failed or cancelled attempt
-  /// (the content is still missing) until the final stage, the next attempt
-  /// or the last binding leaving; a lower value replaces a higher one (a
-  /// download that started again).
-  void download(double fraction);
+  /// Only a producer that is transferring the content calls it: from the
+  /// start of the transfer (0, or what had already arrived), then as bytes
+  /// arrive. Content served from a cache (memory or disk) is never reported,
+  /// so a surface shows no download for it. The bindings hear byte reports
+  /// at most once per frame.
+  void transfer(int received, int? total);
+
+  /// Reports that the content is missing and does not download by itself:
+  /// the auto-download policy or a user's cancel said so
+  /// (`AssetTransfer.awaitingUser`). The attempt goes on with the
+  /// stand-ins (preview, thumbnail) and may end as [cancelled].
+  void awaitingUser();
 
   /// Ends the attempt without a result. The entry keeps its stage: a failure
-  /// is never shown. [error] and [stackTrace] are kept for diagnostics
+  /// is never drawn as a picture. A download under way turns into
+  /// `AssetTransfer.failed`, which a status control shows as download (the
+  /// retry). [error] and [stackTrace] are kept for diagnostics
   /// (`AssetBinding.lastError`); [kind] tells whether connectivity helps.
   void fail(
     Object error, [
