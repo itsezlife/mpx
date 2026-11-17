@@ -11,6 +11,7 @@ import 'package:mpx_core/src/asset/asset_texture_layer.dart';
 import 'package:mpx_core/src/asset/radial_progress.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 import 'package:mpx_core/src/widget/asset_cache_provider.dart';
+import 'package:mpx_core/src/widget/viewport_visibility.dart';
 
 /// Shows cache content: attaches `(content, preset.spec, preset.profile)` to
 /// the host's [AssetCacheScope], paints the binding's paintable and detaches
@@ -173,11 +174,41 @@ class _ContentViewState extends State<ContentView> {
   // Whether the binding plays: tickers on and in view.
   bool get _shown => _tickers && widget.inView;
 
+  // Whether the view was inside every viewport around it at the last frame
+  // ([ViewportVisibility]). A playing view measures itself after each frame:
+  // a cell laid out and painted outside the window (a shrink-wrapped grid in
+  // a list builds and paints all of them) is hidden as one scrolled out of
+  // a strip is, so only the cells on screen play.
+  bool _onScreen = true;
+  bool _measuring = false;
+
+  void _measureAfterFrame() {
+    if (_measuring || !widget.preset.profile.animate) return;
+    _measuring = true;
+    // Never asks for a frame: it rides the ones the view or a scroll makes.
+    SchedulerBinding.instance.addPostFrameCallback(_measure);
+  }
+
+  void _measure(Duration _) {
+    _measuring = false;
+    if (!mounted) return;
+    final box = context.findRenderObject();
+    if (box is RenderBox) {
+      final onScreen = ViewportVisibility.of(box).fraction > 0;
+      if (onScreen != _onScreen) {
+        _onScreen = onScreen;
+        if (_binding case final binding?) _apply(binding);
+      }
+    }
+    _measureAfterFrame();
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _tickers = TickerMode.valuesOf(context).enabled;
     _sync();
+    _measureAfterFrame();
     _apply(_binding!);
   }
 
@@ -186,6 +217,7 @@ class _ContentViewState extends State<ContentView> {
     super.didUpdateWidget(oldWidget);
     _sync();
     _apply(_binding!);
+    _measureAfterFrame();
   }
 
   // A held binding stays visible; the hold goes first when it plays again,
@@ -198,7 +230,7 @@ class _ContentViewState extends State<ContentView> {
         ..visible = true;
     } else {
       binding
-        ..visibleFraction = _shown ? widget.visibleFraction : 0
+        ..visibleFraction = _shown && _onScreen ? widget.visibleFraction : 0
         ..held = false;
     }
   }

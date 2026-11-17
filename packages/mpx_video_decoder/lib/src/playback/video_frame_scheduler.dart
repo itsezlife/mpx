@@ -107,6 +107,11 @@ final class VideoFrameLease {
   /// shows the frame it had, and its time stands still.
   bool get isStalled => _player.stalled;
 
+  /// How far the newest frame decoded is behind the clip's clock: zero for a
+  /// clip that keeps up, up to about the scheduler's catch-up lag for one
+  /// that cannot.
+  Duration get lag => _player.lag;
+
   /// Whether the clip could not be decoded. The holder keeps painting its
   /// still and stops asking.
   bool get isFailed => _player.failed;
@@ -190,6 +195,16 @@ final class VideoFrameLease {
 /// stopped, nothing skipped), and it asks for no decode, so it holds no
 /// worker turn and wants no slot. It tries again when told the bytes landed
 /// ([VideoFrameLease.wake]), or after [stallRetry] in case nobody tells it.
+///
+/// ## Catching up
+///
+/// A clip whose decodes are slower than its frame rate (a 60 fps 4K source
+/// on a phone, or many clips sharing too few workers) would play in slow
+/// motion, ever further behind its clock. When the newest frame it decoded
+/// is more than [catchUpLag] behind its clock, it seeks to where the clock
+/// is (`VideoEngine.seek`: the keyframe before, the frames between decoded
+/// and dropped on the engine's side) and goes on from there: it skips, and
+/// its lag stays bounded.
 ///
 /// ## Looping
 ///
@@ -368,6 +383,7 @@ final class VideoFrameScheduler {
     this.idleRelease = const Duration(seconds: 1),
     this.tickInterval = Duration.zero,
     this.stallRetry = const Duration(milliseconds: 500),
+    this.catchUpLag = const Duration(seconds: 1),
     this.keptAheadBytes = defaultKeptAheadBytes,
     VideoSweepTimerFactory startTimer = Timer.new,
   }) : assert(maxAdvancing > 0, 'at least one clip must have a slot'),
@@ -410,6 +426,10 @@ final class VideoFrameScheduler {
   /// How long a stalled clip waits for [VideoFrameLease.wake] before it
   /// tries again anyway.
   final Duration stallRetry;
+
+  /// How far behind its clock a clip's newest decoded frame may fall before
+  /// it seeks to the clock ("Catching up").
+  final Duration catchUpLag;
 
   /// Whether each playing clip logs, every [playbackLogInterval] of clock
   /// time, an `mpx_video: clip <id>` line: frames decoded and shown in that
@@ -1335,9 +1355,29 @@ final class _ClipPlayer implements VideoFrameSource {
   /// Picks the frame to show and starts the next decode.
   void step() {
     if (_dead || failed) return;
+    _catchUp();
     _pickFrame();
     _pump();
     if (VideoFrameScheduler.logPlayback) _logPlayback();
+  }
+
+  // The time of the newest frame decoded on the clip's timeline.
+  Duration _decodedTime = Duration.zero;
+  int _catchUps = 0;
+
+  Duration get lag {
+    final behind = _clipTime - _decodedTime;
+    return behind.isNegative ? Duration.zero : behind;
+  }
+
+  // Seeks to the clock when the decodes fell more than catchUpLag behind
+  // it; once per fall, as the seek stands the clock still until its frame.
+  void _catchUp() {
+    if (!playing || stalled || isSeeking || _needsRewind) return;
+    if (_decodedTime == Duration.zero && _framesInPass == 0) return;
+    if (lag <= _owner.catchUpLag) return;
+    _catchUps++;
+    seekTo(passPosition);
   }
 
   // Counts since the last playback log line.
@@ -1361,9 +1401,11 @@ final class _ClipPlayer implements VideoFrameSource {
       '$_shownSinceLog in ${span.inMilliseconds} ms, step $frameStep, '
       '${stalled ? 'stalled' : 'not stalled'}, '
       '${_inFlight ? 'decoding' : 'idle'}, ${slotted ? 'slotted' : 'unslotted'}, '
-      'behind ${(_clipTime - _shownTime).inMilliseconds} ms',
+      'behind ${(_clipTime - _shownTime).inMilliseconds} ms, '
+      'caught up $_catchUps times',
     );
     _loggedAt = now;
+    _catchUps = 0;
     _decodedSinceLog = 0;
     _shownSinceLog = 0;
   }
@@ -1508,6 +1550,7 @@ final class _ClipPlayer implements VideoFrameSource {
             _passBase = _clipTime - pts;
             _origin = _passBase;
             _seekFrame = _number;
+            _decodedTime = _clipTime;
             _ring.add(_Frame(_number++, _clipTime, buffer));
             buffer = null;
             _lastPts = pts;
@@ -1516,6 +1559,7 @@ final class _ClipPlayer implements VideoFrameSource {
           }
           // A frame between two kept ones is dropped unseen: its buffer goes
           // back in `finally`. It still counts for the pass length.
+          _decodedTime = _passBase + pts;
           if (_framesInPass % frameStep == 0) {
             _ring.add(_Frame(_number++, _passBase + pts, buffer));
             buffer = null;

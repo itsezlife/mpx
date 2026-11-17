@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A playing `ContentView` measures itself after each frame and is hidden
+  when no viewport shows it, so cells laid out and painted off screen (a
+  shrink-wrapped grid in a list) stop playing; a hidden binding painted
+  anyway paints at the time it hid.
 - `FetchedRanged.landed` and `FetchedRanged.pause`: a decoder that finds
   its bytes missing tries again when more landed, and pauses the fetching
   of content its surface stopped showing.

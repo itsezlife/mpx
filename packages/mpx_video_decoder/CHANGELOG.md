@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A clip whose decodes cannot keep up with its frame rate no longer plays
+  in ever slower motion: when its newest frame falls more than
+  `VideoFrameScheduler.catchUpLag` (1 s) behind its clock it seeks to the
+  clock and goes on from there. `VideoFrameLease.lag` says how far behind
+  it is.
 - A clip read through a ranged source never waits for bytes: the wrapper
   asks the reader what is there (`reader_available`) and answers
   `MPX_VIDEO_STALLED` (`VideoRejection.stalled`, `VideoFrameStatus.stalled`)

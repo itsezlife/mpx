@@ -183,6 +183,24 @@ void main() {
       expect(paintable.paints.last.context.time, _ms(400));
     });
 
+    test('painted while hidden, it paints at the time it hid', () {
+      final binding = animated();
+      final other = animated(key: const MediaKey.remote('anim-2'));
+      final paintable = binding.paintable as FakeAssetPaintable;
+      ticks.tick(_ms(16));
+
+      binding.visible = false;
+      ticks.tick(_ms(400));
+      paint(binding);
+
+      expect(other.isPlaying, isTrue);
+      expect(paintable.paints.single.context.time, _ms(16));
+
+      binding.visible = true;
+      paint(binding);
+      expect(paintable.paints.last.context.time, _ms(400));
+    });
+
     test('tells the paintable its playback resumed when the hold ends, so '
         'the time the clock ran meanwhile is not played', () {
       final binding = animated();

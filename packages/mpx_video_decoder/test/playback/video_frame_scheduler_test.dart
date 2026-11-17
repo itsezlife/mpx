@@ -455,6 +455,56 @@ void main() {
       },
     );
 
+    test('clips sharing too little decoding each keep advancing, never more '
+        'than about the catch-up lag behind their clocks', () async {
+      // Six clips of 30 fps share one decode per clock frame: 60 a second
+      // where they need 180.
+      final long = Uint8List.fromList([30]);
+      fake.accept(
+        long,
+        const VideoInfo(
+          width: 16,
+          height: 16,
+          duration: Duration(seconds: 10),
+          frameRate: 30,
+          hasAlpha: true,
+        ),
+        frameCount: 300,
+      );
+      final leases = [
+        for (var i = 0; i < 6; i++)
+          scheduler.acquire(
+            'clip-$i',
+            (await engine.open(VideoSource.bytes(long), width: 16, height: 16)
+                    as VideoClipOpened)
+                .clip,
+          )!,
+      ];
+      engine.hold();
+      final shown = [for (final _ in leases) <String>{}];
+      var maxLag = Duration.zero;
+      var played = Duration.zero;
+      for (var i = 0; i < 400; i++) {
+        for (final lease in leases) {
+          scheduler.want(lease, played);
+        }
+        played += const Duration(milliseconds: 16);
+        await tick();
+        engine.release(1);
+        await pumpEventQueue();
+        for (var k = 0; k < leases.length; k++) {
+          if (leases[k].sprite != null) shown[k].add(pixelOf(leases[k]).join());
+          if (i > 100 && leases[k].lag > maxLag) maxLag = leases[k].lag;
+        }
+      }
+      engine.release();
+
+      expect(maxLag, lessThan(const Duration(milliseconds: 1500)));
+      for (final frames in shown) {
+        expect(frames.length, greaterThan(3));
+      }
+    });
+
     test('a stall nobody wakes is retried after stallRetry', () async {
       final clipA = await openClip();
       final a = scheduler.acquire('a', clipA)!;
