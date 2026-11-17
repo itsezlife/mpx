@@ -462,6 +462,112 @@ void main() {
     ], everyElement(0));
   });
 
+  testWidgets('a download the viewer ran shows on the tile while it runs; '
+      'closed, the tile offers the download with the bytes received', (
+    tester,
+  ) async {
+    scope.dispose();
+    scope = AssetCacheScope(
+      producer: producer,
+      clock: clock,
+      autoDownload: FakeAutoDownloadPolicy(),
+    );
+    final described = MediaDescriptor(
+      key: photoKey(0),
+      kind: MediaKind.still,
+      byteSize: 4718592,
+    );
+    await pumpHost(
+      tester,
+      Align(
+        alignment: Alignment.topLeft,
+        child: Builder(
+          builder: (context) => GestureDetector(
+            onTap: () => MediaViewer.show(
+              context,
+              source: source,
+              initialIndex: 0,
+              policy: _policy,
+              scope: scope,
+            ),
+            child: ViewerOrigin(
+              index: 0,
+              child: ContentView(
+                content: photoKey(0),
+                scope: scope,
+                preset: AssetPresets.media(
+                  size: const Size(120, 90),
+                  devicePixelRatio: 1,
+                  profile: const AssetProfile(),
+                ),
+                status: const MediaStatusMode.control(),
+                badge: true,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final tileSpec = producer.last.request.spec;
+    producer.last
+      ..describe(described)
+      ..awaitingUser();
+    String tileBadge() => [
+      for (final text in tester.widgetList<Text>(
+        find.descendant(
+          of: find.byType(ViewerOrigin),
+          matching: find.byType(Text),
+        ),
+      ))
+        text.data,
+    ].join(' | ');
+
+    await openedFrom(tester, 0);
+    await settleOpen(tester);
+    final page = producer.attempts.lastWhere(
+      (attempt) =>
+          attempt.request.key == photoKey(0) &&
+          attempt.request.spec != tileSpec,
+    );
+    expect(page.demand.autoDownload(described), AutoDownload.now);
+    page
+      ..describe(described)
+      ..transfer(1258291, 4718592);
+    await tester.pump();
+    // The tile, hidden under the viewer, follows the download.
+    expect(tileBadge(), contains('1.2 MB / 4.5 MB'));
+
+    viewer(tester).close().ignore();
+    await tester.pump();
+    await tester.pump(_policy.closeDuration + const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(page.isCancelled, isTrue);
+    expect(
+      find.descendant(
+        of: find.byType(ViewerOrigin),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is Semantics && widget.properties.label != null,
+        ),
+      ),
+      findsOneWidget,
+    );
+    final label = tester
+        .widget<Semantics>(
+          find.descendant(
+            of: find.byType(ViewerOrigin),
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is Semantics && widget.properties.label != null,
+            ),
+          ),
+        )
+        .properties
+        .label;
+    expect(label, const MediaStatusStrings().download);
+    expect(tileBadge(), contains('1.2 MB / 4.5 MB'));
+  });
+
   group('ViewerController', () {
     testWidgets('observes the item, the open state and the controls', (
       tester,

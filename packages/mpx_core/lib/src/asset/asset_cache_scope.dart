@@ -1003,10 +1003,30 @@ final class _Entry {
   // changed: each shows the one download of its bytes
   // (AssetCacheScope._transferOf).
   void signalTransfer({required bool bytesOnly}) {
-    for (final entry in List<_Entry>.of(scope._byKey[key] ?? {this})) {
-      for (final binding in List<_EntryBinding>.of(entry.bindings)) {
+    // A scope going away detaches every binding: nobody is to hear more.
+    if (scope._disposed) return;
+    for (final binding in List<_EntryBinding>.of(bindings)) {
+      binding.transferChanged(bytesOnly: bytesOnly);
+    }
+    final siblings = [
+      for (final entry in scope._byKey[key] ?? const <_Entry>{})
+        if (!identical(entry, this)) ...entry.bindings,
+    ];
+    if (siblings.isEmpty) return;
+    void tell() {
+      if (scope._disposed) return;
+      for (final binding in siblings) {
         binding.transferChanged(bytesOnly: bytesOnly);
       }
+    }
+
+    // Inside a frame the change may come from a surface leaving the tree
+    // (its binding detached while the tree is locked): the other specs'
+    // surfaces hear it after the frame, when they may rebuild.
+    if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.idle) {
+      tell();
+    } else {
+      SchedulerBinding.instance.addPostFrameCallback((_) => tell());
     }
   }
 
