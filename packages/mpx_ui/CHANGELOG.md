@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A viewer video's centre shows one control: the buffering spinner takes
+  the play button's place, the button fading out as the spinner fades in
+  and taking no taps meanwhile (`ViewerBufferingSpinner.presence`,
+  `ViewerVideoControls.centreTaken`).
+
 - A `ViewerOrigin`'s frame is the picture of the `ContentView` in it
   alone: the status control and the badge over a tile no longer ride the
   open morph or stand in on the page. A picture inset in its thumbnail

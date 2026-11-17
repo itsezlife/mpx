@@ -389,6 +389,45 @@ void main() {
       expect(spinner(), findsNothing);
     });
 
+    testWidgets('takes the play button\'s place: the centre shows one '
+        'control, the spinner fading in as the button fades out', (
+      tester,
+    ) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(minutes: 1),
+      );
+      await harness.pump(tester);
+      await tester.pump();
+      final engine = harness.engine(0);
+      final playFade = find.byKey(const ValueKey('mpx-viewer-play-fade'));
+      double playOpacity() => tester.widget<Opacity>(playFade).opacity;
+      bool playIgnored() => tester
+          .widget<IgnorePointer>(
+            find
+                .ancestor(of: playFade, matching: find.byType(IgnorePointer))
+                .first,
+          )
+          .ignoring;
+      expect(playOpacity(), 1);
+
+      engine.stall();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(spinnerOpacity(tester), closeTo(0.5, 0.01));
+      expect(playOpacity(), closeTo(0.5, 0.01));
+
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(playOpacity(), 0);
+      expect(playIgnored(), isTrue);
+
+      engine.resume();
+      await tester.pump();
+      expect(spinner(), findsNothing);
+      expect(playOpacity(), 1);
+      expect(playIgnored(), isFalse);
+    });
+
     testWidgets('shows a 900 ms spell from 500 ms, fading in, and goes at '
         'once on resume', (tester) async {
       final harness = ViewerHarness(

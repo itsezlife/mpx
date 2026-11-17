@@ -335,6 +335,9 @@ class MediaViewerState extends State<MediaViewer>
   late final AnimationController _transition;
   late final AnimationController _springBack;
   final ValueNotifier<bool> _controls = ValueNotifier(true);
+  // How much the buffering spinner shows: the share of the centre it takes
+  // from the play button.
+  final ValueNotifier<double> _spinnerShown = ValueNotifier(0);
 
   _Phase _phase = _Phase.opening;
   Size _size = Size.zero;
@@ -489,6 +492,7 @@ class MediaViewerState extends State<MediaViewer>
     _springBack.dispose();
     _pages.dispose();
     _controls.dispose();
+    _spinnerShown.dispose();
     super.dispose();
   }
 
@@ -715,6 +719,12 @@ class MediaViewerState extends State<MediaViewer>
       ..dispose();
     _session = null;
     _sessionIndex = null;
+    // The spinner of the session went with it. Told after the frame: this
+    // runs in builds and while the tree is locked, and the next session's
+    // spinner waits its delay before it shows.
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _spinnerShown.value = 0;
+    });
     _notifyController();
   }
 
@@ -1232,14 +1242,16 @@ class MediaViewerState extends State<MediaViewer>
                   onQuality: session.setQuality,
                   previewFrame: widget.previewFrame,
                   strings: widget.videoStrings,
+                  centreTaken: _spinnerShown,
                 ),
               ),
             // A player that waits for its media longer than the policy's
-            // delay shows the spinner, under the controls.
+            // delay shows the spinner in the play button's place.
             if (_session case final session? when _phase == _Phase.open)
               ViewerBufferingSpinner(
                 lease: session.lease,
                 rules: _policy.loading,
+                presence: _spinnerShown,
               ),
             // A video that failed says so over the controls, in the
             // middle, where the play button would be.

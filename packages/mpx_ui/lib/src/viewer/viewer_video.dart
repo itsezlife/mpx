@@ -257,7 +257,14 @@ class ViewerVideoControls extends StatefulWidget {
     this.onQuality,
     this.previewFrame,
     this.strings = const ViewerVideoStrings(),
+    this.centreTaken,
   });
+
+  /// How much of the centre another control takes, 0 to 1: the buffering
+  /// spinner as it fades in ([ViewerBufferingSpinner.presence]). The play
+  /// button fades out by as much and takes no taps while any is taken, so
+  /// the centre shows one control. Null leaves the button alone.
+  final ValueListenable<double>? centreTaken;
 
   /// The player.
   final PlayerLease lease;
@@ -436,6 +443,26 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
     );
   }
 
+  // The play button, faded out by as much as another control takes the
+  // centre: the reference's one centre control is either the spinner or
+  // play / pause, never both over each other.
+  Widget _centre(Widget button) {
+    Widget faded(double taken) => IgnorePointer(
+      ignoring: taken > 0,
+      child: Opacity(
+        key: const ValueKey('mpx-viewer-play-fade'),
+        opacity: (1 - taken).clamp(0.0, 1.0),
+        child: button,
+      ),
+    );
+    final taken = widget.centreTaken;
+    if (taken == null) return faded(0);
+    return ValueListenableBuilder<double>(
+      valueListenable: taken,
+      builder: (context, value, _) => faded(value),
+    );
+  }
+
   Widget _controls(PlayerState state, double bottom) {
     final tokens = widget.tokens;
     return IgnorePointer(
@@ -448,19 +475,21 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
         child: Stack(
           children: [
             Center(
-              child: _RoundButton(
-                key: const ValueKey('mpx-viewer-play'),
-                label: state.playing
-                    ? widget.strings.pause
-                    : widget.strings.play,
-                size: ViewerVideoControls.playButtonSize,
-                fill: tokens.barFill,
-                onTap: _togglePlay,
-                child: CustomPaint(
-                  size: const Size.square(24),
-                  painter: _PlayGlyph(
-                    tokens.foreground,
-                    paused: !state.playing,
+              child: _centre(
+                _RoundButton(
+                  key: const ValueKey('mpx-viewer-play'),
+                  label: state.playing
+                      ? widget.strings.pause
+                      : widget.strings.play,
+                  size: ViewerVideoControls.playButtonSize,
+                  fill: tokens.barFill,
+                  onTap: _togglePlay,
+                  child: CustomPaint(
+                    size: const Size.square(24),
+                    painter: _PlayGlyph(
+                      tokens.foreground,
+                      paused: !state.playing,
+                    ),
                   ),
                 ),
               ),

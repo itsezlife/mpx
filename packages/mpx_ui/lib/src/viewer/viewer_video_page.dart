@@ -1,3 +1,4 @@
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_ui/src/viewer/gallery_source.dart';
@@ -95,6 +96,9 @@ class ViewerVideoPageState extends State<ViewerVideoPage> {
     widget.policy.video.controlsVisibleOnOpen,
   );
   ViewerVideoSession? _session;
+  // How much the buffering spinner shows: the share of the centre it takes
+  // from the play button.
+  final ValueNotifier<double> _spinnerShown = ValueNotifier(0);
 
   /// The playback, while the page is active.
   ViewerVideoSession? get session => _session;
@@ -120,6 +124,7 @@ class ViewerVideoPageState extends State<ViewerVideoPage> {
   void dispose() {
     _end();
     _controls.dispose();
+    _spinnerShown.dispose();
     super.dispose();
   }
 
@@ -138,10 +143,17 @@ class ViewerVideoPageState extends State<ViewerVideoPage> {
   }
 
   void _end() {
-    _session
-      ?..removeListener(_onSession)
+    final session = _session;
+    if (session == null) return;
+    session
+      ..removeListener(_onSession)
       ..dispose();
     _session = null;
+    // Its spinner went with it; told after the frame, since this runs in
+    // builds and in dispose.
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _spinnerShown.value = 0;
+    });
   }
 
   void _onSession() {
@@ -185,7 +197,11 @@ class ViewerVideoPageState extends State<ViewerVideoPage> {
       fit: StackFit.expand,
       children: [
         page,
-        ViewerBufferingSpinner(lease: session.lease, rules: policy.loading),
+        ViewerBufferingSpinner(
+          lease: session.lease,
+          rules: policy.loading,
+          presence: _spinnerShown,
+        ),
         ValueListenableBuilder<bool>(
           valueListenable: _controls,
           builder: (context, visible, _) => ViewerVideoControls(
@@ -202,6 +218,7 @@ class ViewerVideoPageState extends State<ViewerVideoPage> {
             onQuality: session.setQuality,
             previewFrame: widget.previewFrame,
             strings: widget.strings,
+            centreTaken: _spinnerShown,
           ),
         ),
       ],

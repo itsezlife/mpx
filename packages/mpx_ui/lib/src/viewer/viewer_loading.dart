@@ -19,8 +19,14 @@ class ViewerBufferingSpinner extends StatefulWidget {
   const ViewerBufferingSpinner({
     required this.lease,
     required this.rules,
+    this.presence,
     super.key,
   });
+
+  /// Told how much the spinner shows, 0 to 1, as it fades in and goes: the
+  /// share of the centre it takes from the play button
+  /// ([ViewerVideoControls.centreTaken]).
+  final ValueNotifier<double>? presence;
 
   /// The player watched.
   final PlayerLease lease;
@@ -52,7 +58,7 @@ class _ViewerBufferingSpinnerState extends State<ViewerBufferingSpinner>
     _fade = AnimationController(
       vsync: this,
       duration: widget.rules.bufferingFade,
-    );
+    )..addListener(_tellPresence);
     widget.lease.state.addListener(_onState);
     _onState();
   }
@@ -91,6 +97,8 @@ class _ViewerBufferingSpinnerState extends State<ViewerBufferingSpinner>
     setState(() => _shown = true);
     unawaited(_fade.forward(from: 0));
   }
+
+  void _tellPresence() => widget.presence?.value = _fade.value;
 
   void _hide() {
     _delay?.cancel();
