@@ -98,7 +98,7 @@ final class RangedParts {
   int sizeFor(int missing) {
     final floor = minPartBytes < partBytes ? minPartBytes : partBytes;
     final spread = (missing + perResource - 1) ~/ perResource;
-    return spread < floor ? floor : (spread > partBytes ? partBytes : spread);
+    return spread.clamp(floor, partBytes);
   }
 }
 
@@ -386,6 +386,17 @@ final class _RangedCore {
     // through: a long-lived token must not keep every past wait alive.
     final wait = cancelToken == null ? null : CancelToken();
     final unlink = wait == null ? null : cancelToken!.link(wait);
+    // The wait under way, which a cancel ends. One listener on the token for
+    // the whole ask: a race against it per landing would add one per landing
+    // to a future that never completes while the ask runs.
+    Completer<void>? step;
+    unawaited(
+      wait?.whenCancel.then((_) {
+        if (step case final running? when !running.isCompleted) {
+          running.complete();
+        }
+      }),
+    );
     try {
       while (true) {
         _settle(ask);
@@ -434,8 +445,15 @@ final class _RangedCore {
         final changed = _changed.future;
         if (wait == null) {
           await changed;
-        } else {
-          await Future.any([changed, wait.whenCancel]);
+        } else if (!wait.isCancelled) {
+          final running = step = Completer<void>();
+          unawaited(
+            changed.then((_) {
+              if (!running.isCompleted) running.complete();
+            }),
+          );
+          await running.future;
+          step = null;
         }
       }
     } finally {

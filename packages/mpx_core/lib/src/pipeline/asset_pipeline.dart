@@ -197,8 +197,9 @@ final class AssetPipeline implements AssetProducer {
   final DescriptorDirectory _directory;
   final PreviewBlur _previewBlur;
   final PreviewStore? _previewStore;
-  // The content whose preview this process derived (or started to).
-  final Set<MediaKey> _derived = {};
+  // The content whose preview is being derived now: a second attempt does
+  // not derive it again meanwhile. Once stored, the store answers for it.
+  final Set<MediaKey> _deriving = {};
   final _DecodedPreviews _previews;
   late final PriorityLane<_Work> _fetchLane;
   late final PriorityLane<_Work> _decodeLane;
@@ -250,6 +251,7 @@ final class AssetPipeline implements AssetProducer {
       return;
     } finally {
       picture.dispose();
+      _deriving.remove(key);
     }
   }
 
@@ -641,7 +643,7 @@ final class _Job implements AssetTask {
           null => null,
         };
     if (size == null || size.isEmpty) return;
-    if (!pipeline._derived.add(request.key)) return;
+    if (!pipeline._deriving.add(request.key)) return;
     final (width, height) = _derivedEdge.sizeOf(
       size.width.round(),
       size.height.round(),
