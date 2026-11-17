@@ -206,6 +206,53 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       expect(thumbnail.paints, isNotEmpty);
     });
+
+    testWidgets('of a video paged away from keeps the player\'s last frame, '
+        'not the preview of content still downloading', (tester) async {
+      final controller = ViewerController();
+      addTearDown(controller.dispose);
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(3),
+        videoDuration: const Duration(minutes: 1),
+      );
+      await harness.pump(tester, controller: controller);
+      final attempt = harness.producer.attempts.firstWhere(
+        (attempt) => attempt.request.key == videoKey(0),
+      );
+      final preview = attempt.advance(AssetStage.preview);
+      attempt.transfer(1000, 4000);
+      // The player shows its frames over the picture.
+      await tester.pump();
+      harness.engine(0).advance(const Duration(milliseconds: 100));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        tester
+            .widget<Opacity>(
+              find.descendant(
+                of: find.byKey(const ValueKey('mpx-viewer-player')),
+                matching: find.byType(Opacity),
+              ),
+            )
+            .opacity,
+        1,
+      );
+
+      expect(preview.paints, isNotEmpty);
+      controller.jumpTo(1);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Paged back to, the page's picture is the frame it had, over the
+      // preview, until its player is back.
+      controller.jumpTo(0);
+      await tester.pump();
+      final view = tester.widget<ContentView>(find.byType(ContentView));
+      expect(view.content, videoKey(0));
+      expect(view.placeholder, isNotNull);
+      expect(view.placeholderUntil, AssetStage.firstFrame);
+    });
   });
 
   group('the status control', () {

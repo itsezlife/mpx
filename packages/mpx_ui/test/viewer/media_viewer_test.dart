@@ -230,6 +230,8 @@ void main() {
       final harness = ViewerHarness(
         items: ViewerHarness.videos(2),
         videoDuration: const Duration(minutes: 1),
+        // No player shows a frame: a page paged away from keeps one.
+        autoFirstFrame: false,
       );
       final controller = ViewerController();
       addTearDown(controller.dispose);

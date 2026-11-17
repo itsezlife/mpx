@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
@@ -378,7 +379,8 @@ class MediaViewerState extends State<MediaViewer>
   final FocusNode _focus = FocusNode(debugLabel: 'mpx-viewer');
   final Map<int, GlobalKey<ViewerPhotoPageState>> _pageKeys = {};
   // The origins' pictures the pages draw until their own arrive, owned by
-  // the viewer: the bridge hands out clones. Kept for the pages that can
+  // the viewer: the bridge hands out clones. A video page paged away from
+  // keeps its player's last picture here too (_keepFrame). Kept for the pages that can
   // show (the item and its neighbours), freed as the viewer leaves them.
   final Map<int, ui.Image> _originFrames = {};
 
@@ -585,11 +587,11 @@ class MediaViewerState extends State<MediaViewer>
     if (players == null ||
         item == null ||
         item.kind != GalleryMediaKind.video) {
-      _releaseVideo();
+      _releaseVideo(keepFrame: true);
       return;
     }
     if (_sessionIndex == _index && _session != null) return;
-    _releaseVideo();
+    _releaseVideo(keepFrame: true);
     final cache = _cache;
     final startAt = _startOf(_index, item);
     // The loop stands still while the player plays the item: one decode of
@@ -704,11 +706,18 @@ class MediaViewerState extends State<MediaViewer>
     _notifyController();
   }
 
-  void _releaseVideo() {
+  // Gives the video session back. With [keepFrame] (the viewer pages away
+  // from it) the page keeps the picture the player showed last as its
+  // stand-in, as an origin's frame: content still downloading would
+  // otherwise fall back to its blurred preview, below what the page showed.
+  void _releaseVideo({bool keepFrame = false}) {
     _loopHold?.release();
     _loopHold = null;
     final session = _session;
     if (session == null) return;
+    if (keepFrame && session.lease.state.value.firstFrameRendered) {
+      _keepFrame(_sessionIndex!);
+    }
     if (widget.source.itemAt(_sessionIndex!) case final item?
         when !_leftReported) {
       widget.onVideoLeft?.call(_sessionIndex!, item, session.lease.position);
@@ -932,6 +941,23 @@ class MediaViewerState extends State<MediaViewer>
     if (boundary is! RenderRepaintBoundary || !boundary.hasSize) return null;
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
     return boundary.toImageSync(pixelRatio: dpr);
+  }
+
+  // Keeps the page's picture as it shows now (the player's frame) as the
+  // stand-in the page draws until its content has a frame of its own.
+  void _keepFrame(int index) {
+    final boundary = _frameKeys[index]?.currentContext?.findRenderObject();
+    // A boundary not painted yet has nothing to read; the flag exists only
+    // in debug builds, where the read would assert.
+    if (boundary is! RenderRepaintBoundary ||
+        !boundary.attached ||
+        (kDebugMode && boundary.debugNeedsPaint)) {
+      return;
+    }
+    final frame = _pictureNow(index);
+    if (frame == null) return;
+    _originFrames.remove(index)?.dispose();
+    _originFrames[index] = frame;
   }
 
   Future<ui.Image?> _captureFrame(int index) async {

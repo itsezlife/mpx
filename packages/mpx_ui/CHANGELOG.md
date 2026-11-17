@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- A viewer video page paged away from keeps the picture its player showed
+  last as its stand-in, as an origin's frame, until its content has a frame
+  of its own: a video still downloading no longer falls back to its blurred
+  preview beside the page shown, and its player fades in over that picture
+  when the page is back.
+
 - A viewer video's centre shows one control: the buffering spinner takes
   the play button's place, the button fading out as the spinner fades in
   and taking no taps meanwhile (`ViewerBufferingSpinner.presence`,
