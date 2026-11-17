@@ -84,6 +84,9 @@ final class _Progress implements AssetProgress {
 
   @override
   void cancelled() {}
+
+  @override
+  void describe(MediaDescriptor descriptor) {}
 }
 
 void main() {

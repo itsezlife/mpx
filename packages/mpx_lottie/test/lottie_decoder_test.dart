@@ -127,6 +127,9 @@ final class _Rig {
 
 /// Everything one decode reported, paintables included.
 final class _Report implements AssetProgress {
+  @override
+  void describe(MediaDescriptor descriptor) {}
+
   final List<({AssetStage stage, AssetPaintable paintable, int bytes})>
   advances = [];
   final List<AssetFailureKind> failures = [];

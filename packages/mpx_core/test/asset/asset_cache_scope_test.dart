@@ -400,6 +400,34 @@ void main() {
       clock.dispose();
     });
   });
+
+  group('descriptors', () {
+    test('know hands a descriptor to the producer', () {
+      const descriptor = MediaDescriptor(key: _sticker, kind: MediaKind.still);
+
+      scope.know(descriptor);
+
+      expect(producer.known, [descriptor]);
+    });
+
+    test('a binding reads the descriptor its producer described, signalled '
+        'once, and a detached one reads none', () {
+      const descriptor = MediaDescriptor(key: _sticker, byteSize: 10);
+      final binding = scope.attach(_sticker, _spec, _profile);
+      var signals = 0;
+      binding.addListener(() => signals++);
+      expect(binding.descriptor, isNull);
+
+      producer.last
+        ..describe(descriptor)
+        ..describe(descriptor);
+
+      expect(binding.descriptor, descriptor);
+      expect(signals, 1);
+      binding.detach();
+      expect(binding.descriptor, isNull);
+    });
+  });
 }
 
 final class _NoopTarget implements PlaybackTarget {

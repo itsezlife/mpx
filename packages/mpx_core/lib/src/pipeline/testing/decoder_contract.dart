@@ -6,6 +6,7 @@ import 'package:mpx_core/src/asset/asset_paintable.dart';
 import 'package:mpx_core/src/asset/asset_producer.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_spec.dart';
+import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/pipeline/content_fetcher.dart';
 import 'package:mpx_core/src/pipeline/decoder.dart';
 
@@ -30,6 +31,9 @@ final class DecoderHarness {
 
 /// Everything a decoder reported, and when it was done.
 final class _Report implements AssetProgress {
+  @override
+  void describe(MediaDescriptor descriptor) {}
+
   final List<({AssetStage stage, int bytes, AssetTier tier})> advances = [];
   final List<AssetPaintable> paintables = [];
   Object? error;

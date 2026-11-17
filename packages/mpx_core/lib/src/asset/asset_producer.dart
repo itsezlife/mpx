@@ -4,6 +4,7 @@ import 'package:mpx_core/src/asset/asset_paintable.dart';
 import 'package:mpx_core/src/asset/asset_preload.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_spec.dart';
+import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 
 /// What a producer is asked to make: the entry's identity.
@@ -104,6 +105,13 @@ abstract interface class AssetProgress {
     AssetTier tier = AssetTier.still,
   });
 
+  /// Reports the content's descriptor once the producer knows it (the host
+  /// gave it, or a resolver answered), for the surfaces that read its facts
+  /// (`AssetBinding.descriptor`: a duration, a byte size). Never called for
+  /// content no descriptor is known for. The entry keeps it beyond the
+  /// attempt; a report equal to the last one changes nothing.
+  void describe(MediaDescriptor descriptor);
+
   /// Reports how much of the content's download has arrived, [fraction] from
   /// 0 to 1 (clamped), for the surfaces that show a download
   /// (`AssetBinding.downloadProgress`).
@@ -170,4 +178,10 @@ abstract interface class AssetProducer {
   /// transition over the others runs without new decodes for what nobody
   /// shows yet.
   void holdPreloads({required bool held});
+
+  /// Takes what the host already knows about content before a surface
+  /// attaches it (`AssetCacheScope.know`), so the content's attempt needs no
+  /// lookup and its surfaces read its facts from the first frame. A producer
+  /// with no use for descriptors ignores it.
+  void know(MediaDescriptor descriptor);
 }

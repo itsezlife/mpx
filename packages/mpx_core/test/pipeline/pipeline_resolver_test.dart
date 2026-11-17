@@ -228,4 +228,71 @@ void main() {
       ]);
     });
   });
+
+  group('the descriptor of an entry', () {
+    test('a known one reaches the binding in the attach frame', () {
+      const item = MediaDescriptor(
+        key: MediaKey.remote('clip'),
+        kind: MediaKind.still,
+        byteSize: 2048,
+        duration: Duration(seconds: 3),
+      );
+      final harness = PipelineHarness(known: [item]);
+      addTearDown(harness.dispose);
+
+      final binding = harness.attach(item);
+
+      expect(binding.descriptor, item);
+    });
+
+    test('a resolved one reaches the binding after the resolve, with one '
+        'signal', () async {
+      final item = sticker(1);
+      final resolver = _HeldResolver();
+      final harness = PipelineHarness(
+        served: [item],
+        resolver: resolver,
+        autoFetch: false,
+      );
+      addTearDown(harness.dispose);
+      final binding = harness.attachKey(item.key);
+      var signals = 0;
+      binding.addListener(() => signals++);
+      await harness.settle();
+      expect(binding.descriptor, isNull);
+
+      resolver.answer(0, [item]);
+      await harness.settle();
+
+      expect(binding.descriptor, item);
+      expect(signals, 1);
+    });
+
+    test('is never reported for a key the resolver does not know', () async {
+      final item = sticker(1);
+      final resolver = _HeldResolver();
+      final harness = PipelineHarness(resolver: resolver);
+      addTearDown(harness.dispose);
+      final binding = harness.attachKey(item.key);
+      var signals = 0;
+      binding.addListener(() => signals++);
+      await harness.settle();
+
+      resolver.answer(0, const []);
+      await harness.settle();
+
+      expect(binding.descriptor, isNull);
+      expect(signals, 0);
+    });
+
+    test('stays with the entry for the next attach', () {
+      final item = sticker(1);
+      final harness = PipelineHarness(known: [item]);
+      addTearDown(harness.dispose);
+
+      harness.attach(item).detach();
+
+      expect(harness.attach(item).descriptor, item);
+    });
+  });
 }

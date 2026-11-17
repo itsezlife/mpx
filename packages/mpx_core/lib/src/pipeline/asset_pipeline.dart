@@ -144,6 +144,7 @@ final class AssetPipeline implements AssetProducer {
   /// Tells the pipeline what the host already knows about content, so its
   /// entries need no resolver round trip. Replaces what was known for the
   /// descriptor's key.
+  @override
   void know(MediaDescriptor descriptor) => _directory.add(descriptor);
 
   /// Cancels every attempt and forgets every descriptor. Idempotent. The
@@ -306,6 +307,9 @@ final class _Job implements AssetTask {
   }
 
   void _begin(MediaDescriptor known) {
+    progress.describe(known);
+    // describe may end the job: a scope disposed by a listener.
+    if (_ended) return;
     if (demand.preloadStage == AssetPreloadStage.metadata) {
       // The descriptor is all a metadata preload wants; the directory keeps
       // it for the attempt a binding starts later.
@@ -559,6 +563,13 @@ final class _DecodeProgress implements AssetProgress {
     if (!isFinal) return;
     _end();
     if (_work.part == FetchPart.content) job.contentDone();
+  }
+
+  // The job described the content before the decode; a decoder that learns
+  // more passes it on.
+  @override
+  void describe(MediaDescriptor descriptor) {
+    if (_live) _work.job.progress.describe(descriptor);
   }
 
   // A decoder that reads its content from the network (a stream it opens

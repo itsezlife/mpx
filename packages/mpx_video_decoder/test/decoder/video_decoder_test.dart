@@ -48,6 +48,9 @@ VideoInfo _info(int width, int height) => VideoInfo(
 
 /// Everything one decode reported, paintables and errors included.
 final class _Report implements AssetProgress {
+  @override
+  void describe(MediaDescriptor descriptor) {}
+
   final List<
     ({AssetStage stage, AssetPaintable paintable, int bytes, AssetTier tier})
   >

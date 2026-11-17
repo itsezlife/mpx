@@ -8,6 +8,7 @@ import 'package:mpx_core/src/asset/asset_playback.dart';
 import 'package:mpx_core/src/asset/asset_profile.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_spec.dart';
+import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 import 'package:mpx_core/src/playback/playback_clock.dart';
 
@@ -78,6 +79,9 @@ abstract base class AssetBindingBase
 
   @override
   AssetPlayback get playback => AssetPlayback.idle;
+
+  @override
+  MediaDescriptor? get descriptor => null;
 
   @override
   double? get downloadProgress => null;

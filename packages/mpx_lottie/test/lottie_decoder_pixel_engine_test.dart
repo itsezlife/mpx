@@ -231,6 +231,9 @@ final class _RecordingRenderer implements FrameRenderer {
 }
 
 final class _Report implements AssetProgress {
+  @override
+  void describe(MediaDescriptor descriptor) {}
+
   final List<({AssetStage stage, AssetPaintable paintable, int bytes})>
   advances = [];
   final List<AssetFailureKind> failures = [];

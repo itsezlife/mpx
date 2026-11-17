@@ -4,6 +4,7 @@ import 'package:mpx_core/src/asset/asset_cache_budgets.dart';
 import 'package:mpx_core/src/asset/asset_producer.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/testing/fake_asset_paintable.dart';
+import 'package:mpx_core/src/identity/media_descriptor.dart';
 
 /// One attempt a [FakeAssetProducer] was asked to make; the test plays the
 /// producer by calling [advance], [fail] and [cancelled].
@@ -51,6 +52,9 @@ final class FakeAssetAttempt implements AssetTask {
     return paintable;
   }
 
+  /// Reports what the content is.
+  void describe(MediaDescriptor descriptor) => _progress.describe(descriptor);
+
   /// Reports that [fraction] of the content's download has arrived.
   void download(double fraction) => _progress.download(fraction);
 
@@ -75,6 +79,12 @@ final class FakeAssetProducer implements AssetProducer {
 
   @override
   void holdPreloads({required bool held}) => preloadsHeld = held;
+
+  /// Every descriptor the scope handed over ([know]), oldest first.
+  final List<MediaDescriptor> known = [];
+
+  @override
+  void know(MediaDescriptor descriptor) => known.add(descriptor);
 
   /// Every attempt started, oldest first.
   final List<FakeAssetAttempt> attempts = [];

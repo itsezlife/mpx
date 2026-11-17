@@ -13,6 +13,7 @@ import 'package:mpx_core/src/asset/asset_profile.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_spec.dart';
 import 'package:mpx_core/src/asset/clear_placeholder.dart';
+import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 import 'package:mpx_core/src/playback/playback_clock.dart';
 import 'package:mpx_core/src/playback/playback_policy.dart';
@@ -311,6 +312,15 @@ final class AssetCacheScope {
       return;
     }
     paintable.seekPlayback(position, picture: picture);
+  }
+
+  /// Hands [descriptor] to the producer before a surface attaches its
+  /// content, so the attempt needs no lookup and the bindings read the
+  /// content's facts from the attach frame (`AssetProducer.know`). Does
+  /// nothing after [dispose].
+  void know(MediaDescriptor descriptor) {
+    if (_disposed) return;
+    _producer?.know(descriptor);
   }
 
   /// Bytes the entries of [tier] count, attached or not.
@@ -652,6 +662,9 @@ final class _Entry {
   // when it reported none. It outlives a failed or cancelled attempt: the
   // content is still missing.
   double? download;
+  // What the producer said the content is; kept beyond the attempt, since it
+  // is a fact about the content, not about one attempt.
+  MediaDescriptor? descriptor;
   // Bindings of sibling entries that show this entry's stage.
   int borrowers = 0;
   // Holds of the entry's playback (AssetCacheScope.holdPlayback).
@@ -807,6 +820,15 @@ final class _Attempt implements AssetProgress {
   }
 
   @override
+  void describe(MediaDescriptor descriptor) {
+    if (!_live || _scope._disposed || _entry.descriptor == descriptor) return;
+    _entry.descriptor = descriptor;
+    for (final binding in List<_EntryBinding>.of(_entry.bindings)) {
+      binding.descriptorChanged();
+    }
+  }
+
+  @override
   void download(double fraction) {
     if (!_live || _scope._disposed) return;
     final value = fraction.clamp(0.0, 1.0);
@@ -890,8 +912,14 @@ final class _EntryBinding extends AssetBindingBase {
     _onTick,
   );
 
+  /// Called by the scope when the entry's descriptor became known.
+  void descriptorChanged() => signal();
+
   /// Called by the scope when the entry's download changed.
   void downloadChanged() => signal();
+
+  @override
+  MediaDescriptor? get descriptor => isDetached ? null : entry.descriptor;
 
   @override
   double? get downloadProgress => isDetached ? null : entry.download;

@@ -36,6 +36,9 @@ DecodeRequest _request(
 
 /// Collects what one decode reports.
 final class _Progress implements AssetProgress {
+  @override
+  void describe(MediaDescriptor descriptor) {}
+
   final List<
     ({AssetStage stage, AssetPaintable paintable, int bytes, AssetTier tier})
   >
@@ -80,6 +83,9 @@ final class _Progress implements AssetProgress {
 
 /// A progress that takes the paintable, then throws, as a buggy one would.
 final class _ThrowingProgress implements AssetProgress {
+  @override
+  void describe(MediaDescriptor descriptor) {}
+
   AssetPaintable? paintable;
   final List<Object> failures = [];
 

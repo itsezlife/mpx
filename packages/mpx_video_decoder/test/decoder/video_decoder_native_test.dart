@@ -11,6 +11,9 @@ import '../support/fixtures.dart';
 
 /// Records what one decode reported.
 final class _Report implements AssetProgress {
+  @override
+  void describe(MediaDescriptor descriptor) {}
+
   final List<({AssetStage stage, AssetPaintable paintable})> advances = [];
   final List<Object> failures = [];
 

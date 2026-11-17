@@ -201,6 +201,9 @@ void main() {
 
 final class _ThrowingProducer implements AssetProducer {
   @override
+  void know(MediaDescriptor descriptor) {}
+
+  @override
   AssetTask produce(
     AssetRequest request,
     AssetProgress progress,

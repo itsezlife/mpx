@@ -6,6 +6,7 @@ import 'package:mpx_core/src/asset/asset_playback.dart';
 import 'package:mpx_core/src/asset/asset_profile.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_spec.dart';
+import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 
 /// One surface's live attach to a cache entry, from `AssetCacheScope.attach`
@@ -58,6 +59,13 @@ abstract interface class AssetBinding implements Listenable {
   /// drawn into this binding's rectangle with its own profile, until the
   /// entry's own stage catches up.
   AssetPaintable get paintable;
+
+  /// What the host knows about the content (a duration, a byte size), or
+  /// null until the producer has described it (`AssetProgress.describe`)
+  /// and for a detached binding. Content whose descriptor was known before
+  /// the attach reads it in the attach frame; one resolved later reads it
+  /// after the resolve, signalled to the listeners.
+  MediaDescriptor? get descriptor;
 
   /// How much of the content's download has arrived, 0 to 1, while the
   /// content is missing and downloads; null when it is not downloading.

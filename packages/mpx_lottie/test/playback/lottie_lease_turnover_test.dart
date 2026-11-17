@@ -63,6 +63,9 @@ final class _LottieProducer implements AssetProducer {
     );
     return const _NoTask();
   }
+
+  @override
+  void know(MediaDescriptor descriptor) {}
 }
 
 final class _NoTask implements AssetTask {

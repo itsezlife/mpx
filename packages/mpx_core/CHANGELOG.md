@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `MediaDescriptor.preview` (`MediaPreview.raster` bytes or an
+  `outline` path) and `streamable`. `AssetBinding.descriptor` reads the
+  content's descriptor once the producer reports it
+  (`AssetProgress.describe`, called by `AssetPipeline` for known and
+  resolved descriptors), and `AssetCacheScope.know` hands one to the
+  producer before an attach. Breaking: `AssetProgress` and `AssetProducer`
+  implementers add `describe` and `know`.
 - `ClearPlaceholder`, which paints nothing, is the scope's default
   placeholder: media no longer waits behind a light box. Breaking:
   `RectPlaceholder.fallbackColor` is gone and an untinted `RectPlaceholder`
