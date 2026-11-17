@@ -161,6 +161,31 @@ battery_temp() {
   D shell dumpsys battery | awk '/temperature/ { printf "%.1f\n", $2 / 10; exit }'
 }
 
+# thermal: the system thermal status (0 none … 6 shutdown) and the
+# hottest skin sensor in °C.
+thermal() {
+  D shell dumpsys thermalservice | awk '
+    /Thermal Status:/ { status = $3 }
+    /mType=3/ { match($0, /mValue=[0-9.]+/); v = substr($0, RSTART + 7, RLENGTH - 7) + 0; if (v > skin) skin = v }
+    END { printf "%d %.1f\n", status, skin }'
+}
+
+# cool_down: waits until the phone is not throttling (status 0) and its skin
+# is under COOL_SKIN °C (38), printing the state; COOL=0 skips the wait.
+cool_down() {
+  [[ "${COOL:-1}" == 0 ]] && return
+  local limit=${COOL_SKIN:-38} waited=0 status skin
+  while read -r status skin < <(thermal); do
+    if [[ "$status" == 0 ]] && awk "BEGIN { exit !($skin < $limit) }"; then
+      echo "thermal ok: status $status, skin $skin °C after ${waited}s"
+      return
+    fi
+    ((waited % 60 == 0)) && echo "cooling: status $status, skin $skin °C (waiting for 0 and < $limit °C)"
+    sleep 10
+    waited=$((waited + 10))
+  done
+}
+
 # analyse <dir> <tape.json>: the per-segment report, when the Python has
 # the perfetto package.
 analyse() {

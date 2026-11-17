@@ -19,6 +19,7 @@ src="$EXAMPLE_DIR/perf/lab/$tape/tape.json"
 start=$("$PY" -c 'import json,sys; print(json.load(open(sys.argv[1]))["start"])' "$src")
 D push "$src" "$FILES/$tape.json" >/dev/null || die "could not push the tape"
 
+cool_down
 echo "battery $(battery_temp) °C"
 if [[ "$start" == stress ]]; then LAB_OPEN=stress; else LAB_OPEN=; fi
 app_start

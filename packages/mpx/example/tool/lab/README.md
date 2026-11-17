@@ -206,6 +206,12 @@ on the first screen); `decode` to `still uploaded` is the decoder's share.
 
 ## Before trusting a number
 
+- The input of a viewer or route segment is the last finger lift or Back
+  up to one refresh after its mark: a replayed row can land a fraction of
+  a millisecond after the action it fires. Reports made before this rule
+  took the previous input instead, and showed opens and closes hundreds
+  of ms too long.
+
 - The engine's marks reach the trace only with `trace-systrace`, which
   the scripts set and which inflates frames with many events. Confirm a
   slow frame from its `LAB slow` line.

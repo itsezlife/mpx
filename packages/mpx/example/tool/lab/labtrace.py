@@ -186,10 +186,18 @@ class Capture:
         return bisect.bisect_left(self.pointer, t + POINTER_WINDOW_NS) > lo
 
     def last_input_before(self, t, within=2e9):
-        """The last finger lift or Back before t (within 2 s), or None."""
+        """The input that led to a mark at t: the last finger lift or Back
+        up to one refresh after t (within 2 s before it), or None.
+
+        A tape row is placed on the trace from the replay's start (its
+        `LABtape0` mark) and its offset in the tape, so the lift that fires
+        an action can land a fraction of a millisecond after the action's
+        own mark. Counting only rows strictly before the mark then took the
+        previous lift or Back, hundreds of ms earlier, as the input."""
         best = None
+        upto = t + self.vsync_ns
         for times in (self.ups, self.backs, self.pointer if not self.ups else []):
-            i = bisect.bisect_right(times, t) - 1
+            i = bisect.bisect_right(times, upto) - 1
             if i >= 0 and t - times[i] <= within and (best is None or times[i] > best):
                 best = times[i]
         return best
