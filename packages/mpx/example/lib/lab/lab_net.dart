@@ -131,8 +131,28 @@ final class NetRecorder extends http.BaseClient {
             'ranged=${list.where((r) => r.range != null).length} '
             'bytes=${list.fold(0, (sum, r) => sum + r.bytes)} '
             'ttfb=${ms(list.first.firstByte)}ms '
-            'download=${ms(list.first.done)}ms',
+            'download=${ms(list.first.done)}ms '
+            '${_span(list)}',
     ];
+  }
+
+  // A file fetched in several requests (parts, read-ahead) took from its
+  // first request's start to its last request's end; its throughput is its
+  // bytes over that span.
+  static String _span(List<NetRequest> list) {
+    final ends = [
+      for (final r in list)
+        if (r.done case final d?) r.started + d,
+    ];
+    if (ends.isEmpty) return 'span=- kbps=-';
+    final start = list.map((r) => r.started).reduce((a, b) => a < b ? a : b);
+    final end = ends.reduce((a, b) => a > b ? a : b);
+    final span = end - start;
+    final bytes = list.fold(0, (sum, r) => sum + r.bytes);
+    final kbps = span.inMicroseconds == 0
+        ? 0
+        : bytes * 8 * 1000 ~/ span.inMicroseconds;
+    return 'span=${span.inMilliseconds}ms kbps=$kbps';
   }
 
   @override
