@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- `MediaStatusControl`: the round control over media (disc, progress arc,
+  download / cancel / play / pause icon, or a spinner), driven by a plain
+  `MediaStatus` or by a binding (`MediaStatusControl.binding`, which maps
+  the transfer with `MediaStatus.forTransfer` and taps to `download()`,
+  `cancelDownload()` or `onPlay`). It morphs, smooths its arc and comes
+  and goes on its own ticker, and repaints rather than rebuilds on
+  progress. `MediaStatusStyle` (`$Android`, `$IOS`, `$Desktop`,
+  `copyWith`) holds each platform's geometry and motion;
+  `MediaLoadingStyle` groups it and `MediaLoadingStyleScope` resolves it
+  from the theme's platform, with a host change and a host
+  `MediaStatusBuilder`.
 - Downloads have a state and verbs. `AssetBinding.transfer`
   (`AssetTransfer`: `none`, `waiting`, `receiving` in bytes, `awaitingUser`,
   `failed`) replaces `downloadProgress`; an unknown total reads the
