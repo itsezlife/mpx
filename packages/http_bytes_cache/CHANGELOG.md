@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Ranged resources download in parts, several in flight at once: each part
+  is a range GET written at its offset as it arrives, so parts land in any
+  order and a reader waits only for the bytes it asked for. `RangedParts`
+  sets the part size (512 KiB, split down to 128 KiB for a short ask) and
+  the parts per resource (4); the client's slots cap the total. The part
+  at an ask's first missing byte goes first; the parts ahead of it queue
+  one priority lower. A cancelled ask keeps the parts that landed. An ask
+  to the end learns the length from its first part, then goes on in parts.
+- Breaking: `RangedBytes(chunkBytes:)` is now
+  `RangedBytes(parts: RangedParts(partBytes:))`.
 - Native reader, ABI 3: `hbc_reader_available` (`NativeRangedReader.available`)
   says which bytes are there without waiting and asks for the rest as a
   hint (`HBC_FETCH_HINT`); `NativePublication.stopHints` stops the hints of
@@ -18,7 +28,7 @@
 - Ranged resources fetch through transfers when the client offers them and
   the store keeps files, recording the spans with the new
   `IRangedBytesStore.recordRange`; the bytes never enter the calling
-  isolate. An ask that runs to the end is one GET, not chunks.
+  isolate.
 - The VM store's reads above 64 KiB come back as a transferable, so the
   reading isolate no longer copies the payload out of the message.
 - `BytesCacheKey.within(owner, url)`: one key per URL under an owner's key,

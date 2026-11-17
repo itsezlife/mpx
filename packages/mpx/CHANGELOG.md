@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `MpxStack.create(rangedParts:)` tunes how ranged downloads split into
+  parts and how many run at once per file (`RangedParts`); missing media
+  now downloads in parts, several in flight, instead of one GET.
 - `NativeRangedContentPublisher` hands a clip over once its index (the tail
   of a file whose `moov` follows its media data) and a first stretch
   (`firstStretchBytes`, 2 MiB) are there, and pauses its fetching when its

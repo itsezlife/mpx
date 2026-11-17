@@ -35,7 +35,11 @@ void main() {
           onTransfer: transfers.add,
         ),
       );
-      ranged = RangedBytes(store: store, client: client, chunkBytes: 50000);
+      ranged = RangedBytes(
+        store: store,
+        client: client,
+        parts: const RangedParts(partBytes: 50000),
+      );
     });
 
     tearDown(() async {
@@ -70,13 +74,19 @@ void main() {
       );
     });
 
-    test('an ask to the end is one GET, and the whole body reads back as a '
-        'whole resource', () async {
+    test('an ask to the end goes out in parts written at their offsets, and '
+        'the whole body reads back as a whole resource', () async {
+      server.delay = const Duration(milliseconds: 20);
       final resource = await open();
 
       await resource.ensure(const ByteRange(0));
 
-      expect(server.rangeStarts, [0]);
+      expect(server.rangeStarts.first, 0);
+      expect(
+        server.rangeStarts.toSet(),
+        {0, 50000, 100000, 150000, 200000, 250000},
+      );
+      expect(server.peakInFlight, greaterThan(1));
       expect(resource.ranges.covers(0, body.length), isTrue);
       expect(store.contains(key), isTrue);
       expect(await store.read(key), body);

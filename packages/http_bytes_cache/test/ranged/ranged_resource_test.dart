@@ -29,7 +29,11 @@ void main() {
           const HttpBytesConditionalMiddleware(),
         ],
       );
-      ranged = RangedBytes(store: store, client: client, chunkBytes: 1000);
+      ranged = RangedBytes(
+        store: store,
+        client: client,
+        parts: const RangedParts(partBytes: 1000),
+      );
     });
 
     tearDown(() async {
@@ -175,7 +179,7 @@ void main() {
       final fine = RangedBytes(
         store: store,
         client: client,
-        chunkBytes: 100,
+        parts: const RangedParts(partBytes: 100),
         writeBytes: 100,
       );
       addTearDown(fine.close);

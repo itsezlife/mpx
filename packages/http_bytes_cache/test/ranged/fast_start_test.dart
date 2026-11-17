@@ -43,7 +43,11 @@ void main() {
         blobs: FakeBytesBlobStore(),
       );
       client = HttpBytesClient();
-      ranged = RangedBytes(store: store, client: client, chunkBytes: 4096);
+      ranged = RangedBytes(
+        store: store,
+        client: client,
+        parts: const RangedParts(partBytes: 4096),
+      );
     }
 
     tearDown(() async {

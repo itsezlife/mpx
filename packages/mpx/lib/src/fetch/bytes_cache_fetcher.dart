@@ -73,8 +73,8 @@ typedef MediaLocator =
 /// file it is in ([FetchedFile]), leased until the decoder releases it, so
 /// its bytes never pass through this isolate. With [ranged], a missing
 /// part whose location is immutable is fetched into the store as a ranged
-/// resource (one GET to the end, through the client's transfer worker when
-/// it has one) and goes out as its file too. With [publisher], missing
+/// resource (in parts, several in flight, through the client's transfer
+/// worker when it has one) and goes out as its file too. With [publisher], missing
 /// content of the kinds it takes goes out published instead
 /// ([FetchedRanged]): the decoder reads it natively as it downloads. Over a
 /// store without files (memory, the web), or for a location that asks for

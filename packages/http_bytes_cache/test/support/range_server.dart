@@ -35,6 +35,17 @@ final class RangeServer {
   /// When set, a request whose range starts here never gets an answer.
   int? stallAt;
 
+  /// Requests whose range starts at a key are answered once its future
+  /// completes: a slow part.
+  final Map<int, Future<void>> holds = {};
+
+  /// Every request is answered after this long.
+  Duration delay = Duration.zero;
+
+  /// Requests being answered now, and the most there ever were at once.
+  int inFlight = 0;
+  int peakInFlight = 0;
+
   /// Received requests, in order.
   final List<RecordedRequest> requests = [];
 
@@ -79,6 +90,24 @@ final class RangeServer {
       return;
     }
 
+    inFlight++;
+    if (inFlight > peakInFlight) peakInFlight = inFlight;
+    try {
+      if (delay > Duration.zero) await Future<void>.delayed(delay);
+      if (holds[parsed?.$1] case final hold?) await hold;
+      await _answer(response, parsed, ifRange);
+    } on Object {
+      // Client gone.
+    } finally {
+      inFlight--;
+    }
+  }
+
+  Future<void> _answer(
+    HttpResponse response,
+    (int, int?)? parsed,
+    String? ifRange,
+  ) async {
     final total = body.length;
     final useRange =
         parsed != null && honourRanges && (ifRange == null || ifRange == etag);
