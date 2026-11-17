@@ -1255,7 +1255,12 @@ class MediaViewerState extends State<MediaViewer>
                 ),
               ),
             ),
-            if (_phase == _Phase.open) _pagesView() else _morph(),
+            if (_phase == _Phase.open)
+              _pagesView()
+            // Landed: the origin shows again; a picture left here for the
+            // frames the route takes to go would cover it with a stale one.
+            else if (_phase != _Phase.closed)
+              _morph(),
             if (_session case final session? when _phase == _Phase.open)
               ValueListenableBuilder<bool>(
                 valueListenable: _controls,

@@ -165,6 +165,20 @@ void main() {
     });
   });
 
+  testWidgets('closed, the viewer draws no picture over the origin it '
+      'landed on, while its route goes', (tester) async {
+    final harness = ViewerHarness();
+    await harness.pump(tester);
+
+    unawaited(harness.state(tester).close());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(harness.closed, 1);
+    expect(find.byKey(const ValueKey('mpx-viewer-morph')), findsNothing);
+    expect(find.byType(ContentView), findsNothing);
+  });
+
   group('origin frames', () {
     testWidgets('are owned by the viewer and freed with the pages', (
       tester,
