@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:http_bytes_cache/http_bytes_cache.dart';
+import 'package:mpx/src/download/network_auto_download_policy.dart';
 import 'package:mpx/src/fetch/bytes_cache_fetcher.dart';
 import 'package:mpx/src/fetch/ranged_content_publisher.dart';
 import 'package:mpx/src/signals/device_signals.dart';
@@ -87,6 +88,7 @@ final class MpxStack {
     required this.scope,
     required this.activity,
     required this.signals,
+    required this.autoDownload,
     required this.registeredQuotas,
     required List<FutureOr<void> Function()> teardowns,
   }) : _teardowns = teardowns;
@@ -114,6 +116,11 @@ final class MpxStack {
   ///   reads clips that way); see [MpxPublisherFactory].
   /// - [platformTextures] lends a [FrameTexturePool] over the platform's
   ///   texture host where there is one.
+  /// - [autoDownload] decides which missing content downloads by itself.
+  ///   It defaults to a [NetworkAutoDownloadPolicy] over [signals] with the
+  ///   reference presets of `defaultTargetPlatform`
+  ///   ([AutoDownloadPresets.forPlatform]), which the stack disposes; a
+  ///   host policy stays the host's.
   static Future<MpxStack> create({
     required MediaLocator locate,
     String? cacheDirectory,
@@ -130,6 +137,7 @@ final class MpxStack {
     bool platformTextures = true,
     ValueListenable<bool>? scrolling,
     BytesDiagnostics diagnostics = const BytesDiagnostics.silent(),
+    AutoDownloadPolicy? autoDownload,
   }) async {
     final teardowns = <FutureOr<void> Function()>[];
     void own(FutureOr<void> Function() teardown) => teardowns.add(teardown);
@@ -157,6 +165,17 @@ final class MpxStack {
 
     final deviceSignals = signals ?? DeviceSignals();
     if (signals == null) own(deviceSignals.dispose);
+    final AutoDownloadPolicy downloadPolicy;
+    if (autoDownload != null) {
+      downloadPolicy = autoDownload;
+    } else {
+      final policy = NetworkAutoDownloadPolicy(
+        deviceSignals,
+        presets: AutoDownloadPresets.forPlatform(defaultTargetPlatform),
+      );
+      own(policy.dispose);
+      downloadPolicy = policy;
+    }
     final memoryPressure = _MemoryPressure();
     own(memoryPressure.dispose);
     final clock = PlaybackClock(policy: playbackPolicy);
@@ -207,6 +226,7 @@ final class MpxStack {
       clock: clock,
       memoryPressure: memoryPressure,
       textures: textures,
+      autoDownload: downloadPolicy,
     );
     own(scope.dispose);
 
@@ -231,6 +251,7 @@ final class MpxStack {
       scope: scope,
       activity: activity,
       signals: deviceSignals,
+      autoDownload: downloadPolicy,
       registeredQuotas: Map.unmodifiable(quotas),
       teardowns: teardowns,
     );
@@ -275,6 +296,9 @@ final class MpxStack {
   /// The device signals the stack reads; a player or a feed policy may read
   /// them too.
   final IDeviceSignals signals;
+
+  /// Which missing content downloads by itself (the scope's policy).
+  final AutoDownloadPolicy autoDownload;
 
   /// The registered quotas by name.
   final Map<String, RegisteredQuota> registeredQuotas;

@@ -23,10 +23,10 @@ final class FakeAutoDownloadPolicy implements AutoDownloadPolicy {
   /// Every question asked, oldest first.
   final List<(MediaDescriptor, AutoDownloadContext?)> asked = [];
 
-  final ChangeNotifier _changes = ChangeNotifier();
+  final _Changes _changes = _Changes();
 
   /// Tells the listeners of [changes] that answers may differ now.
-  void changed() => _changes.notifyListeners();
+  void changed() => _changes.fire();
 
   @override
   AutoDownload decide(
@@ -39,4 +39,8 @@ final class FakeAutoDownloadPolicy implements AutoDownloadPolicy {
 
   @override
   Listenable get changes => _changes;
+}
+
+final class _Changes extends ChangeNotifier {
+  void fire() => notifyListeners();
 }

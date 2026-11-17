@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- `NetworkAutoDownloadPolicy` decides which missing media downloads by
+  itself from `AutoDownloadPresets` (a row per context tag, a `fallback`
+  for the rest; per network class, `AutoDownloadLimits` per kind) and the
+  network class of `IDeviceSignals`; without a network it keeps the last
+  connected class. `$Android`, `$IOS` and `$Desktop` hold each platform's
+  reference defaults. `MpxStack.create(autoDownload:)` defaults to it for
+  `defaultTargetPlatform`, and `MpxStack.autoDownload` exposes the policy.
+  Missing videos over the limit now show their stand-ins and wait for a
+  tap instead of downloading.
 - `NativeRangedContentPublisher` hands a clip over once its index (the tail
   of a file whose `moov` follows its media data) and a first stretch
   (`firstStretchBytes`, 2 MiB) are there, and pauses its fetching when its

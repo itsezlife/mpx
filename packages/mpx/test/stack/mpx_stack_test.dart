@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -50,6 +51,35 @@ void main() {
     addTearDown(stack.dispose);
     return stack;
   }
+
+  testWidgets('the scope downloads by the network policy of the platform', (
+    tester,
+  ) async {
+    final stack = await create();
+
+    expect(stack.scope.autoDownload, same(stack.autoDownload));
+    final policy = stack.autoDownload as NetworkAutoDownloadPolicy;
+    expect(
+      policy.presets,
+      same(AutoDownloadPresets.forPlatform(defaultTargetPlatform)),
+    );
+    signals.network.value = NetworkClass.metered;
+    expect(policy.network, NetworkClass.metered);
+  });
+
+  testWidgets('a host policy reaches the scope', (tester) async {
+    final policy = FakeAutoDownloadPolicy();
+    final stack = await MpxStack.create(
+      locate: (descriptor, _) => const MediaLocation('https://cdn.test/x'),
+      signals: signals,
+      client: client,
+      platformTextures: false,
+      autoDownload: policy,
+    );
+    addTearDown(stack.dispose);
+
+    expect(stack.scope.autoDownload, same(policy));
+  });
 
   testWidgets('media reaches the host decoder through the bytes cache', (
     tester,
