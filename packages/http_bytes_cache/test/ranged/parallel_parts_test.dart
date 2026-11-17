@@ -62,6 +62,16 @@ void main() {
       );
     });
 
+    test('a streaming ask goes out one whole part at a time', () async {
+      server.delay = const Duration(milliseconds: 20);
+      final resource = await open(parted());
+
+      await resource.ensure(const ByteRange(0, 12000), streaming: true);
+
+      expect(server.peakInFlight, 1);
+      expect(server.rangeStarts, [0, 4000, 8000]);
+    });
+
     test(
       'parts land out of order; a reader waits for unbroken bytes',
       () async {

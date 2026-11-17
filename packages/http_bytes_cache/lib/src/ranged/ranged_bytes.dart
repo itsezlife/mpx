@@ -237,13 +237,26 @@ final class RangedResource {
   /// Asks for bytes a running GET will bring join it instead of asking
   /// again. [cancelToken] stops this ask with [HttpBytesException$Cancelled];
   /// a GET nobody waits on any more is aborted (its bytes so far stay).
+  ///
+  /// A [streaming] ask is a reader moving forward through the bytes as they
+  /// play (a player's read-ahead): it goes out one whole part at a time from
+  /// its first missing byte, with no parts ahead. Its bytes are needed in
+  /// order and at the rate they play, so parts ahead would add requests
+  /// without adding speed, and each one a reader leaving the screen stops
+  /// is a GET thrown away.
   Future<void> ensure(
     ByteRange range, {
     PriorityToken? priority,
     CancelToken? cancelToken,
+    bool streaming = false,
   }) {
     _ensureOpen();
-    return _core.ensure(range, priority: priority, cancelToken: cancelToken);
+    return _core.ensure(
+      range,
+      priority: priority,
+      cancelToken: cancelToken,
+      streaming: streaming,
+    );
   }
 
   /// [ensure]s [range] (which must be closed, or open with a known length)
@@ -366,6 +379,7 @@ final class _RangedCore {
     ByteRange want, {
     PriorityToken? priority,
     CancelToken? cancelToken,
+    bool streaming = false,
   }) async {
     final ask = _Ask(priority?.priority ?? RequestPriority.visible);
     // One link for the whole ask, however many parts and landings it waits
@@ -401,7 +415,7 @@ final class _RangedCore {
         }
         // Planned once, from what the ask misses when its end is known: the
         // parts of one ask keep their size as the gap closes.
-        final size = end == null
+        final size = end == null || streaming
             ? owner.parts.partBytes
             : ask.partBytes ??= owner.parts.sizeFor(end - gapStart);
         // The lead runs a whole part even past the ask's end (a reader
@@ -412,7 +426,7 @@ final class _RangedCore {
             _start(gapStart, end: total, size: size, priority: ask.priority);
         ask.join(lead, ask.priority);
         final from = lead.range?.end;
-        if (end != null && from != null) {
+        if (end != null && from != null && !streaming) {
           _planAhead(ask, from: from, end: end, size: size);
         }
         // Wake on every landing and every part's end, not only the lead's:

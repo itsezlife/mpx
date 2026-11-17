@@ -10,6 +10,10 @@
   at an ask's first missing byte goes first; the parts ahead of it queue
   one priority lower. A cancelled ask keeps the parts that landed. An ask
   to the end learns the length from its first part, then goes on in parts.
+- `RangedResource.ensure(streaming: true)`: a reader moving forward as the
+  media plays asks one whole part at a time, with no parts ahead. The
+  native reader's asks are streaming, so playback sends as many requests
+  as before, and a reader leaving the screen stops one GET, not four.
 - Breaking: `RangedBytes(chunkBytes:)` is now
   `RangedBytes(parts: RangedParts(partBytes:))`.
 - Native reader, ABI 3: `hbc_reader_available` (`NativeRangedReader.available`)
