@@ -644,10 +644,9 @@ class NativeStillRequest {
     this.cacheKey,
     this.readerApi,
     this.path,
-    this.mimeType,
   });
 
-  /// Names the request for `cancelStill`.
+  /// Names the request for `cancelStill`, unique across the app's decoders.
   int requestId;
 
   int maxWidth;
@@ -660,20 +659,8 @@ class NativeStillRequest {
 
   String? path;
 
-  /// The container's MIME type, when the host knows it (Apple's resource
-  /// loader needs one; MP4 by default).
-  String? mimeType;
-
   List<Object?> _toList() {
-    return <Object?>[
-      requestId,
-      maxWidth,
-      maxHeight,
-      cacheKey,
-      readerApi,
-      path,
-      mimeType,
-    ];
+    return <Object?>[requestId, maxWidth, maxHeight, cacheKey, readerApi, path];
   }
 
   Object encode() {
@@ -689,7 +676,6 @@ class NativeStillRequest {
       cacheKey: result[3] as String?,
       readerApi: result[4] as int?,
       path: result[5] as String?,
-      mimeType: result[6] as String?,
     );
   }
 
@@ -707,8 +693,7 @@ class NativeStillRequest {
         _deepEquals(maxHeight, other.maxHeight) &&
         _deepEquals(cacheKey, other.cacheKey) &&
         _deepEquals(readerApi, other.readerApi) &&
-        _deepEquals(path, other.path) &&
-        _deepEquals(mimeType, other.mimeType);
+        _deepEquals(path, other.path);
   }
 
   @override
@@ -717,7 +702,7 @@ class NativeStillRequest {
 
   @override
   String toString() {
-    return 'NativeStillRequest(requestId: $requestId, maxWidth: $maxWidth, maxHeight: $maxHeight, cacheKey: $cacheKey, readerApi: $readerApi, path: $path, mimeType: $mimeType)';
+    return 'NativeStillRequest(requestId: $requestId, maxWidth: $maxWidth, maxHeight: $maxHeight, cacheKey: $cacheKey, readerApi: $readerApi, path: $path)';
   }
 }
 

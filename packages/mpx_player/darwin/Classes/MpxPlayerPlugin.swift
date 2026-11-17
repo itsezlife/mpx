@@ -54,6 +54,7 @@ public class MpxPlayerPlugin: NSObject, FlutterPlugin, PlayerHostApi {
   }
 
   public func detachFromEngine(for registrar: FlutterPluginRegistrar) {
+    stills.dispose()
     try? reset()
   }
 

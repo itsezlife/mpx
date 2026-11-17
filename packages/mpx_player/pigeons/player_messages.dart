@@ -249,20 +249,15 @@ class NativeStillRequest {
     this.cacheKey,
     this.readerApi,
     this.path,
-    this.mimeType,
   });
 
-  /// Names the request for `cancelStill`.
+  /// Names the request for `cancelStill`, unique across the app's decoders.
   int requestId;
   int maxWidth;
   int maxHeight;
   String? cacheKey;
   int? readerApi;
   String? path;
-
-  /// The container's MIME type, when the host knows it (Apple's resource
-  /// loader needs one; MP4 by default).
-  String? mimeType;
 }
 
 /// A still the platform drew: [width] x [height] pixels as premultiplied

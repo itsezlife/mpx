@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' show Size;
 
@@ -5,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart' show DecoderContract, DecoderHarness;
 import 'package:mpx_player/native.dart';
+import 'package:mpx_player/src/native/player_messages.g.dart';
 import 'package:mpx_player/testing.dart';
 
 const _clip = MediaDescriptor(
@@ -209,4 +211,61 @@ void main() {
     ),
     stillsOnly: true,
   );
+
+  group('over the platform channel', () {
+    const prefix = 'dev.flutter.pigeon.mpx_player.PlayerStillHostApi';
+    const codec = PlayerStillHostApi.pigeonChannelCodec;
+    final extracts = <int>[];
+    final cancels = <int>[];
+    final answers = <Completer<ByteData?>>[];
+
+    setUp(() {
+      final messenger =
+          TestWidgetsFlutterBinding.ensureInitialized().defaultBinaryMessenger;
+      extracts.clear();
+      cancels.clear();
+      answers.clear();
+      messenger
+        ..setMockMessageHandler('$prefix.extractStill', (message) {
+          final args = codec.decodeMessage(message)! as List<Object?>;
+          extracts.add((args.single! as NativeStillRequest).requestId);
+          final answer = Completer<ByteData?>();
+          answers.add(answer);
+          return answer.future;
+        })
+        ..setMockMessageHandler('$prefix.cancelStill', (message) async {
+          final args = codec.decodeMessage(message)! as List<Object?>;
+          cancels.add(args.single! as int);
+          return codec.encodeMessage(<Object?>[null]);
+        });
+      addTearDown(
+        () => messenger
+          ..setMockMessageHandler('$prefix.extractStill', null)
+          ..setMockMessageHandler('$prefix.cancelStill', null),
+      );
+    });
+
+    test('two decoders never name their requests alike, so a cancel of one '
+        'wakes only its own', () async {
+      final first = PlatformStillDecoder();
+      final second = PlatformStillDecoder();
+      final firstReport = _Report();
+      final secondReport = _Report();
+
+      final task = first.decode(_request(released.ranged('a')), firstReport);
+      second.decode(_request(released.ranged('b')), secondReport);
+      await _until(() => extracts.length == 2);
+      task.cancel();
+      await _until(() => cancels.isNotEmpty);
+
+      expect(extracts.toSet(), hasLength(2));
+      expect(cancels, [extracts.first]);
+
+      for (final answer in answers) {
+        answer.complete(codec.encodeMessage(<Object?>[null]));
+      }
+      await _until(() => released.count == 2);
+      expect(released.count, 2);
+    });
+  });
 }

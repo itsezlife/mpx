@@ -8,9 +8,9 @@ import android.os.Handler
 import android.os.Looper
 import java.io.IOException
 import java.nio.ByteBuffer
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -23,47 +23,115 @@ import kotlin.math.roundToInt
  *
  * A ranged resource is read through the bytes cache's native reader by a
  * [MediaDataSource]; reads block on bytes still downloading, so extraction
- * runs on a thread of its own, one still at a time. A cancel wakes the
- * blocked reads; the retriever then fails and the request answers null.
+ * runs on threads of its own, a few stills at a time. A cancel wakes the
+ * blocked reads; the retriever then fails and the request answers null. A
+ * request that runs past its deadline is cancelled the same way, so bytes
+ * that never arrive hold one thread for a while, not the extractor for good.
+ *
+ * Every call is answered exactly once: a request still queued or running at
+ * [dispose], and a call after it, answer null.
  */
 internal class MpxStillExtractor : PlayerStillHostApi {
-    private val executor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+    private val executor: ExecutorService = Executors.newFixedThreadPool(WORKERS) { runnable ->
         Thread(runnable, "mpx-still").apply { isDaemon = true }
     }
     private val main = Handler(Looper.getMainLooper())
-    private val running = ConcurrentHashMap<Long, OpenReaders>()
-    private val cancelled = ConcurrentHashMap.newKeySet<Long>()
+    private val lock = Any()
+
+    // Every request from its call until its answer, by id. A cancel of an id
+    // not here (finished, or never asked) is a no-op, so nothing outlives it.
+    private val pending = HashMap<Long, Request>()
+    private var disposed = false
+
+    private class Request(val callback: (Result<NativeStill?>) -> Unit) {
+        @Volatile var cancelled = false
+
+        // The readers of its ranged resource, once open; under [lock].
+        var readers: OpenReaders? = null
+    }
 
     override fun extractStill(request: NativeStillRequest, callback: (Result<NativeStill?>) -> Unit) {
-        executor.execute {
-            val result =
-                try {
-                    Result.success(extract(request))
-                } catch (error: Throwable) {
-                    // A source the retriever cannot read, or reads woken by a
-                    // cancel: the platform draws no frame.
-                    Result.success(null)
-                } finally {
-                    running.remove(request.requestId)
-                    cancelled.remove(request.requestId)
+        val id = request.requestId
+        val job = Request(callback)
+        val taken =
+            synchronized(lock) {
+                if (disposed || pending.containsKey(id)) {
+                    false
+                } else {
+                    pending[id] = job
+                    true
                 }
-            main.post { callback(result) }
+            }
+        if (!taken) {
+            main.post { callback(Result.success(null)) }
+            return
+        }
+        try {
+            executor.execute { perform(request, job) }
+        } catch (error: RejectedExecutionException) {
+            answer(id, null)
         }
     }
 
-    override fun cancelStill(requestId: Long) {
-        cancelled.add(requestId)
-        running[requestId]?.cancelAll()
-    }
+    override fun cancelStill(requestId: Long) = wake(requestId)
 
-    /** Stops taking requests; the one running ends with its reads. */
+    /**
+     * Stops taking requests: the ones queued or running answer null now, the
+     * running ones' reads are woken, and later calls answer null.
+     */
     fun dispose() {
-        running.values.forEach { it.cancelAll() }
-        executor.shutdown()
+        val ids =
+            synchronized(lock) {
+                disposed = true
+                pending.keys.toList()
+            }
+        executor.shutdownNow()
+        for (id in ids) {
+            wake(id)
+            answer(id, null)
+        }
     }
 
-    private fun extract(request: NativeStillRequest): NativeStill? {
-        if (cancelled.contains(request.requestId)) return null
+    private fun perform(request: NativeStillRequest, job: Request) {
+        val id = request.requestId
+        val deadline = Runnable { wake(id) }
+        main.postDelayed(deadline, DEADLINE_MS)
+        val still =
+            try {
+                extract(request, job)
+            } catch (error: Throwable) {
+                // A source the retriever cannot read, or reads woken by a
+                // cancel: the platform draws no frame.
+                null
+            } finally {
+                main.removeCallbacks(deadline)
+            }
+        answer(id, still)
+    }
+
+    // Answers request [id] once; later answers (a dispose raced a finish)
+    // find it gone.
+    private fun answer(id: Long, still: NativeStill?) {
+        val job = synchronized(lock) { pending.remove(id) } ?: return
+        main.post { job.callback(Result.success(still)) }
+    }
+
+    // Cancels request [id] while it is pending. A native cancel wakes only
+    // the reads blocked at that moment, so a running one is woken again until
+    // it answers.
+    private fun wake(id: Long) {
+        val readers =
+            synchronized(lock) {
+                val job = pending[id] ?: return
+                job.cancelled = true
+                job.readers
+            } ?: return
+        readers.cancelAll()
+        main.postDelayed({ wake(id) }, REWAKE_MS)
+    }
+
+    private fun extract(request: NativeStillRequest, job: Request): NativeStill? {
+        if (job.cancelled) return null
         val retriever = MediaMetadataRetriever()
         var source: HbcMediaDataSource? = null
         try {
@@ -77,9 +145,12 @@ internal class MpxStillExtractor : PlayerStillHostApi {
                     // is refused rather than misread.
                     if (HbcNative.version(api) < HbcNative.expectedVersion()) return null
                     val readers = OpenReaders(api)
-                    running[request.requestId] = readers
-                    if (cancelled.contains(request.requestId)) return null
-                    source = HbcMediaDataSource(api, key, readers)
+                    synchronized(lock) { job.readers = readers }
+                    if (job.cancelled) return null
+                    source = HbcMediaDataSource(api, key, readers) { job.cancelled }
+                    // A cancel that came while the reader opened found none
+                    // to wake.
+                    if (job.cancelled) return null
                     retriever.setDataSource(source)
                 }
                 else -> return null
@@ -138,17 +209,30 @@ internal class MpxStillExtractor : PlayerStillHostApi {
         for (y in 0 until height) System.arraycopy(bytes, y * rowBytes, out, y * row, row)
         return out
     }
+
+    private companion object {
+        // Stills drawn at once: a blocked one leaves the others a thread.
+        const val WORKERS = 2
+
+        // How long a still may take before its reads are cancelled.
+        const val DEADLINE_MS = 20_000L
+
+        // How often a cancelled request's reads are woken until it answers.
+        const val REWAKE_MS = 1_000L
+    }
 }
 
 /**
  * The retriever's data source over one published ranged resource: reads go
  * to the cached sparse file and block, on the extractor's thread, only while
- * bytes are missing.
+ * bytes are missing. Once [cancelled] holds, every read fails at once: a
+ * native cancel wakes only the reads blocked at that moment.
  */
 private class HbcMediaDataSource(
     private val api: Long,
     private val key: String,
     private val readers: OpenReaders,
+    private val cancelled: () -> Boolean,
 ) : MediaDataSource() {
     private val reader: Long = HbcNative.open(api, key)
 
@@ -160,12 +244,14 @@ private class HbcMediaDataSource(
     private var closed = false
 
     override fun getSize(): Long {
+        if (cancelled()) throw IOException("read of $key cancelled")
         val length = HbcNative.length(api, reader, true)
         return if (length < 0) -1 else length
     }
 
     override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
         if (size == 0) return 0
+        if (cancelled()) throw IOException("read of $key cancelled")
         val read = HbcNative.read(api, reader, position, buffer, offset, size)
         if (read == 0L) return -1
         if (read < 0) throw IOException("read of $key failed ($read)")

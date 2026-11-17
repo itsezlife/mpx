@@ -676,18 +676,13 @@ data class NativeDeviceProbe (
  * Generated class from Pigeon that represents data sent in messages.
  */
 data class NativeStillRequest (
-  /** Names the request for `cancelStill`. */
+  /** Names the request for `cancelStill`, unique across the app's decoders. */
   val requestId: Long,
   val maxWidth: Long,
   val maxHeight: Long,
   val cacheKey: String? = null,
   val readerApi: Long? = null,
-  val path: String? = null,
-  /**
-   * The container's MIME type, when the host knows it (Apple's resource
-   * loader needs one; MP4 by default).
-   */
-  val mimeType: String? = null
+  val path: String? = null
 )
  {
   companion object {
@@ -698,8 +693,7 @@ data class NativeStillRequest (
       val cacheKey = pigeonVar_list[3] as String?
       val readerApi = pigeonVar_list[4] as Long?
       val path = pigeonVar_list[5] as String?
-      val mimeType = pigeonVar_list[6] as String?
-      return NativeStillRequest(requestId, maxWidth, maxHeight, cacheKey, readerApi, path, mimeType)
+      return NativeStillRequest(requestId, maxWidth, maxHeight, cacheKey, readerApi, path)
     }
   }
   fun toList(): List<Any?> {
@@ -710,7 +704,6 @@ data class NativeStillRequest (
       cacheKey,
       readerApi,
       path,
-      mimeType,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -721,7 +714,7 @@ data class NativeStillRequest (
       return true
     }
     val other = other as NativeStillRequest
-    return PlayerMessagesPigeonUtils.deepEquals(this.requestId, other.requestId) && PlayerMessagesPigeonUtils.deepEquals(this.maxWidth, other.maxWidth) && PlayerMessagesPigeonUtils.deepEquals(this.maxHeight, other.maxHeight) && PlayerMessagesPigeonUtils.deepEquals(this.cacheKey, other.cacheKey) && PlayerMessagesPigeonUtils.deepEquals(this.readerApi, other.readerApi) && PlayerMessagesPigeonUtils.deepEquals(this.path, other.path) && PlayerMessagesPigeonUtils.deepEquals(this.mimeType, other.mimeType)
+    return PlayerMessagesPigeonUtils.deepEquals(this.requestId, other.requestId) && PlayerMessagesPigeonUtils.deepEquals(this.maxWidth, other.maxWidth) && PlayerMessagesPigeonUtils.deepEquals(this.maxHeight, other.maxHeight) && PlayerMessagesPigeonUtils.deepEquals(this.cacheKey, other.cacheKey) && PlayerMessagesPigeonUtils.deepEquals(this.readerApi, other.readerApi) && PlayerMessagesPigeonUtils.deepEquals(this.path, other.path)
   }
 
   override fun hashCode(): Int {
@@ -732,11 +725,10 @@ data class NativeStillRequest (
     result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.cacheKey)
     result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.readerApi)
     result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.path)
-    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.mimeType)
     return result
   }
   override fun toString(): String {
-    return "NativeStillRequest(requestId=$requestId, maxWidth=$maxWidth, maxHeight=$maxHeight, cacheKey=$cacheKey, readerApi=$readerApi, path=$path, mimeType=$mimeType)"
+    return "NativeStillRequest(requestId=$requestId, maxWidth=$maxWidth, maxHeight=$maxHeight, cacheKey=$cacheKey, readerApi=$readerApi, path=$path)"
   }
 }
 

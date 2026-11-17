@@ -17,26 +17,52 @@ import Foundation
 /// player's resource loader; a file is opened in place. The track's
 /// transform is applied, and the frame is scaled into the request's box. A
 /// cancel wakes the loader's blocked reads and cancels the generation; the
-/// request then answers nil.
+/// request then answers nil. A request that runs past its deadline is
+/// cancelled the same way, so bytes that never arrive do not hold it for
+/// good.
+///
+/// Every call is answered exactly once: a request still running at
+/// `dispose`, and a call after it, answer nil.
 final class MpxStillExtractor: PlayerStillHostApi {
   private struct Running {
     let generator: AVAssetImageGenerator
     let loader: MpxResourceLoader?
   }
 
+  private final class Pending {
+    let completion: (Result<NativeStill?, Error>) -> Void
+    var cancelled = false
+    var running: Running?
+
+    init(completion: @escaping (Result<NativeStill?, Error>) -> Void) {
+      self.completion = completion
+    }
+  }
+
+  // How long a still may take before it is cancelled.
+  private static let deadline: TimeInterval = 20
+
   private let lock = NSLock()
-  private var running: [Int64: Running] = [:]
-  private var cancelled: Set<Int64> = []
+  // Every request from its call until its answer, by id. A cancel of an id
+  // not here (finished, or never asked) is a no-op, so nothing outlives it.
+  private var pending: [Int64: Pending] = [:]
+  private var disposed = false
 
   func extractStill(
     request: NativeStillRequest,
     completion: @escaping (Result<NativeStill?, Error>) -> Void
   ) {
     let id = request.requestId
-    let answer: (NativeStill?) -> Void = { [weak self] still in
-      self?.finish(id)
-      DispatchQueue.main.async { completion(.success(still)) }
+    lock.lock()
+    let taken = !disposed && pending[id] == nil
+    let job = Pending(completion: completion)
+    if taken { pending[id] = job }
+    lock.unlock()
+    guard taken else {
+      DispatchQueue.main.async { completion(.success(nil)) }
+      return
     }
+    let answer: (NativeStill?) -> Void = { still in self.answer(id, still) }
     guard let (asset, loader) = MpxStillExtractor.asset(of: request) else {
       answer(nil)
       return
@@ -49,13 +75,17 @@ final class MpxStillExtractor: PlayerStillHostApi {
     generator.requestedTimeToleranceBefore = .positiveInfinity
     generator.requestedTimeToleranceAfter = .positiveInfinity
     lock.lock()
-    let isCancelled = cancelled.contains(id)
-    if !isCancelled { running[id] = Running(generator: generator, loader: loader) }
+    let isCancelled = job.cancelled
+    if !isCancelled { job.running = Running(generator: generator, loader: loader) }
     lock.unlock()
     if isCancelled {
       loader?.close()
       answer(nil)
       return
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + MpxStillExtractor.deadline) {
+      [weak self] in
+      try? self?.cancelStill(requestId: id)
     }
     generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: .zero)]) {
       _, image, _, result, _ in
@@ -70,18 +100,35 @@ final class MpxStillExtractor: PlayerStillHostApi {
 
   func cancelStill(requestId: Int64) throws {
     lock.lock()
-    cancelled.insert(requestId)
-    let job = running[requestId]
+    let job = pending[requestId]
+    job?.cancelled = true
+    let running = job?.running
     lock.unlock()
-    job?.loader?.close()
-    job?.generator.cancelAllCGImageGeneration()
+    running?.loader?.close()
+    running?.generator.cancelAllCGImageGeneration()
   }
 
-  private func finish(_ id: Int64) {
+  /// Stops taking requests: the running ones are cancelled and answer nil
+  /// now, and later calls answer nil.
+  func dispose() {
     lock.lock()
-    running[id] = nil
-    cancelled.remove(id)
+    disposed = true
+    let ids = Array(pending.keys)
     lock.unlock()
+    for id in ids {
+      try? cancelStill(requestId: id)
+      answer(id, nil)
+    }
+  }
+
+  // Answers request [id] once; a later answer (a dispose raced a finish)
+  // finds it gone.
+  private func answer(_ id: Int64, _ still: NativeStill?) {
+    lock.lock()
+    let job = pending.removeValue(forKey: id)
+    lock.unlock()
+    guard let job else { return }
+    DispatchQueue.main.async { job.completion(.success(still)) }
   }
 
   // The asset of the request's source, and the loader serving it when it is
@@ -94,8 +141,9 @@ final class MpxStillExtractor: PlayerStillHostApi {
       let api = HbcReaderApi(address: address),
       let url = MpxResourceLoader.url(forKey: key)
     else { return nil }
-    let loader = MpxResourceLoader(
-      api: api, key: key, mimeType: request.mimeType ?? "video/mp4", traceId: 0)
+    // A still's request names no container: the MP4 family the asset image
+    // generator draws from.
+    let loader = MpxResourceLoader(api: api, key: key, mimeType: "video/mp4", traceId: 0)
     let asset = AVURLAsset(url: url)
     asset.resourceLoader.setDelegate(loader, queue: loader.queue)
     return (asset, loader)

@@ -148,8 +148,11 @@ final class _StillDecode implements AssetTask {
 
 /// The platform's extractor over the Pigeon channel.
 final class _NativeStillBackend implements PlatformStillBackend {
+  // One platform extractor serves every decoder, so ids are unique across
+  // backends: a cancel names one request only.
+  static int _nextId = 1;
+
   final PlayerStillHostApi _host = PlayerStillHostApi();
-  int _nextId = 1;
 
   @override
   Future<PlatformStill?> extract(

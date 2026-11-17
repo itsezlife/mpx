@@ -649,16 +649,13 @@ struct NativeDeviceProbe: Hashable, CustomStringConvertible {
 ///
 /// Generated class from Pigeon that represents data sent in messages.
 struct NativeStillRequest: Hashable, CustomStringConvertible {
-  /// Names the request for `cancelStill`.
+  /// Names the request for `cancelStill`, unique across the app's decoders.
   var requestId: Int64
   var maxWidth: Int64
   var maxHeight: Int64
   var cacheKey: String? = nil
   var readerApi: Int64? = nil
   var path: String? = nil
-  /// The container's MIME type, when the host knows it (Apple's resource
-  /// loader needs one; MP4 by default).
-  var mimeType: String? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -669,7 +666,6 @@ struct NativeStillRequest: Hashable, CustomStringConvertible {
     let cacheKey: String? = nilOrValue(pigeonVar_list[3])
     let readerApi: Int64? = nilOrValue(pigeonVar_list[4])
     let path: String? = nilOrValue(pigeonVar_list[5])
-    let mimeType: String? = nilOrValue(pigeonVar_list[6])
 
     return NativeStillRequest(
       requestId: requestId,
@@ -677,8 +673,7 @@ struct NativeStillRequest: Hashable, CustomStringConvertible {
       maxHeight: maxHeight,
       cacheKey: cacheKey,
       readerApi: readerApi,
-      path: path,
-      mimeType: mimeType
+      path: path
     )
   }
   func toList() -> [Any?] {
@@ -689,14 +684,13 @@ struct NativeStillRequest: Hashable, CustomStringConvertible {
       cacheKey,
       readerApi,
       path,
-      mimeType,
     ]
   }
   static func == (lhs: NativeStillRequest, rhs: NativeStillRequest) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return PlayerMessagesPigeonInternal.deepEquals(lhs.requestId, rhs.requestId) && PlayerMessagesPigeonInternal.deepEquals(lhs.maxWidth, rhs.maxWidth) && PlayerMessagesPigeonInternal.deepEquals(lhs.maxHeight, rhs.maxHeight) && PlayerMessagesPigeonInternal.deepEquals(lhs.cacheKey, rhs.cacheKey) && PlayerMessagesPigeonInternal.deepEquals(lhs.readerApi, rhs.readerApi) && PlayerMessagesPigeonInternal.deepEquals(lhs.path, rhs.path) && PlayerMessagesPigeonInternal.deepEquals(lhs.mimeType, rhs.mimeType)
+    return PlayerMessagesPigeonInternal.deepEquals(lhs.requestId, rhs.requestId) && PlayerMessagesPigeonInternal.deepEquals(lhs.maxWidth, rhs.maxWidth) && PlayerMessagesPigeonInternal.deepEquals(lhs.maxHeight, rhs.maxHeight) && PlayerMessagesPigeonInternal.deepEquals(lhs.cacheKey, rhs.cacheKey) && PlayerMessagesPigeonInternal.deepEquals(lhs.readerApi, rhs.readerApi) && PlayerMessagesPigeonInternal.deepEquals(lhs.path, rhs.path)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -707,11 +701,10 @@ struct NativeStillRequest: Hashable, CustomStringConvertible {
     PlayerMessagesPigeonInternal.deepHash(value: cacheKey, hasher: &hasher)
     PlayerMessagesPigeonInternal.deepHash(value: readerApi, hasher: &hasher)
     PlayerMessagesPigeonInternal.deepHash(value: path, hasher: &hasher)
-    PlayerMessagesPigeonInternal.deepHash(value: mimeType, hasher: &hasher)
   }
 
   public var description: String {
-    return "NativeStillRequest(requestId: \(String(describing: requestId)), maxWidth: \(String(describing: maxWidth)), maxHeight: \(String(describing: maxHeight)), cacheKey: \(String(describing: cacheKey)), readerApi: \(String(describing: readerApi)), path: \(String(describing: path)), mimeType: \(String(describing: mimeType)))"
+    return "NativeStillRequest(requestId: \(String(describing: requestId)), maxWidth: \(String(describing: maxWidth)), maxHeight: \(String(describing: maxHeight)), cacheKey: \(String(describing: cacheKey)), readerApi: \(String(describing: readerApi)), path: \(String(describing: path)))"
   }
 }
 
