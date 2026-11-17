@@ -107,6 +107,11 @@ abstract final class Lab {
     return origin?.urlOf(file);
   }
 
+  /// Where the corpus thumbnail [file] is fetched from: the loopback
+  /// origin, which serves it as a media server serves its thumbnails; null
+  /// without one.
+  static Uri? thumbnailUrlOf(String file) => origin?.urlOf(file);
+
   /// The stack's client for a corpus run: the network with the stack's own
   /// middlewares, every request recorded. Null without a corpus.
   static HttpBytesClient? httpClient() {

@@ -14,20 +14,35 @@ type: a video with an audio stream is `video` (the platform player with
 sound in the viewer), a silent one `loop` (the frame path), GIF and WebP
 `animated`, JSON `lottie`, other images `still`. Prints the table.
 
+Like a media server, `manifest` also gives every picture entry (still,
+animated, video, loop) the stand-ins a server sends with its message: an
+inline `preview` (a JPEG of at most 40 px, base64, the descriptor's preview
+bytes) and a `thumbnail` file (`<file>.thumb.jpg`, at most 320 px: the
+frame at 1 s of a clip, the first of an animation, a still scaled down)
+written next to the media, which the app's loopback origin serves. Public
+entries get theirs read over HTTP. Existing stand-ins are kept unless
+FORCE=1; an entry ffmpeg cannot read (an animated WebP without its GIF
+sibling) gets none.
+
 `lottie` writes a Lottie of many animated layers, heavy by construction:
 generated here, so it carries no third party's licence.
 """
 
+import base64
 import json
 import math
 import os
 import subprocess
 import sys
+import tempfile
 
 # Hosts such as Wikimedia refuse requests without a descriptive agent.
 USER_AGENT = "mpx-example-lab/1.0 (media performance lab)"
 KINDS = ("video", "loop", "animated", "lottie", "still")
 SKIP = {"manifest.json", "SOURCES.md"}
+THUMB = ".thumb.jpg"
+PREVIEW_EDGE = 40
+THUMB_EDGE = 320
 IMAGES = {".png", ".jpg", ".jpeg"}
 ANIMATED = {".gif", ".webp"}
 
@@ -89,15 +104,68 @@ def describe(path, kind=None, name=None, size=None):
     return entry
 
 
+def frame(source, out, edge, at=None):
+    """Writes one frame of [source] (a path or a URL) to [out] as a JPEG of
+    at most [edge] px on its long edge; [at] seconds in for a clip."""
+    seek = ["-ss", str(at)] if at else []
+    scale = f"scale={edge}:{edge}:force_original_aspect_ratio=decrease"
+    run = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *seek,
+         "-user_agent", USER_AGENT, "-i", source, "-frames:v", "1",
+         "-vf", scale, "-q:v", "4", out],
+        capture_output=True,
+    ) if source.startswith("http") else subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *seek,
+         "-i", source, "-frames:v", "1", "-vf", scale, "-q:v", "4", out],
+        capture_output=True,
+    )
+    return run.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > 0
+
+
+def stand_ins(folder, entry):
+    """Adds the server-like `preview` and `thumbnail` of [entry]."""
+    if entry["kind"] == "lottie":
+        return
+    force = os.environ.get("FORCE") == "1"
+    name = entry["file"]
+    source = entry.get("url") or os.path.join(folder, name)
+    stem, ext = os.path.splitext(name)
+    # ffmpeg reads no animated WebP: its GIF sibling has the same frames.
+    if ext.lower() == ".webp" and entry["kind"] == "animated":
+        sibling = os.path.join(folder, stem + ".gif")
+        if os.path.exists(sibling):
+            source = sibling
+    at = 1 if entry["kind"] in ("video", "loop") else None
+    thumb = name + THUMB
+    thumb_path = os.path.join(folder, thumb)
+    if force or not os.path.exists(thumb_path):
+        if not frame(source, thumb_path, THUMB_EDGE, at) and \
+                not (at and frame(source, thumb_path, THUMB_EDGE)):
+            print(f"  no stand-ins for {name}: ffmpeg cannot read it", file=sys.stderr)
+            return
+    entry["thumbnail"] = thumb
+    if entry.get("preview") and not force:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        out = os.path.join(tmp, "preview.jpg")
+        # From the thumbnail: the same frame, already small.
+        if frame(thumb_path, out, PREVIEW_EDGE):
+            entry["preview"] = base64.b64encode(open(out, "rb").read()).decode()
+
+
 def manifest(folder, public=None):
     path = os.path.join(folder, "manifest.json")
     known = {}
+    previews = {}
     if os.path.exists(path):
-        known = {e["file"]: e.get("kind") for e in json.load(open(path)).get("entries", [])}
+        old = json.load(open(path)).get("entries", [])
+        known = {e["file"]: e.get("kind") for e in old}
+        previews = {e["file"]: e["preview"] for e in old if e.get("preview")}
     entries = []
     for name in sorted(os.listdir(folder)):
         full = os.path.join(folder, name)
-        if name in SKIP or name.startswith(".") or not os.path.isfile(full):
+        if (name in SKIP or name.endswith(THUMB) or name.startswith(".")
+                or not os.path.isfile(full)):
             continue
         entry = describe(full, known.get(name))
         if entry is None:
@@ -114,12 +182,17 @@ def manifest(folder, public=None):
             entries.append(e)
     if not entries:
         sys.exit(f"no media in {folder}")
+    for e in entries:
+        if e["file"] in previews:
+            e["preview"] = previews[e["file"]]
+        stand_ins(folder, e)
     json.dump({"entries": entries}, open(path, "w"), indent=1)
     for e in entries:
         br = f"{e['bitrate'] // 1000}kbps" if e.get("bitrate") else "?"
         print(f"  {e['file']:40} {e['kind']:8} {e.get('codec') or '?':6} "
               f"{e.get('width')}x{e.get('height')} {e.get('fps')}fps {br} "
-              f"{e.get('duration') or '?'}s {e['size']}B {'url' if e.get('url') else 'local'}")
+              f"{e.get('duration') or '?'}s {e['size']}B {'url' if e.get('url') else 'local'} "
+              f"{'preview' if e.get('preview') else '-'} {'thumb' if e.get('thumbnail') else '-'}")
     print(f"{len(entries)} entries -> {path}")
 
 

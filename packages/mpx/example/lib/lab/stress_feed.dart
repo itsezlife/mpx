@@ -66,14 +66,7 @@ final class StressItems {
       final source = sourceAt(i);
       final key = keyAt(i);
       if (i % 3 == 2) LoadingDemo.manualKeys.add(key);
-      stack.pipeline.know(
-        MediaDescriptor(
-          key: key,
-          kind: source.kind.media,
-          animated: source.kind != CorpusKind.still,
-          byteSize: source.size,
-        ),
-      );
+      stack.pipeline.know(source.descriptorOf(key));
     }
   }
 

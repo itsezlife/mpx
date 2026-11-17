@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_ui/mpx_ui.dart';
@@ -43,6 +44,8 @@ final class CorpusEntry {
     this.bitrate,
     this.duration,
     this.size,
+    this.preview,
+    this.thumbnail,
   });
 
   factory CorpusEntry.fromJson(Map<String, Object?> json) => CorpusEntry(
@@ -59,6 +62,11 @@ final class CorpusEntry {
     bitrate: (json['bitrate'] as num?)?.toInt(),
     duration: (json['duration'] as num?)?.toDouble(),
     size: (json['size'] as num?)?.toInt(),
+    preview: switch (json['preview']) {
+      final String encoded => base64Decode(encoded),
+      _ => null,
+    },
+    thumbnail: json['thumbnail'] as String?,
   );
 
   /// The file's name: in the corpus folder for a local entry, the name
@@ -82,6 +90,40 @@ final class CorpusEntry {
 
   /// Bytes.
   final int? size;
+
+  /// The tiny picture a server sends inline with the item (the descriptor's
+  /// preview), or null.
+  final Uint8List? preview;
+
+  /// The file of the item's thumbnail in the corpus folder, served by the
+  /// loopback origin, or null.
+  final String? thumbnail;
+
+  /// What a host knows of the item before fetching it, as its server says:
+  /// kind, size, duration, the inline preview and the thumbnail.
+  MediaDescriptor descriptorOf(MediaKey key) => MediaDescriptor(
+    key: key,
+    kind: kind.media,
+    animated: kind != CorpusKind.still,
+    byteSize: size,
+    duration: switch (duration) {
+      final seconds? when kind != CorpusKind.still => Duration(
+        microseconds: (seconds * 1e6).round(),
+      ),
+      _ => null,
+    },
+    dimensions: width != null && height != null && width! > 0 && height! > 0
+        ? MediaDimensions(width!, height!)
+        : null,
+    preview: switch (preview) {
+      final bytes? => MediaPreview.raster(bytes),
+      null => null,
+    },
+    thumbnail: switch (thumbnail) {
+      final file? => MediaThumbnailRef(file),
+      null => null,
+    },
+  );
 
   /// One line for the run's log: name, kind, codec, resolution, fps,
   /// bitrate, duration, size.

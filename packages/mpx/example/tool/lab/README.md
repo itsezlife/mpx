@@ -78,7 +78,7 @@ one build:
 
 | Variable | Does |
 | --- | --- |
-| `LAB_COLD=1` | deletes the media caches (bytes cache, Lottie frames) at start: a cold run |
+| `LAB_COLD=1` | deletes the media caches (bytes cache with its derived previews, Lottie frames) at start: a cold run; the manifest's inline previews and thumbnail files stay, as a server's would |
 | `LAB_OPEN=stress` | starts on the stress feed |
 | `LAB_SET="k=v ..."` | any switch below, e.g. `items=80 kinds=video,loop distinct=false` |
 
@@ -146,6 +146,13 @@ with a fingerprint) at every start; each run's report begins with it, and
 a replay on a corpus other than the tape's is flagged `CORPUS DIFFERS`.
 Stress keys are named after their files: a file replaced under the same
 name needs a `LAB_COLD=1` run.
+
+The manifest also carries what a media server sends with each item:
+an inline `preview` (a JPEG of at most 40 px, base64) and a `thumbnail`
+(`<file>.thumb.jpg`, at most 320 px, written next to the media and served
+by the loopback origin). The app puts both in the item's descriptor, so an
+item that waits for a tap shows its blurred preview, then its thumbnail.
+`FORCE=1` makes them again.
 
 The software decoder of this build decodes H.264, VP9 and GIF: HEVC and
 AV1 clips play in the viewer on the platform player, and stay on their

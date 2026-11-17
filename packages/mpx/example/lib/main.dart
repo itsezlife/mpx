@@ -98,9 +98,18 @@ Future<void> main() async {
     signals: signals,
     autoDownload: LoadingDemo.policy(signals),
     // Where each key's bytes are. A real host maps its keys to its CDN.
-    locate: (descriptor, part) => switch (_fileOf(descriptor.key)) {
-      final file? => MediaLocation(_urlOf(file).toString()),
-      null => null,
+    locate: (descriptor, part) => switch ((part, descriptor.thumbnail)) {
+      // A corpus item's thumbnail, served beside it as a server would.
+      (FetchPart.thumbnail, final ref?) => switch (Lab.thumbnailUrlOf(
+        ref.value,
+      )) {
+        final url? => MediaLocation(url.toString()),
+        null => null,
+      },
+      _ => switch (_fileOf(descriptor.key)) {
+        final file? => MediaLocation(_urlOf(file).toString()),
+        null => null,
+      },
     },
     cacheDirectory: cacheDirectory,
     registeredQuotas: {BytesQuota.lottieFrames: frames.evict},
@@ -115,14 +124,16 @@ Future<void> main() async {
         ? NativeRangedContentPublisher(readers = NativeRangedReaders(ranged))
         : null,
   );
-  // Sizes, as a host's data gives them: the auto-download policy weighs
-  // them, and a video or animation of unknown size waits for a tap.
-  final sizes = {
-    for (final e in Lab.corpus?.entries ?? const <CorpusEntry>[])
-      e.file: e.size,
-  };
+  // What the host knows of each item, as its server would say: the size
+  // (the auto-download policy weighs it; a video or animation of unknown
+  // size waits for a tap), and for a corpus item its preview and thumbnail.
   for (final (key, kind, file, _) in _media) {
-    final size = sizes[file] ?? await _bundledSize(file);
+    // A corpus item comes with what its server says: preview, thumbnail.
+    if (Lab.corpus?.entryOf(file) case final entry?) {
+      stack.pipeline.know(entry.descriptorOf(key));
+      continue;
+    }
+    final size = await _bundledSize(file);
     stack.pipeline.know(
       MediaDescriptor(
         key: key,
