@@ -270,6 +270,89 @@ void main() {
     expect(signals, 4);
   });
 
+  group('a content has one transfer through every spec of it', () {
+    // A tile waits for the user at its own spec while a viewer downloads
+    // the same bytes at another.
+    late AssetBinding tile;
+    late FakeAssetAttempt tileAttempt;
+
+    setUp(() {
+      tile = scope.attach(_key, _small, _profile);
+      tileAttempt = producer.last
+        ..describe(_descriptor)
+        ..advance(AssetStage.preview)
+        ..awaitingUser();
+    });
+
+    test('the tile shows the download another spec runs', () {
+      var signals = 0;
+      tile.addListener(() => signals++);
+      final viewer = scope.attach(_key, _spec, _profile);
+      producer.last.transfer(1000, 4000);
+
+      expect(viewer.transfer, const AssetTransfer.receiving(1000, 4000));
+      expect(tile.transfer, const AssetTransfer.receiving(1000, 4000));
+      expect(signals, greaterThan(0));
+    });
+
+    test('content complete at one spec starts the others from the local '
+        'bytes, and their transfer ends', () {
+      scope.attach(_key, _spec, _profile);
+      producer.last
+        ..transfer(4000, 4000)
+        ..advance(AssetStage.full);
+
+      expect(tileAttempt.isCancelled, isTrue);
+      final again = producer.attemptsFor(const AssetRequest(_key, _small)).last;
+      expect(again, isNot(same(tileAttempt)));
+      expect(tile.transfer, AssetTransfer.none);
+
+      again.advance(AssetStage.full);
+      expect(tile.readiness.stage, AssetStage.full);
+      expect(tile.transfer, AssetTransfer.none);
+    });
+
+    test('a spec whose download stopped short starts again too', () {
+      tile.download();
+      producer.last
+        ..transfer(1000, 4000)
+        ..fail(StateError('offline'));
+      expect(tile.transfer, isA<AssetTransfer$Failed>());
+
+      scope.attach(_key, _spec, _profile);
+      producer.last.advance(AssetStage.full);
+
+      expect(
+        producer.attemptsFor(const AssetRequest(_key, _small)),
+        hasLength(3),
+      );
+      expect(tile.transfer, AssetTransfer.none);
+    });
+
+    test('a stand-in that is the best a spec makes starts nothing', () {
+      scope.attach(_key, _spec, _profile);
+      producer.last
+        ..advance(AssetStage.placeholder)
+        ..bestReached();
+
+      expect(
+        producer.attemptsFor(const AssetRequest(_key, _small)),
+        hasLength(1),
+      );
+      expect(tile.transfer, const AssetTransfer.awaitingUser(4000));
+    });
+
+    test('cancel from the tile stops the download of the other spec', () {
+      scope.attach(_key, _spec, _profile);
+      final viewerAttempt = producer.last..transfer(1000, 4000);
+
+      tile.cancelDownload();
+
+      expect(viewerAttempt.isCancelled, isTrue);
+      expect(tile.transfer, isA<AssetTransfer$AwaitingUser>());
+    });
+  });
+
   group('auto-download', () {
     late FakeAutoDownloadPolicy policy;
     const contacts = AutoDownloadContext.contacts;

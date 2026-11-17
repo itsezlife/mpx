@@ -88,7 +88,9 @@ import 'package:mpx_core/src/texture/frame_texture_pool.dart';
 /// ## Downloads
 ///
 /// Every entry has one transfer (`AssetBinding.transfer`), which its
-/// bindings share. Content missing from every cache downloads when the
+/// bindings share; an entry that waits shows the download another spec of
+/// the same content runs, and once one spec has the content, the others
+/// still waiting for it start again and read the local bytes. Content missing from every cache downloads when the
 /// [autoDownload] policy says so for the tags of the bindings attached to it
 /// ([attach]'s `downloadContext`; the most permissive answer wins), otherwise
 /// it shows its stand-ins and waits for `AssetBinding.download`. A user's
@@ -231,8 +233,20 @@ final class AssetCacheScope {
     _restart(entry);
   }
 
+  // The transfer the surfaces of [entry] show. The bytes are the content's,
+  // whatever the spec, so while another spec downloads them and this one
+  // waits (for the user, or after a failure) it shows that download, as a
+  // tile shows the download its viewer runs.
+  AssetTransfer _transferOf(_Entry entry) {
+    if (entry.transfer.isActive || entry.isFinal) return entry.transfer;
+    for (final sibling in _byKey[entry.key] ?? const <_Entry>{}) {
+      if (sibling.transfer.isActive) return sibling.transfer;
+    }
+    return entry.transfer;
+  }
+
   void _cancelDownload(_Entry entry) {
-    if (!entry.transfer.isActive) return;
+    if (!_transferOf(entry).isActive) return;
     _requestedByUser.remove(entry.key);
     _cancelledByUser.add(entry.key);
     // Every spec of the content downloads the same bytes.
@@ -759,6 +773,23 @@ final class AssetCacheScope {
     entry.attempt = null;
     entry.setTransfer(AssetTransfer.none);
     _received.remove(entry.key);
+    // The content's bytes are local now (a stand-in a spec stops at says
+    // nothing about them). A spec still waiting for them, or whose download
+    // stopped short, starts again and reads them; without it, a tile whose
+    // viewer downloaded the content would show its old download for good.
+    if (entry.stage.index < AssetStage.firstFrame.index) return;
+    for (final sibling in List<_Entry>.of(_byKey[entry.key] ?? const {})) {
+      if (identical(sibling, entry) ||
+          sibling.isFinal ||
+          sibling.transfer == AssetTransfer.none) {
+        continue;
+      }
+      if (sibling.bindings.isNotEmpty || sibling.preloads.isNotEmpty) {
+        _restart(sibling);
+      } else {
+        sibling.setTransfer(AssetTransfer.none);
+      }
+    }
   }
 
   // The producer can make nothing better than the entry's stage for its spec
@@ -917,10 +948,14 @@ final class _Entry {
     if (!shown) paintable?.leftScreen();
   }
 
-  // Tells the bindings their transfer changed.
+  // Tells the bindings of every spec of the content that its transfer
+  // changed: each shows the one download of its bytes
+  // (AssetCacheScope._transferOf).
   void signalTransfer({required bool bytesOnly}) {
-    for (final binding in List<_EntryBinding>.of(bindings)) {
-      binding.transferChanged(bytesOnly: bytesOnly);
+    for (final entry in List<_Entry>.of(scope._byKey[key] ?? {this})) {
+      for (final binding in List<_EntryBinding>.of(entry.bindings)) {
+        binding.transferChanged(bytesOnly: bytesOnly);
+      }
     }
   }
 
@@ -1193,7 +1228,7 @@ final class _EntryBinding extends AssetBindingBase {
   @override
   AssetTransfer get transfer {
     if (isDetached) return AssetTransfer.none;
-    final transfer = entry.transfer;
+    final transfer = _scope._transferOf(entry);
     final size = entry.descriptor?.byteSize;
     if (size == null || transfer.total != null) return transfer;
     // The source did not say how large the content is; the host did.

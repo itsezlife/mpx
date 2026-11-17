@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- A content has one download whatever the spec: a binding whose entry
+  waits (for the user, or after a failure) reads the download another
+  spec of the same content runs, and its cancel stops it. Once one spec
+  has the content, the others still waiting start again and read the
+  local bytes, so a tile whose viewer downloaded the content drops its
+  size label and download control.
 - Round video: `AssetPresets.round(diameter:, devicePixelRatio:, profile:)`
   clips a square to its circle, and `AssetPreset.isRound` tells such a
   preset. A round `ContentView` draws its preview and thumbnail enlarged
