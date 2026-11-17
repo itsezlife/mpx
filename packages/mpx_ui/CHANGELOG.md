@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A `ViewerOrigin`'s frame is the picture of the `ContentView` in it
+  alone: the status control and the badge over a tile no longer ride the
+  open morph or stand in on the page. A picture inset in its thumbnail
+  keeps its place in a frame of the thumbnail's size.
+
 - Feed clips load in stages: the default poster is the item's staged view
   with its `FeedItem.downloadContext`, the player fades in over the poster
   for the viewer policy's time, and a pager page shows the buffering

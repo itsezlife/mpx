@@ -243,7 +243,9 @@ final class _SourcedBridge implements OriginBridge {
 /// asks: its rectangle on screen, [borderRadius], and the clip of every
 /// scrollable around it; one scrolled out of every viewport has no place,
 /// and the viewer closes without the morph. With [captureFrame] the viewer
-/// starts from the picture it shows now.
+/// starts from the picture it shows now: the picture of the first
+/// `ContentView` in it (`ContentView.pictureIn`), without the status
+/// control or badge over it, else the whole thumbnail.
 class ViewerOrigin extends StatefulWidget {
   /// Marks [child] as the origin of [index] or of [media].
   const ViewerOrigin({
@@ -359,7 +361,44 @@ class _ViewerOriginState extends State<ViewerOrigin> {
     // in debug builds, where the capture would assert.
     if (kDebugMode && box.debugNeedsPaint) return null;
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
-    return box.toImageSync(pixelRatio: dpr);
+    // The picture alone: a status control or a badge over it would ride the
+    // morph and stand in on the page. Without a content view's picture in
+    // it, the thumbnail is all picture.
+    final picture = ContentView.pictureIn(box);
+    if (picture == null ||
+        identical(picture, box) ||
+        !picture.hasSize ||
+        (kDebugMode && picture.debugNeedsPaint)) {
+      return box.toImageSync(pixelRatio: dpr);
+    }
+    final image = picture.toImageSync(pixelRatio: dpr);
+    final place = MatrixUtils.transformRect(
+      picture.getTransformTo(box),
+      Offset.zero & picture.size,
+    );
+    if (place == Offset.zero & box.size) return image;
+    // A picture inset in the thumbnail keeps its place in a frame of the
+    // thumbnail's size, which the viewer fits as it fits the thumbnail.
+    final recorder = ui.PictureRecorder();
+    Canvas(recorder).drawImageRect(
+      image,
+      Offset.zero & Size(image.width.toDouble(), image.height.toDouble()),
+      Rect.fromLTRB(
+        place.left * dpr,
+        place.top * dpr,
+        place.right * dpr,
+        place.bottom * dpr,
+      ),
+      Paint()..filterQuality = FilterQuality.medium,
+    );
+    final drawn = recorder.endRecording();
+    final framed = drawn.toImageSync(
+      (box.size.width * dpr).ceil(),
+      (box.size.height * dpr).ceil(),
+    );
+    drawn.dispose();
+    image.dispose();
+    return framed;
   }
 
   @override

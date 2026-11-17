@@ -361,6 +361,107 @@ void main() {
     ], everyElement(0));
   });
 
+  testWidgets('the frame of a thumbnail is its picture alone: the status '
+      'control and the badge over it are not in it', (tester) async {
+    scope.dispose();
+    scope = AssetCacheScope(
+      producer: producer,
+      clock: clock,
+      autoDownload: FakeAutoDownloadPolicy(),
+    );
+    await pumpHost(
+      tester,
+      Align(
+        alignment: Alignment.topLeft,
+        child: ViewerOrigin(
+          index: 0,
+          child: ContentView(
+            content: photoKey(0),
+            scope: scope,
+            preset: AssetPresets.media(
+              size: const Size(120, 90),
+              devicePixelRatio: 1,
+              profile: const AssetProfile(),
+            ),
+            status: const MediaStatusMode.control(),
+            badge: true,
+          ),
+        ),
+      ),
+    );
+    producer.last
+      ..describe(
+        MediaDescriptor(
+          key: photoKey(0),
+          kind: MediaKind.video,
+          duration: const Duration(seconds: 13),
+          byteSize: 4718592,
+        ),
+      )
+      ..awaitingUser();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    // The chrome shows on the thumbnail.
+    expect(find.text('0:13'), findsOneWidget);
+    expect(find.byType(MediaStatusControl), findsOneWidget);
+
+    final bridge = ViewerOriginScope.of(
+      tester.element(find.byType(ViewerOrigin)),
+    ).bridgeFor(source);
+    final frame = bridge.frameOf(0)!;
+    addTearDown(frame.dispose);
+    final pixels = await tester.runAsync(frame.toByteData);
+
+    expect((frame.width, frame.height), (120, 90));
+    final bytes = pixels!.buffer.asUint8List();
+    expect([
+      for (var i = 3; i < bytes.length; i += 4) bytes[i],
+    ], everyElement(0));
+  });
+
+  testWidgets('a picture inset in its thumbnail keeps its place in a frame '
+      "of the thumbnail's size", (tester) async {
+    await pumpHost(
+      tester,
+      Align(
+        alignment: Alignment.topLeft,
+        child: ViewerOrigin(
+          index: 0,
+          child: ColoredBox(
+            color: const Color(0xFFFF0000),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: ContentView(
+                content: photoKey(0),
+                scope: scope,
+                preset: AssetPresets.media(
+                  size: const Size(100, 70),
+                  devicePixelRatio: 1,
+                  profile: const AssetProfile(),
+                ),
+                badge: true,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final bridge = ViewerOriginScope.of(
+      tester.element(find.byType(ViewerOrigin)),
+    ).bridgeFor(source);
+
+    final frame = bridge.frameOf(0)!;
+    addTearDown(frame.dispose);
+    final pixels = await tester.runAsync(frame.toByteData);
+
+    expect((frame.width, frame.height), (120, 90));
+    final bytes = pixels!.buffer.asUint8List();
+    // The host's box around the picture is not the picture.
+    expect([
+      for (var i = 3; i < bytes.length; i += 4) bytes[i],
+    ], everyElement(0));
+  });
+
   group('ViewerController', () {
     testWidgets('observes the item, the open state and the controls', (
       tester,

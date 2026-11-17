@@ -238,7 +238,32 @@ class ContentView extends StatefulWidget {
 
   @override
   State<ContentView> createState() => _ContentViewState();
+
+  /// The repaint boundary of the picture of the first [ContentView] painted
+  /// under [root] (in paint order, [root] included), or null when there is
+  /// none: the content alone, without the status control and the badge laid
+  /// over it. A surface that reads a view's picture (a viewer's origin
+  /// frame) reads it there, so the picture never carries chrome. A view
+  /// that plays, or has a status or a badge, has one.
+  static RenderRepaintBoundary? pictureIn(RenderObject root) {
+    if (root is _RenderPictureBoundary) return root;
+    RenderRepaintBoundary? found;
+    root.visitChildren((child) {
+      found ??= pictureIn(child);
+    });
+    return found;
+  }
 }
+
+class _PictureBoundary extends SingleChildRenderObjectWidget {
+  const _PictureBoundary({required super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderPictureBoundary();
+}
+
+class _RenderPictureBoundary extends RenderRepaintBoundary {}
 
 class _ContentViewState extends State<ContentView> {
   AssetBinding? _binding;
@@ -444,8 +469,13 @@ class _ContentViewState extends State<ContentView> {
           ? _paintedUnseen
           : null,
     );
-    if (preset.profile.animate) view = RepaintBoundary(child: view);
-    if (widget.status is! MediaStatusMode$None || widget.badge) {
+    final overlays = widget.status is! MediaStatusMode$None || widget.badge;
+    // Every frame repaints an animated picture; a picture under chrome is
+    // read without it (ContentView.pictureIn).
+    if (preset.profile.animate || overlays) {
+      view = _PictureBoundary(child: view);
+    }
+    if (overlays) {
       view = _Overlays(
         binding: _binding!,
         status: widget.status,

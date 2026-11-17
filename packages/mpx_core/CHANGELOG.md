@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `ContentView.pictureIn(root)`: the repaint boundary of a view's picture
+  alone, under its status control and badge, for a surface that reads the
+  picture (a viewer's origin frame). A view with a status or a badge now
+  has that boundary, as a playing view had.
 - `MediaDescriptor.silentLoop` marks a GIF sent as video, and
   `MediaDescriptor.isGif` tells a GIF (an animated image or a silent
   loop). The media badge times only a video: a GIF reads "GIF" whatever
