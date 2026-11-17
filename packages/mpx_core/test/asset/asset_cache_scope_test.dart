@@ -35,8 +35,16 @@ void main() {
       expect(binding.profile, _profile);
     });
 
-    test('media waits behind a rectangle by default', () {
-      expect(scope.placeholder, isA<RectPlaceholder>());
+    test('media waits behind nothing by default: the placeholder draws no '
+        'call', () {
+      final canvas = _CallRecorder();
+
+      scope
+          .attach(_sticker, _spec, _profile)
+          .paint(canvas, const Rect.fromLTWH(0, 0, 64, 64));
+
+      expect(scope.placeholder, isA<ClearPlaceholder>());
+      expect(canvas.calls, isEmpty);
     });
 
     test('without a producer an attach stays at none and never fails', () {
@@ -411,4 +419,13 @@ final class _ClipRecorder implements Canvas {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+/// Keeps the name of every call a paint makes.
+final class _CallRecorder implements Canvas {
+  final List<Symbol> calls = [];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      calls.add(invocation.memberName);
 }

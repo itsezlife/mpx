@@ -327,6 +327,40 @@ void main() {
     frame.dispose();
   });
 
+  testWidgets('the frame of a thumbnail whose content has nothing to show '
+      'is clear: a page it stands in for shows no box', (tester) async {
+    await pumpHost(
+      tester,
+      Align(
+        alignment: Alignment.topLeft,
+        child: ViewerOrigin(
+          index: 0,
+          child: ContentView(
+            content: photoKey(0),
+            scope: scope,
+            preset: AssetPresets.media(
+              size: const Size(120, 90),
+              devicePixelRatio: 1,
+              profile: const AssetProfile(),
+            ),
+          ),
+        ),
+      ),
+    );
+    final bridge = ViewerOriginScope.of(
+      tester.element(find.byType(ViewerOrigin)),
+    ).bridgeFor(source);
+
+    final frame = bridge.frameOf(0)!;
+    addTearDown(frame.dispose);
+    final pixels = await tester.runAsync(frame.toByteData);
+
+    final bytes = pixels!.buffer.asUint8List();
+    expect([
+      for (var i = 3; i < bytes.length; i += 4) bytes[i],
+    ], everyElement(0));
+  });
+
   group('ViewerController', () {
     testWidgets('observes the item, the open state and the controls', (
       tester,

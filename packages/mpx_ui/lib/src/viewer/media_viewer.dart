@@ -1330,14 +1330,9 @@ class MediaViewerState extends State<MediaViewer>
   Widget _page(int index) {
     final item = widget.source.itemAt(index);
     final fitted = _fittedRect(index, null).size;
-    if (item == null) {
-      return Center(
-        child: SizedBox.fromSize(
-          size: fitted,
-          child: ColoredBox(color: widget.tokens.placeholder),
-        ),
-      );
-    }
+    // An item not loaded yet is the black page with nothing on it: no box
+    // stands in for media.
+    if (item == null) return const SizedBox.expand();
     final policy = _policy;
     final session = _sessionIndex == index ? _session : null;
     final video = session != null;
@@ -1617,8 +1612,7 @@ class _OriginContentState extends State<_OriginContent> {
     content: widget.content,
     scope: widget.scope,
     preset: widget.preset,
-    placeholder: _standIn ?? const RectPlaceholder(),
-    placeholderTint: const Color(0x00000000),
+    placeholder: _standIn ?? const ClearPlaceholder(),
   );
 }
 

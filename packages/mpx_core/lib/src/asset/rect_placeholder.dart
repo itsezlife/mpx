@@ -3,24 +3,17 @@ import 'dart:ui';
 import 'package:mpx_core/src/asset/asset_paintable.dart';
 import 'package:mpx_core/src/asset/atlas_sprite.dart';
 
-/// The default stand-in of media (an animation, a clip, a picture) that has nothing to
-/// show yet: the whole rectangle in one quiet colour.
+/// A tinted fill a host chooses as the stand-in of media that has nothing
+/// to show yet: the whole rectangle in the context's tint.
 ///
-/// No shape is drawn for media: a grid cell that waits for its image shows the
-/// flat colour `0xFFEDF3F7` across the full cell, with no radius of its own,
-/// and the loader sits over it. A corner radius belongs to the surface: a binding clips what
-/// it paints to `AssetProfile.cornerRadius`, so the rectangle follows the
-/// cell's corners with no radius here.
-///
-/// The colour is the context's tint, drawn as given (a host passes one of its
-/// quiet theme tokens); without one it is [fallbackColor]. Synchronous,
-/// shared, never disposed; no sprite and no animation.
+/// No shape is drawn: a corner radius belongs to the surface, which clips
+/// what a binding paints to `AssetProfile.cornerRadius`. Without a tint it
+/// paints nothing; it has no colour of its own, so media never waits behind
+/// a box the host did not ask for. Synchronous, shared, never disposed; no
+/// sprite and no animation.
 final class RectPlaceholder extends AssetPaintable {
   /// Creates the placeholder.
   const RectPlaceholder();
-
-  /// The flat colour of a media stand-in without a tint.
-  static const Color fallbackColor = Color(0xFFEDF3F7);
 
   // Painting is single-threaded and the paint is set fully on every call.
   static final Paint _paint = Paint();
@@ -39,8 +32,8 @@ final class RectPlaceholder extends AssetPaintable {
 
   @override
   void paint(Canvas canvas, Rect rect, AssetPaintContext context) {
-    if (rect.isEmpty) return;
-    final base = context.tint ?? fallbackColor;
+    final base = context.tint;
+    if (rect.isEmpty || base == null) return;
     _paint.color = base.withValues(alpha: base.a * context.opacity);
     canvas.drawRect(rect, _paint);
   }

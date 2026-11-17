@@ -44,6 +44,35 @@ void main() {
     await tester.pump();
   }
 
+  testWidgets('a clip whose media has no stage yet paints nothing', (
+    tester,
+  ) async {
+    final feed = FeedController(presetOf: preset);
+    addTearDown(feed.dispose);
+    await pump(
+      tester,
+      FeedScope(
+        controller: feed,
+        child: ListView(
+          children: [
+            SizedBox(
+              height: 200,
+              child: FeedSlot(
+                index: 0,
+                item: _item(0),
+                child: const FeedClip(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final clip = find.byType(ContentView);
+    expect(clip, findsOneWidget);
+    expect(tester.renderObject(clip), paintsNothing);
+  });
+
   testWidgets('clips in a host grid attach with the plan of the slots', (
     tester,
   ) async {

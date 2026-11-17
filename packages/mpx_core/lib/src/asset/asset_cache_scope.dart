@@ -12,7 +12,7 @@ import 'package:mpx_core/src/asset/asset_producer.dart';
 import 'package:mpx_core/src/asset/asset_profile.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_spec.dart';
-import 'package:mpx_core/src/asset/rect_placeholder.dart';
+import 'package:mpx_core/src/asset/clear_placeholder.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 import 'package:mpx_core/src/playback/playback_clock.dart';
 import 'package:mpx_core/src/playback/playback_policy.dart';
@@ -99,8 +99,8 @@ final class AssetCacheScope {
   /// [AssetStage.none]. [clock] is the playback clock (created, and disposed
   /// with the scope, if omitted). [memoryPressure] is a signal that empties the unpinned
   /// entries when it fires. [placeholder] is what a binding paints before its
-  /// entry has produced any stage (the whole rectangle in a quiet colour by
-  /// default, `RectPlaceholder`). [textures] is the pool of the platform's
+  /// entry has produced any stage (nothing by default, `ClearPlaceholder`).
+  /// [textures] is the pool of the platform's
   /// texture host, or null where there is none.
   AssetCacheScope({
     AssetProducer? producer,
@@ -115,7 +115,7 @@ final class AssetCacheScope {
        _clock = clock ?? PlaybackClock(),
        _ownsClock = clock == null,
        _memoryPressure = memoryPressure,
-       placeholder = placeholder ?? const RectPlaceholder() {
+       placeholder = placeholder ?? const ClearPlaceholder() {
     memoryPressure?.addListener(_onMemoryPressure);
     _clock.addLayerListener(_onLayers);
     _preloadsPaused = _layersPausePreloads();

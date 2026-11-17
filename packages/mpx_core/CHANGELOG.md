@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `ClearPlaceholder`, which paints nothing, is the scope's default
+  placeholder: media no longer waits behind a light box. Breaking:
+  `RectPlaceholder.fallbackColor` is gone and an untinted `RectPlaceholder`
+  paints nothing. A `ContentView`'s own placeholder also stands in while a
+  profile that does not autoplay its first frame waits for the full asset.
 - `AssetCacheScope.holdBackground(except:)` leaves the given content
   playing, and while a background hold is on the producer starts no
   preload work: breaking, `AssetProducer.holdPreloads` is new, and

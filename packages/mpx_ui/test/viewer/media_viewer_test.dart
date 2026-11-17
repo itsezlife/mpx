@@ -201,6 +201,61 @@ void main() {
     });
   });
 
+  group('a page with nothing to show', () {
+    testWidgets('of an item not loaded yet is the black page, no box', (
+      tester,
+    ) async {
+      final harness = ViewerHarness(loaded: {0});
+      final controller = ViewerController();
+      addTearDown(controller.dispose);
+      await harness.pump(tester, controller: controller);
+
+      controller.jumpTo(1);
+      await tester.pump();
+
+      expect(
+        find.descendant(
+          of: find.byType(PageView),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is ColoredBox &&
+                widget.color == const ViewerTokens().placeholder,
+          ),
+        ),
+        findsNothing,
+      );
+    });
+
+    testWidgets('of a video whose loop failed paints nothing', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(2),
+        videoDuration: const Duration(minutes: 1),
+      );
+      final controller = ViewerController();
+      addTearDown(controller.dispose);
+      await harness.pump(tester, controller: controller);
+      controller.jumpTo(1);
+      await tester.pump();
+      controller.jumpTo(0);
+      await tester.pump();
+
+      for (final attempt in harness.producer.attempts) {
+        if (attempt.request.key == videoKey(1)) {
+          attempt.fail(StateError('this build cannot read the codec'));
+        }
+      }
+      controller.jumpTo(1);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      final loop = find.byWidgetPredicate(
+        (widget) => widget is ContentView && widget.content == videoKey(1),
+      );
+      expect(loop, findsOneWidget);
+      expect(tester.renderObject(loop), paintsNothing);
+    });
+  });
+
   group('the origin frame', () {
     // Whether a paint of the viewer draws [frame] or a clone of it.
     PaintPattern drawsFrame(ui.Image frame) =>

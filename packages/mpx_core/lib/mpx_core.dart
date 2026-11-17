@@ -40,6 +40,7 @@ export 'src/asset/asset_texture.dart';
 export 'src/asset/asset_texture_layer.dart';
 export 'src/asset/atlas_sprite.dart';
 export 'src/asset/circle_placeholder.dart';
+export 'src/asset/clear_placeholder.dart';
 export 'src/asset/mini_thumbnail.dart';
 export 'src/asset/radial_progress.dart';
 export 'src/asset/rect_placeholder.dart';

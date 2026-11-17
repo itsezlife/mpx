@@ -365,6 +365,34 @@ void main() {
         expect(own.paints.single.context.tint, const Color(0xFF112233));
       });
 
+      testWidgets('stands in for a first frame the profile does not show yet, '
+          "not the scope's", (tester) async {
+        final own = FakeAssetPaintable(label: 'own');
+        final waits = AssetPresets.square(
+          extent: 20,
+          devicePixelRatio: 2,
+          profile: const AssetProfile(autoplayFirstFrame: false),
+        );
+        await tester.pumpWidget(
+          host(
+            ContentView(content: _sticker, preset: waits, placeholder: own),
+            provided: withPlaceholder,
+          ),
+        );
+        producer.last.advance(AssetStage.firstFrame);
+        await tester.pump();
+        await tester.pump(_pastFade);
+        final painted = own.paints.length;
+
+        await tester.pump(_pastFade);
+        tester.renderObject(find.byType(ContentView)).markNeedsPaint();
+        await tester.pump();
+
+        expect(scoped.paints, isEmpty);
+        expect(own.paints.length, greaterThan(painted));
+        expect(own.paints.last.context.opacity, 1);
+      });
+
       testWidgets('gives way to the thumbnail once one exists', (tester) async {
         final own = FakeAssetPaintable(label: 'own');
         await tester.pumpWidget(

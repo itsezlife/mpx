@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A page of an item not loaded yet, and a page whose content shows
+  nothing, are the black page with nothing on it, never a box.
 - `MediaViewer` holds every other surface and the preloads while its open
   and close morphs run (the item that morphs plays on).
 - `MediaViewer` leases the opened video's player before the morph's first

@@ -63,10 +63,12 @@ import 'package:mpx_core/src/widget/viewport_visibility.dart';
 ///
 /// ## Placeholder
 ///
-/// Until the content has anything to show (`AssetStage.none`) the view
-/// paints the scope's placeholder, which every surface of the scope shares
-/// whatever its content is. A view given its own [placeholder] paints that
-/// instead, as `ContentEmbed.placeholder` does: the surface knows what its
+/// While the binding has nothing of its own to show (it paints the scope's
+/// placeholder: no stage yet, or a first frame its profile does not show
+/// yet) the view paints the scope's placeholder, which every surface of the
+/// scope shares whatever its content is, and which paints nothing by
+/// default. A view given its own [placeholder] paints that instead, as
+/// `ContentEmbed.placeholder` does: the surface knows what its
 /// content is (an item, a collection's cover) and the colour its stand-in takes
 /// from the theme around it, the scope knows neither. A thumbnail is the
 /// binding's to paint.
@@ -318,6 +320,7 @@ class _ContentViewState extends State<ContentView> {
     Widget view = _ContentLeaf(
       binding: _binding!,
       placeholder: widget.placeholder ?? _attachedScope!.placeholder,
+      scopePlaceholder: _attachedScope!.placeholder,
       standsIn: widget.placeholder != null,
       placeholderTint: widget.placeholderTint,
       size: preset.size,
@@ -337,6 +340,7 @@ class _ContentLeaf extends LeafRenderObjectWidget {
   const _ContentLeaf({
     required this.binding,
     required this.placeholder,
+    required this.scopePlaceholder,
     required this.standsIn,
     required this.placeholderTint,
     required this.size,
@@ -348,6 +352,7 @@ class _ContentLeaf extends LeafRenderObjectWidget {
 
   final AssetBinding binding;
   final AssetPaintable placeholder;
+  final AssetPaintable scopePlaceholder;
   final bool standsIn;
   final Color? placeholderTint;
   final Size size;
@@ -360,6 +365,7 @@ class _ContentLeaf extends LeafRenderObjectWidget {
   RenderObject createRenderObject(BuildContext context) => _RenderContent(
     binding: binding,
     placeholder: placeholder,
+    scopePlaceholder: scopePlaceholder,
     standsIn: standsIn,
     placeholderTint: placeholderTint,
     preferredSize: size,
@@ -374,6 +380,7 @@ class _ContentLeaf extends LeafRenderObjectWidget {
     renderObject
       ..binding = binding
       ..placeholder = placeholder
+      ..scopePlaceholder = scopePlaceholder
       ..standsIn = standsIn
       ..placeholderTint = placeholderTint
       ..preferredSize = size
@@ -388,6 +395,7 @@ class _RenderContent extends RenderBox {
   _RenderContent({
     required AssetBinding binding,
     required AssetPaintable placeholder,
+    required AssetPaintable scopePlaceholder,
     required bool standsIn,
     required Color? placeholderTint,
     required Size preferredSize,
@@ -398,6 +406,7 @@ class _RenderContent extends RenderBox {
   }) : _binding = binding,
        _fade = AssetFade(binding),
        _placeholder = placeholder,
+       _scopePlaceholder = scopePlaceholder,
        _standsIn = standsIn,
        _placeholderTint = placeholderTint,
        _preferredSize = preferredSize,
@@ -410,8 +419,10 @@ class _RenderContent extends RenderBox {
   AssetFade _fade;
   // What the content fades in over when the binding kept no thumbnail.
   AssetPaintable _placeholder;
-  // Whether [_placeholder] is the view's own, painted before any stage in
-  // place of the scope's, in [_placeholderTint].
+  // What the binding paints while it has nothing of its own to show.
+  AssetPaintable _scopePlaceholder;
+  // Whether [_placeholder] is the view's own, painted in place of the
+  // scope's, in [_placeholderTint].
   bool _standsIn;
   Color? _placeholderTint;
   // Whether the paintable plays, so that it may come as a texture layer: the
@@ -440,6 +451,12 @@ class _RenderContent extends RenderBox {
   set placeholder(AssetPaintable value) {
     if (identical(_placeholder, value)) return;
     _placeholder = value;
+    markNeedsPaint();
+  }
+
+  set scopePlaceholder(AssetPaintable value) {
+    if (identical(_scopePlaceholder, value)) return;
+    _scopePlaceholder = value;
     markNeedsPaint();
   }
 
@@ -525,9 +542,10 @@ class _RenderContent extends RenderBox {
   @override
   void paint(PaintingContext context, Offset offset) {
     final box = offset & size;
-    // Before anything exists the view's own placeholder replaces the scope's;
-    // nothing plays yet, so there is no texture to composite either.
-    if (_standsIn && _binding.readiness.stage == AssetStage.none) {
+    // While the binding would paint the scope's placeholder (nothing exists
+    // yet, or a first frame the profile does not show yet) the view's own
+    // replaces it; nothing plays, so there is no texture to composite.
+    if (_standsIn && identical(_binding.paintable, _scopePlaceholder)) {
       _placeholder.paint(
         context.canvas,
         box,

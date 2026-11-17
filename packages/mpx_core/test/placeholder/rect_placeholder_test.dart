@@ -25,38 +25,45 @@ final class _Recording implements Canvas {
 void main() {
   const rect = Rect.fromLTWH(10, 20, 150, 100);
 
+  const tint = AssetPaintContext(tint: Color(0xFF336699));
+
   test('fills the whole rectangle, not a circle on its shorter side', () {
     final canvas = _Recording();
 
-    const RectPlaceholder().paint(canvas, rect, const AssetPaintContext());
+    const RectPlaceholder().paint(canvas, rect, tint);
 
     expect(canvas.circles, 0);
     expect(canvas.rrects, 0);
     expect(canvas.rects.single.rect, rect);
   });
 
-  test('is the context tint, or the flat 0xFFEDF3F7 without one', () {
-    final grey = _Recording();
+  test('is the context tint at the context opacity', () {
     final tinted = _Recording();
 
-    const RectPlaceholder().paint(grey, rect, const AssetPaintContext());
     const RectPlaceholder().paint(
       tinted,
       rect,
       const AssetPaintContext(tint: Color(0xFF336699), opacity: 0.5),
     );
 
-    expect(grey.rects.single.color.toARGB32(), 0xFFEDF3F7);
     expect(
       tinted.rects.single.color.toARGB32(),
       const Color(0xFF336699).withValues(alpha: 0.5).toARGB32(),
     );
   });
 
+  test('paints nothing without a tint: no fill of its own', () {
+    final canvas = _Recording();
+
+    const RectPlaceholder().paint(canvas, rect, const AssetPaintContext());
+
+    expect(canvas.rects, isEmpty);
+  });
+
   test('paints nothing into an empty rectangle', () {
     final canvas = _Recording();
 
-    const RectPlaceholder().paint(canvas, Rect.zero, const AssetPaintContext());
+    const RectPlaceholder().paint(canvas, Rect.zero, tint);
 
     expect(canvas.rects, isEmpty);
   });

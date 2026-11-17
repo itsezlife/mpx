@@ -66,6 +66,7 @@ final class ViewerTokens {
   /// The gap between groups of the overflow menu.
   final Color menuDivider;
 
-  /// What an item not loaded yet shows.
+  /// What a thumbnail-strip cell of an item not loaded yet shows. A page of
+  /// such an item shows nothing on the black page.
   final Color placeholder;
 }

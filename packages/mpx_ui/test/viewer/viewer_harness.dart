@@ -26,6 +26,7 @@ final class ViewerHarness {
     Duration? videoDuration,
     bool autoFirstFrame = true,
     Duration? originPosition,
+    Set<int>? loaded,
   }) {
     producer = FakeAssetProducer();
     clock = PlaybackClock(ticks: ManualPlaybackTickSource());
@@ -36,6 +37,7 @@ final class ViewerHarness {
             for (var i = 0; i < count; i++)
               GalleryItem(photoKey(i), size: const Size(1200, 900)),
           ],
+      loaded: loaded,
     );
     bridge = FakeOriginBridge({
       0: GalleryOrigin(
