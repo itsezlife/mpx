@@ -1,12 +1,18 @@
-import 'package:meta/meta.dart';
+import 'dart:async';
+import 'dart:collection';
+import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart';
 import 'package:mpx_core/src/asset/asset_cache_budgets.dart';
 import 'package:mpx_core/src/asset/asset_paintable.dart';
 import 'package:mpx_core/src/asset/asset_preload.dart';
 import 'package:mpx_core/src/asset/asset_producer.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_spec.dart';
+import 'package:mpx_core/src/asset/mini_thumbnail.dart';
 import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
+import 'package:mpx_core/src/image/image_paintable.dart';
 import 'package:mpx_core/src/pipeline/cancellation_token.dart';
 import 'package:mpx_core/src/pipeline/content_fetcher.dart';
 import 'package:mpx_core/src/pipeline/decoder.dart';
@@ -23,11 +29,13 @@ final class AssetPipelineLimits {
     this.maxConcurrentDecodes = 2,
     this.maxFetchedAwaitingDecode = 16,
     this.knownDescriptors = 4096,
+    this.decodedPreviews = 256,
   }) : assert(
          maxConcurrentFetches > 0 &&
              maxConcurrentDecodes > 0 &&
              maxFetchedAwaitingDecode > 0 &&
-             knownDescriptors > 0,
+             knownDescriptors > 0 &&
+             decodedPreviews > 0,
          'every limit is at least one',
        );
 
@@ -48,6 +56,11 @@ final class AssetPipelineLimits {
   /// Descriptors remembered (host-given and resolved); the least recently
   /// used one is forgotten first and asked for again if it is needed.
   final int knownDescriptors;
+
+  /// Decoded previews kept for the next attach of their content, whatever
+  /// its spec; the least recently used one is decoded again if it is needed.
+  /// A 40 px preview is about 6 KB, so the default 256 hold about 1.6 MB.
+  final int decodedPreviews;
 }
 
 /// Why the pipeline could not make an entry, when the cause is not a fetch or
@@ -89,6 +102,13 @@ final class AssetPipelineError implements Exception {
 ///   [know]) goes to the host's [MediaResolver], batched with the others
 ///   asked for in the same turn; the entry stays at `AssetStage.none` until
 ///   it resolves.
+/// - **Previews.** A descriptor that carries a raster preview
+///   (`MediaDescriptor.preview`) has it decoded, blurred with [PreviewBlur],
+///   and reported as `AssetStage.preview`, before and beside the fetches:
+///   it takes no fetch slot and waits behind none. Decoded previews are kept
+///   per content (`AssetPipelineLimits.decodedPreviews`), so the next attach
+///   of the content, at any spec, draws its preview inside `produce`. A
+///   template decode (alpha only) draws none.
 /// - **Staged preloads.** While only staged preloads hold an entry
 ///   (`AssetDemand.preloadStage`), the attempt stops at their stage: after the
 ///   resolve for `metadata`, after a prefix fetch (`FetchRequest.prefix`, not
@@ -102,8 +122,9 @@ final class AssetPipelineError implements Exception {
 /// A failed fetch is transient or permanent as the fetcher says (anything but
 /// a `FetchFailure` counts as transient); a resolver that throws is
 /// transient; a key the resolver leaves out, no resolver, no decoder for the
-/// media form and a decode failure are permanent. A failed thumbnail is
-/// ignored: the content may still arrive.
+/// media form and a decode failure are permanent. A failed thumbnail or
+/// preview is ignored: the content may still arrive. A failure waits for a
+/// preview still decoding, so content no decoder reads still shows it.
 ///
 /// Single-threaded on the UI isolate, like the scope.
 final class AssetPipeline implements AssetProducer {
@@ -113,8 +134,12 @@ final class AssetPipeline implements AssetProducer {
     required DecoderRegistry decoders,
     MediaResolver? resolver,
     AssetPipelineLimits limits = const AssetPipelineLimits(),
+    PreviewBlur? previewBlur,
   }) : _fetcher = fetcher,
        _decoders = decoders,
+       _previewBlur =
+           previewBlur ?? PreviewBlur.forPlatform(defaultTargetPlatform),
+       _previews = _DecodedPreviews(limits.decodedPreviews),
        _directory = DescriptorDirectory(
          capacity: limits.knownDescriptors,
          resolver: resolver,
@@ -136,6 +161,8 @@ final class AssetPipeline implements AssetProducer {
   final ContentFetcher _fetcher;
   final DecoderRegistry _decoders;
   final DescriptorDirectory _directory;
+  final PreviewBlur _previewBlur;
+  final _DecodedPreviews _previews;
   late final PriorityLane<_Work> _fetchLane;
   late final PriorityLane<_Work> _decodeLane;
   final Set<_Job> _jobs = {};
@@ -156,6 +183,7 @@ final class AssetPipeline implements AssetProducer {
       job.cancel();
     }
     _directory.dispose();
+    _previews.dispose();
   }
 
   // Whether preload work waits ([holdPreloads]).
@@ -310,13 +338,17 @@ final class _Job implements AssetTask {
     progress.describe(known);
     // describe may end the job: a scope disposed by a listener.
     if (_ended) return;
-    if (demand.preloadStage == AssetPreloadStage.metadata) {
+    final staged = demand.preloadStage;
+    if (staged == AssetPreloadStage.metadata) {
       // The descriptor is all a metadata preload wants; the directory keeps
       // it for the attempt a binding starts later.
       descriptor = known;
       satisfied();
       return;
     }
+    // A prefix is for a player, which draws no stand-in from the pipeline.
+    if (staged is! AssetPreloadStage$Seconds) _preview(known);
+    if (_ended) return;
     final decoder = pipeline._decoders.decoderFor(known.kind);
     if (decoder == null) {
       _fail(
@@ -331,8 +363,6 @@ final class _Job implements AssetTask {
     }
     descriptor = known;
     final content = _content = _Work(this, FetchPart.content, decoder);
-    // A prefix is for a player, which draws no stand-in from the pipeline.
-    final staged = demand.preloadStage;
     final thumbnail = switch (known.thumbnail) {
       null => null,
       _ when staged is AssetPreloadStage$Seconds => null,
@@ -343,6 +373,44 @@ final class _Job implements AssetTask {
     if (!_ended) pipeline._fetchLane.enqueue(content);
     // enqueue may end the job when a fetcher answers by throwing.
   }
+
+  // The preview still decoding, while one is.
+  Future<void>? _previewDecoding;
+
+  // Draws the preview of [known]: at once when it is decoded already, else
+  // once its decode lands, beside the fetches.
+  void _preview(MediaDescriptor known) {
+    if (known.preview case final MediaPreview$Raster raster?
+        when request.spec.decodeMode != AssetDecodeMode.template) {
+      final previews = pipeline._previews;
+      if (previews.take(request.key) case final image?) {
+        _advancePreview(image);
+        return;
+      }
+      _previewDecoding = previews
+          .decode(request.key, raster.encoded, pipeline._previewBlur)
+          .then((image) {
+            _previewDecoding = null;
+            if (image == null) return;
+            if (_cancelled) {
+              image.dispose();
+            } else {
+              // An attempt that ended already drops it (the scope disposes a
+              // report after the end), as it drops a stage below its own.
+              _advancePreview(image);
+            }
+          });
+    }
+  }
+
+  void _advancePreview(ui.Image image) => progress.advance(
+    AssetStage.preview,
+    StillImagePaintable(image, template: false),
+    bytes: image.width * image.height * 4,
+  );
+
+  // Whether the scope cancelled the attempt.
+  bool _cancelled = false;
 
   /// The content reached its final stage.
   void contentDone() {
@@ -358,7 +426,18 @@ final class _Job implements AssetTask {
     pipeline._jobs.remove(this);
     _content?.cancel();
     _thumbnail?.cancel();
-    progress.fail(error, stackTrace, kind);
+    // The preview still decoding is drawn first: a failure keeps the best
+    // stage reached, and the preview is one.
+    switch (_previewDecoding) {
+      case final decoding?:
+        unawaited(
+          decoding.whenComplete(() {
+            if (!_cancelled) progress.fail(error, stackTrace, kind);
+          }),
+        );
+      case null:
+        progress.fail(error, stackTrace, kind);
+    }
   }
 
   /// A part failed. A thumbnail's failure is only its own.
@@ -393,6 +472,7 @@ final class _Job implements AssetTask {
 
   @override
   void cancel() {
+    _cancelled = true;
     if (_ended) return;
     _ended = true;
     pipeline._jobs.remove(this);
@@ -602,5 +682,75 @@ final class _DecodeProgress implements AssetProgress {
     ended = true;
     _work.phase = _Phase.done;
     _work._pipeline._decodeLane.release(_work);
+  }
+}
+
+/// The decoded previews of a pipeline, by content, least recently used first,
+/// with the decodes still running so two attempts of one content decode its
+/// preview once.
+final class _DecodedPreviews {
+  _DecodedPreviews(this._capacity);
+
+  final int _capacity;
+  final LinkedHashMap<MediaKey, ui.Image> _images = LinkedHashMap();
+  final Map<MediaKey, Future<ui.Image?>> _decoding = {};
+  bool _disposed = false;
+
+  /// A copy of the decoded preview of [key], which the caller owns, or null.
+  ui.Image? take(MediaKey key) {
+    final image = _images.remove(key);
+    if (image == null) return null;
+    _images[key] = image;
+    return image.clone();
+  }
+
+  /// Decodes [encoded] as the preview of [key], keeps it, and answers a copy
+  /// the caller owns; null when it does not decode.
+  Future<ui.Image?> decode(
+    MediaKey key,
+    Uint8List encoded,
+    PreviewBlur blur,
+  ) async {
+    final decoded = await (_decoding[key] ??= _run(key, encoded, blur));
+    return _disposed ? null : decoded?.clone();
+  }
+
+  Future<ui.Image?> _run(
+    MediaKey key,
+    Uint8List encoded,
+    PreviewBlur blur,
+  ) async {
+    try {
+      final image = await MiniThumbnail.decode(encoded, blur);
+      if (_disposed) {
+        image.dispose();
+        return null;
+      }
+      _keep(key, image);
+      return image;
+    } on Object {
+      // A preview that does not decode is ignored: the thumbnail and the
+      // content may still come.
+      return null;
+    } finally {
+      // The decode is no longer running; its future is this one.
+      _decoding.removeWhere((decoding, _) => decoding == key);
+    }
+  }
+
+  void _keep(MediaKey key, ui.Image image) {
+    _images.remove(key)?.dispose();
+    _images[key] = image;
+    while (_images.length > _capacity) {
+      _images.remove(_images.keys.first)!.dispose();
+    }
+  }
+
+  void dispose() {
+    _disposed = true;
+    for (final image in _images.values) {
+      image.dispose();
+    }
+    _images.clear();
   }
 }

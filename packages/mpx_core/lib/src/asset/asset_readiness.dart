@@ -1,13 +1,20 @@
 import 'package:meta/meta.dart';
 
 /// How far an asset has come, in order. There is no failed stage: an asset
-/// that cannot be produced stays at the stage it reached (usually
-/// [placeholder]) and is retried; see `AssetBinding.lastError`.
+/// that cannot be produced stays at the stage it reached (a preview or a
+/// thumbnail, if any) and is retried; see `AssetBinding.lastError`.
+///
+/// [preview] and [placeholder] are stand-ins: an `index` at or below
+/// [placeholder] means the content itself has nothing to show yet.
 enum AssetStage {
   /// Nothing is known to draw yet; the binding paints the scope's placeholder.
   none,
 
-  /// A cheap stand-in is available (a thumbnail).
+  /// A stand-in known without any fetch: the preview the descriptor carries
+  /// (`MediaDescriptor.preview`), or one the cache derived before.
+  preview,
+
+  /// A fetched stand-in is available (a thumbnail).
   placeholder,
 
   /// The first frame, as a plain still, is available.

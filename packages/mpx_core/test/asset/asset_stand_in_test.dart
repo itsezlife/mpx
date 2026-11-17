@@ -24,6 +24,59 @@ void main() {
   });
   tearDown(() => scope.dispose());
 
+  group('the stand-in chain', () {
+    test('a thumbnail keeps the preview under it, content the thumbnail', () {
+      final binding = scope.attach(_key, _spec, _profile);
+      final preview = producer.last.advance(AssetStage.preview);
+
+      final thumbnail = producer.last.advance(AssetStage.placeholder);
+
+      expect(preview.isDisposed, isFalse);
+      expect(binding.paintStandIn(canvas, _rect), isTrue);
+      expect(preview.paints, hasLength(1));
+
+      producer.last.advance(AssetStage.firstFrame);
+
+      expect(preview.isDisposed, isTrue);
+      expect(thumbnail.isDisposed, isFalse);
+      expect(binding.paintStandIn(canvas, _rect), isTrue);
+      expect(thumbnail.paints, hasLength(1));
+    });
+
+    test('content with no thumbnail rises over the preview', () {
+      final binding = scope.attach(_key, _spec, _profile);
+      final preview = producer.last.advance(AssetStage.preview);
+
+      producer.last.advance(AssetStage.full);
+
+      expect(binding.paintStandIn(canvas, _rect), isTrue);
+      expect(preview.paints, hasLength(1));
+    });
+
+    test('the thumbnail painted opaque lets the preview go', () {
+      final binding = scope.attach(_key, _spec, _profile);
+      final preview = producer.last.advance(AssetStage.preview);
+      producer.last.advance(AssetStage.placeholder);
+
+      binding.paint(canvas, _rect, opacity: 0.5);
+      expect(preview.isDisposed, isFalse);
+      binding.paint(canvas, _rect);
+
+      expect(preview.isDisposed, isTrue);
+      expect(binding.paintStandIn(canvas, _rect), isFalse);
+    });
+
+    test('detaching lets the preview go', () {
+      final binding = scope.attach(_key, _spec, _profile);
+      final preview = producer.last.advance(AssetStage.preview);
+      producer.last.advance(AssetStage.placeholder);
+
+      binding.detach();
+
+      expect(preview.isDisposed, isTrue);
+    });
+  });
+
   group('stand-in kept under arriving content', () {
     test(
       'the thumbnail outlives the stage that replaces it until released',

@@ -1,6 +1,6 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 
@@ -79,6 +79,78 @@ void main() {
         MiniThumbnail.decode(Uint8List.fromList([1, 2, 3])),
         throwsA(anything),
       );
+    });
+  });
+
+  group('PreviewBlur', () {
+    Future<(int, int)> sizeOf(PreviewBlur blur, int width, int height) async {
+      final image = await MiniThumbnail.decode(
+        await _halves(width, height),
+        blur,
+      );
+      final size = (image.width, image.height);
+      image.dispose();
+      return size;
+    }
+
+    test('each platform holds its passes', () {
+      expect(PreviewBlur.$Android.passes, const [
+        PreviewBlurPass(maxEdge: 40, radius: 3),
+      ]);
+      expect(PreviewBlur.$IOS.passes, const [
+        PreviewBlurPass(maxEdge: 90, radius: 7),
+        PreviewBlurPass(minEdge: 150, radius: 3),
+      ]);
+      expect(PreviewBlur.$Desktop.passes, const [
+        PreviewBlurPass(maxEdge: 40, radius: 3, kernel: PreviewBlurKernel.box),
+      ]);
+    });
+
+    test('forPlatform picks the platform of the target', () {
+      expect(
+        PreviewBlur.forPlatform(TargetPlatform.android),
+        PreviewBlur.$Android,
+      );
+      expect(
+        PreviewBlur.forPlatform(TargetPlatform.fuchsia),
+        PreviewBlur.$Android,
+      );
+      expect(PreviewBlur.forPlatform(TargetPlatform.iOS), PreviewBlur.$IOS);
+      for (final desktop in [
+        TargetPlatform.macOS,
+        TargetPlatform.windows,
+        TargetPlatform.linux,
+      ]) {
+        expect(PreviewBlur.forPlatform(desktop), PreviewBlur.$Desktop);
+      }
+    });
+
+    testWidgets('one pass of 40 px keeps a preview at most 40 px', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        expect(await sizeOf(PreviewBlur.$Android, 200, 100), (40, 20));
+        expect(await sizeOf(PreviewBlur.$Desktop, 200, 100), (40, 20));
+        expect(await sizeOf(PreviewBlur.$Desktop, 20, 10), (20, 10));
+      });
+    });
+
+    testWidgets('the two passes end at 150 px or more on the long edge', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        expect(await sizeOf(PreviewBlur.$IOS, 200, 100), (150, 75));
+        expect(await sizeOf(PreviewBlur.$IOS, 40, 40), (150, 150));
+        expect(await sizeOf(PreviewBlur.$IOS, 400, 400), (150, 150));
+      });
+    });
+
+    testWidgets('the default is one 40 px pass', (tester) async {
+      await tester.runAsync(() async {
+        final image = await MiniThumbnail.decode(await _halves(200, 100));
+        expect((image.width, image.height), (40, 20));
+        image.dispose();
+      });
     });
   });
 }

@@ -3,8 +3,8 @@
 ///
 /// A host creates one `AssetCacheScope` and hands it to the surfaces that
 /// draw media. A surface calls `attach(key, spec, profile)` with a `MediaKey`
-/// and gets an `AssetBinding`: a staged readiness (`none`, `placeholder`,
-/// `firstFrame`, `full`, never a failed one), an `AssetPaintable` to draw,
+/// and gets an `AssetBinding`: a staged readiness (`none`, `preview`,
+/// `placeholder`, `firstFrame`, `full`, never a failed one), an `AssetPaintable` to draw,
 /// and a pin that keeps the entry in a byte-budgeted LRU until `detach`.
 /// Media is made behind the `AssetProducer` seam: `AssetPipeline` resolves
 /// unknown keys through the host's `MediaResolver`, fetches through its

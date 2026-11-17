@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- `AssetStage.preview`, between `none` and `placeholder`: `AssetPipeline`
+  decodes a descriptor's raster preview beside the fetches (no fetch slot),
+  blurred once with `PreviewBlur` (`$Android`, `$IOS`, `$Desktop`,
+  `forPlatform`; `AssetPipeline.previewBlur`), and keeps decoded previews
+  (`AssetPipelineLimits.decodedPreviews`, 256) so a re-attach draws its
+  preview in the attach frame. `MiniThumbnail.decode` takes a
+  `PreviewBlur`. `ImageCodecDecoder.thumbnailBlur` (`ThumbnailBlurRule`)
+  blurs fetched thumbnails below 101 / 201 / 240 px per platform. Each
+  rise keeps the stand-in it replaced (preview, then thumbnail) for
+  `AssetBinding.paintStandIn`.
 - `MediaDescriptor.preview` (`MediaPreview.raster` bytes or an
   `outline` path) and `streamable`. `AssetBinding.descriptor` reads the
   content's descriptor once the producer reports it

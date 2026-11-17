@@ -6,6 +6,66 @@ import 'package:flutter/foundation.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/src/image/image_paintable.dart';
 
+/// When a fetched thumbnail is blurred: one whose longer edge is below
+/// [blurBelow] pixels is too small to show sharp, and goes through
+/// `MiniThumbnail` with [blur]; a larger one is shown as it is.
+@immutable
+final class ThumbnailBlurRule {
+  /// Creates a rule.
+  const ThumbnailBlurRule({required this.blurBelow, required this.blur});
+
+  /// The longer edge, in pixels of the encoded thumbnail, below which it is
+  /// blurred.
+  final int blurBelow;
+
+  /// How a thumbnail below [blurBelow] is blurred.
+  final PreviewBlur blur;
+
+  /// Below 101 px, with the Android preview blur.
+  static const ThumbnailBlurRule $Android = ThumbnailBlurRule(
+    blurBelow: 101,
+    blur: PreviewBlur.$Android,
+  );
+
+  /// Below 201 px, with the iOS preview blur.
+  static const ThumbnailBlurRule $IOS = ThumbnailBlurRule(
+    blurBelow: 201,
+    blur: PreviewBlur.$IOS,
+  );
+
+  /// Below 240 px, with the desktop preview blur.
+  static const ThumbnailBlurRule $Desktop = ThumbnailBlurRule(
+    blurBelow: 240,
+    blur: PreviewBlur.$Desktop,
+  );
+
+  /// The rule of [platform]. On the web, the platform is the one the browser
+  /// runs on.
+  static ThumbnailBlurRule forPlatform(TargetPlatform platform) =>
+      switch (platform) {
+        TargetPlatform.iOS => $IOS,
+        TargetPlatform.macOS ||
+        TargetPlatform.windows ||
+        TargetPlatform.linux => $Desktop,
+        TargetPlatform.android || TargetPlatform.fuchsia => $Android,
+      };
+
+  /// Whether a thumbnail of [width] x [height] is blurred.
+  bool blurs(int width, int height) => math.max(width, height) < blurBelow;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ThumbnailBlurRule &&
+      other.blurBelow == blurBelow &&
+      other.blur == blur;
+
+  @override
+  int get hashCode => Object.hash(blurBelow, blur);
+
+  @override
+  String toString() => 'ThumbnailBlurRule(below $blurBelow, $blur)';
+}
+
 /// Decodes images with the engine's codecs, at the size of the spec.
 ///
 /// The image is decoded to fit inside the spec's pixels, keeping its aspect
@@ -16,7 +76,7 @@ import 'package:mpx_core/src/image/image_paintable.dart';
 ///
 /// | Request | Reports |
 /// | --- | --- |
-/// | a thumbnail | the first frame, as `AssetStage.placeholder` |
+/// | a thumbnail | the first frame, as `AssetStage.placeholder`; blurred small when [thumbnailBlur] says so |
 /// | content, first frame only | the first frame, as `AssetStage.firstFrame` |
 /// | content, one frame | the frame, as `AssetStage.full` |
 /// | content, several frames | a playing image, as `AssetStage.full`, in the animated tier |
@@ -43,11 +103,19 @@ import 'package:mpx_core/src/image/image_paintable.dart';
 /// says so, and a fetcher for the web hands bytes.
 final class ImageCodecDecoder implements Decoder {
   /// Creates a decoder. It keeps no state between requests.
-  const ImageCodecDecoder();
+  const ImageCodecDecoder({this.thumbnailBlur});
+
+  /// When a thumbnail is blurred; null for the rule of the platform the app
+  /// runs on (`ThumbnailBlurRule.forPlatform`).
+  final ThumbnailBlurRule? thumbnailBlur;
 
   @override
   AssetTask decode(DecodeRequest request, AssetProgress progress) {
-    final task = _DecodeTask(request, progress);
+    final task = _DecodeTask(
+      request,
+      progress,
+      thumbnailBlur ?? ThumbnailBlurRule.forPlatform(defaultTargetPlatform),
+    );
     unawaited(task.run());
     return task;
   }
@@ -55,10 +123,11 @@ final class ImageCodecDecoder implements Decoder {
 
 /// One decode, from encoded data to the reported stage.
 final class _DecodeTask implements AssetTask {
-  _DecodeTask(this._request, this._progress);
+  _DecodeTask(this._request, this._progress, this._thumbnailBlur);
 
   final DecodeRequest _request;
   final AssetProgress _progress;
+  final ThumbnailBlurRule _thumbnailBlur;
   bool _cancelled = false;
 
   @override
@@ -95,6 +164,10 @@ final class _DecodeTask implements AssetTask {
         buffer.dispose();
         return;
       }
+      if (_request.part == FetchPart.thumbnail &&
+          await _blurredThumbnail(buffer)) {
+        return;
+      }
       // Takes the buffer over and disposes it.
       decoding = await ui.instantiateImageCodecWithSize(
         buffer,
@@ -124,6 +197,53 @@ final class _DecodeTask implements AssetTask {
     // decode failure. Caught above, it would dispose what the cache now
     // owns, and the cache would dispose it again.
     _report(codec, first, encodedBytes);
+  }
+
+  // A thumbnail too small to show sharp is decoded small and blurred,
+  // reported, and the buffer disposed; says whether it was. A larger one is
+  // left to the codec, the buffer untouched.
+  Future<bool> _blurredThumbnail(ui.ImmutableBuffer buffer) async {
+    final ui.Image image;
+    final ui.ImageDescriptor descriptor;
+    try {
+      descriptor = await ui.ImageDescriptor.encoded(buffer);
+    } on Object {
+      // Not an image: the codec says so the usual way.
+      return false;
+    }
+    try {
+      if (!_thumbnailBlur.blurs(descriptor.width, descriptor.height)) {
+        return false;
+      }
+      try {
+        image = await MiniThumbnail.decodeDescriptor(
+          descriptor,
+          _thumbnailBlur.blur,
+        );
+      } on Object catch (error, stackTrace) {
+        if (!_cancelled) {
+          _progress.fail(error, stackTrace, AssetFailureKind.permanent);
+        }
+        buffer.dispose();
+        return true;
+      }
+    } finally {
+      descriptor.dispose();
+    }
+    buffer.dispose();
+    if (_cancelled) {
+      image.dispose();
+      return true;
+    }
+    _progress.advance(
+      AssetStage.placeholder,
+      StillImagePaintable(
+        image,
+        template: _request.spec.decodeMode == AssetDecodeMode.template,
+      ),
+      bytes: image.width * image.height * 4,
+    );
+    return true;
   }
 
   void _report(ui.Codec codec, ui.FrameInfo first, int encodedBytes) {

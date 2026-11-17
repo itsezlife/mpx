@@ -44,6 +44,7 @@ import 'pipeline/pipeline_flow_test.dart' as pipeline_flow_test;
 import 'pipeline/pipeline_offline_test.dart' as pipeline_offline_test;
 import 'pipeline/pipeline_orchestration_test.dart'
     as pipeline_orchestration_test;
+import 'pipeline/pipeline_preview_test.dart' as pipeline_preview_test;
 import 'pipeline/pipeline_release_test.dart' as pipeline_release_test;
 import 'pipeline/pipeline_resolver_test.dart' as pipeline_resolver_test;
 import 'placeholder/mini_thumbnail_test.dart' as mini_thumbnail_test;
@@ -114,6 +115,7 @@ void main() {
   group('pipeline_flow_test', pipeline_flow_test.main);
   group('pipeline_offline_test', pipeline_offline_test.main);
   group('pipeline_orchestration_test', pipeline_orchestration_test.main);
+  group('pipeline_preview_test', pipeline_preview_test.main);
   group('pipeline_release_test', pipeline_release_test.main);
   group('pipeline_resolver_test', pipeline_resolver_test.main);
   group('mini_thumbnail_test', mini_thumbnail_test.main);

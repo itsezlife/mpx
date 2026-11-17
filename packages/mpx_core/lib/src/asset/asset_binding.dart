@@ -27,7 +27,7 @@ import 'package:mpx_core/src/identity/media_key.dart';
 /// ## Failure
 ///
 /// There is none to see. An asset that cannot be produced keeps the stage it
-/// reached, usually [AssetStage.placeholder], whether the cause is a missing
+/// reached (a preview or a thumbnail, if any), whether the cause is a missing
 /// network, a server error or bad data, and is attempted again on the next
 /// attach, when the host reports connectivity (if the failure was transient)
 /// or on [retry]. [lastError] is for logs and diagnostics, not for painting.
@@ -159,15 +159,17 @@ abstract interface class AssetBinding implements Listenable {
   /// clipped to the profile's corner radius, in [tint] and at [opacity].
   void paint(Canvas canvas, Rect rect, {Color? tint, double opacity = 1});
 
-  /// Paints the stand-in this binding kept under content that replaced it
-  /// (the thumbnail the entry showed before its first frame), into [rect], and
-  /// says whether there was one.
+  /// Paints the stand-in this binding kept under the stage that replaced it,
+  /// into [rect], and says whether there was one: the stand-in the last rise
+  /// replaced (the preview under a thumbnail, the thumbnail, or the preview
+  /// when no thumbnail came, under the content).
   ///
-  /// A bitmap thumbnail stays fully opaque under content that fades in, so the
-  /// cell is never less drawn than before the content arrived; the surface
-  /// calls [releaseStandIn] once the content is opaque. Only a binding that was
-  /// attached while the thumbnail was showing has one: a binding attached
-  /// after the content arrived never fades and has nothing to keep under it.
+  /// A bitmap stand-in stays fully opaque under a stage that fades in, so the
+  /// cell is never less drawn than before it arrived; the surface calls
+  /// [releaseStandIn] once that stage is opaque, and painting it opaque
+  /// releases it too. Only a binding that was attached while the stand-in was
+  /// showing has one: a binding attached after the rise has nothing to keep
+  /// under it.
   bool paintStandIn(Canvas canvas, Rect rect);
 
   /// Lets go of the stand-in of [paintStandIn]; the entry disposes the

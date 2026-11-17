@@ -461,4 +461,70 @@ void main() {
       },
     );
   });
+
+  group('ThumbnailBlurRule', () {
+    test('each platform holds its threshold and blur', () {
+      expect(ThumbnailBlurRule.$Android.blurBelow, 101);
+      expect(ThumbnailBlurRule.$IOS.blurBelow, 201);
+      expect(ThumbnailBlurRule.$Desktop.blurBelow, 240);
+      expect(ThumbnailBlurRule.$Android.blur, PreviewBlur.$Android);
+      expect(ThumbnailBlurRule.$IOS.blur, PreviewBlur.$IOS);
+      expect(ThumbnailBlurRule.$Desktop.blur, PreviewBlur.$Desktop);
+      expect(
+        ThumbnailBlurRule.forPlatform(TargetPlatform.iOS),
+        ThumbnailBlurRule.$IOS,
+      );
+    });
+
+    // Whether a square thumbnail of [side] px comes out blurred under [rule]:
+    // a blurred one is the preview blur's size, an unblurred one fits the
+    // 64 px spec.
+    Future<bool> blurs(ThumbnailBlurRule rule, int side) async {
+      final recorder = ui.PictureRecorder();
+      ui.Canvas(recorder).drawPaint(ui.Paint()..color = _red);
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(side, side);
+      picture.dispose();
+      final png = (await image.toByteData(format: ui.ImageByteFormat.png))!;
+      image.dispose();
+      final progress = _Progress();
+      ImageCodecDecoder(thumbnailBlur: rule).decode(
+        _request(png.buffer.asUint8List(), part: FetchPart.thumbnail),
+        progress,
+      );
+      await progress.ended.timeout(const Duration(seconds: 10));
+      final advance = progress.advances.single;
+      expect(advance.stage, AssetStage.placeholder);
+      final width = advance.paintable.pictureSize!.width;
+      advance.paintable.dispose();
+      return width != 64;
+    }
+
+    test('a 90 px thumbnail is blurred on every platform', () async {
+      expect(await blurs(ThumbnailBlurRule.$Android, 90), isTrue);
+      expect(await blurs(ThumbnailBlurRule.$IOS, 90), isTrue);
+      expect(await blurs(ThumbnailBlurRule.$Desktop, 90), isTrue);
+    });
+
+    test('a 150 px one is blurred on iOS and the desktop only', () async {
+      expect(await blurs(ThumbnailBlurRule.$Android, 150), isFalse);
+      expect(await blurs(ThumbnailBlurRule.$IOS, 150), isTrue);
+      expect(await blurs(ThumbnailBlurRule.$Desktop, 150), isTrue);
+    });
+
+    test('a 320 px one is never blurred', () async {
+      expect(await blurs(ThumbnailBlurRule.$Android, 320), isFalse);
+      expect(await blurs(ThumbnailBlurRule.$IOS, 320), isFalse);
+      expect(await blurs(ThumbnailBlurRule.$Desktop, 320), isFalse);
+    });
+
+    test('content is never blurred, however small', () async {
+      final progress = await _decode(_request(_still));
+      expect(
+        progress.advances.single.paintable.pictureSize,
+        const ui.Size(32, 16),
+      );
+      progress.advances.single.paintable.dispose();
+    });
+  });
 }

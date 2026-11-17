@@ -111,9 +111,10 @@ void main() {
       );
     });
 
-    test('has no failed stage', () {
+    test('has no failed stage: a preview, then a thumbnail, stand in', () {
       expect(AssetStage.values.map((stage) => stage.name), [
         'none',
+        'preview',
         'placeholder',
         'firstFrame',
         'full',

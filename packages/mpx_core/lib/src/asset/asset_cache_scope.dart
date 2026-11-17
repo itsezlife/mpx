@@ -543,24 +543,34 @@ final class AssetCacheScope {
       return;
     }
     final previous = entry.paintable;
-    // A thumbnail replaced by content is kept for the bindings that were
-    // showing it: they fade the content in over it (a bitmap thumbnail stays
-    // opaque beneath) and release it when the
-    // content is opaque. Without a waiting binding there is nobody to keep it
-    // for; one that shows a sibling's content was not showing the thumbnail
-    // and has nothing to fade over.
+    // A stand-in (a preview, a thumbnail) replaced by a higher stage is kept
+    // for the bindings that were showing it: they draw the new stage over it
+    // (a bitmap stand-in stays opaque beneath) and release it once that
+    // stage is opaque. Each rise keeps the stand-in it replaced, so a
+    // preview gives way to the thumbnail and the thumbnail to the content.
+    // Without a waiting binding there is nobody to keep it for; one that
+    // shows a sibling's content was not showing the stand-in and has nothing
+    // to fade over.
     final waiting = [
       for (final binding in entry.bindings)
         if (binding._borrowed == null) binding,
     ];
     final keep =
         previous != null &&
-        entry.stage == AssetStage.placeholder &&
-        stage.index > AssetStage.placeholder.index &&
+        entry.stage != AssetStage.none &&
+        entry.stage.index <= AssetStage.placeholder.index &&
+        stage.index > entry.stage.index &&
         waiting.isNotEmpty;
     if (keep) {
-      entry.disposeStandIn();
-      entry.standIn = previous;
+      // A binding that held the stand-in before holds this one only if it
+      // still waits: the counts start over with the new stand-in.
+      for (final binding in entry.bindings) {
+        binding._holdsStandIn = false;
+      }
+      entry
+        ..disposeStandIn()
+        ..standIn = previous
+        ..standInStage = entry.stage;
       for (final binding in waiting) {
         binding._holdsStandIn = true;
         entry.standInHolders++;
@@ -650,8 +660,10 @@ final class _Entry {
   final _Demand demand = _Demand();
   AssetStage stage = AssetStage.none;
   AssetPaintable? paintable;
-  // The thumbnail the content replaced, while a binding still fades over it.
+  // The stand-in the last rise replaced (a preview, a thumbnail), while a
+  // binding still draws over it, and the stage it was.
   AssetPaintable? standIn;
+  AssetStage standInStage = AssetStage.none;
   int standInHolders = 0;
   int bytes = 0;
   AssetTier tier = AssetTier.still;
@@ -731,6 +743,7 @@ final class _Entry {
   void disposeStandIn() {
     standIn?.dispose();
     standIn = null;
+    standInStage = AssetStage.none;
     standInHolders = 0;
   }
 
@@ -1055,15 +1068,15 @@ final class _EntryBinding extends AssetBindingBase {
     return paintable;
   }
 
-  // A surface that paints the content opaque has nothing left to fade over the
-  // thumbnail, so it is released with that paint: surfaces that do not fade
-  // never have to know about it.
+  // A surface that paints a stage above the stand-in opaque has nothing left
+  // to fade over it, so it is released with that paint: surfaces that do not
+  // fade never have to know about it.
   @override
   void paint(Canvas canvas, Rect rect, {Color? tint, double opacity = 1}) {
     super.paint(canvas, rect, tint: tint, opacity: opacity);
     if (opacity >= 1 &&
         _holdsStandIn &&
-        _ownStage.index > AssetStage.placeholder.index) {
+        _ownStage.index > entry.standInStage.index) {
       releaseStandIn();
     }
   }
