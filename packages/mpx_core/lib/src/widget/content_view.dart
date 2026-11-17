@@ -8,9 +8,11 @@ import 'package:mpx_core/src/asset/asset_paintable.dart';
 import 'package:mpx_core/src/asset/asset_preset.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_texture_layer.dart';
+import 'package:mpx_core/src/asset/outline_paintable.dart';
 import 'package:mpx_core/src/asset/radial_progress.dart';
 import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
+import 'package:mpx_core/src/playback/playback_clock.dart';
 import 'package:mpx_core/src/widget/asset_cache_provider.dart';
 import 'package:mpx_core/src/widget/media_loading_style.dart';
 import 'package:mpx_core/src/widget/viewport_visibility.dart';
@@ -45,7 +47,10 @@ import 'package:mpx_core/src/widget/viewport_visibility.dart';
 /// a stand-in the placeholder (the view's own, or else the scope's) fades
 /// out as the content rises. A stage there at the attach shows at once, so a
 /// view built again over loaded content does not flicker. A raster preview
-/// gets the style's wash (`previewWash`).
+/// gets the style's wash (`previewWash`). An outline preview is filled with
+/// the style's `outlineFill`, or the [placeholderTint] (else [tint]) at
+/// `outlineTintOpacity`, and its shimmer (`outlineShimmer`) runs only while
+/// the view is shown and the scope's clock is not paused.
 ///
 /// ## Playback
 ///
@@ -340,6 +345,7 @@ class _ContentViewState extends State<ContentView> {
       opacity: widget.opacity,
       loadingRadius: widget.loadingRadius,
       ticking: _shown,
+      clock: _attachedScope!.clock,
       stages: MediaLoadingStyleScope.resolve(
         context,
         style: widget.loadingStyle,
@@ -364,6 +370,7 @@ class _ContentLeaf extends LeafRenderObjectWidget {
     required this.opacity,
     required this.loadingRadius,
     required this.ticking,
+    required this.clock,
     required this.stages,
   });
 
@@ -377,6 +384,7 @@ class _ContentLeaf extends LeafRenderObjectWidget {
   final double opacity;
   final double? loadingRadius;
   final bool ticking;
+  final PlaybackClock clock;
   final MediaStageStyle stages;
 
   @override
@@ -391,6 +399,7 @@ class _ContentLeaf extends LeafRenderObjectWidget {
     opacity: opacity,
     loadingRadius: loadingRadius,
     ticking: ticking,
+    clock: clock,
     stages: stages,
   );
 
@@ -407,6 +416,7 @@ class _ContentLeaf extends LeafRenderObjectWidget {
       ..opacity = opacity
       ..loadingRadius = loadingRadius
       ..ticking = ticking
+      ..clock = clock
       ..stages = stages;
   }
 }
@@ -423,6 +433,7 @@ class _RenderContent extends RenderBox {
     required double opacity,
     required double? loadingRadius,
     required bool ticking,
+    required PlaybackClock clock,
     required MediaStageStyle stages,
   }) : _binding = binding,
        _fade = AssetFade(binding),
@@ -435,6 +446,7 @@ class _RenderContent extends RenderBox {
        _opacity = opacity,
        _loadingRadius = loadingRadius,
        _ticking = ticking,
+       _clock = clock,
        _stages = stages;
 
   AssetBinding _binding;
@@ -522,6 +534,15 @@ class _RenderContent extends RenderBox {
 
   MediaStageStyle _stages;
 
+  // The scope's clock: a shimmer stands still while it is paused.
+  PlaybackClock _clock;
+
+  set clock(PlaybackClock value) {
+    if (identical(_clock, value)) return;
+    _clock = value;
+    markNeedsPaint();
+  }
+
   set stages(MediaStageStyle value) {
     if (_stages == value) return;
     _stages = value;
@@ -531,9 +552,11 @@ class _RenderContent extends RenderBox {
   set ticking(bool value) {
     if (_ticking == value) return;
     _ticking = value;
-    // Only the indicator reads it; a view without one must not repaint when a
-    // ticker mode flips.
-    if (_loadingRadius != null) markNeedsPaint();
+    // Only the indicator and a shimmer read it; a view without either must
+    // not repaint when a ticker mode flips.
+    if (_loadingRadius != null || _stages.outlineShimmer != null) {
+      markNeedsPaint();
+    }
   }
 
   @override
@@ -593,7 +616,8 @@ class _RenderContent extends RenderBox {
       return;
     }
     final fade = _fade.opacityAt(_frameTime, _riseLength);
-    if (fade < 1) _paintUnderContent(context.canvas, box, fade);
+    final outline = _outlineLook();
+    if (fade < 1) _paintUnderContent(context.canvas, box, fade, outline);
     final opacity = _opacity * fade;
     if (AssetTextureLayer.composite(context, _binding, box, opacity: opacity)) {
       return;
@@ -611,7 +635,13 @@ class _RenderContent extends RenderBox {
         ..scale(scale, scale)
         ..translate(-centre.dx, -centre.dy);
     }
-    _binding.paint(canvas, box, tint: _tint, opacity: opacity);
+    _binding.paint(
+      canvas,
+      box,
+      tint: _tint,
+      opacity: opacity,
+      outline: outline,
+    );
     if (scale != 1) canvas.restore();
     if (stage == AssetStage.preview && _stages.previewWash != null) {
       _paintWash(canvas, box, opacity);
@@ -634,6 +664,30 @@ class _RenderContent extends RenderBox {
       _binding.profile.animate &&
       (_binding.paintable.isAnimated ||
           (_binding.descriptor?.animated ?? false));
+
+  // How an outline preview is drawn, or null when the content has none: the
+  // host's quiet tint at the style's opacity, else the style's fill, and the
+  // shimmer's highlight while the outline shows, the view is shown and the
+  // clock runs. The highlight moves with the frame time, so the next frame
+  // is asked for, as for the indicator.
+  OutlineLook? _outlineLook() {
+    if (_binding.descriptor?.preview is! MediaPreview$Outline) return null;
+    final tint = _placeholderTint ?? _tint;
+    final fill = tint == null
+        ? _stages.outlineFill
+        : tint.withValues(alpha: tint.a * _stages.outlineTintOpacity);
+    final shimmer = _stages.outlineShimmer;
+    if (shimmer == null ||
+        !_ticking ||
+        _clock.isPaused ||
+        _binding.readiness.stage != AssetStage.preview) {
+      return OutlineLook(fill: fill);
+    }
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (attached) markNeedsPaint();
+    });
+    return OutlineLook(fill: fill, highlight: shimmer.phaseAt(_frameTime));
+  }
 
   // The wash over a raster preview; an outline is drawn in its own fill.
   void _paintWash(Canvas canvas, Rect box, double opacity) {
@@ -660,8 +714,18 @@ class _RenderContent extends RenderBox {
   // kept (opaque, or fading out as the binding says), or the placeholder
   // fading out. The fade is a function of the frame time, so the next frame
   // is asked for, as for the indicator.
-  void _paintUnderContent(Canvas canvas, Rect box, double fade) {
-    if (!_binding.paintStandIn(canvas, box, contentOpacity: fade)) {
+  void _paintUnderContent(
+    Canvas canvas,
+    Rect box,
+    double fade,
+    OutlineLook? outline,
+  ) {
+    if (!_binding.paintStandIn(
+      canvas,
+      box,
+      contentOpacity: fade,
+      outline: outline,
+    )) {
       _placeholder.paint(
         canvas,
         box,

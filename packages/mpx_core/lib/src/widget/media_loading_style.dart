@@ -1,53 +1,5 @@
 import 'package:flutter/material.dart';
-
-/// A sweep of light across an outline preview, repeating while it shows: a
-/// highlight crosses the outline over [sweep] along [curve], then rests for
-/// [wait] before the next pass.
-@immutable
-final class OutlineShimmer {
-  /// Creates a shimmer.
-  const OutlineShimmer({
-    required this.sweep,
-    this.curve = Curves.linear,
-    this.wait = Duration.zero,
-  });
-
-  /// How long the highlight takes to cross.
-  final Duration sweep;
-
-  /// How the highlight moves across.
-  final Curve curve;
-
-  /// The rest between two passes.
-  final Duration wait;
-
-  /// The length of one pass and its rest.
-  Duration get period => sweep + wait;
-
-  /// Where the highlight is at [time] of the clock, 0 (entering on the
-  /// leading side) to 1 (leaving on the trailing side), or null while it
-  /// rests.
-  double? phaseAt(Duration time) {
-    final period = this.period.inMicroseconds;
-    if (period <= 0) return null;
-    final into = time.inMicroseconds % period;
-    if (into >= sweep.inMicroseconds) return null;
-    return curve.transform(into / sweep.inMicroseconds);
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      other is OutlineShimmer &&
-      other.sweep == sweep &&
-      other.curve == curve &&
-      other.wait == wait;
-
-  @override
-  int get hashCode => Object.hash(sweep, curve, wait);
-
-  @override
-  String toString() => 'OutlineShimmer($sweep, $curve, wait: $wait)';
-}
+import 'package:mpx_core/src/asset/outline_paintable.dart';
 
 /// How a media item rises through its stages (nothing, a preview, a
 /// thumbnail, the content) on one platform: the fades between them, the

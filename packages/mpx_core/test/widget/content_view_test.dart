@@ -1049,6 +1049,137 @@ void main() {
     });
   });
 
+  group('an outline preview', () {
+    const outlined = MediaDescriptor(
+      key: _sticker,
+      preview: MediaPreview.outline('M0 0H1V1Z', MediaDimensions(1, 1)),
+    );
+    Widget on(TargetPlatform platform, Widget child) => Theme(
+      data: ThemeData(platform: platform),
+      child: host(child),
+    );
+
+    Future<FakeAssetPaintable> shown(
+      WidgetTester tester,
+      TargetPlatform platform, {
+      Color? placeholderTint,
+      bool inView = true,
+    }) async {
+      await tester.pumpWidget(
+        on(
+          platform,
+          ContentView(
+            content: _sticker,
+            preset: _still,
+            placeholderTint: placeholderTint,
+            inView: inView,
+          ),
+        ),
+      );
+      producer.last.describe(outlined);
+      final outline = producer.last.advance(AssetStage.preview);
+      await tester.pump();
+      return outline;
+    }
+
+    testWidgets('is filled as each platform fills it', (tester) async {
+      for (final (platform, fill) in [
+        (TargetPlatform.android, 0x46000000),
+        (TargetPlatform.iOS, 0x40748391),
+        (TargetPlatform.macOS, 0x40000000),
+      ]) {
+        final outline = await shown(tester, platform);
+        expect(
+          outline.paints.last.context.outline!.fill.toARGB32(),
+          fill,
+          reason: platform.name,
+        );
+        await tester.pumpWidget(const SizedBox());
+      }
+    });
+
+    testWidgets('takes the host\'s quiet tint at the platform\'s opacity', (
+      tester,
+    ) async {
+      final outline = await shown(
+        tester,
+        TargetPlatform.android,
+        placeholderTint: const Color(0xFF203040),
+      );
+
+      expect(
+        outline.paints.last.context.outline!.fill.toARGB32(),
+        const Color(0xFF203040).withValues(alpha: 70 / 255).toARGB32(),
+      );
+    });
+
+    testWidgets('iOS: shimmers while shown, a frame at a time', (tester) async {
+      final outline = await shown(tester, TargetPlatform.iOS);
+
+      expect(outline.paints.last.context.outline!.highlight, isNotNull);
+      expect(tester.binding.hasScheduledFrame, isTrue);
+      await tester.pump(const Duration(milliseconds: 650));
+      expect(outline.paints.last.context.outline!.highlight, isNotNull);
+    });
+
+    testWidgets('Android: no shimmer, no frames', (tester) async {
+      final outline = await shown(tester, TargetPlatform.android);
+
+      expect(outline.paints.last.context.outline!.highlight, isNull);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+    });
+
+    testWidgets('the shimmer costs no frames while hidden', (tester) async {
+      final outline = await shown(tester, TargetPlatform.iOS, inView: false);
+
+      expect(outline.paints.last.context.outline!.highlight, isNull);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+    });
+
+    testWidgets('the shimmer stands still while the clock is paused', (
+      tester,
+    ) async {
+      scope.clock.setPaused(PlaybackPauseLayer.routeMoving, paused: true);
+      addTearDown(
+        () => scope.clock.setPaused(
+          PlaybackPauseLayer.routeMoving,
+          paused: false,
+        ),
+      );
+      final outline = await shown(tester, TargetPlatform.iOS);
+
+      expect(outline.paints.last.context.outline!.highlight, isNull);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+    });
+
+    testWidgets('desktop: the sticker replaces the outline at once', (
+      tester,
+    ) async {
+      final outline = await shown(tester, TargetPlatform.macOS);
+      final before = outline.paints.length;
+      final sticker = producer.last.advance(AssetStage.full);
+
+      await tester.pump();
+
+      expect(sticker.paints.single.context.opacity, 1);
+      expect(outline.paints, hasLength(before));
+    });
+
+    testWidgets('iOS: the outline fades out over 200 ms as the sticker rises', (
+      tester,
+    ) async {
+      final outline = await shown(tester, TargetPlatform.iOS);
+      producer.last.advance(AssetStage.full);
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(outline.paints.last.context.opacity, closeTo(0.5, 0.01));
+      await tester.pump(const Duration(milliseconds: 120));
+      expect(outline.isDisposed, isTrue);
+    });
+  });
+
   group('semantics', () {
     testWidgets('is silent without a label', (tester) async {
       final handle = tester.ensureSemantics();

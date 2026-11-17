@@ -10,6 +10,8 @@ import 'package:mpx_core/src/asset/asset_producer.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_spec.dart';
 import 'package:mpx_core/src/asset/mini_thumbnail.dart';
+import 'package:mpx_core/src/asset/outline_paintable.dart';
+import 'package:mpx_core/src/asset/svg_path_data.dart';
 import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 import 'package:mpx_core/src/image/image_paintable.dart';
@@ -425,9 +427,18 @@ final class _Job implements AssetTask {
   // Draws the preview of [known]: at once when it is decoded already, else
   // once its decode lands, beside the fetches.
   void _preview(MediaDescriptor known) {
-    if (request.spec.decodeMode == AssetDecodeMode.template) return;
     final previews = pipeline._previews;
     final key = request.key;
+    if (known.preview case MediaPreview$Outline(
+      :final pathData,
+      :final viewBox,
+    )) {
+      _hasPreview = true;
+      _outline(pathData, viewBox);
+      return;
+    }
+    // A template decode is alpha only: a picture would show its colours.
+    if (request.spec.decodeMode == AssetDecodeMode.template) return;
     switch (known.preview) {
       case MediaPreview$Raster(:final encoded):
         _hasPreview = true;
@@ -437,7 +448,7 @@ final class _Job implements AssetTask {
         }
         _landPreview(previews.decode(key, encoded, pipeline._previewBlur));
       case MediaPreview$Outline():
-        _hasPreview = true;
+        break;
       case null:
         final store = pipeline._previewStore;
         if (store == null) return;
@@ -461,6 +472,30 @@ final class _Job implements AssetTask {
           }),
         );
     }
+  }
+
+  // Parsing an outline is cheap: it is drawn inside produce. One that does
+  // not parse leaves the stage where it is.
+  void _outline(String pathData, MediaDimensions viewBox) {
+    final path = SvgPathData.parse(pathData);
+    if (path == null) {
+      if (kDebugMode) {
+        debugPrint(
+          'mpx_core: the outline preview of ${request.key} does not parse; '
+          'it is not drawn.',
+        );
+      }
+      return;
+    }
+    progress.advance(
+      AssetStage.preview,
+      OutlinePaintable(
+        path,
+        ui.Size(viewBox.width.toDouble(), viewBox.height.toDouble()),
+      ),
+      // The path data stands for the path's own size.
+      bytes: pathData.length * 4,
+    );
   }
 
   // Draws the preview [decoding] lands, unless the attempt was cancelled.

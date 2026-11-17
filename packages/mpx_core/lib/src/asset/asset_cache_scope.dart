@@ -13,6 +13,7 @@ import 'package:mpx_core/src/asset/asset_profile.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_spec.dart';
 import 'package:mpx_core/src/asset/clear_placeholder.dart';
+import 'package:mpx_core/src/asset/outline_paintable.dart';
 import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 import 'package:mpx_core/src/playback/playback_clock.dart';
@@ -1072,8 +1073,14 @@ final class _EntryBinding extends AssetBindingBase {
   // to fade over it, so it is released with that paint: surfaces that do not
   // fade never have to know about it.
   @override
-  void paint(Canvas canvas, Rect rect, {Color? tint, double opacity = 1}) {
-    super.paint(canvas, rect, tint: tint, opacity: opacity);
+  void paint(
+    Canvas canvas,
+    Rect rect, {
+    Color? tint,
+    double opacity = 1,
+    OutlineLook? outline,
+  }) {
+    super.paint(canvas, rect, tint: tint, opacity: opacity, outline: outline);
     if (opacity >= 1 &&
         _holdsStandIn &&
         _ownStage.index > entry.standInStage.index) {
@@ -1082,14 +1089,19 @@ final class _EntryBinding extends AssetBindingBase {
   }
 
   @override
-  bool paintStandIn(Canvas canvas, Rect rect, {double contentOpacity = 0}) {
+  bool paintStandIn(
+    Canvas canvas,
+    Rect rect, {
+    double contentOpacity = 0,
+    OutlineLook? outline,
+  }) {
     final standIn = entry.standIn;
     if (!_holdsStandIn || standIn == null || isDetached) return false;
     final opacity = _standInFadesOut ? 1 - contentOpacity.clamp(0.0, 1.0) : 1.0;
     standIn.paint(
       canvas,
       rect,
-      AssetPaintContext(fit: profile.fit, opacity: opacity),
+      AssetPaintContext(fit: profile.fit, opacity: opacity, outline: outline),
     );
     return true;
   }

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Outline previews: `SvgPathData` reads SVG path data (no arcs), and the
+  pipeline draws a descriptor's `MediaPreview.outline` as an
+  `OutlinePaintable` inside `produce`. `ContentView` fills it with the
+  style's `outlineFill`, or the host's tint at `outlineTintOpacity`, and
+  runs the platform's `OutlineShimmer` only while shown and the clock runs
+  (`OutlineLook` through `AssetPaintContext.outline`,
+  `AssetBinding.paint(outline:)` and `paintStandIn(outline:)`).
 - `PreviewStore` (`AssetPipeline.previews`; `FakePreviewStore` and
   `PreviewStoreContract` in `testing.dart`): content whose descriptor has
   no preview reads a stored one, and derives one from its first decoded
