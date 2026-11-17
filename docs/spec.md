@@ -131,6 +131,8 @@ The renamed image_bytes_cache. Pure Dart core plus a native reader.
   (host-supplied identity override, mandatory for media), `BytesRetention`
   with named quotas, `FileLease` (a path handed out and pinned against eviction),
   `RequestPriority`, `RevalidationPolicy`.
+- Named quotas include `BytesQuota.previews` (4 MiB) for derived previews
+  beside `BytesQuota.standard` (ADR 0010).
 - Gaps to close before it serves the core: progress fan-out with late-join
   replay and a 0 report, a sync peek, file handout with eviction pinning,
   last-use expiry, the shared disk store. ADR 0002.
@@ -159,6 +161,21 @@ and the engine image decoder folded in. No networking.
 - Additions from the feed decision: a visible fraction on bindings, staged
   preload requests with priority and cancel, network and power inputs on the
   pause layers. ADR 0003.
+- Loading stages (ADR 0010):
+  - preview: `MediaPreview` (`raster` / `outline`) on `MediaDescriptor`,
+    with `streamable`; `AssetStage.preview` between `none` and
+    `placeholder`; `PreviewStore` (derived previews), `PreviewBlur`,
+    `ThumbnailBlurRule`; `ClearPlaceholder` as the scope default;
+  - transfer: `AssetTransfer` (`none`, `waiting`, `receiving`,
+    `awaitingUser`, `failed`), `AssetBinding.descriptor`, `download()`,
+    `cancelDownload()`, `AssetCacheScope.know`;
+  - auto-download: `AutoDownloadPolicy` (`now` / `prefix` / `manual`,
+    default `always`) with an opaque `AutoDownloadContext` per attach;
+  - status control and badge: `MediaStatusControl` over a `MediaStatus`,
+    `MediaBadge`, styled by `MediaLoadingStyle` and
+    `MediaLoadingStyleScope`;
+  - decoders: `DecodeFailure.unsupported` and
+    `DecoderRegistry.registerFallback`.
 
 ### mpx_lottie, mpx_video_decoder
 
@@ -242,6 +259,10 @@ The composition root, a plugin.
   ADR 0005.
 - Registers named quotas for folders the host hands it (Lottie frames, glyph
   pages) with their eviction callbacks. ADR 0002.
+- Loading defaults (ADR 0010): `NetworkAutoDownloadPolicy` (device signals'
+  network class and per-kind size limits, per platform preset and per host
+  context tag) and `BytesCachePreviewStore` (derived previews under the
+  `previews` quota); `MpxStack.create` uses both by default.
 - It re-exports nothing; hosts import the packages whose types they use. It
   carries the README with the diagram of the whole set, and the example app.
   ADR 0001.
@@ -269,8 +290,11 @@ The composition root, a plugin.
   scratch only.
 - Docs follow the agnostic-documentation rules: contracts and roles, no product
   screens, no history.
-- A leaf that fails keeps its placeholder; there is no visible failed stage
-  (carried over from the core's readiness contract).
+- A leaf that fails keeps the best picture stage it reached (preview,
+  thumbnail or first frame); there is no failed picture. A surface that shows
+  a status control turns it back to download, which is the retry. A leaf
+  without a control (glyphs, panel cells, embeds in text) shows nothing more
+  (ADR 0010).
 - Checks: `flutter test`, `dart analyze`, `dart format`. Workspace lints for
   dependency direction, re-exports and fakes come with the repo skeleton.
 - Each package carries its own LICENSE and NOTICE. FFmpeg ships only as LGPL
@@ -305,6 +329,9 @@ iOS 15 / macOS 12 (ADR 0004).
    it; whether it joins the prebuilt pipeline (ADR 0002, 0004, 0008).
 2. `MediaKey` variants beyond `local(uuid)` and what `MediaDescriptor` keeps
    of today's `ContentDescriptor` (ADR 0001, 0003).
+3. A web loading style and auto-download policy of their own (ADR 0010).
+4. Linux stills for codecs the software decoder rejects: the still extractor
+   over FFmpeg hardware decode behind the same fallback seam (ADR 0010).
 
 ## 7. Build order / first tickets
 

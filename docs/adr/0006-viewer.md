@@ -10,8 +10,9 @@ draws the bars, menu and caption, and owns speed, quality, PiP and rotation.
 On macOS the viewer is an in-app overlay over the whole app window.
 
 **Status**: Accepted (decided with the maintainer 2026-11-10)
-**Relates to**: 0001, 0004
-**Amended**: 2026-11-14, composable pieces (ticket 50)
+**Relates to**: 0001, 0004, 0010
+**Amended**: 2026-11-14, composable pieces (ticket 50); 2026-11-17, loading
+stages (ADR 0010)
 
 ## Context
 
@@ -52,11 +53,20 @@ Constants with file and line: research `04-viewer-anatomy`.
 | Seek preview | Yes, 150 dp long side | Yes, fit 160x90 | No |
 | PiP | Own floating window + system PiP | System `AVPictureInPictureController` | System `AVPictureInPictureController` on macOS (the reference's own 320 px window needs multi-window) |
 
+**Loading** (`ViewerPolicy.loading`, ADR 0010):
+
+| Value | `$Android` | `$IOS` | `$Desktop` |
+| --- | --- | --- | --- |
+| control | 64, spinner for photos | 50, black 0.5 | 50, photo progress after 350 ms |
+| buffering | after 500 ms, 200 ms fade | after 500 ms | after 500 ms, 500 ms fade |
+| status | central page only | central page only | central page only |
+| player fade-in | 200 ms (100 handed over) | 100 ms | 0 |
+
 ### Host seams
 
 | Seam | Contract |
 | --- | --- |
-| `GallerySource` | Indexed; loads both ways; total count for "5 of 120". A `Listenable` with `count`, `itemAt(index)` (null while not loaded) and `loadAround(index)`; items are `GalleryItem(key, kind, size)` |
+| `GallerySource` | Indexed; loads both ways; total count for "5 of 120". A `Listenable` with `count`, `itemAt(index)` (null while not loaded) and `loadAround(index)`; items are `GalleryItem(key, kind, size, descriptor)`; a descriptor given reaches the pipeline before the page attaches |
 | `OriginBridge` | For any index: rect, corner radius and clip (`GalleryOrigin`), and the bubble's current frame (`frameOf`, a `ui.Image` the caller owns: each call hands out a clone, so the bridge freeing its copy never frees one the viewer paints; the viewer keeps its copies for the item and its neighbours and frees the rest). Contract suite: `OriginBridgeContract`. When the viewer closes on another item, the host scrolls its list to that item's origin first (`reveal(index)`); `setHidden(index, hidden:)` hides the bubble while the viewer's copy covers it |
 | Actions | The host supplies the action set and handlers per index (`ViewerAction`: label, icon, handler, in the bar or the menu) |
 | Files | A host callback `openFile(key) -> ViewerFile?` (`path`, `release`); the host wraps the bytes cache's file lease in it, so `mpx_ui` takes no cache dependency. The viewer releases files an action opened when the action completes |
@@ -168,9 +178,11 @@ proportion: the item's size, else the picture a cache entry of it draws
 (`AssetCacheScope.pictureSizeOf`), else the player's, else the origin's frame
 or box.
 
-The origin's frame (`OriginBridge.frameOf`) is the picture's placeholder: it
-shows until the item's content has a stage and fades out as the content
-rises, so content with transparency never shows it beneath.
+The origin's frame (`OriginBridge.frameOf`) is the page's placeholder and
+outranks the content's preview and thumbnail until the first frame. Without
+it the page shows the preview, then the thumbnail, fitted to the media's
+proportion on the black page. A page never shows a box. Content with
+transparency fades its stand-in out as it rises (ADR 0010).
 
 ## Why
 

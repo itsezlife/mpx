@@ -9,8 +9,9 @@ shape intact, each joined with its native library in one package. The feed
 decision adds three inputs to the core.
 
 **Status**: Accepted (decided with the maintainer 2026-11-10)
-**Relates to**: 0001, 0002, 0004, 0005, 0009
-**Amended**: 2026-11-13, identity and package folds (ticket 27)
+**Relates to**: 0001, 0002, 0004, 0005, 0009, 0010
+**Amended**: 2026-11-13, identity and package folds (ticket 27);
+2026-11-17, loading stages (ADR 0010)
 
 ## Context
 
@@ -31,7 +32,7 @@ unattached entries. A feed needs more (ADR 0005).
 | Area | Decision |
 | --- | --- |
 | Home | `mpx_core` |
-| Types | `MediaKey` (sealed: `remote(id)`, `external(id)`, `local(uuid)`) and `MediaDescriptor` (key, `MediaKind`, animated, `MediaDimensions`, byte size, duration, `MediaThumbnailRef`): the meaning of `ContentKey` / `ContentDescriptor` without the chat variants (Unicode emoji), the pack reference and the panel facts |
+| Types | `MediaKey` (sealed: `remote(id)`, `external(id)`, `local(uuid)`) and `MediaDescriptor` (key, `MediaKind`, animated, `MediaDimensions`, byte size, duration, `MediaThumbnailRef`, `MediaPreview`, streamable): the meaning of `ContentKey` / `ContentDescriptor` without the chat variants (Unicode emoji), the pack reference and the panel facts |
 | Stable form | `MediaKey.encoded`: `<variant>-<id>`, the id percent-escaped as UTF-8 to `A-Z a-z 0-9 . _ ~ -`, so it is a safe file name and bytes-cache key; `parse` / `tryParse` read it back |
 | Local keys | `MediaKey.local(uuid)` names a locally produced file from the start of capture or compression; the bytes cache later aliases the server key to it (ADR 0002, 0007) |
 | Users | The core, the decoders, `mpx_player`, `mpx_capture` |
@@ -67,6 +68,9 @@ sticker) and their constants left `AssetPresets`.
 
 Native names carry the `mpx` prefix and the owning component, so symbols never
 collide across packages and name their owner.
+
+A decoder that cannot read a codec reports `DecodeFailure.unsupported`; a
+fallback decoder registered for the kind is tried next.
 
 ### Core additions from the feed decision
 
@@ -112,8 +116,9 @@ showed its first frame or jumped back while it caught up.
 
 ### Unchanged contracts
 
-The fetch contract stands: settle promptly on cancel, report progress at start
-and per chunk to every sharer, answer `needsDownload` at once. Amended
+The fetch contract stands: settle promptly on cancel, report the bytes of a transfer
+(received, total) at start and per chunk to every sharer; the binding turns
+them into its transfer state (ADR 0010); answer `needsDownload` at once. Amended
 2026-11-14: fetched content has a release point (`FetchedContent.release`,
 called once by the decoder that took it, or by the pipeline for content no
 decode takes), so a fetcher can hand out a leased file or a published
@@ -122,7 +127,8 @@ decoder opens a clip from its source in the decode worker
 (`VideoSource`: bytes, a file read in place, or a ranged resource read
 through the bytes cache's native reader, `mpx_video_open_reader`, blocking
 the worker for missing bytes); the UI isolate no longer copies clips. Readiness never
-shows a failure stage. The HW player's textures live outside the CPU texture
+shows a failure stage; the transfer state does, as a retry affordance (ADR
+0010). The HW player's textures live outside the CPU texture
 pool and its budget (ADR 0004).
 
 ## Why

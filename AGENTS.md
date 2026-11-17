@@ -74,7 +74,7 @@ There are no workspace lints; review holds these:
 | What | Where |
 | --- | --- |
 | The whole system on one page, build order | [docs/spec.md](docs/spec.md) |
-| Decisions (topology, bytes cache, core, player, feed, viewer, capture, publishing, migration) | [docs/adr/](docs/adr/) |
+| Decisions (topology, bytes cache, core, player, feed, viewer, capture, publishing, migration, loading stages) | [docs/adr/](docs/adr/) |
 
 Read the ADR for the package you touch before changing its shape. A decision
 that changes an ADR updates that ADR in the same change.
