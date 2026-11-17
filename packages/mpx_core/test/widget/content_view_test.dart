@@ -94,6 +94,69 @@ void main() {
       expect(producer.last.demand.priority, AssetPriority.preload);
     });
 
+    testWidgets('a playing view a fade above shows plays within a frame of '
+        'showing, and a still screen still measures nothing', (tester) async {
+      final opacity = ValueNotifier<double>(0);
+      addTearDown(opacity.dispose);
+      await tester.pumpWidget(
+        host(
+          ValueListenableBuilder<double>(
+            valueListenable: opacity,
+            builder: (context, value, child) =>
+                Opacity(opacity: value, child: child),
+            child: ContentView(content: _sticker, preset: _preset),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(producer.last.demand.priority, AssetPriority.preload);
+
+      // Nothing moves while it stays transparent.
+      ViewportVisibility.debugMeasures = 0;
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(ViewportVisibility.debugMeasures, 0);
+
+      // The fade starts: shown in the frame it is first painted.
+      opacity.value = 0.2;
+      await tester.pump(const Duration(milliseconds: 16));
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(producer.last.demand.priority, AssetPriority.visible);
+
+      // On screen and still: no more measuring.
+      opacity.value = 1;
+      await tester.pump(const Duration(milliseconds: 16));
+      ViewportVisibility.debugMeasures = 0;
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(ViewportVisibility.debugMeasures, 0);
+    });
+
+    testWidgets('a playing view on a page that comes back on stage plays '
+        'within a frame', (tester) async {
+      final offstage = ValueNotifier<bool>(true);
+      addTearDown(offstage.dispose);
+      await tester.pumpWidget(
+        host(
+          ValueListenableBuilder<bool>(
+            valueListenable: offstage,
+            builder: (context, value, child) =>
+                Offstage(offstage: value, child: child),
+            child: ContentView(content: _sticker, preset: _preset),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(producer.last.demand.priority, AssetPriority.preload);
+
+      offstage.value = false;
+      await tester.pump(const Duration(milliseconds: 16));
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(producer.last.demand.priority, AssetPriority.visible);
+    });
+
     testWidgets('a playing view painted outside every viewport is hidden: '
         'only the cells on screen play', (tester) async {
       // A grid laid out whole in a list, as a shrink-wrapped grid is: every

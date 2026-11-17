@@ -307,11 +307,25 @@ class _ContentViewState extends State<ContentView> {
 
   void _moved() => _ScreenPass.mark(this);
 
+  // Whether the last measure found a parent that does not paint the view (a
+  // zero opacity, an invisible or offstage subtree), rather than a viewport
+  // that clips it out. No scroll reports such a parent showing it again,
+  // but its paint does: the leaf measures again the first time it is
+  // painted ([_RenderContent.onPaintedUnseen]), so a view a fade or a page
+  // turning visible shows plays in the next frame, and a view that stays
+  // hidden is never measured again.
+  bool _unpainted = false;
+
+  void _paintedUnseen() => _ScreenPass.mark(this);
+
   void _measure() {
     if (!mounted) return;
     final box = context.findRenderObject();
     if (box is RenderBox) {
-      _setOnScreen(ViewportVisibility.of(box).fraction > 0);
+      final seen = ViewportVisibility.of(box);
+      final unpainted = seen.viewportsAway == double.infinity;
+      if (unpainted != _unpainted) setState(() => _unpainted = unpainted);
+      _setOnScreen(seen.fraction > 0);
     }
   }
 
@@ -324,7 +338,13 @@ class _ContentViewState extends State<ContentView> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _tickers = TickerMode.valuesOf(context).enabled;
+    final tickers = TickerMode.valuesOf(context).enabled;
+    // Tickers turning on (a route that is current again) may show a view no
+    // scroll moved.
+    if (tickers && !_tickers && widget.preset.profile.animate) {
+      _ScreenPass.mark(this);
+    }
+    _tickers = tickers;
     _sync();
     _watchScreen();
     _apply(_binding!);
@@ -420,6 +440,9 @@ class _ContentViewState extends State<ContentView> {
       ).stages,
       underlay: widget.underlay,
       round: preset.isRound,
+      onPaintedUnseen: _unpainted && preset.profile.animate
+          ? _paintedUnseen
+          : null,
     );
     if (preset.profile.animate) view = RepaintBoundary(child: view);
     if (widget.status is! MediaStatusMode$None || widget.badge) {
@@ -456,6 +479,7 @@ class _ContentLeaf extends LeafRenderObjectWidget {
     required this.stages,
     required this.underlay,
     required this.round,
+    required this.onPaintedUnseen,
   });
 
   final AssetBinding binding;
@@ -472,6 +496,7 @@ class _ContentLeaf extends LeafRenderObjectWidget {
   final MediaStageStyle stages;
   final Color? underlay;
   final bool round;
+  final VoidCallback? onPaintedUnseen;
 
   @override
   RenderObject createRenderObject(BuildContext context) => _RenderContent(
@@ -489,6 +514,7 @@ class _ContentLeaf extends LeafRenderObjectWidget {
     stages: stages,
     underlay: underlay,
     round: round,
+    onPaintedUnseen: onPaintedUnseen,
   );
 
   @override
@@ -507,7 +533,8 @@ class _ContentLeaf extends LeafRenderObjectWidget {
       ..clock = clock
       ..stages = stages
       ..underlay = underlay
-      ..round = round;
+      ..round = round
+      ..onPaintedUnseen = onPaintedUnseen;
   }
 }
 
@@ -527,6 +554,7 @@ class _RenderContent extends RenderBox {
     required MediaStageStyle stages,
     required Color? underlay,
     required bool round,
+    required VoidCallback? onPaintedUnseen,
   }) : _binding = binding,
        _fade = AssetFade(binding),
        _placeholder = placeholder,
@@ -541,7 +569,9 @@ class _RenderContent extends RenderBox {
        _clock = clock,
        _stages = stages,
        _underlay = underlay,
-       _round = round;
+       _round = round,
+       _onPaintedUnseen = onPaintedUnseen,
+       _armed = onPaintedUnseen != null;
 
   AssetBinding _binding;
   AssetFade _fade;
@@ -562,6 +592,19 @@ class _RenderContent extends RenderBox {
   double _opacity;
   AssetStage _placeholderUntil;
   bool _ticking;
+
+  // Called the first time the view is painted after its state found a
+  // parent that does not paint it (_ContentViewState._unpainted).
+  VoidCallback? _onPaintedUnseen;
+  bool _armed;
+
+  set onPaintedUnseen(VoidCallback? value) {
+    if (identical(_onPaintedUnseen, value)) return;
+    _onPaintedUnseen = value;
+    _armed = value != null;
+    // The paint that tells is the next one a parent makes.
+    if (_armed) markNeedsPaint();
+  }
 
   set binding(AssetBinding value) {
     if (identical(_binding, value)) return;
@@ -699,6 +742,10 @@ class _RenderContent extends RenderBox {
 
   @override
   void paint(PaintingContext context, Offset offset) {
+    if (_armed) {
+      _armed = false;
+      _onPaintedUnseen!();
+    }
     final box = offset & size;
     // While the binding would paint the scope's placeholder (nothing exists
     // yet, or a first frame the profile does not show yet) the view's own
@@ -1093,7 +1140,9 @@ class _OverlaysState extends State<_Overlays> {
 ///
 /// A view can also move with no scroll (a list item inserted above it, a
 /// route sliding in): every [_resweep] of frames each watched view is
-/// measured once more, so such a view is right within that time.
+/// measured once more, so such a view is right within that time. A view a
+/// parent did not paint (a zero opacity, an offstage page) is measured again
+/// in the frame a parent paints it, so a fade-in starts it at once.
 abstract final class _ScreenPass {
   static final Set<_ContentViewState> _watched = {};
   static final Set<_ContentViewState> _dirty = {};

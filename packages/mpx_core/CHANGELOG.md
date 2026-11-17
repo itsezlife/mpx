@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A playing `ContentView` that a parent did not paint (a zero opacity, an
+  offstage page) measures again in the frame a parent first paints it, and
+  when the tickers above turn on: a view a fade-in shows plays in the next
+  frame, not at the once-a-second re-measure. A view that stays hidden or
+  on screen still measures nothing.
 - A content has one download whatever the spec: a binding whose entry
   waits (for the user, or after a failure) reads the download another
   spec of the same content runs, and its cancel stops it. Once one spec
