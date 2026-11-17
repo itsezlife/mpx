@@ -1,6 +1,6 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/frame_pool.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -48,7 +48,11 @@ void main() {
   var time = Duration.zero;
 
   Future<VideoClip> openClip() async {
-    final result = await engine.open(bytes, width: 16, height: 16);
+    final result = await engine.open(
+      VideoSource.bytes(bytes),
+      width: 16,
+      height: 16,
+    );
     return (result as VideoClipOpened).clip;
   }
 
@@ -376,6 +380,193 @@ void main() {
       expect(pixelOf(lease), [32, 16, 0, 200]);
     });
 
+    test('a stalled clip keeps its frame and its time, holds no decode, '
+        'and goes on from there when woken; another clip plays on', () async {
+      final clipA = await openClip();
+      final a = scheduler.acquire('a', clipA)!;
+      final b = scheduler.acquire('b', await openClip())!;
+      var played = Duration.zero;
+      Future<void> frame() async {
+        scheduler
+          ..want(a, played)
+          ..want(b, played);
+        played += const Duration(milliseconds: 16);
+        await tick();
+      }
+
+      for (var i = 0; i < 3; i++) {
+        await frame();
+      }
+      engine.stalled.add(clipA.id);
+      // The frames decoded before the stall was met still show as they fall
+      // due; from the stall on, the clip stands.
+      while (!a.isStalled) {
+        await frame();
+      }
+      await frame();
+      final shownA = pixelOf(a);
+      final callsBefore = engine.nextFrameCalls[clipA.id] ?? 0;
+      final shownB = <String>{};
+      for (var i = 0; i < 12; i++) {
+        await frame();
+        shownB.add(pixelOf(b).join(','));
+      }
+
+      expect(a.isStalled, isTrue);
+      expect(pixelOf(a), shownA);
+      // No decode was asked while it lasted.
+      expect(engine.nextFrameCalls[clipA.id], callsBefore);
+      expect(shownB.length, greaterThan(1));
+
+      engine.stalled.remove(clipA.id);
+      a.wake();
+      await frame();
+      await frame();
+
+      expect(a.isStalled, isFalse);
+      // It went on from the frame it showed: the next one, not a skip.
+      expect(pixelOf(a), isNot(shownA));
+      expect(engine.nextFrameCalls[clipA.id], greaterThan(callsBefore));
+    });
+
+    test(
+      'with logPlayback, a playing clip says what it decoded and showed',
+      () async {
+        final lines = <String?>[];
+        final previous = debugPrint;
+        debugPrint = (message, {wrapWidth}) => lines.add(message);
+        VideoFrameScheduler.logPlayback = true;
+        addTearDown(() {
+          debugPrint = previous;
+          VideoFrameScheduler.logPlayback = false;
+        });
+        final lease = scheduler.acquire('a', await openClip())!;
+        var played = Duration.zero;
+        for (var i = 0; i < 140; i++) {
+          scheduler.want(lease, played);
+          played += const Duration(milliseconds: 16);
+          await tick();
+        }
+
+        expect(lines, isNotEmpty);
+        expect(lines.first, startsWith('mpx_video: clip '));
+        expect(lines.first, contains('decoded '));
+        expect(lines.first, contains('shown '));
+      },
+    );
+
+    test('clips sharing too little decoding each keep advancing, never more '
+        'than about the catch-up lag behind their clocks', () async {
+      // Six clips of 30 fps share one decode per clock frame: 60 a second
+      // where they need 180.
+      final long = Uint8List.fromList([30]);
+      fake.accept(
+        long,
+        const VideoInfo(
+          width: 16,
+          height: 16,
+          duration: Duration(seconds: 10),
+          frameRate: 30,
+          hasAlpha: true,
+        ),
+        frameCount: 300,
+      );
+      final leases = [
+        for (var i = 0; i < 6; i++)
+          scheduler.acquire(
+            'clip-$i',
+            (await engine.open(VideoSource.bytes(long), width: 16, height: 16)
+                    as VideoClipOpened)
+                .clip,
+          )!,
+      ];
+      engine.hold();
+      final shown = [for (final _ in leases) <String>{}];
+      var maxLag = Duration.zero;
+      var played = Duration.zero;
+      for (var i = 0; i < 400; i++) {
+        for (final lease in leases) {
+          scheduler.want(lease, played);
+        }
+        played += const Duration(milliseconds: 16);
+        await tick();
+        engine.release(1);
+        await pumpEventQueue();
+        for (var k = 0; k < leases.length; k++) {
+          if (leases[k].sprite != null) shown[k].add(pixelOf(leases[k]).join());
+          if (i > 100 && leases[k].lag > maxLag) maxLag = leases[k].lag;
+        }
+      }
+      engine.release();
+
+      expect(maxLag, lessThan(const Duration(milliseconds: 1500)));
+      for (final frames in shown) {
+        expect(frames.length, greaterThan(3));
+      }
+    });
+
+    test('a stall nobody wakes is retried after stallRetry', () async {
+      final clipA = await openClip();
+      final a = scheduler.acquire('a', clipA)!;
+      var played = Duration.zero;
+      engine.stalled.add(clipA.id);
+      for (var i = 0; i < 4; i++) {
+        scheduler.want(a, played);
+        played += const Duration(milliseconds: 16);
+        await tick();
+      }
+      final calls = engine.nextFrameCalls[clipA.id]!;
+      // stallRetry (500 ms) of clock frames, and the clip asks again.
+      for (var i = 0; i < 40; i++) {
+        scheduler.want(a, played);
+        played += const Duration(milliseconds: 16);
+        await tick();
+      }
+
+      expect(engine.nextFrameCalls[clipA.id], greaterThan(calls));
+    });
+
+    test('a clip whose decodes are slower than its frame rate still advances, '
+        'at the rate it decodes', () async {
+      // 60 fps over 120 frames, and each decode takes three clock frames
+      // (48 ms): a third of its rate.
+      final fast = Uint8List.fromList([60]);
+      fake.accept(
+        fast,
+        const VideoInfo(
+          width: 16,
+          height: 16,
+          duration: Duration(seconds: 2),
+          frameRate: 60,
+          hasAlpha: true,
+        ),
+        frameCount: 120,
+      );
+      final clip =
+          (await engine.open(VideoSource.bytes(fast), width: 16, height: 16)
+                  as VideoClipOpened)
+              .clip;
+      final lease = scheduler.acquire('fast', clip)!;
+      engine.hold();
+      final shown = <List<int>>[];
+      var played = Duration.zero;
+      for (var i = 0; i < 60; i++) {
+        scheduler.want(lease, played, frameStep: 2);
+        played += const Duration(milliseconds: 16);
+        await tick();
+        if (i % 3 == 2) {
+          engine.release(1);
+          await pumpEventQueue();
+        }
+        if (lease.sprite != null) shown.add(pixelOf(lease));
+      }
+
+      // A third of 60 fps, every second decoded frame shown (half rate):
+      // about ten distinct frames over sixty clock frames, never one.
+      final distinct = {for (final p in shown) p.join(',')};
+      expect(distinct.length, greaterThan(5));
+    });
+
     test(
       'a frame that arrives after release is dropped, and bytes return to zero',
       () async {
@@ -432,7 +623,11 @@ void main() {
       /// The frame indices shown over two passes, painted every clock frame.
       Future<Set<int>> shownFrames({required int frameStep}) async {
         fake.accept(bytes60, info60, frameCount: 8);
-        final opened = await engine.open(bytes60, width: 16, height: 16);
+        final opened = await engine.open(
+          VideoSource.bytes(bytes60),
+          width: 16,
+          height: 16,
+        );
         final lease = scheduler.acquire('a', (opened as VideoClipOpened).clip)!;
         final shown = <int>{};
         for (var ms = 0; ms <= 260; ms += 16) {

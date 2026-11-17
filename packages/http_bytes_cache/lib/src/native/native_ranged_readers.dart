@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:ffi';
 import 'dart:typed_data';
 
+import 'package:cancel_token/cancel_token.dart';
 import 'package:ffi/ffi.dart';
 import 'package:http_bytes_cache/src/bytes_cache.dart';
 import 'package:http_bytes_cache/src/bytes_diagnostics.dart';
 import 'package:http_bytes_cache/src/http/byte_range.dart';
+import 'package:http_bytes_cache/src/http/http_bytes_client.dart';
 import 'package:http_bytes_cache/src/http/request_priority.dart';
 import 'package:http_bytes_cache/src/native/hbc_bindings.dart';
 import 'package:http_bytes_cache/src/ranged/ranged_bytes.dart';
@@ -75,7 +77,7 @@ final class NativeRangedReaders implements Finalizable {
   }
 
   /// The C interface version this Dart side speaks (`HBC_ABI_VERSION`).
-  static const int abiVersion = 2;
+  static const int abiVersion = 3;
 
   /// Address of the native `hbc_api` function table, for a player's native
   /// code (Kotlin through JNI, Swift) to call the reader functions without
@@ -122,21 +124,48 @@ final class NativeRangedReaders implements Finalizable {
     return publication;
   }
 
+  /// `HBC_FETCH_HINT`: no read waits on the fetch.
+  static const int _hint = 0x100;
+
   void _onFetch(int id, int offset, int length, int priority) {
-    final publication = _byId[id]?.firstOrNull;
+    final publications = _byId[id];
+    final publication = publications?.firstOrNull;
     if (publication == null) return;
     final end = offset + (length > readAheadBytes ? length : readAheadBytes);
     final level =
-        RequestPriority.values[priority.clamp(
+        RequestPriority.values[(priority & ~_hint).clamp(
           0,
           RequestPriority.values.length - 1,
         )];
+    // A hint is asked on behalf of every publication of the key, and stops
+    // when each of them has stopped its hints ([NativePublication.stopHints]).
+    final hint = priority & _hint != 0;
+    final cancel = hint ? CancelToken() : null;
+    if (cancel != null) {
+      for (final each in publications!) {
+        each._hints.add(cancel);
+      }
+    }
     publication.resource
-        .ensure(ByteRange(offset, end), priority: PriorityToken(level))
+        .ensure(
+          ByteRange(offset, end),
+          priority: PriorityToken(level),
+          cancelToken: cancel,
+        )
         .then(
-          (_) => publication._pushLength(),
+          (_) {
+            for (final each in publications ?? const <NativePublication>{}) {
+              each._hints.remove(cancel);
+            }
+            publication._pushLength();
+          },
           onError: (Object error, StackTrace stackTrace) {
+            for (final each in publications ?? const <NativePublication>{}) {
+              each._hints.remove(cancel);
+            }
             if (publication._closed) return;
+            // A hint its readers stopped is not a failed fetch.
+            if (error is HttpBytesException$Cancelled && hint) return;
             hbcFetchFailed(id, offset, end - offset);
             BytesDiagnostics.current.report(
               BytesLogEvent(
@@ -184,6 +213,19 @@ final class NativePublication {
   StreamSubscription<RangedEvent>? _events;
   int? _length;
   var _closed = false;
+  final Set<CancelToken> _hints = {};
+
+  /// Its readers stopped reading for now: the fetches asked only as hints
+  /// (bytes ahead, `hbc_reader_available`) stop, and a GET nobody else
+  /// waits on is aborted. What landed stays; reads ask again as usual.
+  /// Fetches a blocked read waits on (a player's) go on.
+  void stopHints() {
+    final hints = List.of(_hints);
+    _hints.clear();
+    for (final hint in hints) {
+      hint.cancel();
+    }
+  }
 
   void _start() {
     _events = resource.events.listen((event) {
@@ -210,6 +252,9 @@ final class NativePublication {
     _length = total;
     hbcSetLength(id, total);
   }
+
+  /// Whether [close] ran.
+  bool get isClosed => _closed;
 
   /// Withdraws this publication from native readers and closes its handle.
   /// A key published again stays readable until its last publication
@@ -258,6 +303,13 @@ final class NativeRangedReader {
   /// The length, or -1 when unknown; with [wait], blocks until known. A
   /// negative result below -1 is an `HBC_ERR_*` code.
   int length({bool wait = false}) => hbcReaderLength(_reader, wait ? 1 : 0);
+
+  /// The end of the bytes present without a gap from [offset] ([offset]
+  /// when the byte there is missing, or at or past the end); asks for the
+  /// rest of [length] bytes when they are not all there. Never blocks. A
+  /// negative result is an `HBC_ERR_*` code.
+  int available(int offset, int length) =>
+      hbcReaderAvailable(_reader, offset, length);
 
   /// Sets the priority missing bytes are fetched at.
   void setPriority(RequestPriority value) =>

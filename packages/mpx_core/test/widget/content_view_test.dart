@@ -73,6 +73,51 @@ void main() {
       expect(producer.last.demand.priority, AssetPriority.preload);
     });
 
+    testWidgets('a playing view painted outside every viewport is hidden: '
+        'only the cells on screen play', (tester) async {
+      // A grid laid out whole in a list, as a shrink-wrapped grid is: every
+      // cell is built and painted, the ones below the window too.
+      tester.view
+        ..physicalSize = const Size(200, 200)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final keys = [for (var i = 0; i < 30; i++) MediaKey.remote('cell-$i')];
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: AssetCacheProvider(
+            scope: scope,
+            child: ListView(
+              children: [
+                Column(
+                  children: [
+                    for (final key in keys)
+                      ContentView(content: key, preset: _preset),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      // The cells measure where they are after a frame.
+      await tester.pump();
+
+      AssetPriority priorityOf(MediaKey key) => producer.attempts
+          .lastWhere((a) => a.request.key == key)
+          .demand
+          .priority;
+      expect(priorityOf(keys.first), AssetPriority.visible);
+      expect(priorityOf(keys.last), AssetPriority.preload);
+
+      // Scrolled to the end, the last cells play and the first stop.
+      await tester.drag(find.byType(ListView), const Offset(0, -2000));
+      await tester.pump();
+      await tester.pump();
+      expect(priorityOf(keys.last), AssetPriority.visible);
+      expect(priorityOf(keys.first), AssetPriority.preload);
+    });
+
     testWidgets('is as large as the preset', (tester) async {
       await tester.pumpWidget(
         host(ContentView(content: _sticker, preset: _preset)),

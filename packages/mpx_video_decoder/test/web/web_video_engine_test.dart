@@ -42,7 +42,11 @@ void main() {
     });
 
     Future<VideoClip> open(WebVideoEngine engine, {Uint8List? bytes}) async {
-      final result = await engine.open(bytes ?? _bytes, width: 2, height: 1);
+      final result = await engine.open(
+        VideoSource.bytes(bytes ?? _bytes),
+        width: 2,
+        height: 1,
+      );
       return (result as VideoClipOpened).clip;
     }
 
@@ -73,7 +77,11 @@ void main() {
         final a = await open(engine);
         await open(engine);
 
-        final third = await engine.open(_bytes, width: 2, height: 1);
+        final third = await engine.open(
+          VideoSource.bytes(_bytes),
+          width: 2,
+          height: 1,
+        );
 
         expect(
           third,
@@ -87,7 +95,7 @@ void main() {
         await engine.close(a);
         expect(elements.live, 1);
         expect(
-          await engine.open(_bytes, width: 2, height: 1),
+          await engine.open(VideoSource.bytes(_bytes), width: 2, height: 1),
           isA<VideoClipOpened>(),
         );
         await engine.dispose();
@@ -103,7 +111,11 @@ void main() {
         metadataTimeout: const Duration(milliseconds: 20),
       );
 
-      final result = await engine.open(stuck, width: 2, height: 1);
+      final result = await engine.open(
+        VideoSource.bytes(stuck),
+        width: 2,
+        height: 1,
+      );
 
       expect(
         result,
@@ -122,7 +134,11 @@ void main() {
       elements.reject(refused, VideoRejection.unsupported);
       final engine = WebVideoEngine(createPort: elements.create);
 
-      final result = await engine.open(refused, width: 2, height: 1);
+      final result = await engine.open(
+        VideoSource.bytes(refused),
+        width: 2,
+        height: 1,
+      );
 
       expect((result as VideoClipRejected).reason, VideoRejection.unsupported);
       expect(elements.live, 0);

@@ -33,7 +33,7 @@ extern "C" {
 #endif
 
 /* Version of this interface; hbc_api.version carries it. */
-#define HBC_ABI_VERSION 2
+#define HBC_ABI_VERSION 3
 
 /* hbc_reader_read results below zero. Zero means end of the resource. */
 #define HBC_ERR_CANCELLED (-1) /* hbc_reader_cancel woke the read */
@@ -46,6 +46,11 @@ extern "C" {
 #define HBC_PRIORITY_BACKGROUND 0
 #define HBC_PRIORITY_PRELOAD 1
 #define HBC_PRIORITY_VISIBLE 2
+
+/* Or'ed into the priority a fetch callback is given when no read waits on
+ * the fetch: hbc_reader_available asked for bytes ahead. The host may stop
+ * such a fetch (its reader stopped reading) without failing anyone. */
+#define HBC_FETCH_HINT 0x100
 
 typedef struct hbc_reader hbc_reader;
 
@@ -123,6 +128,16 @@ HBC_EXPORT int64_t hbc_reader_length(hbc_reader *reader, int32_t wait);
 HBC_EXPORT int64_t hbc_reader_read(hbc_reader *reader, int64_t offset,
                                    uint8_t *buffer, int64_t length);
 
+/* Never blocks: the end of the bytes present without a gap from [offset]
+ * ([offset] itself when the byte there is missing, or when [offset] is at
+ * or past the end of the resource). When fewer than [length] bytes from
+ * [offset] are present, asks the host for the rest (a fetch flagged
+ * HBC_FETCH_HINT: nothing waits on it), and returns at once. A negative HBC_ERR_* code when the resource
+ * was withdrawn. For a decoder that must not wait on its thread: it reads
+ * only what this says is there and tries again when more landed. */
+HBC_EXPORT int64_t hbc_reader_available(hbc_reader *reader, int64_t offset,
+                                        int64_t length);
+
 /* The priority this reader's fetches ask at (default visible). */
 HBC_EXPORT void hbc_reader_set_priority(hbc_reader *reader, int32_t priority);
 
@@ -143,6 +158,9 @@ typedef struct hbc_api {
   void (*reader_set_priority)(hbc_reader *reader, int32_t priority);
   void (*reader_cancel)(hbc_reader *reader);
   void (*reader_close)(hbc_reader *reader);
+  /* Since version 3; versions only append to the table. */
+  int64_t (*reader_available)(hbc_reader *reader, int64_t offset,
+                              int64_t length);
 } hbc_api;
 
 HBC_EXPORT const hbc_api *hbc_get_api(void);

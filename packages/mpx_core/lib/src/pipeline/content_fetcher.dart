@@ -61,10 +61,23 @@ final class FetchRequest {
   final Duration? prefix;
 }
 
+/// Gives fetched content back to its fetcher: nothing reads it any more.
+typedef FetchRelease = void Function();
+
 /// What a fetch produced.
 ///
-/// Either the bytes in memory or a file the host's disk tier holds; a decoder
-/// takes whichever suits its codec (a video decoder wants the file).
+/// The bytes in memory, a file the host's disk tier holds, or a ranged
+/// resource read natively as it downloads; a decoder takes whichever suits
+/// its codec. A file and a ranged resource are read where they are, so
+/// their bytes need never pass through the UI isolate.
+///
+/// Content that holds something on the fetcher's side (a file the disk tier
+/// keeps from eviction, a published resource) is released once, by whoever
+/// has it last: the decoder that was handed it, once it no longer reads it
+/// (at once for a decoder that reads the whole file up front, when its clip
+/// closes for one that keeps reading), or the pipeline, for content no
+/// decode takes (a cancelled attempt, a prefix fetch). [release] is called
+/// exactly once.
 @immutable
 sealed class FetchedContent {
   const FetchedContent();
@@ -72,8 +85,22 @@ sealed class FetchedContent {
   /// Content held in memory.
   const factory FetchedContent.bytes(Uint8List bytes) = FetchedBytes;
 
-  /// Content in a file at [path].
-  const factory FetchedContent.file(String path) = FetchedFile;
+  /// Content in a file at [path]; [onRelease] runs when it is released.
+  const factory FetchedContent.file(String path, {FetchRelease? onRelease}) =
+      FetchedFile;
+
+  /// The ranged resource [key] of the native reader at [readerApi];
+  /// [onRelease] runs when it is released.
+  const factory FetchedContent.ranged({
+    required int readerApi,
+    required String key,
+    Stream<void>? landed,
+    FetchRelease? onPause,
+    FetchRelease? onRelease,
+  }) = FetchedRanged;
+
+  /// Gives the content back: its consumer no longer reads it. Called once.
+  void release();
 }
 
 /// [FetchedContent] held in memory.
@@ -83,6 +110,10 @@ final class FetchedBytes extends FetchedContent {
 
   /// The encoded data.
   final Uint8List bytes;
+
+  /// Bytes hold nothing on the fetcher's side.
+  @override
+  void release() {}
 }
 
 /// [FetchedContent] in a file.
@@ -90,11 +121,65 @@ final class FetchedBytes extends FetchedContent {
 /// The file belongs to the host's disk tier: the pipeline and the decoders
 /// read it and never delete or move it.
 final class FetchedFile extends FetchedContent {
-  /// Creates content read from [path].
-  const FetchedFile(this.path);
+  /// Creates content read from [path]; [onRelease] runs when it is released
+  /// (a fetcher gives its file lease back there).
+  const FetchedFile(this.path, {FetchRelease? onRelease})
+    : _onRelease = onRelease;
 
   /// Where the encoded data is.
   final String path;
+
+  final FetchRelease? _onRelease;
+
+  @override
+  void release() => _onRelease?.call();
+}
+
+/// [FetchedContent] read natively, at offsets, as it downloads.
+///
+/// A native reader serves the resource [key]: it says which bytes are there
+/// without waiting, and asks the fetcher's side for the ones that are not.
+/// [readerApi] is the address of the reader's function table (the bytes
+/// cache's native reader, `hbc_api` version 3 or later), which a decoder's
+/// native code calls; Dart never reads the bytes. A decoder that finds its
+/// bytes missing tries again when [landed] says more arrived. The resource
+/// stays readable until [release].
+///
+/// Only a decoder whose codec reads through such a reader takes it; a
+/// fetcher hands it out only for the kinds the host says decode that way.
+final class FetchedRanged extends FetchedContent {
+  /// Creates content read through the reader at [readerApi] as [key];
+  /// [onRelease] runs when it is released.
+  const FetchedRanged({
+    required this.readerApi,
+    required this.key,
+    this.landed,
+    FetchRelease? onPause,
+    FetchRelease? onRelease,
+  }) : _onPause = onPause,
+       _onRelease = onRelease;
+
+  /// Address of the native reader's function table.
+  final int readerApi;
+
+  /// The resource the reader opens.
+  final String key;
+
+  /// An event each time bytes of the resource landed, or null when the
+  /// fetcher's side tells nothing (a decoder then tries again on a timer).
+  final Stream<void>? landed;
+
+  final FetchRelease? _onPause;
+  final FetchRelease? _onRelease;
+
+  /// Its reader stopped reading for now (the surface left the screen): the
+  /// fetcher's side stops fetching ahead of it, keeping what landed. Reads
+  /// ask again as usual when it goes on. Any number of times, until
+  /// [release].
+  void pause() => _onPause?.call();
+
+  @override
+  void release() => _onRelease?.call();
 }
 
 /// Why a fetch failed, as the pipeline needs to know it.

@@ -69,10 +69,19 @@ final class VideoDecodeRejected implements Exception {
 /// (the square one is closed first; the open only builds a scaler, no frame
 /// is decoded).
 ///
+/// ## The file
+///
+/// A file (`FetchedFile`) or a ranged resource (`FetchedRanged`) is opened
+/// where it is: the engine reads it at the offsets the demuxer asks for,
+/// and its bytes never pass through this isolate. Content in memory
+/// (`FetchedBytes`, a test or the web) is handed over as bytes. The content
+/// is released once nothing reads it: when the last clip over it closes.
+///
 /// ## What an entry costs
 ///
 /// The `still` stage reports its `width * height * 4`; the `full` stage that
-/// plus the encoded size (the engine keeps the file open). The decoded frames
+/// plus the encoded size when the engine holds the file in memory (content
+/// handed over as bytes); a file read in place costs nothing more. The decoded frames
 /// the scheduler keeps ahead of the clock are not an entry's: they are bounded
 /// by the scheduler's cap on advancing clips.
 ///
@@ -99,6 +108,7 @@ final class VideoDecoder implements Decoder {
     List<int> sizeClasses = VideoFrameSize.defaultClasses,
     VideoImageDecoder decodeImage = MiniThumbnail.decode,
     VideoPixelUploader uploadPixels = _imageFromPixels,
+    this.rangedLookaheadBytes = 0,
   }) : _engine = engine,
        _scheduler = scheduler,
        _sizeClasses = sizeClasses,
@@ -110,6 +120,21 @@ final class VideoDecoder implements Decoder {
   final List<int> _sizeClasses;
   final VideoImageDecoder _decodeImage;
   final VideoPixelUploader _uploadPixels;
+
+  /// Bytes past its read position a clip read through a ranged source wants
+  /// present before it starts a packet (`VideoRangedSource.lookaheadBytes`);
+  /// 0 for the wrapper's default.
+  final int rangedLookaheadBytes;
+
+  /// How long a stalled open or first frame waits for its source to say
+  /// bytes landed before it tries again anyway.
+  static const Duration stallRetry = Duration(milliseconds: 500);
+
+  /// Whether a decode that fails logs a `mpx_video:` line with the media key
+  /// and the reason (`debugPrint`, so it reaches the device log). Off by
+  /// default: a failed decode keeps its placeholder by design, which leaves
+  /// a host diagnosing a device nothing to read without it.
+  static bool logFailures = false;
 
   @override
   AssetTask decode(DecodeRequest request, AssetProgress progress) {
@@ -140,21 +165,67 @@ final class _VideoDecode implements AssetTask {
     }
   }
 
-  Future<Uint8List> _bytes() => switch (_request.content) {
+  /// The thumbnail's bytes: a small image, read whole.
+  Future<Uint8List> _thumbnailBytes() => switch (_request.content) {
     FetchedBytes(:final bytes) => Future.value(bytes),
     FetchedFile(:final path) => environment_specific.$readFileBytes(path),
+    FetchedRanged() => Future.error(
+      UnsupportedError('A thumbnail is an image, not a ranged resource.'),
+    ),
   };
 
-  void _fail(Object error, StackTrace stackTrace) {
-    if (!_cancelled) {
-      _progress.fail(error, stackTrace, AssetFailureKind.permanent);
+  /// Where the engine reads the clip.
+  VideoSource get _source => switch (_request.content) {
+    FetchedBytes(:final bytes) => VideoSource.bytes(bytes),
+    FetchedFile(:final path) => VideoSource.file(path),
+    FetchedRanged(:final readerApi, :final key) => VideoSource.ranged(
+      readerApi: readerApi,
+      key: key,
+      lookaheadBytes: _owner.rangedLookaheadBytes,
+    ),
+  };
+
+  /// The encoded bytes the engine holds in memory for the clip.
+  int get _encodedInMemory => switch (_request.content) {
+    FetchedBytes(:final bytes) => bytes.length,
+    FetchedFile() || FetchedRanged() => 0,
+  };
+
+  /// Gives the content back; called once, when nothing reads it any more.
+  void _release() => _request.content.release();
+
+  // One line per stage of a content decode, under logFailures: where a clip
+  // that never shows stopped.
+  void _stage(String what) {
+    if (VideoDecoder.logFailures) {
+      debugPrint('mpx_video: ${_request.descriptor.key} $what');
     }
+  }
+
+  void _fail(Object error, StackTrace stackTrace) {
+    if (_cancelled) {
+      _stage('cancelled ($error)');
+      return;
+    }
+    if (VideoDecoder.logFailures) {
+      debugPrint(
+        'mpx_video: ${_request.descriptor.key} (${_request.part.name}) did '
+        'not decode: $error',
+      );
+    }
+    _progress.fail(error, stackTrace, AssetFailureKind.permanent);
   }
 
   Future<void> _thumbnail() async {
     final ui.Image image;
     try {
-      image = await _owner._decodeImage(await _bytes());
+      final Uint8List bytes;
+      try {
+        bytes = await _thumbnailBytes();
+      } finally {
+        _release();
+      }
+      image = await _owner._decodeImage(bytes);
     } on Object catch (error, stackTrace) {
       _fail(error, stackTrace);
       return;
@@ -172,45 +243,51 @@ final class _VideoDecode implements AssetTask {
 
   Future<void> _content() async {
     final VideoClip clip;
-    final Uint8List bytes;
     final Uint8List first;
+    _stage('decode $_source');
     try {
-      bytes = await _bytes();
-      clip = await _open(bytes);
+      clip = await _open(_source);
+      _stage(
+        'opened ${clip.info} at ${clip.width}x${clip.height} as clip '
+        '${clip.id}',
+      );
       try {
         first = await _firstFrame(clip);
+        _stage('first frame');
       } on Object {
         _close(clip);
         rethrow;
       }
     } on Object catch (error, stackTrace) {
+      _release();
       _fail(error, stackTrace);
       return;
     }
     // Cancelled while the engine decoded: a clip that arrives now is ours to
     // close, nobody else knows it.
     if (_cancelled) {
-      _close(clip);
+      _closeLast(clip);
       return;
     }
     final ui.Image image;
     try {
       image = await _owner._uploadPixels(first, clip.width, clip.height);
     } on Object catch (error, stackTrace) {
-      _close(clip);
+      _closeLast(clip);
       _fail(error, stackTrace);
       return;
     }
     if (_cancelled) {
       image.dispose();
-      _close(clip);
+      _closeLast(clip);
       return;
     }
     // Outside the try above: from here the image and the clip belong to the
     // paintables handed over.
+    _stage('still uploaded');
     final frameBytes = clip.frameBytes;
     if (_request.spec.variant == AssetVariant.firstFrame) {
-      _close(clip);
+      _closeLast(clip);
       _progress.advance(
         AssetStage.firstFrame,
         VideoStillPaintable(image),
@@ -234,50 +311,96 @@ final class _VideoDecode implements AssetTask {
           clip: clip,
           firstFrame: animationStill,
           scheduler: _owner._scheduler,
-          onDispose: () => _close(clip),
+          onDispose: () => _closeLast(clip),
+          landed: switch (_request.content) {
+            FetchedRanged(:final landed) => landed,
+            _ => null,
+          },
+          onLeftScreen: switch (_request.content) {
+            final FetchedRanged ranged => ranged.pause,
+            _ => null,
+          },
         ),
-        bytes: frameBytes + bytes.length,
+        bytes: frameBytes + _encodedInMemory,
         tier: AssetTier.animated,
       );
   }
 
-  /// Opens [bytes] at the size class the spec snaps to, aspect kept.
-  Future<VideoClip> _open(Uint8List bytes) async {
+  /// Opens [source] at the size class the spec snaps to, aspect kept.
+  Future<VideoClip> _open(VideoSource source) async {
     final spec = _request.spec;
     final edge = VideoFrameSize.edgeFor(
       math.max(spec.pixelWidth, spec.pixelHeight),
       classes: _owner._sizeClasses,
     );
-    final probe = await _openAt(bytes, edge, edge);
+    final probe = await _openAt(source, edge, edge);
     final fitted = VideoFrameSize.fitting(probe.info, edge);
     if (fitted.width == probe.width && fitted.height == probe.height) {
       return probe;
     }
     _close(probe);
-    return _openAt(bytes, fitted.width, fitted.height);
+    return _openAt(source, fitted.width, fitted.height);
   }
 
-  Future<VideoClip> _openAt(Uint8List bytes, int width, int height) async {
-    final opened = await _owner._engine.open(
-      bytes,
-      width: width,
-      height: height,
-    );
-    return switch (opened) {
-      VideoClipOpened(:final clip) => clip,
-      VideoClipRejected(:final reason) => throw VideoDecodeRejected(reason),
-    };
+  Future<VideoClip> _openAt(VideoSource source, int width, int height) async {
+    while (true) {
+      final opened = await _owner._engine.open(
+        source,
+        width: width,
+        height: height,
+      );
+      switch (opened) {
+        case VideoClipOpened(:final clip):
+          return clip;
+        case VideoClipRejected(reason: VideoRejection.stalled):
+          _stage('stalled before the open');
+          await _untilLanded();
+        case VideoClipRejected(:final reason):
+          throw VideoDecodeRejected(reason);
+      }
+    }
   }
 
   Future<Uint8List> _firstFrame(VideoClip clip) async {
     final pixels = Uint8List(clip.frameBytes);
-    final result = await _owner._engine.nextFrame(clip, destination: pixels);
-    if (result.status != VideoFrameStatus.frame) {
-      throw StateError(
-        'The first frame did not decode: ${result.status.name}.',
-      );
+    while (true) {
+      final result = await _owner._engine.nextFrame(clip, destination: pixels);
+      switch (result.status) {
+        case VideoFrameStatus.frame:
+          return pixels;
+        case VideoFrameStatus.stalled:
+          _stage('stalled before the first frame');
+          await _untilLanded();
+        default:
+          throw StateError(
+            'The first frame did not decode: ${result.status.name}.',
+          );
+      }
     }
-    return pixels;
+  }
+
+  /// Waits for bytes of a stalled source: the next landing, or a short
+  /// timer when the content tells none. Nothing is held meanwhile on the
+  /// engine's side. A cancel ends the wait (the decode then fails, unseen).
+  Future<void> _untilLanded() async {
+    if (_cancelled) throw StateError('cancelled while stalled');
+    final landed = switch (_request.content) {
+      FetchedRanged(:final landed?) => landed,
+      _ => null,
+    };
+    // `then` makes it a Future<void> whatever the stream's element type:
+    // the timeout's empty value then fits.
+    final next = landed?.first.then<void>((_) {}) ?? Future<void>.value();
+    await next.timeout(VideoDecoder.stallRetry, onTimeout: () {});
+    if (_cancelled) throw StateError('cancelled while stalled');
+  }
+
+  /// Closes [clip], the last one over the content, and gives the content
+  /// back. The close is sent first: releasing a ranged resource wakes a read
+  /// the clip may be blocked in, and the close then runs right after it.
+  void _closeLast(VideoClip clip) {
+    _close(clip);
+    _release();
   }
 
   void _close(VideoClip clip) {

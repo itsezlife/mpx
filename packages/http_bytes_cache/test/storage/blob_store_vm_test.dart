@@ -20,6 +20,30 @@ void main() {
     }
   });
 
+  group(r'BytesBlobStore$File$VM payloads', () {
+    test('small and large payloads read back whole, at offsets too', () async {
+      final store = BytesBlobStore$File$VM(directory: tempDir.path);
+      addTearDown(store.close);
+      const key = BytesCacheKey('payload');
+      for (final length in [
+        16,
+        BytesBlobStore$File$VM.transferByteThreshold * 3,
+      ]) {
+        final bytes = Uint8List.fromList([
+          for (var i = 0; i < length; i++) i % 251,
+        ]);
+        await store.write(key, bytes);
+
+        expect(await store.read(key), bytes, reason: '$length bytes');
+        expect(
+          await store.readAt(key, 3, length - 3),
+          bytes.sublist(3),
+          reason: '$length bytes',
+        );
+      }
+    });
+  });
+
   group(r'BytesBlobStore$File$VM isolate death', () {
     test('pending RPC fails when the worker is killed (no hang)', () async {
       final store = BytesBlobStore$File$VM(directory: tempDir.path);

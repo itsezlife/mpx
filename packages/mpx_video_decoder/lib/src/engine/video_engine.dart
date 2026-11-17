@@ -19,12 +19,17 @@ import 'package:mpx_video_decoder/src/binding/binding.dart';
 /// several without awaiting each; calls on different clips may run
 /// concurrently.
 abstract interface class VideoEngine {
-  /// Opens [bytes] for frames of exactly [width] by [height] pixels: frames
-  /// are scaled to that size, not letterboxed.
+  /// Opens the file [source] names for frames of exactly [width] by
+  /// [height] pixels: frames are scaled to that size, not letterboxed.
   ///
-  /// A refused file is a [VideoClipRejected], never a throw.
+  /// An engine with a worker reads a file or ranged source there, in place:
+  /// its bytes never pass through the caller's isolate. A ranged source's
+  /// reads wait for bytes that have not landed, on the worker. An engine
+  /// that cannot read a kind of source (the web reads only bytes) rejects
+  /// it as [VideoRejection.source]. A refused file is a [VideoClipRejected],
+  /// never a throw.
   Future<VideoClipOpenResult> open(
-    Uint8List bytes, {
+    VideoSource source, {
     required int width,
     required int height,
   });

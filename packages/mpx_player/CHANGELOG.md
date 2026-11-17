@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The native reader table is accepted from version 2 on: later versions
+  only append to it.
 - Android lowers the pitch slightly above 1x, so sped-up speech does not sound thin.
 - Android keeps speed changes on the audio sink's time-stretching: AudioTrack
   playback params left the player's clock standing still after a quick run

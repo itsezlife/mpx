@@ -72,9 +72,11 @@ class MpxPlayerPlugin : FlutterPlugin, ActivityAware, PlayerHostApi {
 
     override fun create(source: NativePlayerSource, settings: NativePlayerSettings): Long {
         val version = HbcNative.version(source.readerApi)
-        check(version == HbcNative.expectedVersion()) {
+        // Later versions only append to the table: what this player reads
+        // stays where it was.
+        check(version >= HbcNative.expectedVersion()) {
             "The bytes cache's native reader speaks version $version; " +
-                "this player expects ${HbcNative.expectedVersion()}."
+                "this player expects ${HbcNative.expectedVersion()} or later."
         }
         val id = nextId++
         players[id] =

@@ -18,6 +18,10 @@ const _info = VideoInfo(
 );
 const _frames = 12;
 
+/// A file the worker's fake opens by its path: if the engine read it into
+/// bytes on the way, the fake would not know it.
+const _inPlace = VideoSource.file('/media/clip.webm');
+
 /// Bytes that make [_ScriptedBinding] misbehave on the first `nextFrame`.
 final _endsIsolate = Uint8List.fromList([66]);
 final _throws = Uint8List.fromList([67]);
@@ -42,6 +46,7 @@ final class _ScriptedBinding implements VideoBinding {
     for (final bytes in [_bytes, _endsIsolate, _throws, _blocks]) {
       _fake.accept(bytes, _info, frameCount: _frames);
     }
+    _fake.acceptSource(_inPlace, _info, frameCount: _frames);
   }
 
   final String? flag;
@@ -55,12 +60,14 @@ final class _ScriptedBinding implements VideoBinding {
 
   @override
   VideoOpenResult open(
-    Uint8List bytes, {
+    VideoSource source, {
     required int width,
     required int height,
   }) {
-    final result = _fake.open(bytes, width: width, height: height);
-    if (result is VideoOpened) _trouble[result.handle.id] = bytes;
+    final result = _fake.open(source, width: width, height: height);
+    if (result is VideoOpened && source is VideoBytesSource) {
+      _trouble[result.handle.id] = source.bytes;
+    }
     return result;
   }
 
@@ -114,7 +121,11 @@ Future<IsolateVideoEngine> _spawn({
 );
 
 Future<VideoClip> _open(VideoEngine engine, [Uint8List? bytes]) async {
-  final result = await engine.open(bytes ?? _bytes, width: 8, height: 6);
+  final result = await engine.open(
+    VideoSource.bytes(bytes ?? _bytes),
+    width: 8,
+    height: 6,
+  );
   return (result as VideoClipOpened).clip;
 }
 
@@ -127,6 +138,7 @@ void main() {
         expectedInfo: _info,
         frameCount: _frames,
         malformedBytes: Uint8List.fromList([9, 9]),
+        validElsewhere: _inPlace,
       ),
     );
 

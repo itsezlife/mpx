@@ -83,11 +83,18 @@ final class WebVideoEngine implements VideoEngine {
 
   @override
   Future<VideoClipOpenResult> open(
-    Uint8List bytes, {
+    VideoSource source, {
     required int width,
     required int height,
   }) async {
     _requireOpen();
+    // The browser plays what it is handed: there are no files, and no
+    // native reader, on the web.
+    final bytes = switch (source) {
+      VideoBytesSource(:final bytes) => bytes,
+      VideoFileSource() || VideoRangedSource() => null,
+    };
+    if (bytes == null) return const VideoClipRejected(VideoRejection.source);
     if (width <= 0 || height <= 0) {
       return const VideoClipRejected(VideoRejection.badSize);
     }

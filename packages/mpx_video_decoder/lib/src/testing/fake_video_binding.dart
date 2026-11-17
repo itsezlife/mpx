@@ -7,6 +7,7 @@ import 'package:mpx_video_decoder/src/binding/video_binding.dart';
 import 'package:mpx_video_decoder/src/binding/video_frame_result.dart';
 import 'package:mpx_video_decoder/src/binding/video_handle.dart';
 import 'package:mpx_video_decoder/src/binding/video_open_result.dart';
+import 'package:mpx_video_decoder/src/binding/video_source.dart';
 
 /// A [VideoBinding] without a native library: scripted files, and frames that
 /// fill their slot with one premultiplied colour derived from the frame
@@ -34,17 +35,42 @@ final class FakeVideoBinding implements VideoBinding {
 
   /// Makes [bytes] open as a video described by [info] with [frameCount]
   /// frames.
-  void accept(Uint8List bytes, VideoInfo info, {required int frameCount}) {
-    _scripted[_key(bytes)] = _Script.accepted(info, frameCount);
-  }
+  void accept(Uint8List bytes, VideoInfo info, {required int frameCount}) =>
+      acceptSource(VideoSource.bytes(bytes), info, frameCount: frameCount);
 
   /// Makes [bytes] refuse to open for [reason]. Bytes never scripted are
   /// refused as [VideoRejection.malformed].
-  void reject(Uint8List bytes, VideoRejection reason) {
-    _scripted[_key(bytes)] = _Script.rejected(reason);
+  void reject(Uint8List bytes, VideoRejection reason) =>
+      rejectSource(VideoSource.bytes(bytes), reason);
+
+  /// Makes [source] open as a video described by [info] with [frameCount]
+  /// frames: bytes by their content, a file by its path, a ranged resource
+  /// by its key.
+  void acceptSource(
+    VideoSource source,
+    VideoInfo info, {
+    required int frameCount,
+  }) {
+    _scripted[_key(source)] = _Script.accepted(info, frameCount);
   }
 
-  static String _key(Uint8List bytes) => base64.encode(bytes);
+  /// Makes [source] refuse to open for [reason]. A file or ranged resource
+  /// never scripted is refused as [VideoRejection.source] (nothing is
+  /// there), bytes as [VideoRejection.malformed].
+  void rejectSource(VideoSource source, VideoRejection reason) {
+    _scripted[_key(source)] = _Script.rejected(reason);
+  }
+
+  /// How many times [source] was opened, scripted or not.
+  int opensOf(VideoSource source) => _opens[_key(source)] ?? 0;
+
+  final _opens = <String, int>{};
+
+  static String _key(VideoSource source) => switch (source) {
+    VideoBytesSource(:final bytes) => 'bytes:${base64.encode(bytes)}',
+    VideoFileSource(:final path) => 'file:$path',
+    VideoRangedSource(:final key) => 'ranged:$key',
+  };
 
   @override
   bool get isAvailable => availability == VideoAvailability.available;
@@ -56,19 +82,27 @@ final class FakeVideoBinding implements VideoBinding {
 
   @override
   VideoOpenResult open(
-    Uint8List bytes, {
+    VideoSource source, {
     required int width,
     required int height,
   }) {
     _requireAvailable();
+    final key = _key(source);
+    _opens.update(key, (n) => n + 1, ifAbsent: () => 1);
     if (width <= 0 ||
         height <= 0 ||
         width > maxTargetEdge ||
         height > maxTargetEdge) {
       return const VideoRejected(VideoRejection.badSize);
     }
-    final script = _scripted[_key(bytes)];
-    if (script == null) return const VideoRejected(VideoRejection.malformed);
+    final script = _scripted[key];
+    if (script == null) {
+      return VideoRejected(
+        source is VideoBytesSource
+            ? VideoRejection.malformed
+            : VideoRejection.source,
+      );
+    }
     final rejection = script.rejection;
     if (rejection != null) return VideoRejected(rejection);
 

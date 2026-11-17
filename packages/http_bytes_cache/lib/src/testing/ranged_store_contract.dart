@@ -87,6 +87,36 @@ void runRangedBytesStoreContract(String name, RangedBytesStoreFactory create) {
         expect(await store.readRange(video, const ByteRange(0, 100)), isNull);
       });
 
+      test('a recorded span is present without a write', () async {
+        final state = await store.recordRange(
+          video,
+          0,
+          100,
+          validator: v1,
+          totalLength: 4000,
+        );
+
+        expect(state.ranges.spans, [(0, 100)]);
+        expect(state.totalLength, 4000);
+        expect(store.rangesOf(video)?.ranges.spans, [(0, 100)]);
+        expect(store.rangesOf(video)?.validator?.etag, '"v1"');
+      });
+
+      test('a recorded span joins the written ones', () async {
+        await store.writeRange(video, 0, slice(0, 100), validator: v1);
+        final state = await store.recordRange(video, 100, 50, validator: v1);
+
+        expect(state.ranges.spans, [(0, 150)]);
+      });
+
+      test('a recorded span of another validator replaces the spans', () async {
+        await store.writeRange(video, 0, slice(0, 100), validator: v1);
+        final state = await store.recordRange(video, 500, 100, validator: v2);
+
+        expect(state.ranges.spans, [(500, 600)]);
+        expect(state.validator?.etag, '"v2"');
+      });
+
       test('resetRanges starts a new representation', () async {
         await store.writeRange(video, 0, slice(0, 100), validator: v1);
         final state = await store.resetRanges(

@@ -13,17 +13,22 @@ const _info = VideoInfo(
   hasAlpha: false,
 );
 
+const _inPlace = VideoSource.file('/media/clip.webm');
+
 void main() {
   group('InProcessVideoEngine over the fake binding', () {
     VideoEngineContract.run(
       () => VideoEngineHarness(
         open: () async => InProcessVideoEngine(
-          FakeVideoBinding()..accept(_bytes, _info, frameCount: 4),
+          FakeVideoBinding()
+            ..accept(_bytes, _info, frameCount: 4)
+            ..acceptSource(_inPlace, _info, frameCount: 4),
         ),
         validBytes: _bytes,
         expectedInfo: _info,
         frameCount: 4,
         malformedBytes: Uint8List.fromList([9, 9]),
+        validElsewhere: _inPlace,
       ),
     );
   });

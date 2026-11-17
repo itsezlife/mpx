@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- `NativeRangedContentPublisher` hands a clip over once its index (the tail
+  of a file whose `moov` follows its media data) and a first stretch
+  (`firstStretchBytes`, 2 MiB) are there, and pauses its fetching when its
+  surface leaves the screen. The example streams clips this way again.
+- `BytesCacheFetcher` hands media out as the file it is in over a store
+  that keeps files, leased until the decoder releases it, instead of reading
+  it into the UI isolate; a missing immutable part is fetched as a ranged
+  resource in one GET. `RangedContentPublisher` (`NativeRangedContentPublisher`
+  in `package:mpx/native.dart`, `FakeRangedContentPublisher` in
+  `testing.dart`) publishes missing content of its kinds for native readers
+  instead of downloading it first; opt-in, since a published clip blocks
+  its decode worker on missing bytes. The example does not publish: its
+  clips download whole off the UI isolate, and its lab reports coverage
+  (items that reached a picture, video frames decoded) beside the hitches,
+  flagging a replay that drew less than its recording.
+- `MpxStack`: `ranged` holds the store's ranged resources, `publisher`
+  builds a publisher over them, and the default client runs its media
+  transfers on a worker isolate.
 - `MpxStack.create`: a working media stack from one call (bytes store, HTTP
   client, fetch adapter, pipeline, asset cache scope, pause layers fed by the
   device signals), with host decoders and registered quotas.

@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- Native reader, ABI 3: `hbc_reader_available` (`NativeRangedReader.available`)
+  says which bytes are there without waiting and asks for the rest as a
+  hint (`HBC_FETCH_HINT`); `NativePublication.stopHints` stops the hints of
+  a reader that stopped reading, keeping what landed. Versions only append
+  to the `hbc_api` table.
+- Ranged resources: an ask more than 32 KiB past a running GET's next byte
+  gets a GET of its own, so the index at the end of a file is fetched before
+  the body that comes before it.
+- `HttpBytesClient(transfers: HttpBytesTransfers())` and
+  `HttpBytesClient.transfer`: a GET whose socket, body and file writes run
+  on a worker isolate, the calling isolate hearing only the head and each
+  span written (VM only; `canTransfer` says whether it is on).
+  `HttpBytesTransfers.onTransfer` reports each one when it ends.
+- Ranged resources fetch through transfers when the client offers them and
+  the store keeps files, recording the spans with the new
+  `IRangedBytesStore.recordRange`; the bytes never enter the calling
+  isolate. An ask that runs to the end is one GET, not chunks.
+- The VM store's reads above 64 KiB come back as a transferable, so the
+  reading isolate no longer copies the payload out of the message.
 - `BytesCacheKey.within(owner, url)`: one key per URL under an owner's key,
   for the playlists and segments of a stream.
 - Emptying a ranged payload puts a new file in its place instead of

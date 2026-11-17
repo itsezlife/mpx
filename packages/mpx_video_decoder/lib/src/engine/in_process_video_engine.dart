@@ -26,12 +26,12 @@ final class InProcessVideoEngine implements VideoTextureEngine {
 
   @override
   Future<VideoClipOpenResult> open(
-    Uint8List bytes, {
+    VideoSource source, {
     required int width,
     required int height,
   }) async {
     _requireOpen();
-    return _core.open(bytes, width: width, height: height);
+    return _core.open(source, width: width, height: height);
   }
 
   @override

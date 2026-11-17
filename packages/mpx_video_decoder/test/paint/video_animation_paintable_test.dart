@@ -107,7 +107,8 @@ void main() {
     timers = ManualTimers();
     scheduler = build();
     clip =
-        ((await engine.open(bytes, width: 16, height: 16)) as VideoClipOpened)
+        ((await engine.open(VideoSource.bytes(bytes), width: 16, height: 16))
+                as VideoClipOpened)
             .clip;
   });
   tearDown(() {
@@ -149,7 +150,11 @@ void main() {
       );
       engine.accept(bytes60, info60, frameCount: 8);
       clip =
-          ((await engine.open(bytes60, width: 16, height: 16))
+          ((await engine.open(
+                    VideoSource.bytes(bytes60),
+                    width: 16,
+                    height: 16,
+                  ))
                   as VideoClipOpened)
               .clip;
     });
@@ -232,7 +237,11 @@ void main() {
       scheduler = withTextures();
       engine.accept(bytes12, info12, frameCount: 12);
       clip =
-          ((await engine.open(bytes12, width: 16, height: 16))
+          ((await engine.open(
+                    VideoSource.bytes(bytes12),
+                    width: 16,
+                    height: 16,
+                  ))
                   as VideoClipOpened)
               .clip;
     });
@@ -436,7 +445,11 @@ void main() {
       // 16 x 16 frames of 1 KiB: one clip's ring and decode, not two.
       scheduler = withTextures(keptAheadBytes: 5 * 1024);
       final other =
-          ((await engine.open(bytes12, width: 16, height: 16))
+          ((await engine.open(
+                    VideoSource.bytes(bytes12),
+                    width: 16,
+                    height: 16,
+                  ))
                   as VideoClipOpened)
               .clip;
       final a = paintable();

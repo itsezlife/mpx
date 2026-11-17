@@ -1,7 +1,8 @@
+import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
@@ -294,27 +295,105 @@ void main() {
       },
     );
 
-    test('a file on disk is read and decoded like bytes', () async {
-      final dir = Directory.systemTemp.createTempSync('video_decoder_file_');
-      addTearDown(() => dir.deleteSync(recursive: true));
-      final file = File('${dir.path}${Platform.pathSeparator}clip.webm')
-        ..writeAsBytesSync(good);
+    test(
+      'a file is opened by its path, never read into this isolate',
+      () async {
+        const path = '/media/clip.webm';
+        fake.acceptSource(
+          const VideoSource.file(path),
+          _info(64, 64),
+          frameCount: 3,
+        );
+        final report = _Report();
+
+        decoder.decode(
+          _request(good, content: const FetchedContent.file(path)),
+          report,
+        );
+        await pumpEventQueue();
+
+        expect(report.advances.map((a) => a.stage), [
+          AssetStage.firstFrame,
+          AssetStage.full,
+        ]);
+        expect(fake.opensOf(const VideoSource.file(path)), 1);
+      },
+    );
+
+    test('a ranged resource is opened through its reader', () async {
+      const source = VideoSource.ranged(readerApi: 0x1000, key: 'clip');
+      fake.acceptSource(source, _info(64, 64), frameCount: 3);
       final report = _Report();
 
       decoder.decode(
-        _request(good, content: FetchedContent.file(file.path)),
+        _request(
+          good,
+          content: const FetchedContent.ranged(readerApi: 0x1000, key: 'clip'),
+        ),
         report,
       );
-      final deadline = DateTime.now().add(const Duration(seconds: 10));
-      while (report.advances.length < 2 && DateTime.now().isBefore(deadline)) {
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-        await pumpEventQueue();
-      }
+      await pumpEventQueue();
 
       expect(report.advances.map((a) => a.stage), [
         AssetStage.firstFrame,
         AssetStage.full,
       ]);
+      expect(fake.opensOf(source), 1);
+    });
+
+    test('a ranged clip whose index has not landed opens when bytes land, '
+        'and its playing clip wakes on each landing', () async {
+      const source = VideoSource.ranged(readerApi: 0x1000, key: 'clip');
+      fake.acceptSource(source, _info(64, 64), frameCount: 3);
+      final landed = StreamController<void>.broadcast();
+      addTearDown(landed.close);
+      engine.stalledOpens = 2;
+      final report = _Report();
+
+      decoder.decode(
+        _request(
+          good,
+          content: FetchedContent.ranged(
+            readerApi: 0x1000,
+            key: 'clip',
+            landed: landed.stream,
+          ),
+        ),
+        report,
+      );
+      await pumpEventQueue();
+      expect(report.advances, isEmpty);
+      expect(engine.opens, 1);
+
+      landed.add(null);
+      await pumpEventQueue();
+      landed.add(null);
+      await pumpEventQueue();
+
+      expect(engine.opens, 3);
+      expect(report.advances.map((a) => a.stage), [
+        AssetStage.firstFrame,
+        AssetStage.full,
+      ]);
+      expect(report.failures, isEmpty);
+    });
+
+    test('a clip read in place costs its frame, not its file', () async {
+      const path = '/media/clip.webm';
+      fake.acceptSource(
+        const VideoSource.file(path),
+        _info(64, 64),
+        frameCount: 3,
+      );
+      final report = _Report();
+
+      decoder.decode(
+        _request(good, content: const FetchedContent.file(path)),
+        report,
+      );
+      await pumpEventQueue();
+
+      expect(report.advances.last.bytes, 64 * 64 * 4);
     });
 
     test(
@@ -345,6 +424,132 @@ void main() {
       await pumpEventQueue();
 
       expect(fake.openClips, 0);
+    });
+
+    test(
+      'with logFailures on, each stage is logged and a failure says why',
+      () async {
+        final lines = <String?>[];
+        final previous = debugPrint;
+        debugPrint = (message, {wrapWidth}) => lines.add(message);
+        VideoDecoder.logFailures = true;
+        addTearDown(() {
+          debugPrint = previous;
+          VideoDecoder.logFailures = false;
+        });
+
+        decoder.decode(_request(refused), _Report());
+        decoder.decode(_request(good), _Report());
+        await pumpEventQueue();
+
+        // Every stage of the clip that plays, and why the other one stopped.
+        expect(lines, everyElement(startsWith('mpx_video: ')));
+        expect(
+          lines.where((l) => l!.contains('did not decode')).single,
+          contains('unsupported'),
+        );
+        for (final stage in ['decode', 'opened', 'first frame', 'still']) {
+          expect(lines.where((l) => l!.contains(' $stage')), isNotEmpty);
+        }
+      },
+    );
+
+    test('by default a failure stays silent', () async {
+      final lines = <String?>[];
+      final previous = debugPrint;
+      debugPrint = (message, {wrapWidth}) => lines.add(message);
+      addTearDown(() => debugPrint = previous);
+
+      decoder.decode(_request(refused), _Report());
+      await pumpEventQueue();
+
+      expect(lines, isEmpty);
+    });
+
+    group('gives its content back', () {
+      late int released;
+      FetchedContent held(String path) =>
+          FetchedContent.file(path, onRelease: () => released++);
+
+      setUp(() {
+        released = 0;
+        fake.acceptSource(
+          const VideoSource.file('/media/a.webm'),
+          _info(64, 64),
+          frameCount: 3,
+        );
+      });
+
+      test('when its animation is disposed, not before', () async {
+        final report = _Report();
+        decoder.decode(_request(good, content: held('/media/a.webm')), report);
+        await pumpEventQueue();
+        expect(released, 0);
+
+        report.advances.last.paintable.dispose();
+        await pumpEventQueue();
+
+        expect(released, 1);
+      });
+
+      test('once a first-frame-only decode ends', () async {
+        decoder.decode(
+          _request(
+            good,
+            content: held('/media/a.webm'),
+            spec: const AssetSpec(
+              pixelWidth: 64,
+              pixelHeight: 64,
+              variant: AssetVariant.firstFrame,
+            ),
+          ),
+          _Report(),
+        );
+        await pumpEventQueue();
+
+        expect(released, 1);
+      });
+
+      test('when the clip is refused', () async {
+        decoder.decode(
+          _request(good, content: held('/media/b.webm')),
+          _Report(),
+        );
+        await pumpEventQueue();
+
+        expect(released, 1);
+      });
+
+      test('when the decode is cancelled', () async {
+        engine.hold();
+        final task = decoder.decode(
+          _request(good, content: held('/media/a.webm')),
+          _Report(),
+        );
+        await pumpEventQueue();
+        task.cancel();
+        engine.release();
+        await pumpEventQueue();
+
+        expect(released, 1);
+      });
+
+      test('after reading a thumbnail', () async {
+        final dir = Directory.systemTemp.createTempSync('video_thumbnail_');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        final file = File('${dir.path}/thumb.png')..writeAsBytesSync(good);
+        final report = _Report();
+
+        decoder.decode(
+          _request(good, part: FetchPart.thumbnail, content: held(file.path)),
+          report,
+        );
+        while (report.advances.isEmpty) {
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+        }
+
+        expect(released, 1);
+      });
     });
 
     test('reports the still and the encoded size as the cost', () async {

@@ -1,0 +1,88 @@
+{
+ "entries": [
+  {
+   "file": "sintel_trailer-1080p.mp4",
+   "size": 14621544,
+   "kind": "video",
+   "codec": "h264",
+   "width": 1920,
+   "height": 1080,
+   "fps": 24.0,
+   "bitrate": 2240491,
+   "duration": 52.21,
+   "url": "https://download.blender.org/durian/trailer/sintel_trailer-1080p.mp4",
+   "licence": "CC BY 3.0",
+   "attribution": "(c) copyright Blender Foundation | durian.blender.org"
+  },
+  {
+   "file": "sintel_trailer-720p.mp4",
+   "size": 7608204,
+   "kind": "video",
+   "codec": "h264",
+   "width": 1280,
+   "height": 720,
+   "fps": 24.0,
+   "bitrate": 1165822,
+   "duration": 52.21,
+   "url": "https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4",
+   "licence": "CC BY 3.0",
+   "attribution": "(c) copyright Blender Foundation | durian.blender.org"
+  },
+  {
+   "file": "sintel_trailer-480p.mp4",
+   "size": 4372373,
+   "kind": "loop",
+   "codec": "h264",
+   "width": 854,
+   "height": 480,
+   "fps": 24.0,
+   "bitrate": 669988,
+   "duration": 52.21,
+   "url": "https://download.blender.org/durian/trailer/sintel_trailer-480p.mp4",
+   "licence": "CC BY 3.0",
+   "attribution": "(c) copyright Blender Foundation | durian.blender.org"
+  },
+  {
+   "file": "trailer_1080p.mov",
+   "size": 30874052,
+   "kind": "video",
+   "codec": "h264",
+   "width": 1920,
+   "height": 1080,
+   "fps": 25.0,
+   "bitrate": 7485752,
+   "duration": 32.99,
+   "url": "https://download.blender.org/peach/trailer/trailer_1080p.mov",
+   "licence": "CC BY 3.0",
+   "attribution": "(c) copyright 2008, Blender Foundation | www.bigbuckbunny.org"
+  },
+  {
+   "file": "trailer_480p.mov",
+   "size": 11061011,
+   "kind": "loop",
+   "codec": "h264",
+   "width": 853,
+   "height": 480,
+   "fps": 25.0,
+   "bitrate": 2681863,
+   "duration": 32.99,
+   "url": "https://download.blender.org/peach/trailer/trailer_480p.mov",
+   "licence": "CC BY 3.0",
+   "attribution": "(c) copyright 2008, Blender Foundation | www.bigbuckbunny.org"
+  },
+  {
+   "file": "Rotating_earth_(large).gif",
+   "size": 1001718,
+   "kind": "animated",
+   "codec": "gif",
+   "width": 400,
+   "height": 400,
+   "fps": 11.111,
+   "bitrate": 2023672,
+   "duration": 3.96,
+   "url": "https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif",
+   "licence": "CC BY-SA 3.0",
+   "attribution": "Marvel, Wikimedia Commons: File:Rotating_earth_(large).gif"
+  }
+ ]
+}

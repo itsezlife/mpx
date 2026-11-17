@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- A playing `ContentView` measures itself after each frame and is hidden
+  when no viewport shows it, so cells laid out and painted off screen (a
+  shrink-wrapped grid in a list) stop playing; a hidden binding painted
+  anyway paints at the time it hid.
+- `FetchedRanged.landed` and `FetchedRanged.pause`: a decoder that finds
+  its bytes missing tries again when more landed, and pauses the fetching
+  of content its surface stopped showing.
+- `FetchedContent.ranged`: content read natively as it downloads. Fetched
+  content has a release point: the decoder that takes it releases it once
+  it no longer reads it, the pipeline releases content no decode takes, and
+  `FetchedFile` takes an `onRelease`. `ImageCodecDecoder` releases a file
+  once the engine has it in a buffer.
 - `ViewportVisibility.of`: a box's rectangle, the clip of every viewport
   around it, its visible share, centre distance and how many viewports away
   it is, in one walk. The feed slot and the viewer origin measure with it.

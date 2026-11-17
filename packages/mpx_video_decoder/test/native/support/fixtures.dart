@@ -25,7 +25,10 @@ final class Fixture {
   final double frameRate;
   final bool hasAlpha;
 
-  Uint8List get bytes => File('native/probe/fixtures/$file').readAsBytesSync();
+  /// Where the fixture is, absolute.
+  String get path => File('native/probe/fixtures/$file').absolute.path;
+
+  Uint8List get bytes => File(path).readAsBytesSync();
 }
 
 const mp4 = Fixture(

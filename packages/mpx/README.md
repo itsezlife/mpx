@@ -81,7 +81,11 @@ A host with its own wiring takes the fetch adapter alone:
   held media served without a lookup or a request; one download shared by
   every caller, each hearing its progress; cancel settles at once; priorities
   onto the client's queue; failures classed transient or permanent; media never
-  revalidated unless its location asks.
+  revalidated unless its location asks. Over a store with files, media goes
+  out as the file it is in (or, for the kinds a `RangedContentPublisher`
+  takes, as a ranged resource read natively as it downloads): its bytes
+  never pass through the UI isolate, and the default client's transfers keep
+  them on a worker isolate from the socket to the file.
 - Device signals (Android, iOS, macOS): network class, power saving and
   thermal status as `ValueListenable`s.
 - Fakes and contract suites in `testing.dart`.

@@ -7,10 +7,16 @@ import 'package:http/http.dart' as http;
 import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:http_bytes_cache/native_reader.dart';
 import 'package:mpx/mpx.dart';
+import 'package:mpx/native.dart';
 import 'package:mpx_core/frame_pool.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_example/feed_page.dart';
 import 'package:mpx_example/gallery.dart';
+import 'package:mpx_example/lab/corpus.dart';
+import 'package:mpx_example/lab/lab.dart';
+import 'package:mpx_example/lab/lab_coverage.dart';
+import 'package:mpx_example/lab/lab_viewer.dart';
+import 'package:mpx_example/lab/stress_feed.dart';
 import 'package:mpx_lottie/mpx_lottie.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_player/native.dart';
@@ -18,8 +24,11 @@ import 'package:mpx_ui/mpx_ui.dart';
 import 'package:mpx_video_decoder/mpx_video_decoder.dart';
 
 /// The media the example shows: a key, how it renders, the file the origin
-/// serves for it, and a label.
-const List<(MediaKey, MediaKind, String, String)> _media = [
+/// serves for it, and a label. A lab build on a device corpus shows the
+/// corpus instead.
+List<(MediaKey, MediaKind, String, String)> _media = _bundledMedia;
+
+const List<(MediaKey, MediaKind, String, String)> _bundledMedia = [
   (MediaKey.remote('still'), MediaKind.still, 'still.png', 'Still'),
   (
     MediaKey.remote('counter'),
@@ -37,60 +46,99 @@ const List<(MediaKey, MediaKind, String, String)> _media = [
   (MediaKey.remote('clip'), MediaKind.video, 'clip.mp4', 'Video with sound'),
 ];
 
-/// The key whose viewer page plays with sound on the platform player.
-const MediaKey _soundClip = MediaKey.remote('clip');
+/// The keys whose viewer page plays with sound on the platform player.
+Set<MediaKey> _withSound = {const MediaKey.remote('clip')};
+
+/// Where the origin serves [file]: the lab's loopback origin when it runs,
+/// else the example's bundle origin.
+Uri _urlOf(String file) =>
+    (kMpxLab ? Lab.urlOf(file) : null) ??
+    Uri.parse('https://media.example/$file');
+
+String _mimeOf(String file) => switch (file.split('.').last.toLowerCase()) {
+  'webm' => 'video/webm',
+  'mkv' => 'video/x-matroska',
+  'mov' => 'video/quicktime',
+  _ => 'video/mp4',
+};
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final cacheDirectory = '${Directory.systemTemp.path}/mpx_example';
+  final framesDirectory = '${Directory.systemTemp.path}/mpx_example_frames';
+  if (kMpxLab) {
+    await Lab.start(cacheDirs: [cacheDirectory, framesDirectory]);
+    if (Lab.corpus case final corpus?) {
+      _media = [
+        for (final e in corpus.entries)
+          (MediaKey.remote('corpus-${e.file}'), e.kind.media, e.file, e.file),
+      ];
+      _withSound = {
+        for (final e in corpus.entries)
+          if (e.kind == CorpusKind.video) MediaKey.remote('corpus-${e.file}'),
+      };
+    }
+  }
   // Rendered Lottie frames keep a folder of their own, counted against the
   // store's one budget as its `lottie_frames` quota: no sweep of our own.
   final frames = FrameCache(
-    directoryPath: '${Directory.systemTemp.path}/mpx_example_frames',
+    directoryPath: framesDirectory,
     diskBudgetBytes: null,
   );
+  // The process's one native reader, over the stack's ranged resources:
+  // the software decoder streams clips through it (index and first stretch
+  // first, then what plays, never waiting on a decode worker), and the
+  // players read their sources through it.
+  NativeRangedReaders? readers;
   final stack = await MpxStack.create(
     // Where each key's bytes are. A real host maps its keys to its CDN.
     locate: (descriptor, part) => switch (_fileOf(descriptor.key)) {
-      final file? => MediaLocation('https://media.example/$file'),
+      final file? => MediaLocation(_urlOf(file).toString()),
       null => null,
     },
-    cacheDirectory: '${Directory.systemTemp.path}/mpx_example',
+    cacheDirectory: cacheDirectory,
     registeredQuotas: {BytesQuota.lottieFrames: frames.evict},
     decoders: (context) => _decoders(context, frames),
     // The example's origin answers from the app bundle so it runs offline; a
-    // real host leaves `client` out and gets the network.
-    client: HttpBytesClient(client: _BundleOrigin()),
+    // real host leaves `client` out and gets the network. A lab run on a
+    // corpus takes the network, every request recorded.
+    client:
+        (kMpxLab ? Lab.httpClient() : null) ??
+        HttpBytesClient(client: _BundleOrigin()),
+    publisher: (ranged) => NativeRangedReaders.isAvailable
+        ? NativeRangedContentPublisher(readers = NativeRangedReaders(ranged))
+        : null,
   );
   for (final (key, kind, _, _) in _media) {
     stack.pipeline.know(
       MediaDescriptor(key: key, kind: kind, animated: kind != MediaKind.still),
     );
   }
-  runApp(MediaApp(stack: stack, players: await _players(stack)));
+  final players = await _players(readers);
+  if (kMpxLab) Lab.attach(stack, players);
+  runApp(MediaApp(stack: stack, players: players));
 }
 
 /// The platform player over the stack's cache: the viewer plays videos with
 /// sound on it, reading their bytes through the cache's native reader. Null
 /// where there is no native reader (the viewer then shows stills).
-Future<PlayerPool?> _players(MpxStack stack) async {
-  if (!NativeRangedReaders.isAvailable) return null;
-  final ranged = RangedBytes(store: stack.store, client: stack.client);
-  if (!ranged.isSupported) return null;
+Future<PlayerPool?> _players(NativeRangedReaders? readers) async {
+  if (readers == null) return null;
   // The example logs the players' lifecycle, so a problem seen on a device
   // can be traced in its log.
   PlayerDiagnostics.enabled = true;
   final backend = NativePlayerBackend(
-    readers: NativeRangedReaders(ranged),
+    readers: readers,
     sourcesOf: (key) => switch (_fileOf(key)) {
       final file? => [
         PlayerSource(
           RangedRequest(
-            url: Uri.parse('https://media.example/$file'),
-            // Its own entry: the player reads a sparse file of ranges, the
-            // software decoder the whole body.
-            cacheKey: BytesCacheKey('ranged-${key.encoded}'),
+            url: _urlOf(file),
+            // The content's own entry: the player and the software decoder
+            // read one sparse file, so a clip is downloaded once.
+            cacheKey: BytesCacheFetcher.cacheKeyOf(key, FetchPart.content),
           ),
-          mimeType: file.endsWith('.webm') ? 'video/webm' : 'video/mp4',
+          mimeType: _mimeOf(file),
         ),
       ],
       null => const [],
@@ -100,10 +148,12 @@ Future<PlayerPool?> _players(MpxStack stack) async {
   return PlayerPool(backend: backend, budget: (await backend.device).budget);
 }
 
-String? _fileOf(MediaKey key) => [
-  for (final (known, _, file, _) in _media)
-    if (known == key) file,
-].firstOrNull;
+String? _fileOf(MediaKey key) =>
+    [
+      for (final (known, _, file, _) in _media)
+        if (known == key) file,
+    ].firstOrNull ??
+    (kMpxLab ? StressItems.fileOf(key) : null);
 
 /// The heavy decoders, each over its own native engine. One that cannot start
 /// (no native library in this build) is left out, and its kind shows the
@@ -147,6 +197,7 @@ Future<Map<MediaKind, Decoder>> _decoders(
       ..onDispose(memory.dispose)
       ..onDispose(engine.close)
       ..onDispose(scheduler.dispose);
+    if (kMpxLab) Lab.wireLottie(scheduler);
     decoders[MediaKind.vectorAnimation] = LottieDecoder(
       engine: engine,
       scheduler: scheduler,
@@ -156,7 +207,8 @@ Future<Map<MediaKind, Decoder>> _decoders(
     debugPrint('Lottie is off: $reason');
   }
   try {
-    final engine = await IsolateVideoEngine.spawn();
+    final worker = await IsolateVideoEngine.spawn();
+    final engine = kMpxLab ? LabCoverage.count(worker) : worker;
     final textures = context.textures;
     final scheduler = VideoFrameScheduler(
       engine: engine,
@@ -170,6 +222,11 @@ Future<Map<MediaKind, Decoder>> _decoders(
     context
       ..onDispose(engine.dispose)
       ..onDispose(scheduler.dispose);
+    if (kMpxLab) Lab.wireVideo(scheduler);
+    // A clip that does not open says why in the log, instead of staying on
+    // its placeholder in silence.
+    VideoDecoder.logFailures = true;
+    VideoFrameScheduler.logPlayback = true;
     decoders[MediaKind.video] = VideoDecoder(
       engine: engine,
       scheduler: scheduler,
@@ -249,7 +306,7 @@ class _MediaAppState extends State<MediaApp> {
         // the software path, as animations do in the viewer.
         kind: switch (kind) {
           MediaKind.still => GalleryMediaKind.photo,
-          _ when key == _soundClip => GalleryMediaKind.video,
+          _ when _withSound.contains(key) => GalleryMediaKind.video,
           _ => GalleryMediaKind.animation,
         },
       ),
@@ -270,6 +327,9 @@ class _MediaAppState extends State<MediaApp> {
     source: _gallery,
     initialIndex: index,
     players: widget.players,
+    controller: LabViewer.controller('home'),
+    policy: LabViewer.policy(context),
+    onBackdropScale: LabViewer.onBackdropScale,
     onFullscreenChanged: (on) => setWindowFullscreen(fullscreen: on),
     chrome: ViewerChrome(
       title: (context, index, item) => Text(_media[index].$4),
@@ -283,10 +343,25 @@ class _MediaAppState extends State<MediaApp> {
   Widget build(BuildContext context) {
     final signals = widget.stack.signals;
     return MaterialApp(
+      navigatorKey: kMpxLab ? Lab.navigatorKey : null,
+      navigatorObservers: [if (kMpxLab) Lab.observer],
+      builder: kMpxLab ? Lab.wrap : null,
       home: AssetCacheProvider(
         scope: widget.stack.scope,
         child: Scaffold(
-          appBar: AppBar(title: const Text('mpx')),
+          appBar: AppBar(
+            title: const Text('mpx'),
+            // The lab's stress feed, in the bar so the page below keeps
+            // its layout.
+            actions: const [
+              if (kMpxLab)
+                IconButton(
+                  tooltip: 'Stress feed (lab)',
+                  icon: Icon(Icons.speed),
+                  onPressed: Lab.openStress,
+                ),
+            ],
+          ),
           body: Builder(
             builder: (context) => SafeArea(
               top: false,
@@ -306,6 +381,8 @@ class _MediaAppState extends State<MediaApp> {
                             in _media.indexed)
                           Builder(
                             builder: (context) => GestureDetector(
+                              // The picture paints without taking hits: the whole tile does.
+                              behavior: HitTestBehavior.opaque,
                               onTap: () => _open(context, index),
                               child: _MediaTile(
                                 index: index,
@@ -325,11 +402,15 @@ class _MediaAppState extends State<MediaApp> {
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
+                        settings: const RouteSettings(name: 'feed'),
                         builder: (_) => AssetCacheProvider(
                           scope: widget.stack.scope,
                           child: FeedPage(
                             signals: signals,
-                            clips: [_media[1].$1, _media[3].$1],
+                            clips: [
+                              for (final (key, kind, _, _) in _media)
+                                if (kind != MediaKind.still) key,
+                            ].take(2).toList(),
                           ),
                         ),
                       ),
@@ -384,32 +465,33 @@ class _MediaTile extends StatelessWidget {
   final String label;
 
   @override
-  Widget build(BuildContext context) => Column(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      ViewerOrigin(
-        index: index,
-        borderRadius: const BorderRadius.all(Radius.circular(_radius)),
-        // The tile shows the picture whole, letterboxed in its square.
-        fit: BoxFit.contain,
-        child: ContentView(
-          content: content,
-          preset: plays
-              ? AssetPresets.animation(
-                  size: const Size.square(_extent),
-                  profile: _profile,
-                )
-              : AssetPresets.square(
-                  extent: _extent,
-                  devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
-                  profile: _profile,
-                ),
+  Widget build(BuildContext context) {
+    final preset = plays
+        ? AssetPresets.animation(
+            size: const Size.square(_extent),
+            profile: _profile,
+          )
+        : AssetPresets.square(
+            extent: _extent,
+            devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+            profile: _profile,
+          );
+    LabViewer.card('home', index, content, preset.spec);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ViewerOrigin(
+          index: index,
+          borderRadius: const BorderRadius.all(Radius.circular(_radius)),
+          // The tile shows the picture whole, letterboxed in its square.
+          fit: BoxFit.contain,
+          child: ContentView(content: content, preset: preset),
         ),
-      ),
-      const SizedBox(height: 8),
-      Text(label),
-    ],
-  );
+        const SizedBox(height: 8),
+        Text(label),
+      ],
+    );
+  }
 }
 
 class _SignalTile extends StatelessWidget {

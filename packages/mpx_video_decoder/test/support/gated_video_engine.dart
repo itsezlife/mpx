@@ -28,6 +28,17 @@ final class GatedVideoEngine implements VideoEngine {
   /// Clips closed.
   int closed = 0;
 
+  /// Clips whose `nextFrame` answers stalled (a source short of bytes),
+  /// without decoding, until removed.
+  final Set<int> stalled = {};
+
+  /// Opens left to answer stalled (a source short of its index), before
+  /// they open again.
+  int stalledOpens = 0;
+
+  /// Opens asked, stalled ones included.
+  int opens = 0;
+
   /// Holds every later `nextFrame` until [release].
   void hold() => _held = true;
 
@@ -42,10 +53,17 @@ final class GatedVideoEngine implements VideoEngine {
 
   @override
   Future<VideoClipOpenResult> open(
-    Uint8List bytes, {
+    VideoSource source, {
     required int width,
     required int height,
-  }) => inner.open(bytes, width: width, height: height);
+  }) async {
+    opens++;
+    if (stalledOpens > 0) {
+      stalledOpens--;
+      return const VideoClipRejected(VideoRejection.stalled);
+    }
+    return inner.open(source, width: width, height: height);
+  }
 
   @override
   Future<VideoFrameResult> nextFrame(
@@ -56,6 +74,9 @@ final class GatedVideoEngine implements VideoEngine {
     final pending = inFlight[clip.id] = (inFlight[clip.id] ?? 0) + 1;
     if (pending > maxInFlightPerClip) maxInFlightPerClip = pending;
     try {
+      if (stalled.contains(clip.id)) {
+        return const VideoFrameResult(VideoFrameStatus.stalled);
+      }
       if (_held) {
         final gate = Completer<void>();
         _gates.add(gate);

@@ -13,6 +13,7 @@ import 'ranged/fast_start_test.dart' as fast_start_test;
 import 'ranged/ranged_alias_test.dart' as ranged_alias_test;
 import 'ranged/ranged_resource_test.dart' as ranged_resource_test;
 import 'ranged/ranged_store_test.dart' as ranged_store_test;
+import 'ranged/ranged_transfer_test.dart' as ranged_transfer_test;
 import 'resolve/bearer_middleware_test.dart' as bearer_middleware_test;
 import 'resolve/client_test.dart' as client_test;
 import 'resolve/conditional_middleware_test.dart'
@@ -26,6 +27,7 @@ import 'resolve/progress_fanout_test.dart' as progress_fanout_test;
 import 'resolve/range_request_test.dart' as range_request_test;
 import 'resolve/resolver_test.dart' as resolver_test;
 import 'resolve/swr_test.dart' as swr_test;
+import 'resolve/transfer_test.dart' as transfer_test;
 import 'storage/blob_store_vm_test.dart' as blob_store_vm_test;
 import 'storage/web_store_test.dart' as web_store_test;
 import 'store/alias_test.dart' as alias_test;
@@ -54,6 +56,7 @@ void main() => group('Unit', () {
   priority_test.main();
   swr_test.main();
   range_request_test.main();
+  transfer_test.main();
   bearer_middleware_test.main();
   conditional_middleware_test.main();
   logger_middleware_test.main();
@@ -67,6 +70,7 @@ void main() => group('Unit', () {
   byte_range_set_test.main();
   ranged_store_test.main();
   ranged_resource_test.main();
+  ranged_transfer_test.main();
   fast_start_test.main();
   ranged_alias_test.main();
   native_reader_test.main();

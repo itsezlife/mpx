@@ -179,10 +179,23 @@ final class _LottieDecode implements AssetTask {
     }
   }
 
-  Future<Uint8List> _bytes() => switch (_request.content) {
-    FetchedBytes(:final bytes) => Future.value(bytes),
-    FetchedFile(:final path) => environment_specific.$readFileBytes(path),
-  };
+  /// The file, read whole; the content is given back once it is read.
+  Future<Uint8List> _bytes() async {
+    try {
+      return await switch (_request.content) {
+        FetchedBytes(:final bytes) => Future.value(bytes),
+        FetchedFile(:final path) => environment_specific.$readFileBytes(path),
+        FetchedRanged() => Future<Uint8List>.error(
+          UnsupportedError(
+            'A Lottie file is read whole: the fetcher must not hand it a '
+            'ranged resource.',
+          ),
+        ),
+      };
+    } finally {
+      _request.content.release();
+    }
+  }
 
   void _fail(Object error, StackTrace stackTrace) {
     if (!_cancelled) {

@@ -158,6 +158,9 @@ abstract base class AssetBindingBase
     final wasVisible = visible;
     final wasHolding = holdsFrame;
     _fraction = next;
+    // A hidden binding that is painted anyway (laid out off screen) paints
+    // at the time it hid: it does not advance until it is shown again.
+    if (visible != wasVisible) _hiddenAt = visible ? null : _clock.now;
     // The hold first: a binding that hides while held keeps its frame.
     _holdChanged(wasHolding);
     if (visible != wasVisible && !_detached) onVisibleChanged();
@@ -188,11 +191,16 @@ abstract base class AssetBindingBase
   // say): bursts of frames, where the profile promises one.
   Duration? _stillTime;
 
+  // The clock's time when the binding hid, while it is hidden.
+  Duration? _hiddenAt;
+
   AssetPaintContext _context({Color? tint, double opacity = 1}) =>
       AssetPaintContext(
         tint: tint,
         opacity: opacity,
-        time: animates ? _heldAt ?? _clock.now : _stillTime ??= _clock.now,
+        time: animates
+            ? _heldAt ?? _hiddenAt ?? _clock.now
+            : _stillTime ??= _clock.now,
         animate: animates,
         loop: profile.loop,
         restFrame: profile.restFrame,

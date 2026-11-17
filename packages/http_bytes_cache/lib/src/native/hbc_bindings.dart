@@ -76,6 +76,15 @@ external void hbcReaderSetPriority(Pointer<HbcReader> reader, int priority);
 @Native<Void Function(Pointer<HbcReader>)>(symbol: 'hbc_reader_cancel')
 external void hbcReaderCancel(Pointer<HbcReader> reader);
 
+@Native<Int64 Function(Pointer<HbcReader>, Int64, Int64)>(
+  symbol: 'hbc_reader_available',
+)
+external int hbcReaderAvailable(
+  Pointer<HbcReader> reader,
+  int offset,
+  int length,
+);
+
 @Native<Void Function(Pointer<HbcReader>)>(symbol: 'hbc_reader_close')
 external void hbcReaderClose(Pointer<HbcReader> reader);
 
