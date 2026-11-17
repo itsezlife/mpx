@@ -360,7 +360,14 @@ data class NativePlayerSettings (
   val playing: Boolean,
   val speed: Double,
   val looping: Boolean,
-  val volume: Double
+  val volume: Double,
+  /**
+   * How far ahead a player that has not played yet buffers: at most this
+   * much media and [preparedBufferBytes] of it, enough for its first frame
+   * and a short start. Lifted at the first play. 0 lifts it from the start.
+   */
+  val preparedBufferMs: Long,
+  val preparedBufferBytes: Long
 )
  {
   companion object {
@@ -371,7 +378,9 @@ data class NativePlayerSettings (
       val speed = pigeonVar_list[3] as Double
       val looping = pigeonVar_list[4] as Boolean
       val volume = pigeonVar_list[5] as Double
-      return NativePlayerSettings(startAtUs, seekId, playing, speed, looping, volume)
+      val preparedBufferMs = pigeonVar_list[6] as Long
+      val preparedBufferBytes = pigeonVar_list[7] as Long
+      return NativePlayerSettings(startAtUs, seekId, playing, speed, looping, volume, preparedBufferMs, preparedBufferBytes)
     }
   }
   fun toList(): List<Any?> {
@@ -382,6 +391,8 @@ data class NativePlayerSettings (
       speed,
       looping,
       volume,
+      preparedBufferMs,
+      preparedBufferBytes,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -392,7 +403,7 @@ data class NativePlayerSettings (
       return true
     }
     val other = other as NativePlayerSettings
-    return PlayerMessagesPigeonUtils.deepEquals(this.startAtUs, other.startAtUs) && PlayerMessagesPigeonUtils.deepEquals(this.seekId, other.seekId) && PlayerMessagesPigeonUtils.deepEquals(this.playing, other.playing) && PlayerMessagesPigeonUtils.deepEquals(this.speed, other.speed) && PlayerMessagesPigeonUtils.deepEquals(this.looping, other.looping) && PlayerMessagesPigeonUtils.deepEquals(this.volume, other.volume)
+    return PlayerMessagesPigeonUtils.deepEquals(this.startAtUs, other.startAtUs) && PlayerMessagesPigeonUtils.deepEquals(this.seekId, other.seekId) && PlayerMessagesPigeonUtils.deepEquals(this.playing, other.playing) && PlayerMessagesPigeonUtils.deepEquals(this.speed, other.speed) && PlayerMessagesPigeonUtils.deepEquals(this.looping, other.looping) && PlayerMessagesPigeonUtils.deepEquals(this.volume, other.volume) && PlayerMessagesPigeonUtils.deepEquals(this.preparedBufferMs, other.preparedBufferMs) && PlayerMessagesPigeonUtils.deepEquals(this.preparedBufferBytes, other.preparedBufferBytes)
   }
 
   override fun hashCode(): Int {
@@ -403,10 +414,12 @@ data class NativePlayerSettings (
     result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.speed)
     result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.looping)
     result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.volume)
+    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.preparedBufferMs)
+    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.preparedBufferBytes)
     return result
   }
   override fun toString(): String {
-    return "NativePlayerSettings(startAtUs=$startAtUs, seekId=$seekId, playing=$playing, speed=$speed, looping=$looping, volume=$volume)"
+    return "NativePlayerSettings(startAtUs=$startAtUs, seekId=$seekId, playing=$playing, speed=$speed, looping=$looping, volume=$volume, preparedBufferMs=$preparedBufferMs, preparedBufferBytes=$preparedBufferBytes)"
   }
 }
 

@@ -332,6 +332,11 @@ struct NativePlayerSettings: Hashable, CustomStringConvertible {
   var speed: Double
   var looping: Bool
   var volume: Double
+  /// How far ahead a player that has not played yet buffers: at most this
+  /// much media and [preparedBufferBytes] of it, enough for its first frame
+  /// and a short start. Lifted at the first play. 0 lifts it from the start.
+  var preparedBufferMs: Int64
+  var preparedBufferBytes: Int64
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -342,6 +347,8 @@ struct NativePlayerSettings: Hashable, CustomStringConvertible {
     let speed = pigeonVar_list[3] as! Double
     let looping = pigeonVar_list[4] as! Bool
     let volume = pigeonVar_list[5] as! Double
+    let preparedBufferMs = pigeonVar_list[6] as! Int64
+    let preparedBufferBytes = pigeonVar_list[7] as! Int64
 
     return NativePlayerSettings(
       startAtUs: startAtUs,
@@ -349,7 +356,9 @@ struct NativePlayerSettings: Hashable, CustomStringConvertible {
       playing: playing,
       speed: speed,
       looping: looping,
-      volume: volume
+      volume: volume,
+      preparedBufferMs: preparedBufferMs,
+      preparedBufferBytes: preparedBufferBytes
     )
   }
   func toList() -> [Any?] {
@@ -360,13 +369,15 @@ struct NativePlayerSettings: Hashable, CustomStringConvertible {
       speed,
       looping,
       volume,
+      preparedBufferMs,
+      preparedBufferBytes,
     ]
   }
   static func == (lhs: NativePlayerSettings, rhs: NativePlayerSettings) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return PlayerMessagesPigeonInternal.deepEquals(lhs.startAtUs, rhs.startAtUs) && PlayerMessagesPigeonInternal.deepEquals(lhs.seekId, rhs.seekId) && PlayerMessagesPigeonInternal.deepEquals(lhs.playing, rhs.playing) && PlayerMessagesPigeonInternal.deepEquals(lhs.speed, rhs.speed) && PlayerMessagesPigeonInternal.deepEquals(lhs.looping, rhs.looping) && PlayerMessagesPigeonInternal.deepEquals(lhs.volume, rhs.volume)
+    return PlayerMessagesPigeonInternal.deepEquals(lhs.startAtUs, rhs.startAtUs) && PlayerMessagesPigeonInternal.deepEquals(lhs.seekId, rhs.seekId) && PlayerMessagesPigeonInternal.deepEquals(lhs.playing, rhs.playing) && PlayerMessagesPigeonInternal.deepEquals(lhs.speed, rhs.speed) && PlayerMessagesPigeonInternal.deepEquals(lhs.looping, rhs.looping) && PlayerMessagesPigeonInternal.deepEquals(lhs.volume, rhs.volume) && PlayerMessagesPigeonInternal.deepEquals(lhs.preparedBufferMs, rhs.preparedBufferMs) && PlayerMessagesPigeonInternal.deepEquals(lhs.preparedBufferBytes, rhs.preparedBufferBytes)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -377,10 +388,12 @@ struct NativePlayerSettings: Hashable, CustomStringConvertible {
     PlayerMessagesPigeonInternal.deepHash(value: speed, hasher: &hasher)
     PlayerMessagesPigeonInternal.deepHash(value: looping, hasher: &hasher)
     PlayerMessagesPigeonInternal.deepHash(value: volume, hasher: &hasher)
+    PlayerMessagesPigeonInternal.deepHash(value: preparedBufferMs, hasher: &hasher)
+    PlayerMessagesPigeonInternal.deepHash(value: preparedBufferBytes, hasher: &hasher)
   }
 
   public var description: String {
-    return "NativePlayerSettings(startAtUs: \(String(describing: startAtUs)), seekId: \(String(describing: seekId)), playing: \(String(describing: playing)), speed: \(String(describing: speed)), looping: \(String(describing: looping)), volume: \(String(describing: volume)))"
+    return "NativePlayerSettings(startAtUs: \(String(describing: startAtUs)), seekId: \(String(describing: seekId)), playing: \(String(describing: playing)), speed: \(String(describing: speed)), looping: \(String(describing: looping)), volume: \(String(describing: volume)), preparedBufferMs: \(String(describing: preparedBufferMs)), preparedBufferBytes: \(String(describing: preparedBufferBytes)))"
   }
 }
 

@@ -253,6 +253,8 @@ class NativePlayerSettings {
     required this.speed,
     required this.looping,
     required this.volume,
+    required this.preparedBufferMs,
+    required this.preparedBufferBytes,
   });
 
   int startAtUs;
@@ -269,8 +271,24 @@ class NativePlayerSettings {
 
   double volume;
 
+  /// How far ahead a player that has not played yet buffers: at most this
+  /// much media and [preparedBufferBytes] of it, enough for its first frame
+  /// and a short start. Lifted at the first play. 0 lifts it from the start.
+  int preparedBufferMs;
+
+  int preparedBufferBytes;
+
   List<Object?> _toList() {
-    return <Object?>[startAtUs, seekId, playing, speed, looping, volume];
+    return <Object?>[
+      startAtUs,
+      seekId,
+      playing,
+      speed,
+      looping,
+      volume,
+      preparedBufferMs,
+      preparedBufferBytes,
+    ];
   }
 
   Object encode() {
@@ -286,6 +304,8 @@ class NativePlayerSettings {
       speed: result[3]! as double,
       looping: result[4]! as bool,
       volume: result[5]! as double,
+      preparedBufferMs: result[6]! as int,
+      preparedBufferBytes: result[7]! as int,
     );
   }
 
@@ -303,7 +323,9 @@ class NativePlayerSettings {
         _deepEquals(playing, other.playing) &&
         _deepEquals(speed, other.speed) &&
         _deepEquals(looping, other.looping) &&
-        _deepEquals(volume, other.volume);
+        _deepEquals(volume, other.volume) &&
+        _deepEquals(preparedBufferMs, other.preparedBufferMs) &&
+        _deepEquals(preparedBufferBytes, other.preparedBufferBytes);
   }
 
   @override
@@ -312,7 +334,7 @@ class NativePlayerSettings {
 
   @override
   String toString() {
-    return 'NativePlayerSettings(startAtUs: $startAtUs, seekId: $seekId, playing: $playing, speed: $speed, looping: $looping, volume: $volume)';
+    return 'NativePlayerSettings(startAtUs: $startAtUs, seekId: $seekId, playing: $playing, speed: $speed, looping: $looping, volume: $volume, preparedBufferMs: $preparedBufferMs, preparedBufferBytes: $preparedBufferBytes)';
   }
 }
 

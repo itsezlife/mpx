@@ -91,6 +91,13 @@ final class MpxPlayer: NSObject, FlutterTexture {
     let asset = AVURLAsset(url: url)
     asset.resourceLoader.setDelegate(loader, queue: loader.queue)
     item = AVPlayerItem(asset: asset)
+    // A player that has not played yet buffers only enough for its first
+    // frame and a short start; the cap is lifted at the first play
+    // (liftPreparedBuffer). AVPlayer has no byte cap: the duration stands
+    // for both.
+    if settings.preparedBufferMs > 0 && !settings.playing {
+      item.preferredForwardBufferDuration = Double(settings.preparedBufferMs) / 1000
+    }
     output = AVPlayerItemVideoOutput(outputSettings: [
       kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
       kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any](),
@@ -118,6 +125,7 @@ final class MpxPlayer: NSObject, FlutterTexture {
   func play() {
     MpxPlayerLog.debug("player \(id) play")
     playing = true
+    liftPreparedBuffer()
     guard prepared, failure == nil else { return report(snapshot()) }
     if ended {
       ended = false
@@ -126,6 +134,13 @@ final class MpxPlayer: NSObject, FlutterTexture {
     player.rate = Float(speed)
     wake()
     report(snapshot())
+  }
+
+  // From the first play on, the item buffers as AVPlayer chooses.
+  private func liftPreparedBuffer() {
+    if item.preferredForwardBufferDuration != 0 {
+      item.preferredForwardBufferDuration = 0
+    }
   }
 
   func pause() {

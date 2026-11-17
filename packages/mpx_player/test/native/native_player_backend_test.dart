@@ -38,6 +38,7 @@ void main() {
     bool backgroundAudio = false,
     Stopwatch? clock,
     void Function()? Function(void Function() check)? watchdog,
+    PreparedBuffer preparedBuffer = PreparedBuffer.standard,
   }) {
     host = simulated;
     final made = NativePlayerBackend.over(
@@ -60,6 +61,7 @@ void main() {
             }),
           ],
       backgroundAudio: backgroundAudio,
+      preparedBuffer: preparedBuffer,
       receive: false,
       clock: clock,
       startWatchdog: watchdog == null
@@ -118,6 +120,29 @@ void main() {
 
       expect(host.live, isEmpty);
       expect(withdrawn, ['clip']);
+    });
+
+    test('a player is created with the prepared buffer: about 2 s and '
+        '2 MiB ahead until it first plays', () async {
+      await ready(backend.create(clip)..prepare());
+
+      final settings = host.live.single.settings;
+      expect(settings.preparedBufferMs, 2000);
+      expect(settings.preparedBufferBytes, 2 * 1024 * 1024);
+    });
+
+    test('a backend without the cap lets every player buffer as it '
+        'would', () async {
+      final uncapped = backendOver(
+        SimulatedHost(),
+        preparedBuffer: PreparedBuffer.none,
+      );
+      addTearDown(uncapped.dispose);
+
+      await ready(uncapped.create(clip)..prepare());
+
+      expect(host.live.single.settings.preparedBufferMs, 0);
+      expect(host.live.single.settings.preparedBufferBytes, 0);
     });
 
     test('wishes made while the platform creates are caught up', () async {
