@@ -66,7 +66,7 @@ or Back; both replay. A tape of the stress feed alone starts with
 | `replay.sh <tape> <s>` | one replay of a tape from a fresh start, with its report |
 | `ab.sh <label> <tape>` | `RUNS` replays (2) of one arm; `BUILD=1` builds first |
 | `scenario.sh feed\|swipe <s>` | the stress feed's cold or warm open; a synthetic fling (smoke test only) |
-| `session.py <trace> <tape>` | the per-segment report, with the player stages of each viewer open |
+| `session.py <trace> <tape>` | the per-segment report, with the player stages of each viewer open and page |
 | `seen.py <trace> <tape>` | scroll hitches over the whole trace |
 | `push_media.sh <dir>` | a folder as the device corpus (writes its manifest first) |
 | `fetch_corpus.sh` | the public corpus, verified against `corpus.sha256` |
@@ -167,7 +167,8 @@ summary, then a line per segment, every count with its denominator:
 | Segment | From the marks | Metric |
 | --- | --- | --- |
 | scroll | `scroll start` .. `scroll end` | visible hitches per second of motion, gliding and under the finger, by cause: a refresh whose content step (`LABy`) is outside 0.5–1.5× its neighbours' median |
-| viewer open | `viewer open-start` .. `viewer morph-end` | input (last finger lift) to the first viewer frame on screen, to the first frame the morph moved, to the player's first frame; morph hitches of the refreshes judged (`LABm`) |
+| viewer open | `viewer open-start` .. `viewer morph-end` | input (last finger lift) to the first viewer frame on screen, to the first frame the morph moved, to the player's first frame (of the item opened, before any page change), also as shown; morph hitches of the refreshes judged (`LABm`) |
+| viewer page | `viewer page i=<n>`, a video paged to | the page becoming current to its player's first frame on screen |
 | viewer close | `viewer close-start` .. `viewer close-end` | input to the first moving frame; morph hitches; time until the card's own picture moves again (`card moved`) |
 | route | `route push\|pop <page>` | transition hitches in the first second (`LABr`); for the feeds, input to the first frame with content (`feed first-content`) |
 
@@ -177,8 +178,10 @@ The pointer windows come from the tape, never from the app's messages.
 ## Player stages
 
 Every viewer open also gets the player's way to its first frame, stage by
-stage from the same input, then a table of each stage's median and max
-over the run. They come from the player's own marks, `mpx.player <stage>
+stage from the same input, and so does every video paged to inside the
+viewer, from the page becoming current (`viewer page`; the open's own
+numbers stop at the first page change); then a table of each stage's
+median and max over the run, for opens and pages apart. They come from the player's own marks, `mpx.player <stage>
 <id>`, always on in profile builds: the pool's lease, the Dart engine
 (prepare, bytes published, create sent and answered, phase changes, first
 frame received), the platform player's sections (ExoPlayer built, surface

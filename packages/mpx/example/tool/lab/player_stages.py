@@ -19,10 +19,12 @@ follow one player:
   realtime ms>`), `ready`, `first-frame` (the first frame rendered into
   the texture).
 
-`PlayerMarks.open_stages(input, end)` follows the first lease after the
-input: its engine (made in the open, or the one the key already had) and
-that engine's platform player, and returns each stage's time from the
-input. A stage before the input (a warm player) is left out.
+`PlayerMarks.open_stages(base, end, since)` follows the first lease in
+[since, end) (since defaults to base): its engine (made then, or the one
+the key already had) and that engine's platform player, and returns each
+stage's time from base. A stage before since (a warm player) is left
+out. The tape places an input a fraction of a millisecond off the marks it
+fires, so a caller starts since a refresh before the input.
 """
 
 import bisect
@@ -80,11 +82,12 @@ class PlayerMarks:
                 return m
         return None
 
-    def open_stages(self, base, end):
+    def open_stages(self, base, end, since=None):
         """({label: ns from base}, [notes]) for the player the first lease
-        in [base, end) took."""
+        in [since, end) took."""
+        since = base if since is None else since
         lease = None
-        for m in self.marks[bisect.bisect_left(self.ts, base):]:
+        for m in self.marks[bisect.bisect_left(self.ts, since):]:
             if m.ts >= end:
                 break
             if m.stage == "lease":
@@ -108,11 +111,11 @@ class PlayerMarks:
             if id is None:
                 continue
             if which == "count":
-                n = sum(1 for m in self.by_id.get(id, ()) if base <= m.ts < end and m.stage == stage)
+                n = sum(1 for m in self.by_id.get(id, ()) if since <= m.ts < end and m.stage == stage)
                 if n:
                     out[label] = n * 1e6  # printed as a count
                 continue
-            m = self._first(stage, id, base, end, detail)
+            m = self._first(stage, id, since, end, detail)
             if m is None:
                 continue
             if which == "start":
@@ -133,7 +136,7 @@ class PlayerMarks:
                 at = fields.get("at")
                 if at and at.endswith("ms") and abs(float(at[:-2]) * 1e6 - m.ts) < 3e9:
                     t = float(at[:-2]) * 1e6
-            if t is not None and t >= base:
+            if t is not None and t >= since:
                 out[label] = t - base
         notes = [f"lease {k} {lease.detail}", f"engine {e or '-'}", f"player {p or '-'}"] + native
         return out, notes

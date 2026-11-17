@@ -10,11 +10,15 @@ segments; each kind has its own metric and denominator:
   motion, gliding and under the finger, by cause (seen.py's rule);
 - viewer open (`viewer open-start` .. `viewer morph-end`): from the input
   (the last finger lift before it) to the first viewer frame on screen, to
-  the first frame where the morph moved, and to the player's first frame;
+  the first frame where the morph moved, and to the player's first frame
+  (of the item opened, before any page change; also as shown on screen);
   morph hitches: refreshes where the morph's progress (`LABm`) failed to
   advance or jumped, of the refreshes judged. Then the player's way there,
   stage by stage from the same input, out of the player's own marks
   (`mpx.player <stage> <id>`, see player_stages.py);
+- viewer page (`viewer page`, a video paged to inside the viewer): from
+  the page becoming current (the swipe crossing its middle) to its
+  player's first frame on screen, with the player's stages from there;
 - viewer close (`viewer close-start` .. `viewer close-end`): input to the
   first moving frame, morph hitches, and the time from the close's end
   until the card's own picture moves again (`card moved`);
@@ -98,7 +102,11 @@ for n, (ts, text) in enumerate(events):
         tap = cap.last_input_before(ts)
         first = cap.first_shown_after(ts)
         judged, flags, moving = cap.progress("LABm", ts, stop + 3 * V)
-        player, _ = next_event("viewer first-player-frame", ts, close or float("inf"))
+        # The item opened by the tap: up to the first page change, after
+        # which a frame belongs to the page paged to (`viewer page`).
+        paged, _ = next_event("viewer page", ts, close or float("inf"))
+        mine = min(t for t in (paged, close, ts + 10e9) if t is not None)
+        player, _ = next_event("viewer first-player-frame", ts, mine)
         counts["viewer open"] += 1
         morph["viewer open"][0] += judged
         morph["viewer open"][1] += flags
@@ -107,14 +115,36 @@ for n, (ts, text) in enumerate(events):
                         ("open: player frame", player)):
             if t is not None:
                 lat[name].append(t - base)
-        stages, notes = player_marks.open_stages(base, close or ts + 10e9)
-        opens.append((ts, tap, stages, notes))
+        stages, notes = player_marks.open_stages(base, mine, min(base, ts) - V)
+        opens.append((ts, "open", tap, stages, notes))
+        if player is not None:
+            shown = cap.first_shown_after(player)
+            if shown is not None:
+                lat["open: tap->first frame shown"].append(shown - base)
         hitches = sum(clusters(flags).values())
         segments.append(("viewer open", ts,
                          f"viewer open {word(text, 2)} {word(text, 3)}: input->content {ms(first and first - base)} ms, "
                          f"->moving {ms(moving and moving - base)} ms, ->player frame {ms(player and player - base)} ms; "
                          f"morph hitches {hitches} of {judged} refreshes"
                          + ("" if tap is not None else " (no input found: from the open mark)")))
+
+    elif text.startswith("viewer page"):
+        # The page became current (the swipe crossed half of it): from here
+        # to its player's first frame on screen, when it is a video.
+        bound = min(t for t in (next_event("viewer page", ts + 1)[0], next_event("viewer close-start", ts)[0],
+                                ts + 10e9) if t is not None)
+        player, _ = next_event("viewer first-player-frame", ts, bound)
+        if player is None:
+            continue
+        shown = cap.first_shown_after(player)
+        stages, notes = player_marks.open_stages(ts, bound, ts - V)
+        opens.append((ts, "page", None, stages, notes))
+        counts["viewer page"] += 1
+        if shown is not None:
+            lat["page: current->first frame shown"].append(shown - ts)
+        segments.append(("viewer page", ts,
+                         f"viewer page {word(text, 2)}: current->first frame shown {ms(shown and shown - ts)} ms"
+                         f" ({notes[0]})"))
 
     elif text.startswith("viewer close-start"):
         end, _ = next_event("viewer close-end", ts)
@@ -250,19 +280,25 @@ for kind, ts, text in sorted(segments, key=lambda s: s[1]):
     print(f"  {(ts - cap.refreshes[0]) / 1e9 if cap.refreshes else 0:7.2f}s {text}")
 
 if opens:
-    print("player stages per viewer open, ms from the input (- not reached in the open):")
+    print("player stages per viewer open (ms from the tap) and per page paged to "
+          "(ms from it becoming current):")
     labels = [label for label, *_ in STAGES]
-    by_stage = collections.defaultdict(list)
-    for ts, tap, stages, notes in opens:
+    by_stage = {"open": collections.defaultdict(list), "page": collections.defaultdict(list)}
+    for ts, kind, tap, stages, notes in sorted(opens, key=lambda o: o[0]):
         at = (ts - cap.refreshes[0]) / 1e9 if cap.refreshes else 0
-        print(f"  {at:7.2f}s {' '.join(notes)}" + ("" if tap is not None else " (no input found)"))
-        print("    " + ", ".join(f"{label} {ms(stages.get(label))}" for label in labels
-                                   if label in stages))
+        print(f"  {at:7.2f}s {kind} {' '.join(notes)}"
+              + (" (no input found)" if kind == "open" and tap is None else ""))
+        if stages:
+            print("    " + ", ".join(f"{label} {ms(stages.get(label))}" for label in labels
+                                       if label in stages))
         for label, value in stages.items():
-            by_stage[label].append(value)
-    print("player stages, ms from the input:")
-    print(f"  {'stage':24} {'median':>7} {'max':>7} {'n':>4}")
-    for label in labels:
-        values = by_stage.get(label)
-        if values:
-            print(f"  {label:24} {ms(statistics.median(values)):>7} {ms(max(values)):>7} {len(values):>4}")
+            by_stage[kind][label].append(value)
+    for kind, title in (("open", "tap"), ("page", "page current")):
+        if not by_stage[kind]:
+            continue
+        print(f"player stages, ms from the {title}:")
+        print(f"  {'stage':24} {'median':>7} {'max':>7} {'n':>4}")
+        for label in labels:
+            values = by_stage[kind].get(label)
+            if values:
+                print(f"  {label:24} {ms(statistics.median(values)):>7} {ms(max(values)):>7} {len(values):>4}")
