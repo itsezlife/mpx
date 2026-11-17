@@ -16,19 +16,23 @@ final class AutoDownloadLimit {
   const AutoDownloadLimit.off()
     : enabled = false,
       maxBytes = null,
-      prefixBeyondLimit = false;
+      prefixBeyondLimit = false,
+      unknownSizeDownloads = false;
 
-  /// Downloads whatever its size.
+  /// Downloads whatever its size, a size nobody knows included.
   const AutoDownloadLimit.any()
     : enabled = true,
       maxBytes = null,
-      prefixBeyondLimit = false;
+      prefixBeyondLimit = false,
+      unknownSizeDownloads = true;
 
   /// Downloads up to [maxBytes]; larger content waits for the user, after
-  /// fetching a playable head when [prefixBeyondLimit] is set.
+  /// fetching a playable head when [prefixBeyondLimit] is set. Content whose
+  /// size is unknown waits for the user too, unless [unknownSizeDownloads].
   const AutoDownloadLimit.upTo(
     int this.maxBytes, {
     this.prefixBeyondLimit = false,
+    this.unknownSizeDownloads = false,
   }) : enabled = true;
 
   /// Whether the kind downloads by itself at all.
@@ -40,14 +44,19 @@ final class AutoDownloadLimit {
   /// Whether content over [maxBytes] still fetches a playable head.
   final bool prefixBeyondLimit;
 
-  /// The answer for content of [byteSize] bytes. An unknown size counts as
-  /// within the limit.
+  /// Whether content whose size is unknown downloads by itself. A limit
+  /// cannot be checked against an unknown size, so it waits for the user
+  /// unless the kind downloads whatever its size.
+  final bool unknownSizeDownloads;
+
+  /// The answer for content of [byteSize] bytes, or of an unknown size.
   AutoDownload decide(int? byteSize) {
     if (!enabled) return AutoDownload.manual;
-    final max = maxBytes;
-    if (max == null || byteSize == null || byteSize <= max) {
-      return AutoDownload.now;
+    if (byteSize == null) {
+      return unknownSizeDownloads ? AutoDownload.now : AutoDownload.manual;
     }
+    final max = maxBytes;
+    if (max == null || byteSize <= max) return AutoDownload.now;
     return prefixBeyondLimit ? AutoDownload.prefix : AutoDownload.manual;
   }
 
@@ -56,10 +65,12 @@ final class AutoDownloadLimit {
       other is AutoDownloadLimit &&
       other.enabled == enabled &&
       other.maxBytes == maxBytes &&
-      other.prefixBeyondLimit == prefixBeyondLimit;
+      other.prefixBeyondLimit == prefixBeyondLimit &&
+      other.unknownSizeDownloads == unknownSizeDownloads;
 
   @override
-  int get hashCode => Object.hash(enabled, maxBytes, prefixBeyondLimit);
+  int get hashCode =>
+      Object.hash(enabled, maxBytes, prefixBeyondLimit, unknownSizeDownloads);
 
   @override
   String toString() => !enabled
@@ -67,7 +78,8 @@ final class AutoDownloadLimit {
       : maxBytes == null
       ? 'AutoDownloadLimit.any()'
       : 'AutoDownloadLimit.upTo($maxBytes'
-            '${prefixBeyondLimit ? ', prefixBeyondLimit: true' : ''})';
+            '${prefixBeyondLimit ? ', prefixBeyondLimit: true' : ''}'
+            '${unknownSizeDownloads ? ', unknownSizeDownloads: true' : ''})';
 }
 
 /// The [AutoDownloadLimit] of each media kind on one network.
@@ -257,31 +269,33 @@ final class AutoDownloadPresets {
     ),
   );
 
-  /// The iOS reference: stills up to 1 MB; on unmetered networks videos up
-  /// to 10 MB with a 4 s head beyond and animations up to 10 MB; on metered
-  /// networks (a low-data mode included) videos and animations up to 2.5 MB.
-  /// The platform reports no roaming, which reads as metered.
+  /// The iOS reference: stills always download (photos are not weighed by
+  /// size); on unmetered networks videos up to 10 MB with a 4 s head beyond
+  /// and animations up to 10 MB; on metered networks (a low-data mode
+  /// included) videos and animations up to 2.5 MB. The platform reports no
+  /// roaming, which reads as metered.
   static final AutoDownloadPresets $IOS = AutoDownloadPresets._everyClass(
     const AutoDownloadNetworkLimits(
       unmetered: AutoDownloadLimits(
-        still: AutoDownloadLimit.upTo(_mib),
+        still: AutoDownloadLimit.any(),
         video: AutoDownloadLimit.upTo(10 * _mib, prefixBeyondLimit: true),
         animatedImage: AutoDownloadLimit.upTo(10 * _mib),
       ),
       metered: AutoDownloadLimits(
-        still: AutoDownloadLimit.upTo(_mib),
+        still: AutoDownloadLimit.any(),
         video: AutoDownloadLimit.upTo(_twoAndAHalfMib),
         animatedImage: AutoDownloadLimit.upTo(_twoAndAHalfMib),
       ),
     ),
   );
 
-  /// The desktop reference: stills up to 8 MB, videos and animations up to
-  /// 50 MB, on every network (it does not split them).
+  /// The desktop reference: stills up to 8 MB (one of unknown size too),
+  /// videos and animations up to 50 MB, on every network (it does not split
+  /// them).
   static final AutoDownloadPresets $Desktop = AutoDownloadPresets._everyClass(
     const AutoDownloadNetworkLimits.all(
       AutoDownloadLimits(
-        still: AutoDownloadLimit.upTo(8 * _mib),
+        still: AutoDownloadLimit.upTo(8 * _mib, unknownSizeDownloads: true),
         video: AutoDownloadLimit.upTo(50 * _mib),
         animatedImage: AutoDownloadLimit.upTo(50 * _mib),
       ),

@@ -123,12 +123,17 @@ void main() {
   group(r'$IOS', () {
     final presets = AutoDownloadPresets.$IOS;
 
-    test('metered: a 2 MB still is manual, 2.5 MB videos download', () {
+    test('stills download at any size; 2.5 MB videos download on metered', () {
       const metered = NetworkClass.metered;
       expect(
-        decide(presets, metered, MediaKind.still, 2 * _mb),
-        AutoDownload.manual,
+        decide(presets, metered, MediaKind.still, 30 * _mb),
+        AutoDownload.now,
       );
+      expect(
+        decide(presets, NetworkClass.unmetered, MediaKind.still, 30 * _mb),
+        AutoDownload.now,
+      );
+      expect(presets.fallback.metered.still, const AutoDownloadLimit.any());
       expect(
         decide(presets, metered, MediaKind.video, 5 * _mb ~/ 2),
         AutoDownload.now,
@@ -233,13 +238,32 @@ void main() {
     );
   });
 
-  test('an unknown size is within the limit; vector animations always '
-      'download', () {
+  test('an unknown size waits for a tap for video and animations, and '
+      'downloads for stills, on every platform', () {
+    for (final presets in [
+      AutoDownloadPresets.$Android,
+      AutoDownloadPresets.$IOS,
+      AutoDownloadPresets.$Desktop,
+    ]) {
+      for (final network in [NetworkClass.unmetered, NetworkClass.metered]) {
+        expect(
+          decide(presets, network, MediaKind.video, null),
+          AutoDownload.manual,
+        );
+        expect(
+          decide(presets, network, MediaKind.animatedImage, null),
+          AutoDownload.manual,
+        );
+        expect(
+          decide(presets, network, MediaKind.still, null),
+          AutoDownload.now,
+        );
+      }
+    }
+  });
+
+  test('vector animations always download', () {
     final presets = AutoDownloadPresets.$Android;
-    expect(
-      decide(presets, NetworkClass.metered, MediaKind.video, null),
-      AutoDownload.now,
-    );
     expect(
       decide(presets, NetworkClass.roaming, MediaKind.vectorAnimation, _mb),
       AutoDownload.now,

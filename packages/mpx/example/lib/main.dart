@@ -115,14 +115,36 @@ Future<void> main() async {
         ? NativeRangedContentPublisher(readers = NativeRangedReaders(ranged))
         : null,
   );
-  for (final (key, kind, _, _) in _media) {
+  // Sizes, as a host's data gives them: the auto-download policy weighs
+  // them, and a video or animation of unknown size waits for a tap.
+  final sizes = {
+    for (final e in Lab.corpus?.entries ?? const <CorpusEntry>[])
+      e.file: e.size,
+  };
+  for (final (key, kind, file, _) in _media) {
+    final size = sizes[file] ?? await _bundledSize(file);
     stack.pipeline.know(
-      MediaDescriptor(key: key, kind: kind, animated: kind != MediaKind.still),
+      MediaDescriptor(
+        key: key,
+        kind: kind,
+        animated: kind != MediaKind.still,
+        byteSize: size,
+      ),
     );
   }
   final players = await _players(readers);
   if (kMpxLab) Lab.attach(stack, players);
   runApp(MediaApp(stack: stack, players: players));
+}
+
+/// The size of a bundled media [file], or null when the bundle has none
+/// (a corpus file).
+Future<int?> _bundledSize(String file) async {
+  try {
+    return (await rootBundle.load('assets/media/$file')).lengthInBytes;
+  } on Object {
+    return null;
+  }
 }
 
 /// The platform player over the stack's cache: the viewer plays videos with

@@ -9,8 +9,10 @@
   connected class. `$Android`, `$IOS` and `$Desktop` hold each platform's
   reference defaults. `MpxStack.create(autoDownload:)` defaults to it for
   `defaultTargetPlatform`, and `MpxStack.autoDownload` exposes the policy.
-  Missing videos over the limit now show their stand-ins and wait for a
-  tap instead of downloading.
+  Missing videos over the limit, and videos and animations whose size is
+  unknown, now show their stand-ins and wait for a tap instead of
+  downloading (`AutoDownloadLimit.upTo(unknownSizeDownloads:)`; stills of
+  unknown size still download).
 - `BytesCachePreviewStore`: derived previews as rows of the bytes cache
   under `BytesQuota.previews`, with a 512-entry memory tier and writes
   after the frame. `MpxStack.create(previews:, previewBlur:)` uses it by

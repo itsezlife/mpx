@@ -87,7 +87,8 @@ void main() {
     final decoder = FakeDecoder();
     final stack = await create(decoders: (_) => {MediaKind.video: decoder});
     stack.pipeline.know(
-      const MediaDescriptor(key: _key, kind: MediaKind.video),
+      // Its size is known, so the default policy downloads it.
+      const MediaDescriptor(key: _key, kind: MediaKind.video, byteSize: 16),
     );
 
     final binding = stack.scope.attach(
@@ -132,7 +133,8 @@ void main() {
       dir.deleteSync(recursive: true);
     });
     stack.pipeline.know(
-      const MediaDescriptor(key: _key, kind: MediaKind.video),
+      // Its size is known, so the default policy downloads it.
+      const MediaDescriptor(key: _key, kind: MediaKind.video, byteSize: 16),
     );
 
     final binding = stack.scope.attach(
