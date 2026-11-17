@@ -114,7 +114,10 @@ final class FeedPagerPlanner {
 /// releases the others; a released player stays warm in the pool until the
 /// budget needs its engine, so swiping back is cheap too. The prepared count
 /// is the smaller of the policy's prepared players and the pool's prepared
-/// budget, which the host sets from the device's class.
+/// budget, which the host sets from the device's class. An active item the
+/// autoplay gate holds back ([FeedAutoplay.none]) gets no player: it waits
+/// for a tap, and a prepared player would fetch its bytes. One that already
+/// held a player when the gate closed keeps it, paused on its frame.
 ///
 /// Mute is session-wide: it applies to the active player and the prepared
 /// ones. Without a mute of the host's it starts as the policy's initial mute
@@ -254,7 +257,13 @@ final class FeedPager extends ChangeNotifier {
           preparedCap: _pool.budget.prepared,
         );
     _plan = plan;
-    final known = itemOf(plan.active) != null;
+    // An item the gate holds back waits for a tap: a player prepared for it
+    // would fetch the bytes nobody asked for. One that held a player keeps
+    // it, paused on its frame (power saving came on while it played).
+    final known =
+        itemOf(plan.active) != null &&
+        (plan.autoplay != FeedAutoplay.none ||
+            _leases.containsKey(plan.active));
     final keep = {if (known) plan.active, ...plan.warm};
     for (final index in _leases.keys.toList()) {
       if (!keep.contains(index)) _leases.remove(index)!.release();

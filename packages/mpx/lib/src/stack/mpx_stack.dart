@@ -130,7 +130,7 @@ final class MpxStack {
   ///   texture host where there is one.
   /// - [autoDownload] decides which missing content downloads by itself.
   ///   It defaults to a [NetworkAutoDownloadPolicy] over [signals] with the
-  ///   reference presets of `defaultTargetPlatform`
+  ///   presets of `defaultTargetPlatform`
   ///   ([AutoDownloadPresets.forPlatform]), which the stack disposes; a
   ///   host policy stays the host's.
   static Future<MpxStack> create({

@@ -276,7 +276,7 @@ class _ViewerPageStatusState extends State<ViewerPageStatus> {
     final transfer = binding.transfer;
     final stage = binding.readiness.stage;
     // A video and an animation (a GIF) show cancel and the arc of their
-    // bytes, as the reference's radial does for both; a photo shows the
+    // bytes alike, one radial for both; a photo shows the
     // policy's photo progress.
     if (widget.kind != GalleryMediaKind.photo) {
       return MediaStatus.forTransfer(transfer, stage);

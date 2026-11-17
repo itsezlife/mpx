@@ -60,19 +60,19 @@ final class MediaSizeFormat {
   /// Creates a format.
   const MediaSizeFormat({required this.pair, this.narrowBelow = 0});
 
-  /// The Android reference: "1.2 MB / 4.5 MB", "NN%" below 120 px wide.
+  /// Android: "1.2 MB / 4.5 MB", "NN%" below 120 px wide.
   static const MediaSizeFormat $Android = MediaSizeFormat(
     pair: MediaSizePairForm.eachUnit,
     narrowBelow: 120,
   );
 
-  /// The iOS reference: "1.2 / 4.5 MB", "NN%" below 120 pt wide.
+  /// iOS: "1.2 / 4.5 MB", "NN%" below 120 pt wide.
   static const MediaSizeFormat $IOS = MediaSizeFormat(
     pair: MediaSizePairForm.sharedUnit,
     narrowBelow: 120,
   );
 
-  /// The desktop reference: "1.2 / 4.5 MB" in tenths of a megabyte; no
+  /// Desktop: "1.2 / 4.5 MB" in tenths of a megabyte; no
   /// narrow form.
   static const MediaSizeFormat $Desktop = MediaSizeFormat(
     pair: MediaSizePairForm.tenthsOfMegabyte,
@@ -173,7 +173,7 @@ final class MediaSizeFormat {
 /// The look of a media badge (`MediaBadge`): a small label at the top-left
 /// of media with its duration (or "GIF") and, while it downloads, the bytes.
 ///
-/// [$Android], [$IOS] and [$Desktop] are each platform's reference; a host
+/// [$Android], [$IOS] and [$Desktop] are each platform's look; a host
 /// sets its theme's text style and colours with [copyWith] through
 /// `MediaLoadingStyleScope`.
 @immutable
@@ -214,7 +214,7 @@ final class MediaBadgeStyle {
   /// How sizes and the narrow form are written.
   final MediaSizeFormat sizeFormat;
 
-  /// The Android reference: white 12 on `0x66000000`, radius 8, at (4, 4);
+  /// Android: white 12 on `0x66000000`, radius 8, at (4, 4);
   /// the second row grows in over 200 ms.
   static const MediaBadgeStyle $Android = MediaBadgeStyle(
     offset: Offset(4, 4),
@@ -227,7 +227,7 @@ final class MediaBadgeStyle {
     sizeFormat: MediaSizeFormat.$Android,
   );
 
-  /// The iOS reference: white 11 with monospaced digits on black at 0.3, a
+  /// iOS: white 11 with monospaced digits on black at 0.3, a
   /// capsule of radius 9, at (6, 6); 0.2 s fades.
   static const MediaBadgeStyle $IOS = MediaBadgeStyle(
     offset: Offset(6, 6),
@@ -245,7 +245,7 @@ final class MediaBadgeStyle {
     sizeFormat: MediaSizeFormat.$IOS,
   );
 
-  /// The desktop reference: white 13 on `#00000054`, at (4, 4), padded
+  /// Desktop: white 13 on `#00000054`, at (4, 4), padded
   /// (8, 2).
   static const MediaBadgeStyle $Desktop = MediaBadgeStyle(
     offset: Offset(4, 4),

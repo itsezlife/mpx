@@ -151,7 +151,7 @@ enum MediaIconMorph {
 /// The look and motion of a status control (`MediaStatusControl`): a disc,
 /// a progress arc, and an icon.
 ///
-/// [$Android], [$IOS] and [$Desktop] are each platform's reference; a host
+/// [$Android], [$IOS] and [$Desktop] are each platform's look; a host
 /// adjusts one with [copyWith] through `MediaLoadingStyleScope`. Lengths are
 /// logical pixels; angles are degrees, clockwise from three o'clock.
 @immutable
@@ -286,7 +286,7 @@ final class MediaStatusStyle {
     return scaled < minArcStroke ? minArcStroke : scaled;
   }
 
-  /// The Android reference: a 44 dp disc of `0x66000000` with a 3 dp white
+  /// Android: a 44 dp disc of `0x66000000` with a 3 dp white
   /// arc inset 4 dp, at least 4°, turning once per 2.5 s from 112°; a new
   /// progress eases in over 200 ms, decelerating, forward only. Download
   /// turns into cancel in 400 ms (0.5 / 0.2 / 0.3), play and pause in
@@ -328,7 +328,7 @@ final class MediaStatusStyle {
     iconStroke: 2,
   );
 
-  /// The iOS reference: a 50 pt disc of black at 0.45 (0.6 under a dark
+  /// iOS: a 50 pt disc of black at 0.45 (0.6 under a dark
   /// theme) with a white arc of `max(1.6, 2.25 · d / 50)` inset 2.5, at
   /// least about 10°, the whole arc turning once per 1.5 s; a new progress
   /// moves linearly over 0.2 s plus up to 0.45 s for a step above a
@@ -373,7 +373,7 @@ final class MediaStatusStyle {
     iconStroke: 2,
   );
 
-  /// The desktop reference: a 44 px disc of `#00000054` (`#00000074` under
+  /// Desktop: a 44 px disc of `#00000054` (`#00000074` under
   /// a hovering pointer, over 200 ms) with a 3 px white arc inset 3, at
   /// least 1°, its start turning once per 3 s; a new progress closes on the
   /// arc asymptotically. The control fades in and out over 350 ms; icons

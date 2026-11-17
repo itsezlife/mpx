@@ -102,12 +102,17 @@ final class AutoDownloadLimits {
   /// Video-coded media.
   final AutoDownloadLimit video;
 
-  /// Animated images (GIF, animated WebP).
+  /// GIFs: animated images (GIF, animated WebP), and GIFs sent as a silent
+  /// video loop (`MediaDescriptor.silentLoop`).
   final AutoDownloadLimit animatedImage;
 
-  /// The answer for the content of [descriptor].
+  /// The answer for the content of [descriptor]. A GIF is weighed as a GIF
+  /// whatever its codec: a silent loop is not held to the video limits.
   AutoDownload decide(MediaDescriptor descriptor) => switch (descriptor.kind) {
     MediaKind.vectorAnimation => AutoDownload.now,
+    MediaKind.video when descriptor.silentLoop => animatedImage.decide(
+      descriptor.byteSize,
+    ),
     MediaKind.video => video.decide(descriptor.byteSize),
     MediaKind.animatedImage => animatedImage.decide(descriptor.byteSize),
     MediaKind.still || MediaKind.unknown => still.decide(descriptor.byteSize),
@@ -190,11 +195,11 @@ final class AutoDownloadNetworkLimits {
 /// [AutoDownloadContext] the host lists, and a [fallback] row for every
 /// other tag and for none.
 ///
-/// [$Android], [$IOS] and [$Desktop] are each platform's reference
-/// defaults. Their rows for the well-known peer classes
-/// ([AutoDownloadContext.contacts], `privateChats`, `groups`, `channels`)
-/// are listed, and equal the fallback: no reference splits these classes for
-/// photos, videos or animations by default.
+/// [$Android], [$IOS] and [$Desktop] are each platform's defaults. Their
+/// rows for the well-known peer classes ([AutoDownloadContext.contacts],
+/// `privateChats`, `groups`, `channels`) are listed, and equal the fallback:
+/// by default no platform splits these classes for photos, videos or
+/// animations.
 @immutable
 final class AutoDownloadPresets {
   /// Creates presets.
@@ -213,7 +218,7 @@ final class AutoDownloadPresets {
         AutoDownloadContext.channels: row,
       };
 
-  /// The reference presets of [platform]: [$IOS] on iOS, [$Desktop] on
+  /// The presets of [platform]: [$IOS] on iOS, [$Desktop] on
   /// macOS, Windows and Linux, [$Android] elsewhere. On the web the platform
   /// is the one the browser runs on.
   factory AutoDownloadPresets.forPlatform(TargetPlatform platform) =>
@@ -246,7 +251,7 @@ final class AutoDownloadPresets {
     byContext: {...byContext, context: limits},
   );
 
-  /// The Android reference: stills always download; videos up to 15 MB on
+  /// Android: stills always download; videos up to 15 MB on
   /// unmetered and 10 MB on metered networks, a 4 s head beyond that;
   /// animations up to the same sizes; on roaming only stills.
   static final AutoDownloadPresets $Android = AutoDownloadPresets._everyClass(
@@ -269,7 +274,7 @@ final class AutoDownloadPresets {
     ),
   );
 
-  /// The iOS reference: stills always download (photos are not weighed by
+  /// iOS: stills always download (photos are not weighed by
   /// size); on unmetered networks videos up to 10 MB with a 4 s head beyond
   /// and animations up to 10 MB; on metered networks (a low-data mode
   /// included) videos and animations up to 2.5 MB. The platform reports no
@@ -289,7 +294,7 @@ final class AutoDownloadPresets {
     ),
   );
 
-  /// The desktop reference: stills up to 8 MB (one of unknown size too),
+  /// Desktop: stills up to 8 MB (one of unknown size too),
   /// videos and animations up to 50 MB, on every network (it does not split
   /// them).
   static final AutoDownloadPresets $Desktop = AutoDownloadPresets._everyClass(

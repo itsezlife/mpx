@@ -226,6 +226,22 @@ void main() {
       expect(advanced, [4]);
     });
 
+    test('an item the gate holds back from the start holds no player: it '
+        'waits for a tap, and a player would fetch its bytes', () async {
+      final saving = ValueNotifier(const FeedConditions(powerSaving: true));
+      addTearDown(saving.dispose);
+      final pager = makePager(index: 3, conditions: saving);
+      await settle();
+
+      expect(pager.leaseOf(3), isNull);
+      expect(backend.latestFor(keyOf(3)), isNull);
+
+      // Once it may play, it plays.
+      saving.value = const FeedConditions();
+      await settle();
+      expect(pager.leaseOf(3)!.state.value.playing, isTrue);
+    });
+
     test('new conditions re-plan: power saving stops autoplay', () async {
       final conditions = ValueNotifier(const FeedConditions());
       addTearDown(conditions.dispose);

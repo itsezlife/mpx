@@ -36,6 +36,32 @@ void main() {
     AutoDownloadContext? context,
   ]) => policyOf(presets, network).decide(_media(kind, bytes), context);
 
+  test('a GIF sent as a silent video loop is weighed as a GIF', () {
+    const limits = AutoDownloadLimits(
+      still: AutoDownloadLimit.any(),
+      video: AutoDownloadLimit.upTo(10 * _mb, prefixBeyondLimit: true),
+      animatedImage: AutoDownloadLimit.off(),
+    );
+    final policy = policyOf(
+      const AutoDownloadPresets(
+        fallback: AutoDownloadNetworkLimits.all(limits),
+      ),
+      NetworkClass.unmetered,
+    );
+    const loop = MediaDescriptor(
+      key: MediaKey.remote('gif-as-video'),
+      kind: MediaKind.video,
+      byteSize: 2 * _mb,
+      silentLoop: true,
+    );
+
+    expect(policy.decide(loop, null), AutoDownload.manual);
+    expect(
+      policy.decide(_media(MediaKind.video, 2 * _mb), null),
+      AutoDownload.now,
+    );
+  });
+
   group(r'$Android', () {
     final presets = AutoDownloadPresets.$Android;
 
