@@ -801,6 +801,18 @@ class _RenderContent extends RenderBox {
     // them too, until the content reaches the stage it names.
     final outranked = _binding.readiness.stage.index < _placeholderUntil.index;
     if (_standsIn && (bare || outranked)) {
+      // The stand-in the content has goes beneath: an own placeholder with
+      // clear parts (a frame read from a surface that drew nothing there)
+      // shows it rather than a black box; an opaque one covers it.
+      if (!bare) {
+        _binding.paint(
+          context.canvas,
+          box,
+          tint: _tint,
+          opacity: _opacity,
+          outline: _outlineLook(),
+        );
+      }
       _placeholder.paint(
         context.canvas,
         box,

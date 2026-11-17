@@ -173,14 +173,14 @@ void main() {
         (attempt) => attempt.request.key == photoKey(0),
       );
 
-      final preview = attempt.advance(AssetStage.preview);
+      attempt.advance(AssetStage.preview);
       final thumbnail = attempt.advance(AssetStage.placeholder);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
       expect(find.byType(MediaViewer), _drawsFrame(frame));
-      expect(preview.paints, isEmpty);
-      expect(thumbnail.paints, isEmpty);
+      // The stand-in is beneath the frame: a clear frame never leaves black.
+      expect(thumbnail.paints, isNotEmpty);
 
       attempt.advance(AssetStage.full);
       await tester.pump();
@@ -287,6 +287,32 @@ void main() {
       expect(statuses, [photoKey(0)]);
       await gesture.up();
       await tester.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets('an animation (a GIF) that downloads shows cancel and the '
+        'arc of its bytes, as a video does', (tester) async {
+      final harness = ViewerHarness(
+        items: [
+          GalleryItem(
+            photoKey(0),
+            kind: GalleryMediaKind.animation,
+            size: const Size(1200, 900),
+          ),
+        ],
+      );
+      await harness.pump(tester);
+      final attempt = harness.producer.attempts.lastWhere(
+        (attempt) => attempt.request.key == photoKey(0),
+      );
+
+      attempt
+        ..waiting()
+        ..transfer(25, 100);
+      await tester.pump();
+
+      final status = statusOf(tester, photoKey(0));
+      expect(status.icon, MediaStatusIcon.cancel);
+      expect(status.progress, 0.25);
     });
 
     testWidgets('Android: a photo that downloads shows a spinner', (

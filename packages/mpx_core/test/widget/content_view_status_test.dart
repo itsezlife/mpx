@@ -174,7 +174,8 @@ void main() {
   });
 
   testWidgets('placeholderUntil keeps the view placeholder over the preview '
-      'and the thumbnail', (tester) async {
+      'and the thumbnail, which paint beneath it (a clear placeholder never '
+      'leaves the view black)', (tester) async {
     final own = FakeAssetPaintable(label: 'origin');
     await tester.pumpWidget(
       host(
@@ -188,11 +189,12 @@ void main() {
     );
     final preview = producer.last.advance(AssetStage.preview);
     await tester.pump();
+    expect(preview.paints, isNotEmpty);
     final thumbnail = producer.last.advance(AssetStage.placeholder);
     await tester.pump();
+    await tester.pump(_gone);
 
-    expect(preview.paints, isEmpty);
-    expect(thumbnail.paints, isEmpty);
+    expect(thumbnail.paints, isNotEmpty);
     expect(own.paints, isNotEmpty);
 
     final content = producer.last.advance(AssetStage.full);

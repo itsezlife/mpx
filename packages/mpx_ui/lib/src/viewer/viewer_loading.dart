@@ -143,9 +143,10 @@ class _ViewerBufferingSpinnerState extends State<ViewerBufferingSpinner>
 /// picture is not there yet shows over it, centred and at the rules' size
 /// whatever the page's zoom.
 ///
-/// A photo or an animation that downloads shows
+/// A photo that downloads shows
 /// [ViewerLoadingRules.photoProgress] (a spinner, or an arc of the bytes)
 /// once it has loaded for [ViewerLoadingRules.photoProgressDelay]; a video
+/// or an animation (a GIF)
 /// shows cancel and an arc. Content that waits for the user, or whose
 /// download failed, shows download, which downloads (the retry). Content
 /// that shows its first frame, or is in the cache, shows nothing.
@@ -274,7 +275,10 @@ class _ViewerPageStatusState extends State<ViewerPageStatus> {
     if (binding == null) return MediaStatus.none;
     final transfer = binding.transfer;
     final stage = binding.readiness.stage;
-    if (widget.kind == GalleryMediaKind.video) {
+    // A video and an animation (a GIF) show cancel and the arc of their
+    // bytes, as the reference's radial does for both; a photo shows the
+    // policy's photo progress.
+    if (widget.kind != GalleryMediaKind.photo) {
       return MediaStatus.forTransfer(transfer, stage);
     }
     if (!transfer.isActive || stage.index >= AssetStage.firstFrame.index) {
