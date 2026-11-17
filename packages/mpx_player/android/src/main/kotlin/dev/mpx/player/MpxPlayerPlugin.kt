@@ -1,6 +1,7 @@
 package dev.mpx.player
 
 import android.content.Context
+import android.os.Trace
 import androidx.media3.common.util.UnstableApi
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
@@ -79,21 +80,28 @@ class MpxPlayerPlugin : FlutterPlugin, ActivityAware, PlayerHostApi {
                 "this player expects ${HbcNative.expectedVersion()} or later."
         }
         val id = nextId++
-        players[id] =
-            MpxVideoPlayer(
-                context = context,
-                id = id,
-                source = source,
-                settings = settings,
-                producer = textures.createSurfaceProducer(),
-                renderers = MpxRenderersFactory(context),
-                parts = parts,
-                report = { snapshot ->
-                    flutter.onSnapshot(snapshot) {}
-                    background.update(players.values.firstOrNull { it.isAudible }?.player)
-                },
-                failedCodecOf = device::failedCodecOf,
-            )
+        // On the main thread, which also delivers the frame clock: a system
+        // trace shows what a player costs it.
+        Trace.beginSection("mpx.player create")
+        try {
+            players[id] =
+                MpxVideoPlayer(
+                    context = context,
+                    id = id,
+                    source = source,
+                    settings = settings,
+                    producer = textures.createSurfaceProducer(),
+                    renderers = MpxRenderersFactory(context),
+                    parts = parts,
+                    report = { snapshot ->
+                        flutter.onSnapshot(snapshot) {}
+                        background.update(players.values.firstOrNull { it.isAudible }?.player)
+                    },
+                    failedCodecOf = device::failedCodecOf,
+                )
+        } finally {
+            Trace.endSection()
+        }
         return id
     }
 
@@ -126,9 +134,14 @@ class MpxPlayerPlugin : FlutterPlugin, ActivityAware, PlayerHostApi {
     }
 
     private fun release(player: MpxVideoPlayer) {
-        pictureInPicture.forget(player.id)
-        background.forget(player.player)
-        player.dispose()
+        Trace.beginSection("mpx.player release")
+        try {
+            pictureInPicture.forget(player.id)
+            background.forget(player.player)
+            player.dispose()
+        } finally {
+            Trace.endSection()
+        }
     }
 
     // --- Audio focus --------------------------------------------------------

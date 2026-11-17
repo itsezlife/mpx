@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' show Timeline;
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -557,6 +558,8 @@ class MediaViewerState extends State<MediaViewer>
   // of the one before. Only the item on screen holds a lease: the pool keeps
   // the one left warm until its budget needs it.
   void _syncVideo() {
+    // Not while the open morph runs: _open's end makes the lease.
+    if (_phase == _Phase.opening) return;
     final players = widget.players;
     final item = widget.source.itemAt(_index);
     if (players == null ||
@@ -584,15 +587,19 @@ class MediaViewerState extends State<MediaViewer>
     // The loop stands still while the player plays the item: one decode of
     // the content at a time.
     _loopHold = cache?.holdPlayback(item.key, _loopSpec);
-    _session = ViewerVideoSession(
-      players: players,
-      item: item,
-      rules: _video,
-      controls: _controls,
-      speeds: _speeds,
-      startAt: startAt,
-      autoHide: _phase == _Phase.open,
-    )..addListener(_onSession);
+    final session = Timeline.timeSync(
+      'mpx.viewer lease',
+      () => ViewerVideoSession(
+        players: players,
+        item: item,
+        rules: _video,
+        controls: _controls,
+        speeds: _speeds,
+        startAt: startAt,
+        autoHide: _phase == _Phase.open,
+      ),
+    );
+    _session = session..addListener(_onSession);
     _sessionIndex = _index;
     _notifyController();
   }
@@ -817,13 +824,31 @@ class MediaViewerState extends State<MediaViewer>
     _cache?.seekPlayback(item!.key, _loopSpec, Duration.zero);
   }
 
-  // The page's picture as it shows now, the player's included, or null when
-  // the page has none painted.
-  ui.Image? _pictureNow(int index) {
-    final boundary = _frameKeys[index]?.currentContext?.findRenderObject();
-    if (boundary is! RenderRepaintBoundary || !boundary.hasSize) return null;
-    final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
-    return boundary.toImageSync(pixelRatio: dpr);
+  // Gives the surface's loop the player's place: the surface goes to the
+  // player's position, showing the player's last picture (taken off the UI
+  // isolate) until its own frame there is drawn. Done while the surface is
+  // still hidden, after the close morph.
+  Future<void> _handBack(
+    ({
+      int index,
+      GalleryItem item,
+      Duration position,
+      Future<ui.Image?> picture,
+    })
+    back,
+  ) async {
+    final picture = await back.picture;
+    if (!mounted) {
+      picture?.dispose();
+      return;
+    }
+    widget.bridge?.handBack(back.index, back.position);
+    _cache?.seekPlayback(
+      back.item.key,
+      _loopSpec,
+      back.position,
+      picture: picture,
+    );
   }
 
   Future<ui.Image?> _captureFrame(int index) async {
@@ -858,7 +883,6 @@ class MediaViewerState extends State<MediaViewer>
 
   void _open() {
     if (!mounted) return;
-    _syncVideo();
     _holdForTransition();
     _restartLoop();
     final origin = widget.bridge?.originOf(_index);
@@ -878,6 +902,11 @@ class MediaViewerState extends State<MediaViewer>
         if (!mounted || _phase != _Phase.opening) return;
         _releaseTransitionHold();
         setState(() => _phase = _Phase.open);
+        // The player comes once the morph is over: creating one is heavy on
+        // the platform's main thread (codecs, a surface), which also delivers
+        // the frame clock, so made during the morph it holds the morph's
+        // first frames back. The morph draws the picture at hand meanwhile.
+        _syncVideo();
         _session?.autoHide = true;
         _notifyController();
       });
@@ -889,6 +918,13 @@ class MediaViewerState extends State<MediaViewer>
   Future<void> close() async {
     if (_phase == _Phase.closing || _phase == _Phase.closed) return;
     final session = _session;
+    ({
+      int index,
+      GalleryItem item,
+      Duration position,
+      Future<ui.Image?> picture,
+    })?
+    handBack;
     if (session != null) {
       final position = session.lease.position;
       final item = widget.source.itemAt(_index);
@@ -897,15 +933,18 @@ class MediaViewerState extends State<MediaViewer>
         _leftReported = true;
         switch (_video.originReturn) {
           case ViewerOriginReturn.atPlayer:
-            widget.bridge?.handBack(_index, position);
-            // The surface's loop of the content goes to the player's place,
-            // showing the player's last picture until its own frame there
-            // is drawn.
-            _cache?.seekPlayback(
-              item.key,
-              _loopSpec,
-              position,
-              picture: _pictureNow(_index),
+            // After the morph: the surface's loop takes the player's place
+            // and its last picture then, while the surface is still hidden.
+            // The picture is asked for now, while the page shows it, and
+            // read back off the UI isolate as the morph runs.
+            handBack = (
+              index: _index,
+              item: item,
+              position: position,
+              picture: Timeline.timeSync(
+                'mpx.viewer hand-back capture',
+                () => _captureFrame(_index),
+              ),
             );
           case ViewerOriginReturn.restart:
             _cache?.seekPlayback(item.key, _loopSpec, Duration.zero);
@@ -966,6 +1005,8 @@ class MediaViewerState extends State<MediaViewer>
     await _transition.forward(from: 0);
     if (!mounted) return;
     _releaseTransitionHold();
+    if (handBack != null) await _handBack(handBack);
+    if (!mounted) return;
     _hide(_index, hidden: false);
     setState(() => _phase = _Phase.closed);
     _notifyController();
