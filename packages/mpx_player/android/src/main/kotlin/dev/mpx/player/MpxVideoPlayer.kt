@@ -16,6 +16,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.analytics.AnalyticsListener
@@ -118,6 +119,7 @@ internal class MpxVideoPlayer(
                         /* handleAudioFocus= */ false,
                     )
                     .setHandleAudioBecomingNoisy(false)
+                    .setLoadControl(loadControl())
                     .build()
             }
         exo.addListener(this)
@@ -152,6 +154,26 @@ internal class MpxVideoPlayer(
         }
         send()
     }
+
+    // When playback starts: Media3's defaults wait for a second of media
+    // before the first start and two after a stall, the thresholds of a
+    // network stream it cannot see the cost of. Here every read is from the
+    // bytes cache's sparse file, a local read once the bytes landed, and the
+    // cache fetches ahead of the loader on its own: a tenth of a second
+    // starts at once, as soon as the first frame and the first audio are
+    // decoded. After a stall the network has proved slower than the media,
+    // so a second of it is waited for (half the default), which keeps a slow
+    // link from stalling again every few frames. The buffer it keeps
+    // ahead is unchanged.
+    private fun loadControl() =
+        DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
+                DefaultLoadControl.DEFAULT_MAX_BUFFER_MS,
+                START_BUFFER_MS,
+                RESTART_BUFFER_MS,
+            )
+            .build()
 
     private fun mediaSourceOf(source: NativePlayerSource, parts: StreamParts): MediaSource {
         val playlist = source.playlistUrl
@@ -389,5 +411,7 @@ internal class MpxVideoPlayer(
         private const val TAG = "mpx_player"
         private const val TICK_MS = 100L
         private const val FAST_PITCH = 0.98f
+        private const val START_BUFFER_MS = 100
+        private const val RESTART_BUFFER_MS = 1000
     }
 }

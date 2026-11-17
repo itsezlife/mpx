@@ -145,7 +145,10 @@ Tickets 23-26, 28, 29 (2026-11-13).
   for SDR tone-mapping (`KEY_COLOR_TRANSFER_REQUEST`) on API 31+. A seek
   cancels the reads blocked for that player. No `DefaultPreloadManager`:
   prepared engines under `PlayerBudget` plus the feed's byte preloads cover
-  the warm neighbours without its play-on-its-own-builder rule.
+  the warm neighbours without its play-on-its-own-builder rule. Playback
+  starts on 100 ms of buffered media (1000 ms after a stall) instead of
+  Media3's 1000 / 2000: every read is from the bytes cache's sparse file,
+  which fetches ahead on its own, so the defaults only delayed the start.
 - **Texture budget**: one texture per engine, so `PlayerBudget.capacity`
   bounds the player's textures; no separate byte budget.
 - **Audio focus**: Android `AudioFocusRequest` and the noisy-output

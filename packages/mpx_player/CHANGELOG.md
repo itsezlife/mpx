@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Android starts playback on 100 ms of buffered media (1 s after a stall),
+  not Media3's 1 s (2 s).
 - Players mark their way from a lease to the first frame on screen in the
   timeline and the system trace (`mpx.player <stage> <id>`), always on
   outside release builds.
