@@ -17,6 +17,7 @@ import 'package:mpx_example/lab/lab.dart';
 import 'package:mpx_example/lab/lab_coverage.dart';
 import 'package:mpx_example/lab/lab_viewer.dart';
 import 'package:mpx_example/lab/stress_feed.dart';
+import 'package:mpx_example/loading_demo.dart';
 import 'package:mpx_lottie/mpx_lottie.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_player/native.dart';
@@ -90,7 +91,12 @@ Future<void> main() async {
   // first, then what plays, never waiting on a decode worker), and the
   // players read their sources through it.
   NativeRangedReaders? readers;
+  // The device's signals, read by the stack and by the auto-download policy
+  // (which tiles download by themselves on this network).
+  final signals = DeviceSignals();
   final stack = await MpxStack.create(
+    signals: signals,
+    autoDownload: LoadingDemo.policy(signals),
     // Where each key's bytes are. A real host maps its keys to its CDN.
     locate: (descriptor, part) => switch (_fileOf(descriptor.key)) {
       final file? => MediaLocation(_urlOf(file).toString()),
@@ -389,6 +395,12 @@ class _MediaAppState extends State<MediaApp> {
                                 content: key,
                                 plays: kind != MediaKind.still,
                                 label: label,
+                                // Every other tile waits for a tap on a
+                                // fresh install: its download control and
+                                // size show over the stand-in.
+                                downloadContext: index.isOdd
+                                    ? LoadingDemo.manual
+                                    : null,
                               ),
                             ),
                           ),
@@ -439,6 +451,7 @@ class _MediaTile extends StatelessWidget {
     required this.content,
     required this.plays,
     required this.label,
+    this.downloadContext,
   });
 
   /// The tile's gallery index: its picture is the viewer's origin.
@@ -464,6 +477,9 @@ class _MediaTile extends StatelessWidget {
   final bool plays;
   final String label;
 
+  /// The tile's auto-download tag.
+  final AutoDownloadContext? downloadContext;
+
   @override
   Widget build(BuildContext context) {
     final preset = plays
@@ -485,10 +501,16 @@ class _MediaTile extends StatelessWidget {
           borderRadius: const BorderRadius.all(Radius.circular(_radius)),
           // The tile shows the picture whole, letterboxed in its square.
           fit: BoxFit.contain,
-          child: ContentView(content: content, preset: preset),
+          child: ContentView(
+            content: content,
+            preset: preset,
+            downloadContext: downloadContext,
+            status: const MediaStatusMode.control(),
+            badge: true,
+          ),
         ),
         const SizedBox(height: 8),
-        Text(label),
+        Text(downloadContext == null ? label : '$label (tap to load)'),
       ],
     );
   }

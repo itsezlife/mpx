@@ -5,6 +5,7 @@ import 'package:mpx_example/gallery.dart';
 import 'package:mpx_example/lab/corpus.dart';
 import 'package:mpx_example/lab/lab.dart';
 import 'package:mpx_example/lab/lab_viewer.dart';
+import 'package:mpx_example/loading_demo.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_ui/mpx_ui.dart';
 
@@ -58,11 +59,13 @@ final class StressItems {
   /// The file of a stress key, or null for any other key.
   static String? fileOf(MediaKey key) => _files[key];
 
-  /// Makes every item known to [stack]'s pipeline.
+  /// Makes every item known to [stack]'s pipeline. Every third item waits
+  /// for a tap on its download control (`LoadingDemo.manualKeys`).
   void know(MpxStack stack) {
     for (var i = 0; i < count; i++) {
       final source = sourceAt(i);
       final key = keyAt(i);
+      if (i % 3 == 2) LoadingDemo.manualKeys.add(key);
       stack.pipeline.know(
         MediaDescriptor(
           key: key,
@@ -183,7 +186,21 @@ class _StressFeedPageState extends State<StressFeedPage> {
                       policy: LabViewer.policy(context),
                       onBackdropScale: LabViewer.onBackdropScale,
                     ),
-                    child: ViewerOrigin(index: index, child: clip),
+                    child: ViewerOrigin(
+                      index: index,
+                      child: Stack(
+                        children: [
+                          clip,
+                          // The status control and the badge over the clip.
+                          Positioned.fill(
+                            child: LoadingDemo.overlay(
+                              content: items.keyAt(index),
+                              preset: _preset(dpr, const AssetProfile()),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               );
