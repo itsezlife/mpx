@@ -85,7 +85,9 @@ final class MpxPlayer: NSObject, FlutterTexture {
     looping = settings.looping
     startAtUs = max(0, settings.startAtUs)
     seekId = settings.seekId
-    loader = MpxResourceLoader(api: api, key: source.cacheKey, mimeType: source.mimeType)
+    MpxPlayerTrace.mark("create", id)
+    loader = MpxResourceLoader(
+      api: api, key: source.cacheKey, mimeType: source.mimeType, traceId: id)
     let asset = AVURLAsset(url: url)
     asset.resourceLoader.setDelegate(loader, queue: loader.queue)
     item = AVPlayerItem(asset: asset)
@@ -107,6 +109,7 @@ final class MpxPlayer: NSObject, FlutterTexture {
     observe()
     applyRotation(of: asset)
     player.replaceCurrentItem(with: item)
+    MpxPlayerTrace.mark("prepare", id)
     report(snapshot())
   }
 
@@ -264,6 +267,7 @@ final class MpxPlayer: NSObject, FlutterTexture {
   private func startPlaying() {
     let finish = { [weak self] in
       guard let self, !self.disposed, self.failure == nil else { return }
+      MpxPlayerTrace.mark("ready", self.id)
       self.prepared = true
       if self.playing { self.player.rate = Float(self.speed) }
       self.wake()
@@ -308,6 +312,7 @@ final class MpxPlayer: NSObject, FlutterTexture {
       frameLock.unlock()
       registry.textureFrameAvailable(textureId)
       if !firstFrame {
+        MpxPlayerTrace.mark("first-frame", id)
         firstFrame = true
         report(snapshot())
       }

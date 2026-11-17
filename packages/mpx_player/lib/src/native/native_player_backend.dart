@@ -14,6 +14,7 @@ import 'package:mpx_player/src/native/player_messages.g.dart';
 import 'package:mpx_player/src/native/player_source.dart';
 import 'package:mpx_player/src/player/player_diagnostics.dart';
 import 'package:mpx_player/src/player/player_state.dart';
+import 'package:mpx_player/src/player/player_trace.dart';
 
 /// Publishes one ranged resource to the native reader and returns what
 /// withdraws it.
@@ -176,6 +177,7 @@ final class NativePlayerBackend implements PlayerBackend {
   // The stream of each open segment, by part id.
   final Map<int, _Stream> _partStreams = {};
   int _nextStreamId = 1;
+  int _nextTraceId = 1;
   int _nextPartId = 1;
   bool _disposed = false;
 
@@ -195,7 +197,11 @@ final class NativePlayerBackend implements PlayerBackend {
   PictureInPicture get pictureInPicture => _pictureInPicture;
 
   @override
-  PlayerEngine create(MediaKey key) => _NativePlayerEngine(this, key);
+  PlayerEngine create(MediaKey key) {
+    final engine = _NativePlayerEngine(this, key, 'e${_nextTraceId++}');
+    PlayerTrace.mark('engine', engine._trace, PlayerTrace.keyId(key));
+    return engine;
+  }
 
   /// Disposes every engine and stops receiving reports. Idempotent.
   void dispose() {
@@ -441,10 +447,12 @@ final class _NativePictureInPicture implements PictureInPicture {
 // --- Engine -----------------------------------------------------------------
 
 final class _NativePlayerEngine implements PlayerEngine {
-  _NativePlayerEngine(this._backend, this.key);
+  _NativePlayerEngine(this._backend, this.key, this._trace);
 
   final NativePlayerBackend _backend;
   final MediaKey key;
+  // The engine's id in the timeline marks (PlayerTrace).
+  final String _trace;
   final ValueNotifier<PlayerState> _state = ValueNotifier(const PlayerState());
 
   // The platform player, once its create call answered.
@@ -645,6 +653,7 @@ final class _NativePlayerEngine implements PlayerEngine {
     if (_disposed || _phase != PlayerPhase.idle) return;
     _phase = PlayerPhase.preparing;
     _seekTarget ??= startAt.isNegative ? Duration.zero : startAt;
+    PlayerTrace.mark('prepare', _trace);
     _emit();
     unawaited(_open());
   }
@@ -670,6 +679,7 @@ final class _NativePlayerEngine implements PlayerEngine {
         final unpublish = await backend._publish(source.request);
         if (_disposed) return unawaited(unpublish());
         _unpublish = unpublish;
+        PlayerTrace.mark('published', _trace);
       }
       final stream = _stream;
       final sent = NativePlayerSettings(
@@ -680,6 +690,7 @@ final class _NativePlayerEngine implements PlayerEngine {
         looping: _looping,
         volume: _volume,
       );
+      PlayerTrace.mark('create-sent', _trace);
       final id = await backend._host.create(
         NativePlayerSource(
           cacheKey: source.request.cacheKey.value,
@@ -694,6 +705,7 @@ final class _NativePlayerEngine implements PlayerEngine {
       // engine; the platform player is all that is left.
       if (_disposed) return backend._send(backend._host.dispose(id));
       _id = id;
+      PlayerTrace.mark('created', _trace, 'p$id');
       _log('created on the platform (${source.mimeType})');
       _catchUp(id, sent);
       backend._register(id, this);
@@ -727,6 +739,7 @@ final class _NativePlayerEngine implements PlayerEngine {
       _backend._failedCodecs.add(failedCodec);
       if (failedCodec == _codec) return _retryAfterDecoderFailure();
     }
+    final previous = _last;
     _last = snapshot;
     if (snapshot.seekId >= _seekId) {
       // A held playhead stays where it was sent until it moves: the
@@ -744,6 +757,11 @@ final class _NativePlayerEngine implements PlayerEngine {
       NativePlayerPhase.ended => PlayerPhase.ended,
       NativePlayerPhase.failed => PlayerPhase.failed,
     };
+    if (phase != _phase) PlayerTrace.mark('phase', _trace, phase.name);
+    if (snapshot.firstFrameRendered &&
+        !(previous?.firstFrameRendered ?? false)) {
+      PlayerTrace.mark('first-frame-received', _trace);
+    }
     // A periodic report while it went on playing is measured and slewed to;
     // a seek, a pause, a start and a change of phase are taken as they are,
     // and the rate is measured again from the next two reports.

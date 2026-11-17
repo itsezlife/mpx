@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:mpx_player/src/player/player_state.dart';
+import 'package:mpx_player/src/player/player_trace.dart';
 import 'package:mpx_player/src/pool/player_pool.dart';
 
 /// Shows the picture of a leased player: its texture, turned upright and
@@ -35,6 +36,9 @@ class PlayerView extends StatefulWidget {
 
 class _PlayerViewState extends State<PlayerView> {
   late PlayerViewAttachment _attachment;
+  // Whether this view built the texture yet: its first build is marked in
+  // the timeline (the frame it goes into reaches the screen after it).
+  bool _textureMarked = false;
 
   @override
   void initState() {
@@ -48,6 +52,7 @@ class _PlayerViewState extends State<PlayerView> {
     if (!identical(oldWidget.lease, widget.lease)) {
       _attachment.detach();
       _attachment = widget.lease.attachView();
+      _textureMarked = false;
     }
   }
 
@@ -66,6 +71,14 @@ class _PlayerViewState extends State<PlayerView> {
       final standIn = widget.standIn ?? const SizedBox.shrink();
       if (textureId == null || size == null || !state.firstFrameRendered) {
         return standIn;
+      }
+      if (!_textureMarked) {
+        _textureMarked = true;
+        PlayerTrace.mark(
+          'texture',
+          PlayerTrace.keyId(widget.lease.key),
+          'id=$textureId',
+        );
       }
       Widget picture = SizedBox.fromSize(
         size: size,

@@ -30,6 +30,8 @@ final class MpxResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
   private let api: HbcReaderApi
   private let key: String
   private let contentType: String
+  // The player whose marks the requests make (MpxPlayerTrace).
+  private let traceId: Int64
   // Blocking reads, one per open request; concurrent so a seek's request
   // does not wait behind a read blocked on bytes that are still coming.
   private let readQueue = DispatchQueue(
@@ -39,9 +41,10 @@ final class MpxResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
   private var cancelled: Set<ObjectIdentifier> = []
   private var closed = false
 
-  init(api: HbcReaderApi, key: String, mimeType: String) {
+  init(api: HbcReaderApi, key: String, mimeType: String, traceId: Int64) {
     self.api = api
     self.key = key
+    self.traceId = traceId
     contentType = UTType(mimeType: mimeType)?.identifier ?? UTType.mpeg4Movie.identifier
   }
 
@@ -50,6 +53,8 @@ final class MpxResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
     shouldWaitForLoadingOfRequestedResource loadingRequest: AVAssetResourceLoadingRequest
   ) -> Bool {
     let id = ObjectIdentifier(loadingRequest)
+    MpxPlayerTrace.mark(
+      "source-open", traceId, "at=\(loadingRequest.dataRequest?.requestedOffset ?? -1)")
     lock.lock()
     let reader = closed ? nil : api.open(key)
     if let reader { readers[id] = reader }
@@ -147,6 +152,7 @@ final class MpxResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
     let chunk = 256 * 1024
     let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: chunk)
     defer { buffer.deallocate() }
+    var first = true
     while offset < end {
       if isCancelled(id) { return nil }
       let count = api.read(reader, at: offset, into: buffer, count: min(Int64(chunk), end - offset))
@@ -154,6 +160,10 @@ final class MpxResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
       if count < 0 {
         return count == HbcReaderApi.errCancelled
           ? nil : MpxResourceLoader.error("read failed (\(count)) at \(offset)")
+      }
+      if first {
+        first = false
+        MpxPlayerTrace.mark("source-first-read", traceId, "at=\(offset)")
       }
       let bytes = Data(bytes: buffer, count: Int(count))
       queue.async { data.respond(with: bytes) }

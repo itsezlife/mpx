@@ -80,20 +80,22 @@ class MpxPlayerPlugin : FlutterPlugin, ActivityAware, PlayerHostApi {
         }
         val id = nextId++
         players[id] =
-            MpxVideoPlayer(
-                context = context,
-                id = id,
-                source = source,
-                settings = settings,
-                producer = textures.createSurfaceProducer(),
-                renderers = MpxRenderersFactory(context),
-                parts = parts,
-                report = { snapshot ->
-                    flutter.onSnapshot(snapshot) {}
-                    background.update(players.values.firstOrNull { it.isAudible }?.player)
-                },
-                failedCodecOf = device::failedCodecOf,
-            )
+            MpxPlayerTrace.section("create", id) {
+                MpxVideoPlayer(
+                    context = context,
+                    id = id,
+                    source = source,
+                    settings = settings,
+                    producer = textures.createSurfaceProducer(),
+                    renderers = MpxRenderersFactory(context),
+                    parts = parts,
+                    report = { snapshot ->
+                        flutter.onSnapshot(snapshot) {}
+                        background.update(players.values.firstOrNull { it.isAudible }?.player)
+                    },
+                    failedCodecOf = device::failedCodecOf,
+                )
+            }
         return id
     }
 

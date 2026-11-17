@@ -18,6 +18,7 @@ import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.RenderersFactory
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
@@ -68,6 +69,34 @@ internal class MpxVideoPlayer(
             }
         }
 
+    // The decoders' set-up times, as marks in the system trace. Reported on
+    // the main thread, after the fact: the detail says when (elapsed
+    // realtime) and how long.
+    private val decoders =
+        object : AnalyticsListener {
+            override fun onVideoDecoderInitialized(
+                eventTime: AnalyticsListener.EventTime,
+                decoderName: String,
+                initializedTimestampMs: Long,
+                initializationDurationMs: Long,
+            ) = MpxPlayerTrace.mark(
+                "video-decoder",
+                id,
+                "init=${initializationDurationMs}ms at=${initializedTimestampMs}ms $decoderName",
+            )
+
+            override fun onAudioDecoderInitialized(
+                eventTime: AnalyticsListener.EventTime,
+                decoderName: String,
+                initializedTimestampMs: Long,
+                initializationDurationMs: Long,
+            ) = MpxPlayerTrace.mark(
+                "audio-decoder",
+                id,
+                "init=${initializationDurationMs}ms at=${initializedTimestampMs}ms $decoderName",
+            )
+        }
+
     // The surface the player draws into now; null while the engine has taken
     // it back. Declared before init, which attaches the first one.
     private var surface: Surface? = null
@@ -76,20 +105,23 @@ internal class MpxVideoPlayer(
         Log.d(TAG, "player $id create")
         val mediaSource = mediaSourceOf(source, parts)
         exo =
-            ExoPlayer.Builder(context, renderers)
-                .setLooper(Looper.getMainLooper())
-                // The Dart player pool owns audio focus and the noisy-output
-                // rule (one sound owner app-wide), so ExoPlayer handles neither.
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(C.USAGE_MEDIA)
-                        .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                        .build(),
-                    /* handleAudioFocus= */ false,
-                )
-                .setHandleAudioBecomingNoisy(false)
-                .build()
+            MpxPlayerTrace.section("exo-build", id) {
+                ExoPlayer.Builder(context, renderers)
+                    .setLooper(Looper.getMainLooper())
+                    // The Dart player pool owns audio focus and the noisy-output
+                    // rule (one sound owner app-wide), so ExoPlayer handles neither.
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(C.USAGE_MEDIA)
+                            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                            .build(),
+                        /* handleAudioFocus= */ false,
+                    )
+                    .setHandleAudioBecomingNoisy(false)
+                    .build()
+            }
         exo.addListener(this)
+        exo.addAnalyticsListener(decoders)
         exo.repeatMode = if (looping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
         exo.playbackParameters = playbackParameters(settings.speed)
         exo.volume = settings.volume.toFloat()
@@ -114,8 +146,10 @@ internal class MpxVideoPlayer(
             },
         )
         attachSurface("create")
-        exo.setMediaSource(mediaSource, settings.startAtUs / 1000)
-        exo.prepare()
+        MpxPlayerTrace.section("prepare", id) {
+            exo.setMediaSource(mediaSource, settings.startAtUs / 1000)
+            exo.prepare()
+        }
         send()
     }
 
@@ -124,7 +158,7 @@ internal class MpxVideoPlayer(
         val stream = source.streamId
         if (playlist != null && stream != null) {
             return HlsMediaSource.Factory(
-                    StreamPartDataSource.Factory(parts, stream, source.readerApi, readers),
+                    StreamPartDataSource.Factory(parts, stream, source.readerApi, readers, id),
                 )
                 .createMediaSource(
                     MediaItem.Builder()
@@ -134,7 +168,7 @@ internal class MpxVideoPlayer(
                 )
         }
         return ProgressiveMediaSource.Factory(
-                HbcDataSource.Factory(source.readerApi, source.cacheKey, readers),
+                HbcDataSource.Factory(source.readerApi, source.cacheKey, readers, id),
             )
             .createMediaSource(
                 MediaItem.Builder()
@@ -149,7 +183,7 @@ internal class MpxVideoPlayer(
         if (next === surface) return
         Log.d(TAG, "player $id surface $next ($reason), texture ${producer.id()}")
         surface = next
-        exo.setVideoSurface(next)
+        MpxPlayerTrace.section("set-surface", id, reason) { exo.setVideoSurface(next) }
     }
 
     fun play() {
@@ -237,7 +271,10 @@ internal class MpxVideoPlayer(
 
     override fun onPlaybackStateChanged(playbackState: Int) {
         Log.d(TAG, "player $id state $playbackState")
-        if (playbackState == Player.STATE_READY) prepared = true
+        if (playbackState == Player.STATE_READY) {
+            if (!prepared) MpxPlayerTrace.mark("ready", id)
+            prepared = true
+        }
         send()
     }
 
@@ -263,6 +300,7 @@ internal class MpxVideoPlayer(
     override fun onVideoSizeChanged(videoSize: VideoSize) = send()
 
     override fun onRenderedFirstFrame() {
+        if (!firstFrame) MpxPlayerTrace.mark("first-frame", id)
         firstFrame = true
         send()
     }

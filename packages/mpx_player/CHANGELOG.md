@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Players mark their way from a lease to the first frame on screen in the
+  timeline and the system trace (`mpx.player <stage> <id>`), always on
+  outside release builds.
 - The native reader table is accepted from version 2 on: later versions
   only append to it.
 - Android lowers the pitch slightly above 1x, so sped-up speech does not sound thin.

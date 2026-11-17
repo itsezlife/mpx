@@ -70,6 +70,7 @@ internal class StreamPartDataSource(
     private val api: Long,
     private val readers: OpenReaders,
     private val whole: Boolean,
+    private val traceId: Long,
 ) : DataSource {
     private val listeners = ArrayList<TransferListener>()
     private var delegate: DataSource? = null
@@ -80,14 +81,17 @@ internal class StreamPartDataSource(
     }
 
     override fun open(dataSpec: DataSpec): Long {
-        val part = parts.open(streamId, dataSpec.uri.toString(), whole)
+        val part =
+            MpxPlayerTrace.section("part-open", traceId, if (whole) "whole" else "media") {
+                parts.open(streamId, dataSpec.uri.toString(), whole)
+            }
         partId = part.partId
         val bytes = part.bytes
         val key = part.cacheKey
         val source: DataSource =
             when {
                 bytes != null -> ByteArrayDataSource(bytes)
-                key != null -> HbcDataSource(api, key, readers)
+                key != null -> HbcDataSource(api, key, readers, traceId)
                 else -> throw IOException("${dataSpec.uri} came back empty")
             }
         listeners.forEach(source::addTransferListener)
@@ -122,6 +126,7 @@ internal class StreamPartDataSource(
         private val streamId: Long,
         private val api: Long,
         private val readers: OpenReaders,
+        private val traceId: Long,
     ) : HlsDataSourceFactory {
         override fun createDataSource(dataType: Int): DataSource =
             StreamPartDataSource(
@@ -132,6 +137,7 @@ internal class StreamPartDataSource(
                 whole =
                     dataType != C.DATA_TYPE_MEDIA &&
                         dataType != C.DATA_TYPE_MEDIA_INITIALIZATION,
+                traceId = traceId,
             )
     }
 }

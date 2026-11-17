@@ -38,20 +38,30 @@ internal class OpenReaders(private val api: Long) {
  * A data source over one published ranged resource: reads go straight to the
  * cached sparse file and block, on the loader's thread, only while bytes are
  * missing (the cache fetches them meanwhile).
+ *
+ * Each open, and the first read after it, is a section of the player
+ * [traceId]'s marks in the system trace ([MpxPlayerTrace]).
  */
 @UnstableApi
 internal class HbcDataSource(
     private val api: Long,
     private val key: String,
     private val readers: OpenReaders,
+    private val traceId: Long,
 ) : BaseDataSource(/* isNetwork= */ false) {
     private var reader = 0L
     private var uri: Uri? = null
     private var position = 0L
     private var remaining = 0L
     private var opened = false
+    private var firstRead = false
 
-    override fun open(dataSpec: DataSpec): Long {
+    override fun open(dataSpec: DataSpec): Long =
+        MpxPlayerTrace.section("source-open", traceId, "at=${dataSpec.position}") {
+            openTraced(dataSpec)
+        }
+
+    private fun openTraced(dataSpec: DataSpec): Long {
         transferInitializing(dataSpec)
         val opening = HbcNative.open(api, key)
         if (opening == 0L) {
@@ -74,11 +84,20 @@ internal class HbcDataSource(
             if (dataSpec.length == C.LENGTH_UNSET.toLong()) available
             else minOf(dataSpec.length, available)
         opened = true
+        firstRead = true
         transferStarted(dataSpec)
         return remaining
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        if (!firstRead) return readTraced(buffer, offset, length)
+        firstRead = false
+        return MpxPlayerTrace.section("source-first-read", traceId, "at=$position") {
+            readTraced(buffer, offset, length)
+        }
+    }
+
+    private fun readTraced(buffer: ByteArray, offset: Int, length: Int): Int {
         if (length == 0) return 0
         if (remaining == 0L) return C.RESULT_END_OF_INPUT
         val wanted = minOf(length.toLong(), remaining).toInt()
@@ -131,7 +150,8 @@ internal class HbcDataSource(
         private val api: Long,
         private val key: String,
         private val readers: OpenReaders,
+        private val traceId: Long,
     ) : DataSource.Factory {
-        override fun createDataSource(): DataSource = HbcDataSource(api, key, readers)
+        override fun createDataSource(): DataSource = HbcDataSource(api, key, readers, traceId)
     }
 }

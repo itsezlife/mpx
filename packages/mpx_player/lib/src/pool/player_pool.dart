@@ -6,6 +6,7 @@ import 'package:mpx_player/src/audio/audio_focus.dart';
 import 'package:mpx_player/src/backend/player_backend.dart';
 import 'package:mpx_player/src/player/player_diagnostics.dart';
 import 'package:mpx_player/src/player/player_state.dart';
+import 'package:mpx_player/src/player/player_trace.dart';
 
 /// How many players may hold an engine at once: [active] that play and
 /// [prepared] more kept warm (a decoder and a first buffer, not playing).
@@ -204,6 +205,12 @@ final class PlayerPool {
     final player = _players.putIfAbsent(key, () => _Player(this, key));
     player.leases++;
     player.touch();
+    final warmth = !player.holdsEngine
+        ? 'cold'
+        : player.state.value.firstFrameRendered
+        ? 'shown'
+        : 'warm';
+    PlayerTrace.mark('lease', PlayerTrace.keyId(key), warmth);
     return PlayerLease._(player);
   }
 
