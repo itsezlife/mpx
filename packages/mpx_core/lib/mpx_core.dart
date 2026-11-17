@@ -75,5 +75,6 @@ export 'src/widget/media_badge_style.dart';
 export 'src/widget/media_loading_style.dart';
 export 'src/widget/media_status.dart';
 export 'src/widget/media_status_control.dart';
+export 'src/widget/media_status_mode.dart';
 export 'src/widget/media_status_style.dart';
 export 'src/widget/viewport_visibility.dart';

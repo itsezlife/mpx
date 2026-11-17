@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- `ContentView.status` (`MediaStatusMode`: `none`, `arc(radius)`,
+  `control(playAction:)`, `compact`) lays the status control over the
+  content, and `badge` the media badge; `onPlay` takes play taps, and
+  streamable video that is not local shows play in the centre with a
+  compact download control in the corner. `statusBuilder` (or the scope's)
+  replaces the control. `placeholderUntil` lets the view's own placeholder
+  outrank the stand-in stages up to a stage. Breaking: `loadingRadius` is
+  gone; `status: MediaStatusMode.arc(radius)` replaces it, and its arc
+  goes on a failure.
 - `MediaBadge`: the label over media with its duration ("0:13", counting
   down while it plays) or "GIF", and its size while it downloads ("1.2 /
   4.5 MB", "NN%" when narrow) or waits for the user ("4.5 MB");

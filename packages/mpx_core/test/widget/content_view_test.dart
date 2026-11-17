@@ -22,6 +22,9 @@ final _still = AssetPresets.square(
 // Long enough for content that arrived after the attach to have faded in.
 const _pastFade = Duration(milliseconds: 160);
 
+// Longer than any platform's control takes to go.
+const _controlGone = Duration(milliseconds: 400);
+
 void main() {
   late FakeAssetProducer producer;
   late ManualPlaybackTickSource ticks;
@@ -459,7 +462,11 @@ void main() {
       ) async {
         await tester.pumpWidget(
           host(
-            ContentView(content: _sticker, preset: _still, loadingRadius: 12),
+            ContentView(
+              content: _sticker,
+              preset: _still,
+              status: const MediaStatusMode.arc(12),
+            ),
           ),
         );
 
@@ -476,19 +483,25 @@ void main() {
       ) async {
         await tester.pumpWidget(
           host(
-            ContentView(content: _sticker, preset: _still, loadingRadius: 12),
+            ContentView(
+              content: _sticker,
+              preset: _still,
+              status: const MediaStatusMode.arc(12),
+            ),
           ),
         );
 
         producer.last.waiting();
         await tester.pump();
-        // The disc of the indicator, centred in the 20 x 20 box, and its arc.
+        await tester.pump(const Duration(milliseconds: 250));
+        // The disc of the indicator, centred over the 20 x 20 box, and its
+        // arc.
         expect(
           box(tester),
           paints
-            ..circle(x: 10, y: 10, radius: 12)
+            ..circle(x: 12, y: 12, radius: 12)
             ..arc(
-              rect: Rect.fromCircle(center: const Offset(10, 10), radius: 8),
+              rect: Rect.fromCircle(center: const Offset(12, 12), radius: 8),
             ),
         );
 
@@ -496,10 +509,11 @@ void main() {
           ..transfer(1, 1)
           ..advance(AssetStage.placeholder);
         await tester.pump();
-        expect(box(tester), paints..circle(x: 10, y: 10, radius: 12));
+        expect(box(tester), paints..circle(x: 12, y: 12, radius: 12));
 
         producer.last.advance(AssetStage.firstFrame);
         await tester.pump();
+        await tester.pump(_controlGone);
         expect(box(tester), isNot(paints..circle(radius: 12)));
       });
 
@@ -508,7 +522,11 @@ void main() {
       ) async {
         await tester.pumpWidget(
           host(
-            ContentView(content: _sticker, preset: _still, loadingRadius: 12),
+            ContentView(
+              content: _sticker,
+              preset: _still,
+              status: const MediaStatusMode.arc(12),
+            ),
           ),
         );
         producer.last.transfer(3, 10);
@@ -548,7 +566,11 @@ void main() {
         });
 
         Widget view() => host(
-          ContentView(content: gif.key, preset: _still, loadingRadius: 12),
+          ContentView(
+            content: gif.key,
+            preset: _still,
+            status: const MediaStatusMode.arc(12),
+          ),
           provided: piped,
         );
 
@@ -563,16 +585,16 @@ void main() {
           fetcher.missing.add(gif.key);
 
           await tester.pumpWidget(view());
-          expect(box(tester), paints..circle(x: 10, y: 10, radius: 12));
+          expect(box(tester), paints..circle(x: 12, y: 12, radius: 12));
 
           await landThumbnail(tester);
           expect(piped.isAttached(gif.key, _still.spec), isTrue);
-          expect(box(tester), paints..circle(x: 10, y: 10, radius: 12));
+          expect(box(tester), paints..circle(x: 12, y: 12, radius: 12));
 
           fetcher.fetchesOf(gif.key, FetchPart.content).single.complete();
           await tester.pump();
           await tester.pump();
-          await tester.pump(_pastFade);
+          await tester.pump(_controlGone);
           expect(box(tester), isNot(paints..circle(radius: 12)));
         });
 
@@ -599,6 +621,7 @@ void main() {
             ..fail(const FetchFailure.transient('offline'));
           await tester.pump();
           await tester.pump();
+          await tester.pump(_controlGone);
 
           expect(box(tester), isNot(paints..circle(radius: 12)));
         });
@@ -617,7 +640,11 @@ void main() {
       testWidgets('asks for another frame only while it shows', (tester) async {
         await tester.pumpWidget(
           host(
-            ContentView(content: _sticker, preset: _still, loadingRadius: 12),
+            ContentView(
+              content: _sticker,
+              preset: _still,
+              status: const MediaStatusMode.arc(12),
+            ),
           ),
         );
         await tester.pump();

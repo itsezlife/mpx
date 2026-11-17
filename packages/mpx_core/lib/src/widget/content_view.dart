@@ -8,10 +8,16 @@ import 'package:mpx_core/src/asset/asset_paintable.dart';
 import 'package:mpx_core/src/asset/asset_preset.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_texture_layer.dart';
-import 'package:mpx_core/src/asset/radial_progress.dart';
+import 'package:mpx_core/src/asset/asset_transfer.dart';
+import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 import 'package:mpx_core/src/pipeline/auto_download.dart';
 import 'package:mpx_core/src/widget/asset_cache_provider.dart';
+import 'package:mpx_core/src/widget/media_badge.dart';
+import 'package:mpx_core/src/widget/media_loading_style.dart';
+import 'package:mpx_core/src/widget/media_status.dart';
+import 'package:mpx_core/src/widget/media_status_control.dart';
+import 'package:mpx_core/src/widget/media_status_mode.dart';
 import 'package:mpx_core/src/widget/viewport_visibility.dart';
 
 /// Shows cache content: attaches `(content, preset.spec, preset.profile)` to
@@ -75,6 +81,21 @@ import 'package:mpx_core/src/widget/viewport_visibility.dart';
 /// from the theme around it, the scope knows neither. A thumbnail is the
 /// binding's to paint.
 ///
+/// A view given a [placeholderUntil] stage paints its own placeholder over
+/// the binding's stand-ins (preview, thumbnail) until the content reaches
+/// that stage: a surface whose own picture is sharper than any stand-in (the
+/// frame a viewer opened from) keeps it until the content's frame.
+///
+/// ## Status and badge
+///
+/// [status] lays a status control over the content (`MediaStatusMode`): a
+/// bare arc, the full control or a compact one, which download, cancel and
+/// play through the binding and [onPlay]. [badge] lays the media badge
+/// (duration, size) at the top-left. Both live in the view's box with their
+/// own tickers; the content's paint stays repaint-only. A host replaces the
+/// control with [statusBuilder], or for every view below a
+/// `MediaLoadingStyleScope`.
+///
 /// ## Scope
 ///
 /// [scope] if given, otherwise the closest [AssetCacheProvider]; a view with
@@ -88,8 +109,12 @@ class ContentView extends StatefulWidget {
     this.opacity = 1,
     this.semanticLabel,
     this.scope,
-    this.loadingRadius,
+    this.status = MediaStatusMode.none,
+    this.badge = false,
+    this.onPlay,
+    this.statusBuilder,
     this.placeholder,
+    this.placeholderUntil = AssetStage.none,
     this.placeholderTint,
     this.inView = true,
     this.visibleFraction = 1,
@@ -124,23 +149,30 @@ class ContentView extends StatefulWidget {
   /// provides.
   final AssetCacheScope? scope;
 
-  /// Radius of the download indicator (`RadialProgress`)
-  /// drawn over the centre of the view while the content downloads and has
-  /// no frame to show, or null for none.
-  ///
-  /// It shows only while the binding's download is under way
-  /// (`AssetBinding.transfer` waiting or receiving): from the first frame for
-  /// content known to be missing. Content served from a cache (memory or
-  /// disk) never shows it, and a failed download hides it (a bare arc offers
-  /// no retry). The view asks for a frame after each one it paints the
-  /// indicator in, and stops when the first frame exists, the download ends
-  /// or a [TickerMode] above it is off. A grid media cell uses 12.
-  final double? loadingRadius;
+  /// The status control over the content; see "Status and badge" above.
+  final MediaStatusMode status;
+
+  /// Whether the media badge (duration or "GIF", the size while it
+  /// downloads) shows at the top-left.
+  final bool badge;
+
+  /// Called on a tap on play: the content shows and the [status] offers
+  /// play, or it is streamable video that is not local yet.
+  final VoidCallback? onPlay;
+
+  /// Builds the status control in place of the default one, or null for the
+  /// closest `MediaLoadingStyleScope`'s builder, else the default.
+  final MediaStatusBuilder? statusBuilder;
 
   /// What the view paints before the content has a stage, and fades out
   /// under arriving content, instead of the scope's placeholder; null paints
   /// the scope's.
   final AssetPaintable? placeholder;
+
+  /// The stage below which [placeholder] paints over the binding's
+  /// stand-ins; [AssetStage.none] (the default) lets any stage of the
+  /// content show.
+  final AssetStage placeholderUntil;
 
   /// The colour [placeholder] is drawn in, or null for [tint].
   final Color? placeholderTint;
@@ -337,10 +369,22 @@ class _ContentViewState extends State<ContentView> {
       size: preset.size,
       tint: widget.tint,
       opacity: widget.opacity,
-      loadingRadius: widget.loadingRadius,
-      ticking: _shown,
+      placeholderUntil: widget.placeholder == null
+          ? AssetStage.none
+          : widget.placeholderUntil,
     );
     if (preset.profile.animate) view = RepaintBoundary(child: view);
+    if (widget.status is! MediaStatusMode$None || widget.badge) {
+      view = _Overlays(
+        binding: _binding!,
+        status: widget.status,
+        badge: widget.badge,
+        onPlay: widget.onPlay,
+        statusBuilder: widget.statusBuilder,
+        width: preset.size.width,
+        child: view,
+      );
+    }
     final label = widget.semanticLabel;
     if (label == null) return view;
     return Semantics(label: label, image: true, child: view);
@@ -357,8 +401,7 @@ class _ContentLeaf extends LeafRenderObjectWidget {
     required this.size,
     required this.tint,
     required this.opacity,
-    required this.loadingRadius,
-    required this.ticking,
+    required this.placeholderUntil,
   });
 
   final AssetBinding binding;
@@ -369,8 +412,7 @@ class _ContentLeaf extends LeafRenderObjectWidget {
   final Size size;
   final Color? tint;
   final double opacity;
-  final double? loadingRadius;
-  final bool ticking;
+  final AssetStage placeholderUntil;
 
   @override
   RenderObject createRenderObject(BuildContext context) => _RenderContent(
@@ -382,8 +424,7 @@ class _ContentLeaf extends LeafRenderObjectWidget {
     preferredSize: size,
     tint: tint,
     opacity: opacity,
-    loadingRadius: loadingRadius,
-    ticking: ticking,
+    placeholderUntil: placeholderUntil,
   );
 
   @override
@@ -397,8 +438,7 @@ class _ContentLeaf extends LeafRenderObjectWidget {
       ..preferredSize = size
       ..tint = tint
       ..opacity = opacity
-      ..loadingRadius = loadingRadius
-      ..ticking = ticking;
+      ..placeholderUntil = placeholderUntil;
   }
 }
 
@@ -412,8 +452,7 @@ class _RenderContent extends RenderBox {
     required Size preferredSize,
     required Color? tint,
     required double opacity,
-    required double? loadingRadius,
-    required bool ticking,
+    required AssetStage placeholderUntil,
   }) : _binding = binding,
        _fade = AssetFade(binding),
        _placeholder = placeholder,
@@ -423,8 +462,7 @@ class _RenderContent extends RenderBox {
        _preferredSize = preferredSize,
        _tint = tint,
        _opacity = opacity,
-       _loadingRadius = loadingRadius,
-       _ticking = ticking;
+       _placeholderUntil = placeholderUntil;
 
   AssetBinding _binding;
   AssetFade _fade;
@@ -443,15 +481,10 @@ class _RenderContent extends RenderBox {
   Size _preferredSize;
   Color? _tint;
   double _opacity;
-  double? _loadingRadius;
-  bool _ticking;
-  // The download indicator while one shows: made when the binding's download
-  // starts, dropped when it ends or the first frame exists.
-  RadialProgress? _indicator;
+  AssetStage _placeholderUntil;
 
   set binding(AssetBinding value) {
     if (identical(_binding, value)) return;
-    _indicator = null;
     if (attached) _binding.removeListener(_bindingChanged);
     _binding = value;
     _fade = AssetFade(value);
@@ -503,18 +536,10 @@ class _RenderContent extends RenderBox {
     markNeedsPaint();
   }
 
-  set loadingRadius(double? value) {
-    if (_loadingRadius == value) return;
-    _loadingRadius = value;
+  set placeholderUntil(AssetStage value) {
+    if (_placeholderUntil == value) return;
+    _placeholderUntil = value;
     markNeedsPaint();
-  }
-
-  set ticking(bool value) {
-    if (_ticking == value) return;
-    _ticking = value;
-    // Only the indicator reads it; a view without one must not repaint when a
-    // ticker mode flips.
-    if (_loadingRadius != null) markNeedsPaint();
   }
 
   @override
@@ -556,13 +581,16 @@ class _RenderContent extends RenderBox {
     // While the binding would paint the scope's placeholder (nothing exists
     // yet, or a first frame the profile does not show yet) the view's own
     // replaces it; nothing plays, so there is no texture to composite.
-    if (_standsIn && identical(_binding.paintable, _scopePlaceholder)) {
+    // A view's own placeholder that outranks the stand-in stages paints over
+    // them too, until the content reaches the stage it names.
+    final outranked = _binding.readiness.stage.index < _placeholderUntil.index;
+    if (_standsIn &&
+        (outranked || identical(_binding.paintable, _scopePlaceholder))) {
       _placeholder.paint(
         context.canvas,
         box,
         AssetPaintContext(tint: _placeholderColor, opacity: _opacity),
       );
-      _paintLoading(context.canvas, box);
       return;
     }
     final fade = _fade.opacityAt(_frameTime);
@@ -572,7 +600,6 @@ class _RenderContent extends RenderBox {
       return;
     }
     _binding.paint(context.canvas, box, tint: _tint, opacity: opacity);
-    _paintLoading(context.canvas, box);
   }
 
   static Duration get _frameTime {
@@ -586,7 +613,9 @@ class _RenderContent extends RenderBox {
   // kept, opaque, or the placeholder fading out. The fade is a function of
   // the frame time, so the next frame is asked for, as for the indicator.
   void _paintUnderContent(Canvas canvas, Rect box, double fade) {
-    if (!_binding.paintStandIn(canvas, box)) {
+    // An outranking placeholder was on screen until now, not the stand-in.
+    final ownFirst = _standsIn && _placeholderUntil != AssetStage.none;
+    if (ownFirst || !_binding.paintStandIn(canvas, box)) {
       _placeholder.paint(
         canvas,
         box,
@@ -601,36 +630,165 @@ class _RenderContent extends RenderBox {
       if (attached) markNeedsPaint();
     });
   }
+}
 
-  // Over the stand-in and the thumbnail, while the content downloads and has
-  // no frame. The indicator steps once per frame it is painted in, so it
-  // turns by being painted in every frame: the next one is asked for after
-  // this one is done (a paint may not mark itself dirty). A view whose ticker
-  // mode is off holds the arc where it is.
-  void _paintLoading(Canvas canvas, Rect box) {
-    final radius = _loadingRadius;
-    final transfer = _binding.transfer;
-    final downloaded = transfer.fraction ?? 0;
-    if (radius == null ||
-        !transfer.isActive ||
-        _binding.readiness.stage.index >= AssetStage.firstFrame.index) {
-      _indicator = null;
-      return;
+// --- Status and badge -------------------------------------------------------
+
+/// The status control and the badge over a view's content, in its box.
+///
+/// It rebuilds only when the layout of the controls changes (streamable
+/// video turns from missing to local, or back); the controls follow the
+/// binding themselves and repaint.
+class _Overlays extends StatefulWidget {
+  const _Overlays({
+    required this.binding,
+    required this.status,
+    required this.badge,
+    required this.onPlay,
+    required this.statusBuilder,
+    required this.width,
+    required this.child,
+  });
+
+  final AssetBinding binding;
+  final MediaStatusMode status;
+  final bool badge;
+  final VoidCallback? onPlay;
+  final MediaStatusBuilder? statusBuilder;
+  final double width;
+  final Widget child;
+
+  @override
+  State<_Overlays> createState() => _OverlaysState();
+}
+
+class _OverlaysState extends State<_Overlays> {
+  bool _streaming = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.binding.addListener(_bindingChanged);
+    _streaming = _readStreaming();
+  }
+
+  @override
+  void didUpdateWidget(_Overlays oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.binding, widget.binding)) {
+      oldWidget.binding.removeListener(_bindingChanged);
+      widget.binding.addListener(_bindingChanged);
     }
-    final indicator = switch (_indicator) {
-      final shown? => shown..setProgress(downloaded),
-      null => _indicator = RadialProgress(progress: downloaded),
-    };
-    final scheduler = SchedulerBinding.instance;
-    if (_ticking && scheduler.schedulerPhase != SchedulerPhase.idle) {
-      indicator.advance(scheduler.currentFrameTimeStamp);
-    }
-    indicator.paint(canvas, box.center, radius: radius, opacity: _opacity);
-    if (_ticking) {
-      scheduler.addPostFrameCallback((_) {
-        if (attached) markNeedsPaint();
-      });
-    }
+    _streaming = _readStreaming();
+  }
+
+  @override
+  void dispose() {
+    widget.binding.removeListener(_bindingChanged);
+    super.dispose();
+  }
+
+  // Streamable video that is not local and shows no frame: play streams it,
+  // the corner control downloads it.
+  bool _readStreaming() {
+    if (widget.status is! MediaStatusMode$Control) return false;
+    final binding = widget.binding;
+    final descriptor = binding.descriptor;
+    return descriptor != null &&
+        descriptor.streamable &&
+        descriptor.kind == MediaKind.video &&
+        binding.transfer is! AssetTransfer$None &&
+        binding.readiness.stage.index < AssetStage.firstFrame.index;
+  }
+
+  void _bindingChanged() {
+    final streaming = _readStreaming();
+    if (streaming != _streaming) setState(() => _streaming = streaming);
+  }
+
+  Widget _control(MediaStatusControl control) {
+    final builder =
+        widget.statusBuilder ?? MediaLoadingStyleScope.statusBuilderOf(context);
+    return builder == null ? control : builder(context, control);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = MediaLoadingStyleScope.resolve(context);
+    final binding = widget.binding;
+    final corner = style.status.compactOffset;
+    Widget compact() => Positioned(
+      left: corner.dx,
+      top: corner.dy,
+      child: _control(MediaStatusControl.binding(binding, compact: true)),
+    );
+    final controls = <Widget>[
+      ...switch (widget.status) {
+        MediaStatusMode$None() => const <Widget>[],
+        MediaStatusMode$Arc(:final radius) => [
+          Positioned.fill(
+            child: OverflowBox(
+              maxWidth: double.infinity,
+              maxHeight: double.infinity,
+              child: _control(
+                MediaStatusControl.binding(
+                  binding,
+                  arcOnly: true,
+                  diameter: 2 * radius,
+                ),
+              ),
+            ),
+          ),
+        ],
+        MediaStatusMode$Control() when _streaming => [
+          Positioned.fill(
+            child: OverflowBox(
+              maxWidth: double.infinity,
+              maxHeight: double.infinity,
+              child: _control(
+                MediaStatusControl(
+                  status: const MediaStatus.icon(MediaStatusIcon.play),
+                  onTap: widget.onPlay,
+                ),
+              ),
+            ),
+          ),
+          compact(),
+        ],
+        MediaStatusMode$Control(:final playAction) => [
+          Positioned.fill(
+            child: OverflowBox(
+              maxWidth: double.infinity,
+              maxHeight: double.infinity,
+              child: _control(
+                MediaStatusControl.binding(
+                  binding,
+                  playAction: playAction,
+                  onPlay: widget.onPlay,
+                ),
+              ),
+            ),
+          ),
+        ],
+        MediaStatusMode$Compact() => [compact()],
+      },
+    ];
+    final badge = style.badge.offset;
+    return Stack(
+      children: [
+        widget.child,
+        ...controls,
+        if (widget.badge)
+          Positioned(
+            // Beside the corner control while it shows, as one row.
+            left: _streaming
+                ? corner.dx + style.status.compactDiameter + 4
+                : badge.dx,
+            top: badge.dy,
+            child: MediaBadge.binding(binding, width: widget.width),
+          ),
+      ],
+    );
   }
 }
 
