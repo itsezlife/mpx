@@ -1,17 +1,26 @@
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_player/mpx_player.dart';
+import 'package:mpx_ui/src/viewer/viewer_loading.dart';
+import 'package:mpx_ui/src/viewer/viewer_policy_scope.dart';
 
 /// The media of the closest `FeedSlot`'s item, drawn the way the slot's
 /// `FeedController` decided.
 ///
 /// While the item holds a player (a pager's page and its warm neighbours) it
-/// shows a `PlayerView`, with [poster] as the stand-in until the first
-/// frame. Otherwise, when the controller gives the item a clip profile (list
+/// shows a `PlayerView` over [poster], which the player fades in over once
+/// it has its first frame, for the viewer policy's
+/// `ViewerLoadingRules.playerFadeIn` (`ViewerPolicyScope.resolve`); with
+/// [showsBuffering] the policy's buffering spinner shows over a player that
+/// waits for its media past the delay. Otherwise, when the controller gives the item a clip profile (list
 /// mode: looping, advancing only above the advance floor, held on its frame
 /// while it does not play), it attaches the item through the asset cache
 /// with it and its visible fraction; else it shows its [poster]. A released
 /// item (far from view) shows only the [poster], holding no decoder.
+///
+/// The default poster is the item's staged view: clear, then its preview,
+/// then its thumbnail, then its first frame, attached with the item's
+/// `FeedItem.downloadContext`.
 ///
 /// The preset comes from [preset], else the controller's `presetOf`; the
 /// cache from [scope], else the controller's, else the closest
@@ -23,6 +32,7 @@ class FeedClip extends StatelessWidget {
     this.poster,
     this.fit = BoxFit.contain,
     this.scope,
+    this.showsBuffering = false,
     super.key,
   });
 
@@ -38,6 +48,10 @@ class FeedClip extends StatelessWidget {
 
   /// The cache the item's media attaches to.
   final AssetCacheScope? scope;
+
+  /// Whether the buffering spinner shows over the player (a pager's page);
+  /// a list shows none.
+  final bool showsBuffering;
 
   @override
   Widget build(BuildContext context) {
@@ -66,12 +80,28 @@ class FeedClip extends StatelessWidget {
             content: item.key,
             preset: presetOf(const AssetProfile()),
             scope: scope,
+            downloadContext: item.downloadContext,
           );
         }
 
         final lease = state.lease;
         if (lease != null) {
-          return PlayerView(lease: lease, fit: fit, standIn: still());
+          final loading = ViewerPolicyScope.resolve(context).loading;
+          final player = PlayerOverStandIn(
+            lease: lease,
+            standIn: still(),
+            fit: fit,
+            fadeIn: loading.playerFadeIn,
+            handedOverFadeIn: loading.playerFadeInHandedOver,
+          );
+          if (!showsBuffering) return player;
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              player,
+              ViewerBufferingSpinner(lease: lease, rules: loading),
+            ],
+          );
         }
         final clip = state.clip;
         if (clip == null || item == null || presetOf == null || scope == null) {
@@ -82,6 +112,7 @@ class FeedClip extends StatelessWidget {
           preset: presetOf(clip),
           scope: scope,
           visibleFraction: state.fraction,
+          downloadContext: item.downloadContext,
         );
       },
     );

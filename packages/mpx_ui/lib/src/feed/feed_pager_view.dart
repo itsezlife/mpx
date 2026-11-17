@@ -105,7 +105,7 @@ class FeedPagerViewState extends State<FeedPagerView> {
     policy: widget.policy,
     pool: widget.pool,
     itemCount: widget.itemCount,
-    itemOf: (index) => widget.itemOf(index),
+    itemOf: _itemOf,
     presetOf: widget.presetOf == null
         ? null
         : (index, profile) => widget.presetOf!(index, profile),
@@ -124,7 +124,8 @@ class FeedPagerViewState extends State<FeedPagerView> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _feed.scope = widget.scope ?? AssetCacheProvider.maybeOf(context);
+    _providedScope = AssetCacheProvider.maybeOf(context);
+    _feed.scope = widget.scope ?? _providedScope;
   }
 
   @override
@@ -144,6 +145,24 @@ class FeedPagerViewState extends State<FeedPagerView> {
       ..dispose();
     _pages.dispose();
     super.dispose();
+  }
+
+  // The closest provider's cache, read before the controller is made.
+  AssetCacheScope? _providedScope;
+
+  // The descriptors told to the cache, so each is told once.
+  final Set<MediaDescriptor> _known = Set.identity();
+
+  // The host's item, whose descriptor the cache hears before the controller
+  // preloads it or a page attaches it.
+  FeedItem _itemOf(int index) {
+    final item = widget.itemOf(index);
+    final scope = widget.scope ?? _providedScope;
+    if (item.descriptor case final descriptor?
+        when scope != null && _known.add(descriptor)) {
+      scope.know(descriptor);
+    }
+    return item;
   }
 
   void _pageChanged() {
@@ -171,10 +190,11 @@ class FeedPagerViewState extends State<FeedPagerView> {
         final media = FeedClip(
           fit: widget.fit,
           poster: widget.posterBuilder?.call(context, index),
+          showsBuffering: true,
         );
         return FeedSlot(
           index: index,
-          item: widget.itemOf(index),
+          item: _itemOf(index),
           child: widget.cellBuilder?.call(context, index, media) ?? media,
         );
       },

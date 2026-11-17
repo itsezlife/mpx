@@ -83,16 +83,35 @@ class FeedListViewState extends State<FeedListView> {
   FeedController _create() => FeedController(
     policy: widget.policy,
     itemCount: widget.itemCount,
-    itemOf: (index) => widget.itemOf(index),
+    itemOf: _itemOf,
     presetOf: (index, profile) => widget.presetOf(index, profile),
     conditions: widget.conditions,
   )..inView.addListener(_inViewChanged);
+
+  // The closest provider's cache, read before the controller is made.
+  AssetCacheScope? _providedScope;
+
+  // The descriptors told to the cache, so each is told once.
+  final Set<MediaDescriptor> _known = Set.identity();
+
+  // The host's item, whose descriptor the cache hears before the controller
+  // preloads it or a clip attaches it.
+  FeedItem _itemOf(int index) {
+    final item = widget.itemOf(index);
+    final scope = widget.scope ?? _providedScope;
+    if (item.descriptor case final descriptor?
+        when scope != null && _known.add(descriptor)) {
+      scope.know(descriptor);
+    }
+    return item;
+  }
 
   void _inViewChanged() => widget.onInViewChanged?.call(_feed.inView.value);
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _providedScope = AssetCacheProvider.maybeOf(context);
     _feed.scope = widget.scope ?? AssetCacheProvider.of(context);
   }
 
@@ -130,7 +149,7 @@ class FeedListViewState extends State<FeedListView> {
         const clip = FeedClip();
         return FeedSlot(
           index: index,
-          item: widget.itemOf(index),
+          item: _itemOf(index),
           child: widget.cellBuilder?.call(context, index, clip) ?? clip,
         );
       },

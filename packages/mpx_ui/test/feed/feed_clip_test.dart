@@ -140,6 +140,105 @@ void main() {
     expect(pool.soundOwner, _key(0));
   });
 
+  group('the poster', () {
+    Future<FakePlayerBackend> pumpPage(
+      WidgetTester tester, {
+      ViewerPolicy? policy,
+    }) async {
+      final backend = FakePlayerBackend(autoFirstFrame: false);
+      final pool = PlayerPool(backend: backend);
+      addTearDown(pool.dispose);
+      final feed = FeedController(
+        policy: const FeedPolicy.pager(),
+        pool: pool,
+        presetOf: preset,
+      );
+      addTearDown(feed.dispose);
+      Widget page = FeedScope(
+        controller: feed,
+        child: PageView.builder(
+          itemCount: 3,
+          itemBuilder: (context, index) => FeedSlot(
+            index: index,
+            item: _item(index),
+            child: const FeedClip(poster: Text('poster')),
+          ),
+        ),
+      );
+      if (policy != null)
+        page = ViewerPolicyScope(policy: (_) => policy, child: page);
+      await pump(tester, page);
+      return backend;
+    }
+
+    double playerOpacity(WidgetTester tester) => tester
+        .widget<Opacity>(
+          find.ancestor(
+            of: find.byType(PlayerView),
+            matching: find.byType(Opacity),
+          ),
+        )
+        .opacity;
+
+    testWidgets('is the staged view of the item, with its tag', (tester) async {
+      const tag = AutoDownloadContext('channel');
+      final feed = FeedController(presetOf: preset);
+      addTearDown(feed.dispose);
+      await pump(
+        tester,
+        FeedScope(
+          controller: feed,
+          child: ListView(
+            children: [
+              SizedBox(
+                height: 200,
+                child: FeedSlot(
+                  index: 0,
+                  item: FeedItem(_key(0), downloadContext: tag),
+                  child: const FeedClip(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      final view = tester.widget<ContentView>(find.byType(ContentView));
+      expect(view.downloadContext, tag);
+      final attempt = producer.last;
+      final preview = attempt.advance(AssetStage.preview);
+      await tester.pump();
+      expect(preview.paints, isNotEmpty);
+    });
+
+    testWidgets('stands under the player until it fades in, 200 ms on '
+        'Android', (tester) async {
+      final backend = await pumpPage(tester);
+      expect(find.text('poster'), findsOneWidget);
+
+      backend.latestFor(_key(0))!.renderFirstFrame();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(playerOpacity(tester), closeTo(0.5, 0.05));
+      expect(find.text('poster'), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 101));
+      await tester.pump();
+      expect(playerOpacity(tester), 1);
+      expect(find.text('poster'), findsNothing);
+    });
+
+    testWidgets('gives way to the player at once on desktop', (tester) async {
+      final backend = await pumpPage(tester, policy: ViewerPolicy.$Desktop);
+
+      backend.latestFor(_key(0))!.renderFirstFrame();
+      await tester.pump();
+      await tester.pump();
+
+      expect(playerOpacity(tester), 1);
+    });
+  });
+
   testWidgets('a clip laid out far ahead holds no decoder', (tester) async {
     final feed = FeedController(
       presetOf: preset,

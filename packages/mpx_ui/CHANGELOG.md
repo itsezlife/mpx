@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Feed clips load in stages: the default poster is the item's staged view
+  with its `FeedItem.downloadContext`, the player fades in over the poster
+  for the viewer policy's time, and a pager page shows the buffering
+  spinner past the delay (`FeedClip.showsBuffering`; a list shows none).
+  `FeedListView` and `FeedPagerView` tell the cache each
+  `FeedItem.descriptor` before the item is preloaded or attached.
 - Viewer pages load in stages: the origin's frame stays over the content's
   preview and thumbnail until its first frame; without one the preview,
   then the thumbnail, fitted to the media's proportion on the black page.

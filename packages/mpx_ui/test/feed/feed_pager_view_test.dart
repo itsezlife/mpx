@@ -10,6 +10,8 @@ const _viewport = Size(400, 800);
 
 MediaKey _key(int index) => MediaKey.remote('reel-$index');
 
+int _index(MediaKey key) => List.generate(10, _key).indexOf(key);
+
 void main() {
   late FakePlayerBackend backend;
   late PlayerPool pool;
@@ -68,6 +70,9 @@ void main() {
     expect(pool.soundOwner, _key(0));
     expect(backend.latestFor(_key(1))!.state.value.phase, PlayerPhase.ready);
     expect(find.byType(Texture), findsOneWidget);
+    // The player fades in over the poster, which then is not drawn.
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
     expect(find.text('poster 0'), findsNothing);
   });
 
@@ -89,6 +94,64 @@ void main() {
 
     final keys = producer.attempts.map((attempt) => attempt.request.key);
     expect(keys, contains(_key(1)));
+  });
+
+  testWidgets('a page whose player buffers shows the spinner only past '
+      '500 ms', (tester) async {
+    await pumpPager(tester);
+    final engine = backend.latestFor(_key(0))!;
+    Finder spinner() => find.descendant(
+      of: find.byType(ViewerBufferingSpinner),
+      matching: find.byType(MediaStatusControl),
+    );
+
+    engine.stall();
+    await tester.pump(const Duration(milliseconds: 300));
+    engine.resume();
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(spinner(), findsNothing);
+
+    engine.stall();
+    await tester.pump(const Duration(milliseconds: 499));
+    expect(spinner(), findsNothing);
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(spinner(), findsOneWidget);
+
+    engine.resume();
+    await tester.pump();
+    expect(spinner(), findsNothing);
+  });
+
+  testWidgets('tells the cache the descriptors its items carry', (
+    tester,
+  ) async {
+    tester.view.physicalSize = _viewport;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    MediaDescriptor descriptor(int index) =>
+        MediaDescriptor(key: _key(index), kind: MediaKind.video);
+    final knownAtAttach = <bool>[];
+    producer.onProduce = (attempt) => knownAtAttach.add(
+      producer.known.contains(descriptor(_index(attempt.request.key))),
+    );
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: FeedPagerView(
+          pool: pool,
+          itemCount: 10,
+          itemOf: (index) =>
+              FeedItem(_key(index), descriptor: descriptor(index)),
+          presetOf: preset,
+          scope: scope,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(producer.known, containsAll([descriptor(0), descriptor(1)]));
+    expect(knownAtAttach, isNotEmpty);
+    expect(knownAtAttach, everyElement(isTrue));
   });
 
   testWidgets('the mute toggle reaches the pager', (tester) async {

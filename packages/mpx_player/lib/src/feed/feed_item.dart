@@ -13,6 +13,8 @@ final class FeedItem {
     this.round = false,
     this.local = false,
     this.hasAudio = true,
+    this.descriptor,
+    this.downloadContext,
   });
 
   /// Which media.
@@ -35,6 +37,16 @@ final class FeedItem {
   /// Whether it has an audio track; a clip without one never takes sound.
   final bool hasAudio;
 
+  /// What the host knows about the media (its preview, thumbnail, size), or
+  /// null. A feed view tells the cache before it attaches the item, so the
+  /// poster draws the preview and the thumbnail of media the cache has not
+  /// seen.
+  final MediaDescriptor? descriptor;
+
+  /// Where the item shows, for the cache's auto-download policy: the clip's
+  /// tag. Null uses the policy's default.
+  final AutoDownloadContext? downloadContext;
+
   @override
   bool operator ==(Object other) =>
       other is FeedItem &&
@@ -43,11 +55,21 @@ final class FeedItem {
       other.duration == duration &&
       other.round == round &&
       other.local == local &&
-      other.hasAudio == hasAudio;
+      other.hasAudio == hasAudio &&
+      other.descriptor == descriptor &&
+      other.downloadContext == downloadContext;
 
   @override
-  int get hashCode =>
-      Object.hash(key, byteSize, duration, round, local, hasAudio);
+  int get hashCode => Object.hash(
+    key,
+    byteSize,
+    duration,
+    round,
+    local,
+    hasAudio,
+    descriptor,
+    downloadContext,
+  );
 
   @override
   String toString() =>
