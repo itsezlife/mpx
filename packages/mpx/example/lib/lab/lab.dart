@@ -13,6 +13,7 @@ import 'package:mpx/mpx.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_example/lab/corpus.dart';
 import 'package:mpx_example/lab/lab_coverage.dart';
+import 'package:mpx_example/lab/lab_download.dart';
 import 'package:mpx_example/lab/lab_net.dart';
 import 'package:mpx_example/lab/pointer_tape.dart';
 import 'package:mpx_example/lab/stress_feed.dart';
@@ -202,6 +203,10 @@ abstract final class Lab {
 
   static String? _startRoute;
 
+  /// Whether the home page shows the corpus: not in a download run
+  /// (`lab_open download`), whose tiles would share the link it measures.
+  static bool get homeShowsCorpus => _startRoute != 'download';
+
   /// Wires the lab to [stack] and [players]: the tape, the frame log, the
   /// broadcast commands. Call after the binding exists, before `runApp`.
   static void attach(MpxStack stack, PlayerPool? players) {
@@ -299,6 +304,20 @@ abstract final class Lab {
     switch (key) {
       case 'open':
         openStress();
+      case 'download':
+        final ranged = _stack?.ranged;
+        final found = corpus;
+        if (ranged == null || found == null) {
+          _log('dl refused: no ranged store or no corpus');
+          return _log('dl done');
+        }
+        await LabDownload.run(
+          ranged: ranged,
+          corpus: found,
+          value: value.isEmpty ? 'public' : value,
+          urlOf: urlOf,
+          log: _log,
+        );
       case 'home':
         navigatorKey.currentState?.popUntil((route) => route.isFirst);
         _log('home');

@@ -66,6 +66,7 @@ or Back; both replay. A tape of the stress feed alone starts with
 | `replay.sh <tape> <s>` | one replay of a tape from a fresh start, with its report |
 | `ab.sh <label> <tape>` | `RUNS` replays (2) of one arm; `BUILD=1` builds first |
 | `scenario.sh feed\|swipe <s>` | the stress feed's cold or warm open; a synthetic fling (smoke test only) |
+| `download.sh <s>` | download throughput from a cold cache: every public entry (`DOWNLOAD=<file>` for one) whole through the stack, one at a time then all at once; `dl` lines per file and per pass |
 | `session.py <trace> <tape>` | the per-segment report, with the player stages of each viewer open and page |
 | `seen.py <trace> <tape>` | scroll hitches over the whole trace |
 | `push_media.sh <dir>` | a folder as the device corpus (writes its manifest first) |
@@ -80,6 +81,7 @@ one build:
 | --- | --- |
 | `LAB_COLD=1` | deletes the media caches (bytes cache, Lottie frames) at start: a cold run |
 | `LAB_OPEN=stress` | starts on the stress feed |
+| `LAB_OPEN=download` | starts on an empty home page, for `download` runs |
 | `LAB_SET="k=v ..."` | any switch below, e.g. `items=80 kinds=video,loop distinct=false` |
 
 | Key | Default | Switches |
@@ -97,7 +99,10 @@ one build:
 
 At run time: `adb shell am broadcast -a lab.SET --es key items --es value 80`.
 Commands: `open` (the stress feed), `home`, `jump --es value <index>`,
-`state` (logs the switches), `net` (logs the network numbers), `record --es value true|false --es name <tape>`,
+`state` (logs the switches), `net` (logs the network numbers), `download --es value public|<file>`
+(fetches entries whole through the stack's bytes cache, one at a time then
+all at once, under fresh keys: `dl <file> bytes= span= kbps= pass=`, a
+`dl total` per pass, then `dl done`), `record --es value true|false --es name <tape>`,
 `replay --es name <tape>`.
 
 ## The corpus
