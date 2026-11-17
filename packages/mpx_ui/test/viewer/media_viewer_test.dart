@@ -278,7 +278,7 @@ void main() {
 
   group('the morph\'s layers', () {
     testWidgets('a video\'s picture and its player share one box and one '
-        'fit, open and closing', (tester) async {
+        'fit, opening and closing', (tester) async {
       final harness = ViewerHarness(
         items: ViewerHarness.videos(1),
         videoDuration: const Duration(seconds: 60),
@@ -298,10 +298,8 @@ void main() {
         );
       }
 
-      // The open morph draws the picture alone: the player is leased once
-      // it is over.
       await tester.pump(const Duration(milliseconds: 100));
-      expect(find.byType(PlayerView), findsNothing);
+      sameBox();
       await tester.pump(const Duration(milliseconds: 150));
       sameBox();
 

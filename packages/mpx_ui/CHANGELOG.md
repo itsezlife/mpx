@@ -2,13 +2,6 @@
 
 ## Unreleased
 
-- `MediaViewer` starts its open and close morphs on the first frame for
-  every item: a video's player is leased once the open morph is over (the
-  morph draws the picture at hand), and closing at the player hands the
-  position and the player's last picture back to the surface after the
-  close morph, the picture read back off the UI isolate meanwhile.
-  `mpx.viewer lease` and `mpx.viewer hand-back capture` mark both in a
-  timeline.
 - `MediaViewer` holds every other surface and the preloads while its open
   and close morphs run (the item that morphs plays on), and leases its
   player after the first frame, so the tap to that frame does no player

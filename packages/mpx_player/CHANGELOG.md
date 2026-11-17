@@ -2,8 +2,6 @@
 
 ## Unreleased
 
-- Android: creating and releasing a player show as `mpx.player create` and
-  `mpx.player release` sections in a system trace.
 - The native reader table is accepted from version 2 on: later versions
   only append to it.
 - Android lowers the pitch slightly above 1x, so sped-up speech does not sound thin.

@@ -72,24 +72,16 @@ void main() {
       expect(_playerShows(tester), isTrue);
     });
 
-    testWidgets('the morph starts at once with the origin\'s picture and '
-        'the player is leased once it is over; the picture shows until the '
-        'player moves', (tester) async {
+    testWidgets('a cold player is leased as the viewer is built, and the '
+        'origin\'s picture shows until the player moves', (tester) async {
       final harness = ViewerHarness(
         items: ViewerHarness.videos(1),
         videoDuration: const Duration(seconds: 60),
         autoFirstFrame: false,
       );
       await harness.pump(tester, open: false);
-      await tester.pump(const Duration(milliseconds: 16));
 
-      // The first frames move the morph, and no player exists yet.
-      expect(harness.morphRect(tester), isNot(originRect));
-      expect(harness.backend!.created, isEmpty, reason: 'not during the morph');
-
-      await tester.pump(const Duration(milliseconds: 200));
-      expect(harness.state(tester).isOpen, isTrue);
-      expect(harness.backend!.created, isNotEmpty, reason: 'once it is over');
+      expect(harness.backend!.created, isNotEmpty, reason: 'before the morph');
       final engine = harness.engine(0);
       expect(engine.state.value.playing, isTrue);
 
@@ -244,43 +236,12 @@ void main() {
 
       unawaited(harness.state(tester).close());
       await _settle(tester);
-      // The player's picture is read off the UI isolate after the morph.
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 100)),
-      );
-      await _settle(tester);
 
       expect(loop.seeks.last, const Duration(seconds: 3));
       expect(harness.bridge.handedBack, [(0, const Duration(seconds: 3))]);
       final picture = loop.seekPictures.last;
       expect(picture, isNotNull);
       picture!.dispose();
-    });
-
-    testWidgets('the close morph moves on its first frame: the hand-back to '
-        'the surface waits for its end', (tester) async {
-      final harness = ViewerHarness(
-        items: ViewerHarness.videos(1),
-        videoDuration: const Duration(seconds: 60),
-      );
-      final loop = harness.cardLoop(videoKey(0), seconds);
-      await harness.pump(
-        tester,
-        policy: ViewerHarness.android(
-          originReturn: ViewerOriginReturn.atPlayer,
-        ),
-      );
-      harness.engine(0).advance(const Duration(seconds: 3));
-      final seeks = loop.seeks.length;
-
-      unawaited(harness.state(tester).close());
-      await tester.pump();
-      final start = harness.morphRect(tester);
-      await tester.pump(const Duration(milliseconds: 16));
-
-      expect(harness.morphRect(tester), isNot(start));
-      expect(harness.bridge.handedBack, isEmpty);
-      expect(loop.seeks, hasLength(seeks));
     });
 
     testWidgets('closing with a restart plays the loop from its first frame', (
