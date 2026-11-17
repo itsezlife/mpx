@@ -2,40 +2,67 @@ import 'package:meta/meta.dart';
 import 'package:mpx_core/src/asset/asset_binding.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 
-/// The fade of one surface's binding: content that
-/// arrives after the attach rises from transparent to opaque over [duration]
-/// from the first frame it is drawn in; content there at the attach (a memory
-/// hit) shows at once, so going back over loaded content never flickers.
+/// The fades of one surface's binding: each stage that rises after the
+/// attach goes from transparent to opaque over a length the surface picks
+/// per rise ([opacityAt]), from the first frame it is drawn in. A stage there
+/// at the attach (a memory hit) shows at once, so going back over loaded
+/// media never flickers, and a rise of length zero swaps at once.
 ///
-/// A bitmap that is not a memory hit fades in over its thumbnail, over
-/// [duration] (150 ms).
+/// A stage that rises while another fades starts its own fade from that
+/// frame.
 ///
 /// Internal to the package: a surface keeps one per binding and reads
 /// [opacityAt] when it paints.
 @internal
 final class AssetFade {
-  /// The fade of the binding a surface just attached.
-  AssetFade(this._binding) : _done = _hasContent(_binding);
+  /// The fades of the binding a surface just attached.
+  AssetFade(this._binding) : _shown = _binding.readiness.stage;
 
-  /// How long arriving content takes to become opaque.
+  /// The default length of a fade.
   static const Duration duration = Duration(milliseconds: 150);
 
-  static bool _hasContent(AssetBinding binding) =>
-      binding.readiness.stage.index >= AssetStage.firstFrame.index;
-
   final AssetBinding _binding;
-  bool _done;
-  Duration? _start;
+  // The highest stage drawn opaque.
+  AssetStage _shown;
+  // The stage fading in, with when and over how long.
+  AssetStage? _rising;
+  Duration _start = Duration.zero;
+  Duration _length = Duration.zero;
 
-  /// The opacity to draw the binding's content at in the frame at [frameTime]:
-  /// 1 before it has content (what stands in is drawn as it is) and once the
-  /// fade has run, otherwise rising from 0 over [duration] from the first
-  /// call that saw content.
-  double opacityAt(Duration frameTime) {
-    if (_done || !_hasContent(_binding)) return 1;
-    final start = _start ??= frameTime;
-    final t = (frameTime - start).inMicroseconds / duration.inMicroseconds;
-    if (t >= 1) _done = true;
+  /// The stage the fade is bringing in, or null when none fades.
+  AssetStage? get rising => _rising;
+
+  /// The opacity to draw the binding's stage at in the frame at
+  /// [frameTime]: 1 once its fade has run or when it swaps, else rising from
+  /// 0 over the length [lengthOf] gives the rise from the stage shown before
+  /// to the one now.
+  double opacityAt(
+    Duration frameTime,
+    Duration Function(AssetStage from, AssetStage to) lengthOf,
+  ) {
+    final stage = _binding.readiness.stage;
+    if (stage.index <= _shown.index) {
+      _shown = stage;
+      _rising = null;
+      return 1;
+    }
+    if (_rising != stage) {
+      final length = lengthOf(_shown, stage);
+      if (length <= Duration.zero) {
+        _shown = stage;
+        _rising = null;
+        return 1;
+      }
+      _rising = stage;
+      _start = frameTime;
+      _length = length;
+    }
+    final t = (frameTime - _start).inMicroseconds / _length.inMicroseconds;
+    if (t >= 1) {
+      _shown = stage;
+      _rising = null;
+      return 1;
+    }
     return t.clamp(0.0, 1.0);
   }
 }

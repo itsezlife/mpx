@@ -149,6 +149,11 @@ Tickets 23-26, 28, 29 (2026-11-13).
   starts on 100 ms of buffered media (1000 ms after a stall) instead of
   Media3's 1000 / 2000: every read is from the bytes cache's sparse file,
   which fetches ahead on its own, so the defaults only delayed the start.
+  Amended 2026-11-17: a player that has not played yet buffers at most
+  `PreparedBuffer` ahead (2 s and 2 MiB by default; a capped `LoadControl`
+  on Android, `preferredForwardBufferDuration` on Apple, which has no byte
+  cap), lifted at its first play, so prepared neighbours fetch little more
+  than their first frame and a short start.
 - **Texture budget**: one texture per engine, so `PlayerBudget.capacity`
   bounds the player's textures; no separate byte budget.
 - **Audio focus**: Android `AudioFocusRequest` and the noisy-output

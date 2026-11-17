@@ -418,12 +418,20 @@ final class BytesQuota {
     maxBytes: 32 * 1024 * 1024,
   );
 
-  /// The four quotas [BytesCache.open] configures by default.
+  /// Small stand-in pictures a media cache derived from content it showed
+  /// once, a few KB each: 4 MiB.
+  static const BytesQuota previews = BytesQuota(
+    'previews',
+    maxBytes: 4 * 1024 * 1024,
+  );
+
+  /// The five quotas [BytesCache.open] configures by default.
   static const List<BytesQuota> standard = [
     images,
     videoRanges,
     lottieFrames,
     glyphs,
+    previews,
   ];
 
   @override

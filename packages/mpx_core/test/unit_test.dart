@@ -20,6 +20,8 @@ import 'asset/asset_sibling_stage_test.dart' as asset_sibling_stage_test;
 import 'asset/asset_spec_test.dart' as asset_spec_test;
 import 'asset/asset_stand_in_test.dart' as asset_stand_in_test;
 import 'asset/asset_transfer_test.dart' as asset_transfer_test;
+import 'asset/preview_paintable_test.dart' as preview_paintable_test;
+import 'asset/svg_path_parser_test.dart' as svg_path_parser_test;
 import 'benchmark/asset_cache_churn_bench_test.dart'
     as asset_cache_churn_bench_test;
 import 'benchmark/asset_cache_ratio_bench_test.dart'
@@ -38,6 +40,8 @@ import 'pipeline/fake_adapters_contract_test.dart'
     as fake_adapters_contract_test;
 import 'pipeline/fake_media_resolver_contract_test.dart'
     as fake_media_resolver_contract_test;
+import 'pipeline/pipeline_derived_preview_test.dart'
+    as pipeline_derived_preview_test;
 import 'pipeline/pipeline_download_test.dart' as pipeline_download_test;
 import 'pipeline/pipeline_flow_test.dart' as pipeline_flow_test;
 import 'pipeline/pipeline_offline_test.dart' as pipeline_offline_test;
@@ -79,6 +83,7 @@ import 'widget/asset_cache_provider_test.dart' as asset_cache_provider_test;
 import 'widget/content_view_status_test.dart' as content_view_status_test;
 import 'widget/content_view_test.dart' as content_view_test;
 import 'widget/media_badge_test.dart' as media_badge_test;
+import 'widget/media_loading_style_test.dart' as media_loading_style_test;
 import 'widget/media_status_control_test.dart' as media_status_control_test;
 import 'widget/viewport_visibility_test.dart' as viewport_visibility_test;
 
@@ -96,6 +101,8 @@ void main() {
   group('asset_spec_test', asset_spec_test.main);
   group('asset_stand_in_test', asset_stand_in_test.main);
   group('asset_transfer_test', asset_transfer_test.main);
+  group('preview_paintable_test', preview_paintable_test.main);
+  group('svg_path_parser_test', svg_path_parser_test.main);
   group('asset_cache_churn_bench_test', asset_cache_churn_bench_test.main);
   group('asset_cache_ratio_bench_test', asset_cache_ratio_bench_test.main);
   group('content_view_status_test', content_view_status_test.main);
@@ -116,6 +123,7 @@ void main() {
     'fake_media_resolver_contract_test',
     fake_media_resolver_contract_test.main,
   );
+  group('pipeline_derived_preview_test', pipeline_derived_preview_test.main);
   group('pipeline_download_test', pipeline_download_test.main);
   group('pipeline_flow_test', pipeline_flow_test.main);
   group('pipeline_offline_test', pipeline_offline_test.main);
@@ -161,5 +169,6 @@ void main() {
   group('texture_frame_region_test', texture_frame_region_test.main);
   group('asset_cache_provider_test', asset_cache_provider_test.main);
   group('content_view_test', content_view_test.main);
+  group('media_loading_style_test', media_loading_style_test.main);
   group('viewport_visibility_test', viewport_visibility_test.main);
 }

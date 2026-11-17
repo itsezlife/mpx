@@ -9,9 +9,11 @@ import 'package:mpx_core/src/asset/asset_preset.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_texture_layer.dart';
 import 'package:mpx_core/src/asset/asset_transfer.dart';
+import 'package:mpx_core/src/asset/outline_paintable.dart';
 import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 import 'package:mpx_core/src/pipeline/auto_download.dart';
+import 'package:mpx_core/src/playback/playback_clock.dart';
 import 'package:mpx_core/src/widget/asset_cache_provider.dart';
 import 'package:mpx_core/src/widget/media_badge.dart';
 import 'package:mpx_core/src/widget/media_loading_style.dart';
@@ -40,13 +42,21 @@ import 'package:mpx_core/src/widget/viewport_visibility.dart';
 ///
 /// ## Arrival
 ///
-/// Content that arrives after the view attached (fetched or decoded, not a
-/// memory hit) fades in over 150 ms, over the thumbnail the binding kept
-/// (`AssetBinding.paintStandIn`), which stays opaque beneath, or else over the
-/// placeholder (the view's own, or else the scope's), which fades out as the
-/// content rises. Content there at
-/// the attach shows at once, so a view built again over loaded content does
-/// not flicker.
+/// Each stage that arrives after the view attached rises as the loading
+/// style says (`MediaLoadingStyleScope.resolve`, `MediaStageStyle`): a
+/// preview shows at once; a thumbnail fades in over the preview it replaces
+/// (`stageFade`); content fades in over `stageFade`, or `gifFade` for a view
+/// that plays, with the platform's scale-in (`contentScaleIn`). A length of
+/// zero swaps at once. Each rises over the stand-in the binding kept
+/// (`AssetBinding.paintStandIn`): a raster one stays opaque beneath, an
+/// outline or one under content that may be transparent fades out. Without
+/// a stand-in the placeholder (the view's own, or else the scope's) fades
+/// out as the content rises. A stage there at the attach shows at once, so a
+/// view built again over loaded content does not flicker. A raster preview
+/// gets the style's wash (`previewWash`). An outline preview is filled with
+/// the style's `outlineFill`, or the [placeholderTint] (else [tint]) at
+/// `outlineTintOpacity`, and its shimmer (`outlineShimmer`) runs only while
+/// the view is shown and the scope's clock is not paused.
 ///
 /// ## Playback
 ///
@@ -119,6 +129,7 @@ class ContentView extends StatefulWidget {
     this.inView = true,
     this.visibleFraction = 1,
     this.holdsWhileTickersOff = false,
+    this.loadingStyle,
     this.downloadContext,
     super.key,
   }) : assert(opacity >= 0 && opacity <= 1, 'opacity must be within 0..1'),
@@ -193,6 +204,10 @@ class ContentView extends StatefulWidget {
   /// surface whose tickers stop while it is still the one to come back (a
   /// surface that moves or is kept mounted while hidden).
   final bool holdsWhileTickersOff;
+
+  /// The loading style of this view, instead of the one
+  /// `MediaLoadingStyleScope.resolve` finds.
+  final MediaLoadingStyle? loadingStyle;
 
   /// Where the surface shows the content, for the scope's auto-download
   /// policy (`AssetCacheScope.attach`): a host's tag such as
@@ -372,6 +387,12 @@ class _ContentViewState extends State<ContentView> {
       placeholderUntil: widget.placeholder == null
           ? AssetStage.none
           : widget.placeholderUntil,
+      ticking: _shown,
+      clock: _attachedScope!.clock,
+      stages: MediaLoadingStyleScope.resolve(
+        context,
+        style: widget.loadingStyle,
+      ).stages,
     );
     if (preset.profile.animate) view = RepaintBoundary(child: view);
     if (widget.status is! MediaStatusMode$None || widget.badge) {
@@ -402,6 +423,9 @@ class _ContentLeaf extends LeafRenderObjectWidget {
     required this.tint,
     required this.opacity,
     required this.placeholderUntil,
+    required this.ticking,
+    required this.clock,
+    required this.stages,
   });
 
   final AssetBinding binding;
@@ -413,6 +437,9 @@ class _ContentLeaf extends LeafRenderObjectWidget {
   final Color? tint;
   final double opacity;
   final AssetStage placeholderUntil;
+  final bool ticking;
+  final PlaybackClock clock;
+  final MediaStageStyle stages;
 
   @override
   RenderObject createRenderObject(BuildContext context) => _RenderContent(
@@ -425,6 +452,9 @@ class _ContentLeaf extends LeafRenderObjectWidget {
     tint: tint,
     opacity: opacity,
     placeholderUntil: placeholderUntil,
+    ticking: ticking,
+    clock: clock,
+    stages: stages,
   );
 
   @override
@@ -438,7 +468,10 @@ class _ContentLeaf extends LeafRenderObjectWidget {
       ..preferredSize = size
       ..tint = tint
       ..opacity = opacity
-      ..placeholderUntil = placeholderUntil;
+      ..placeholderUntil = placeholderUntil
+      ..ticking = ticking
+      ..clock = clock
+      ..stages = stages;
   }
 }
 
@@ -453,6 +486,9 @@ class _RenderContent extends RenderBox {
     required Color? tint,
     required double opacity,
     required AssetStage placeholderUntil,
+    required bool ticking,
+    required PlaybackClock clock,
+    required MediaStageStyle stages,
   }) : _binding = binding,
        _fade = AssetFade(binding),
        _placeholder = placeholder,
@@ -462,7 +498,10 @@ class _RenderContent extends RenderBox {
        _preferredSize = preferredSize,
        _tint = tint,
        _opacity = opacity,
-       _placeholderUntil = placeholderUntil;
+       _placeholderUntil = placeholderUntil,
+       _ticking = ticking,
+       _clock = clock,
+       _stages = stages;
 
   AssetBinding _binding;
   AssetFade _fade;
@@ -482,6 +521,7 @@ class _RenderContent extends RenderBox {
   Color? _tint;
   double _opacity;
   AssetStage _placeholderUntil;
+  bool _ticking;
 
   set binding(AssetBinding value) {
     if (identical(_binding, value)) return;
@@ -542,6 +582,31 @@ class _RenderContent extends RenderBox {
     markNeedsPaint();
   }
 
+  MediaStageStyle _stages;
+
+  // The scope's clock: a shimmer stands still while it is paused.
+  PlaybackClock _clock;
+
+  set clock(PlaybackClock value) {
+    if (identical(_clock, value)) return;
+    _clock = value;
+    markNeedsPaint();
+  }
+
+  set stages(MediaStageStyle value) {
+    if (_stages == value) return;
+    _stages = value;
+    markNeedsPaint();
+  }
+
+  set ticking(bool value) {
+    if (_ticking == value) return;
+    _ticking = value;
+    // Only a shimmer reads it; a view without one must not repaint when a
+    // ticker mode flips.
+    if (_stages.outlineShimmer != null) markNeedsPaint();
+  }
+
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
@@ -581,11 +646,18 @@ class _RenderContent extends RenderBox {
     // While the binding would paint the scope's placeholder (nothing exists
     // yet, or a first frame the profile does not show yet) the view's own
     // replaces it; nothing plays, so there is no texture to composite.
+    final bare = identical(_binding.paintable, _scopePlaceholder);
+    final fill = bare ? _stages.fill : null;
+    if (fill != null) {
+      context.canvas.drawRect(
+        box,
+        Paint()..color = fill.withValues(alpha: fill.a * _opacity),
+      );
+    }
     // A view's own placeholder that outranks the stand-in stages paints over
     // them too, until the content reaches the stage it names.
     final outranked = _binding.readiness.stage.index < _placeholderUntil.index;
-    if (_standsIn &&
-        (outranked || identical(_binding.paintable, _scopePlaceholder))) {
+    if (_standsIn && (bare || outranked)) {
       _placeholder.paint(
         context.canvas,
         box,
@@ -593,13 +665,91 @@ class _RenderContent extends RenderBox {
       );
       return;
     }
-    final fade = _fade.opacityAt(_frameTime);
-    if (fade < 1) _paintUnderContent(context.canvas, box, fade);
+    final fade = _fade.opacityAt(_frameTime, _riseLength);
+    final outline = _outlineLook();
+    if (fade < 1) _paintUnderContent(context.canvas, box, fade, outline);
     final opacity = _opacity * fade;
     if (AssetTextureLayer.composite(context, _binding, box, opacity: opacity)) {
       return;
     }
-    _binding.paint(context.canvas, box, tint: _tint, opacity: opacity);
+    final canvas = context.canvas;
+    final stage = _binding.readiness.stage;
+    final scale = fade < 1 && stage.index >= AssetStage.firstFrame.index
+        ? 1 + _stages.contentScaleIn * (1 - Curves.easeIn.transform(fade))
+        : 1.0;
+    if (scale != 1) {
+      final centre = box.center;
+      canvas
+        ..save()
+        ..translate(centre.dx, centre.dy)
+        ..scale(scale, scale)
+        ..translate(-centre.dx, -centre.dy);
+    }
+    _binding.paint(
+      canvas,
+      box,
+      tint: _tint,
+      opacity: opacity,
+      outline: outline,
+    );
+    if (scale != 1) canvas.restore();
+    if (stage == AssetStage.preview && _stages.previewWash != null) {
+      _paintWash(canvas, box, opacity);
+    }
+  }
+
+  // How long the rise from [from] to [to] fades: a preview shows at once, a
+  // thumbnail fades over the preview it replaces, content over the stage
+  // fade, or the loop fade for moving content a view plays.
+  Duration _riseLength(AssetStage from, AssetStage to) => switch (to) {
+    AssetStage.none || AssetStage.preview => Duration.zero,
+    AssetStage.placeholder =>
+      from == AssetStage.preview ? _stages.stageFade : Duration.zero,
+    AssetStage.firstFrame ||
+    AssetStage.full => _plays ? _stages.gifFade : _stages.stageFade,
+  };
+
+  bool get _plays =>
+      _binding.profile.animate &&
+      (_binding.paintable.isAnimated ||
+          (_binding.descriptor?.animated ?? false));
+
+  // How an outline preview is drawn, or null when the content has none: the
+  // host's quiet tint at the style's opacity, else the style's fill, and the
+  // shimmer's highlight while the outline shows, the view is shown and the
+  // clock runs. The highlight moves with the frame time, so the next frame
+  // is asked for, as for the indicator.
+  OutlineLook? _outlineLook() {
+    if (_binding.descriptor?.preview is! MediaPreview$Outline) return null;
+    final tint = _placeholderTint ?? _tint;
+    final fill = tint == null
+        ? _stages.outlineFill
+        : tint.withValues(alpha: tint.a * _stages.outlineTintOpacity);
+    final shimmer = _stages.outlineShimmer;
+    if (shimmer == null ||
+        !_ticking ||
+        _clock.isPaused ||
+        _binding.readiness.stage != AssetStage.preview) {
+      return OutlineLook(fill: fill);
+    }
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (attached) markNeedsPaint();
+    });
+    return OutlineLook(fill: fill, highlight: shimmer.phaseAt(_frameTime));
+  }
+
+  // The wash over a raster preview; an outline is drawn in its own fill.
+  void _paintWash(Canvas canvas, Rect box, double opacity) {
+    final wash = _stages.previewWash!;
+    if (_binding.descriptor?.preview is MediaPreview$Outline) return;
+    final area = _binding.profile.roundedArea(
+      box,
+      _binding.paintable.pictureSize,
+    );
+    canvas.drawRect(
+      area,
+      Paint()..color = wash.withValues(alpha: wash.a * opacity),
+    );
   }
 
   static Duration get _frameTime {
@@ -609,13 +759,25 @@ class _RenderContent extends RenderBox {
         : scheduler.currentFrameTimeStamp;
   }
 
-  // What the content rises over while it fades in: the thumbnail the binding
-  // kept, opaque, or the placeholder fading out. The fade is a function of
-  // the frame time, so the next frame is asked for, as for the indicator.
-  void _paintUnderContent(Canvas canvas, Rect box, double fade) {
+  // What a stage rises over while it fades in: the stand-in the binding
+  // kept (opaque, or fading out as the binding says), or the placeholder
+  // fading out. The fade is a function of the frame time, so the next frame
+  // is asked for, as for the indicator.
+  void _paintUnderContent(
+    Canvas canvas,
+    Rect box,
+    double fade,
+    OutlineLook? outline,
+  ) {
     // An outranking placeholder was on screen until now, not the stand-in.
     final ownFirst = _standsIn && _placeholderUntil != AssetStage.none;
-    if (ownFirst || !_binding.paintStandIn(canvas, box)) {
+    if (ownFirst ||
+        !_binding.paintStandIn(
+          canvas,
+          box,
+          contentOpacity: fade,
+          outline: outline,
+        )) {
       _placeholder.paint(
         canvas,
         box,

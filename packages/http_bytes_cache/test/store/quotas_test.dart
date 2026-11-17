@@ -189,6 +189,12 @@ void main() {
       expect(await memory.read(key), isNotNull);
     });
 
+    test('the standard quotas hold 4 MiB of previews', () {
+      expect(BytesQuota.previews.name, const BytesQuotaName('previews'));
+      expect(BytesQuota.previews.maxBytes, 4 * 1024 * 1024);
+      expect(BytesQuota.standard, contains(BytesQuota.previews));
+    });
+
     test('the standard horizon is one month', () {
       expect(BytesRetention.standard.limits.maxAge, const Duration(days: 30));
     });

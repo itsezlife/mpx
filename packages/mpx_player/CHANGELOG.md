@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A player that has not played yet buffers only `PreparedBuffer` ahead
+  (`NativePlayerBackend.preparedBuffer`, about 2 s and 2 MiB by default):
+  a prepared, paused neighbour no longer fills its whole forward buffer.
+  The cap lifts at its first play (Android: a capped `LoadControl`; Apple:
+  `preferredForwardBufferDuration`).
 - Android starts playback on 100 ms of buffered media (1 s after a stall),
   not Media3's 1 s (2 s).
 - Players mark their way from a lease to the first frame on screen in the

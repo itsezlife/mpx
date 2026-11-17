@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `BytesQuota.previews` (4 MiB), one of `BytesQuota.standard`, for small
+  derived preview pictures.
 - Native reader, ABI 3: `hbc_reader_available` (`NativeRangedReader.available`)
   says which bytes are there without waiting and asks for the rest as a
   hint (`HBC_FETCH_HINT`); `NativePublication.stopHints` stops the hints of

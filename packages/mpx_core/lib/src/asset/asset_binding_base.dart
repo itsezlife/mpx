@@ -9,6 +9,7 @@ import 'package:mpx_core/src/asset/asset_profile.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_spec.dart';
 import 'package:mpx_core/src/asset/asset_transfer.dart';
+import 'package:mpx_core/src/asset/outline_paintable.dart';
 import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 import 'package:mpx_core/src/playback/playback_clock.dart';
@@ -205,26 +206,36 @@ abstract base class AssetBindingBase
   // The clock's time when the binding hid, while it is hidden.
   Duration? _hiddenAt;
 
-  AssetPaintContext _context({Color? tint, double opacity = 1}) =>
-      AssetPaintContext(
-        tint: tint,
-        opacity: opacity,
-        time: animates
-            ? _heldAt ?? _hiddenAt ?? _clock.now
-            : _stillTime ??= _clock.now,
-        animate: animates,
-        loop: profile.loop,
-        restFrame: profile.restFrame,
-        fit: profile.fit,
-        halfFrameRate: profile.halfFrameRate,
-      );
+  AssetPaintContext _context({
+    Color? tint,
+    double opacity = 1,
+    OutlineLook? outline,
+  }) => AssetPaintContext(
+    tint: tint,
+    opacity: opacity,
+    outline: outline,
+    time: animates
+        ? _heldAt ?? _hiddenAt ?? _clock.now
+        : _stillTime ??= _clock.now,
+    animate: animates,
+    loop: profile.loop,
+    restFrame: profile.restFrame,
+    fit: profile.fit,
+    halfFrameRate: profile.halfFrameRate,
+  );
 
   @override
   void advancePlayback() => paintable.advancePlayback(_context());
 
   @override
-  void paint(Canvas canvas, Rect rect, {Color? tint, double opacity = 1}) {
-    final context = _context(tint: tint, opacity: opacity);
+  void paint(
+    Canvas canvas,
+    Rect rect, {
+    Color? tint,
+    double opacity = 1,
+    OutlineLook? outline,
+  }) {
+    final context = _context(tint: tint, opacity: opacity, outline: outline);
     final radius = profile.cornerRadius;
     if (radius <= 0) {
       paintable.paint(canvas, rect, context);
@@ -239,7 +250,12 @@ abstract base class AssetBindingBase
   }
 
   @override
-  bool paintStandIn(Canvas canvas, Rect rect) => false;
+  bool paintStandIn(
+    Canvas canvas,
+    Rect rect, {
+    double contentOpacity = 0,
+    OutlineLook? outline,
+  }) => false;
 
   @override
   void releaseStandIn() {}

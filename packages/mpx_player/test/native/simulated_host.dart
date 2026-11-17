@@ -144,17 +144,20 @@ final class SimulatedHost implements PlayerHostApi {
 
 /// One simulated platform player.
 final class SimulatedPlayer {
-  SimulatedPlayer(this.host, this.id, this.source, NativePlayerSettings start)
-    : positionUs = start.startAtUs,
-      seekId = start.seekId,
-      playing = start.playing,
-      speed = start.speed,
-      looping = start.looping,
-      volume = start.volume;
+  SimulatedPlayer(this.host, this.id, this.source, this.settings)
+    : positionUs = settings.startAtUs,
+      seekId = settings.seekId,
+      playing = settings.playing,
+      speed = settings.speed,
+      looping = settings.looping,
+      volume = settings.volume;
 
   final SimulatedHost host;
   final int id;
   final NativePlayerSource source;
+
+  /// What the player was created with.
+  final NativePlayerSettings settings;
   int positionUs;
   int seekId;
   bool playing;

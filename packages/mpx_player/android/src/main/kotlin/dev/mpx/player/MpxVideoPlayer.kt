@@ -119,7 +119,13 @@ internal class MpxVideoPlayer(
                         /* handleAudioFocus= */ false,
                     )
                     .setHandleAudioBecomingNoisy(false)
-                    .setLoadControl(loadControl())
+                    .setLoadControl(
+                        PreparedLoadControl(
+                            loadControl(),
+                            aheadUs = settings.preparedBufferMs * 1000,
+                            bytes = settings.preparedBufferBytes.toInt(),
+                        ),
+                    )
                     .build()
             }
         exo.addListener(this)
@@ -164,7 +170,8 @@ internal class MpxVideoPlayer(
     // decoded. After a stall the network has proved slower than the media,
     // so a second of it is waited for (half the default), which keeps a slow
     // link from stalling again every few frames. The buffer it keeps
-    // ahead is unchanged.
+    // ahead is unchanged once it has played; before that it is capped
+    // ([PreparedLoadControl]).
     private fun loadControl() =
         DefaultLoadControl.Builder()
             .setBufferDurationsMs(

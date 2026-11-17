@@ -6,5 +6,6 @@
 /// must not import this library.
 library;
 
-export 'src/native/native_player_backend.dart' show NativePlayerBackend;
+export 'src/native/native_player_backend.dart'
+    show NativePlayerBackend, PreparedBuffer;
 export 'src/native/player_source.dart';

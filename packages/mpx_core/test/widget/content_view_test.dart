@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
@@ -19,8 +19,9 @@ final _still = AssetPresets.square(
   devicePixelRatio: 2,
   profile: const AssetProfile(),
 );
-// Long enough for content that arrived after the attach to have faded in.
-const _pastFade = Duration(milliseconds: 160);
+// Long enough for content that arrived after the attach to have faded in,
+// a playing view's too (250 ms).
+const _pastFade = Duration(milliseconds: 260);
 
 // Longer than any platform's control takes to go.
 const _controlGone = Duration(milliseconds: 400);
@@ -835,13 +836,391 @@ void main() {
           const AssetTexture(id: 9, width: 64, height: 64);
       await tester.pump();
       ticks.tick(const Duration(milliseconds: 16));
-      await tester.pump(const Duration(milliseconds: 75));
+      // A playing view's content fades over the loop fade, 250 ms here.
+      await tester.pump(const Duration(milliseconds: 125));
 
       final layer = _find<TextureLayer>(
         tester.binding.renderViews.first.debugLayer!,
       ).single;
       final fade = _ancestors(layer).whereType<OpacityLayer>().first;
       expect(fade.alpha, closeTo(128, 3));
+    });
+  });
+
+  group('stage transitions', () {
+    Widget on(TargetPlatform platform, Widget child) => Theme(
+      data: ThemeData(platform: platform),
+      child: host(child),
+    );
+
+    for (final (platform, length) in [
+      (TargetPlatform.android, 150),
+      (TargetPlatform.iOS, 200),
+    ]) {
+      testWidgets('${platform.name}: still content fades in over $length ms', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          on(platform, ContentView(content: _sticker, preset: _still)),
+        );
+        final painted = producer.last.advance(AssetStage.full);
+
+        await tester.pump();
+        expect(painted.paints.last.context.opacity, 0);
+        await tester.pump(Duration(milliseconds: length ~/ 2));
+        expect(painted.paints.last.context.opacity, closeTo(0.5, 0.01));
+        await tester.pump(Duration(milliseconds: length ~/ 2));
+        expect(painted.paints.last.context.opacity, 1);
+      });
+    }
+
+    testWidgets('a playing view fades its content over the loop fade', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        on(
+          TargetPlatform.android,
+          ContentView(content: _sticker, preset: _preset),
+        ),
+      );
+      final painted = producer.last.advance(AssetStage.full, animated: true);
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 125));
+
+      expect(painted.paints.last.context.opacity, closeTo(0.5, 0.01));
+    });
+
+    testWidgets('desktop: no frame shows two stages blended', (tester) async {
+      await tester.pumpWidget(
+        on(
+          TargetPlatform.macOS,
+          ContentView(content: _sticker, preset: _still),
+        ),
+      );
+      final preview = producer.last.advance(AssetStage.preview);
+      await tester.pump();
+      final thumbnail = producer.last.advance(AssetStage.placeholder);
+      await tester.pump();
+      final previewPaints = preview.paints.length;
+      final content = producer.last.advance(AssetStage.full);
+      await tester.pump();
+
+      expect(thumbnail.paints.single.context.opacity, 1);
+      expect(content.paints.single.context.opacity, 1);
+      expect(preview.paints, hasLength(previewPaints));
+      expect(tester.binding.hasScheduledFrame, isFalse);
+    });
+
+    testWidgets('a host changes the desktop swap into a fade', (tester) async {
+      await tester.pumpWidget(
+        Theme(
+          data: ThemeData(platform: TargetPlatform.macOS),
+          child: MediaLoadingStyleScope(
+            style: (platform) => platform.copyWith(
+              stages: platform.stages.copyWith(
+                stageFade: const Duration(milliseconds: 100),
+              ),
+            ),
+            child: host(ContentView(content: _sticker, preset: _still)),
+          ),
+        ),
+      );
+      final painted = producer.last.advance(AssetStage.full);
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(painted.paints.last.context.opacity, closeTo(0.5, 0.01));
+    });
+
+    testWidgets('android: the content shrinks from 1.05 to its size', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        on(
+          TargetPlatform.android,
+          ContentView(content: _sticker, preset: _still),
+        ),
+      );
+      producer.last.advance(AssetStage.full);
+      RenderObject box() => tester.renderObject(find.byType(ContentView));
+
+      await tester.pump();
+      expect(box(), paints..scale(x: 1.05, y: 1.05));
+
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(box(), isNot(paints..scale()));
+    });
+
+    testWidgets('iOS: the content is not scaled', (tester) async {
+      await tester.pumpWidget(
+        on(TargetPlatform.iOS, ContentView(content: _sticker, preset: _still)),
+      );
+      producer.last.advance(AssetStage.full);
+
+      await tester.pump();
+
+      expect(
+        tester.renderObject(find.byType(ContentView)),
+        isNot(paints..scale()),
+      );
+    });
+
+    testWidgets('a thumbnail fades in over the preview it replaces', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        on(
+          TargetPlatform.android,
+          ContentView(content: _sticker, preset: _still),
+        ),
+      );
+      final preview = producer.last.advance(AssetStage.preview);
+      await tester.pump();
+      expect(preview.paints.last.context.opacity, 1);
+
+      final thumbnail = producer.last.advance(AssetStage.placeholder);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 75));
+
+      expect(thumbnail.paints.last.context.opacity, closeTo(0.5, 0.01));
+      expect(preview.paints.last.context.opacity, 1);
+      expect(preview.isDisposed, isFalse);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(preview.isDisposed, isTrue);
+    });
+
+    testWidgets('a preview shows at once', (tester) async {
+      await tester.pumpWidget(
+        on(
+          TargetPlatform.android,
+          ContentView(content: _sticker, preset: _still),
+        ),
+      );
+      final preview = producer.last.advance(AssetStage.preview);
+
+      await tester.pump();
+
+      expect(preview.paints.single.context.opacity, 1);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+    });
+
+    testWidgets('a raster stand-in stays opaque under content that fades in', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        on(
+          TargetPlatform.android,
+          ContentView(content: _sticker, preset: _still),
+        ),
+      );
+      producer.last.describe(const MediaDescriptor(key: _sticker));
+      final thumbnail = producer.last.advance(AssetStage.placeholder);
+      await tester.pump();
+      producer.last.advance(AssetStage.full);
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 75));
+
+      expect(thumbnail.paints.last.context.opacity, 1);
+    });
+
+    testWidgets('an outline stand-in fades out as the content rises', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        on(
+          TargetPlatform.android,
+          ContentView(content: _sticker, preset: _still),
+        ),
+      );
+      producer.last.describe(
+        const MediaDescriptor(
+          key: _sticker,
+          preview: MediaPreview.outline('M0 0H1V1Z', MediaDimensions(1, 1)),
+        ),
+      );
+      final outline = producer.last.advance(AssetStage.preview);
+      await tester.pump();
+      producer.last.advance(AssetStage.full);
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 75));
+
+      expect(outline.paints.last.context.opacity, closeTo(0.5, 0.01));
+    });
+
+    testWidgets('a stand-in under a vector animation fades out', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        on(
+          TargetPlatform.android,
+          ContentView(content: _sticker, preset: _still),
+        ),
+      );
+      producer.last.describe(
+        const MediaDescriptor(key: _sticker, kind: MediaKind.vectorAnimation),
+      );
+      final thumbnail = producer.last.advance(AssetStage.placeholder);
+      await tester.pump();
+      producer.last.advance(AssetStage.full);
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 75));
+
+      expect(thumbnail.paints.last.context.opacity, closeTo(0.5, 0.01));
+    });
+
+    testWidgets('desktop: a raster preview is washed, content is not', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        on(
+          TargetPlatform.macOS,
+          ContentView(content: _sticker, preset: _still),
+        ),
+      );
+      producer.last.advance(AssetStage.preview);
+      await tester.pump();
+      RenderObject box() => tester.renderObject(find.byType(ContentView));
+      expect(box(), paints..rect(color: const Color(0x30000000)));
+
+      producer.last.advance(AssetStage.full);
+      await tester.pump();
+      expect(box(), isNot(paints..rect(color: const Color(0x30000000))));
+    });
+  });
+
+  group('an outline preview', () {
+    const outlined = MediaDescriptor(
+      key: _sticker,
+      preview: MediaPreview.outline('M0 0H1V1Z', MediaDimensions(1, 1)),
+    );
+    Widget on(TargetPlatform platform, Widget child) => Theme(
+      data: ThemeData(platform: platform),
+      child: host(child),
+    );
+
+    Future<FakeAssetPaintable> shown(
+      WidgetTester tester,
+      TargetPlatform platform, {
+      Color? placeholderTint,
+      bool inView = true,
+    }) async {
+      await tester.pumpWidget(
+        on(
+          platform,
+          ContentView(
+            content: _sticker,
+            preset: _still,
+            placeholderTint: placeholderTint,
+            inView: inView,
+          ),
+        ),
+      );
+      producer.last.describe(outlined);
+      final outline = producer.last.advance(AssetStage.preview);
+      await tester.pump();
+      return outline;
+    }
+
+    testWidgets('is filled as each platform fills it', (tester) async {
+      for (final (platform, fill) in [
+        (TargetPlatform.android, 0x46000000),
+        (TargetPlatform.iOS, 0x40748391),
+        (TargetPlatform.macOS, 0x40000000),
+      ]) {
+        final outline = await shown(tester, platform);
+        expect(
+          outline.paints.last.context.outline!.fill.toARGB32(),
+          fill,
+          reason: platform.name,
+        );
+        await tester.pumpWidget(const SizedBox());
+      }
+    });
+
+    testWidgets('takes the host\'s quiet tint at the platform\'s opacity', (
+      tester,
+    ) async {
+      final outline = await shown(
+        tester,
+        TargetPlatform.android,
+        placeholderTint: const Color(0xFF203040),
+      );
+
+      expect(
+        outline.paints.last.context.outline!.fill.toARGB32(),
+        const Color(0xFF203040).withValues(alpha: 70 / 255).toARGB32(),
+      );
+    });
+
+    testWidgets('iOS: shimmers while shown, a frame at a time', (tester) async {
+      final outline = await shown(tester, TargetPlatform.iOS);
+
+      expect(outline.paints.last.context.outline!.highlight, isNotNull);
+      expect(tester.binding.hasScheduledFrame, isTrue);
+      await tester.pump(const Duration(milliseconds: 650));
+      expect(outline.paints.last.context.outline!.highlight, isNotNull);
+    });
+
+    testWidgets('Android: no shimmer, no frames', (tester) async {
+      final outline = await shown(tester, TargetPlatform.android);
+
+      expect(outline.paints.last.context.outline!.highlight, isNull);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+    });
+
+    testWidgets('the shimmer costs no frames while hidden', (tester) async {
+      final outline = await shown(tester, TargetPlatform.iOS, inView: false);
+
+      expect(outline.paints.last.context.outline!.highlight, isNull);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+    });
+
+    testWidgets('the shimmer stands still while the clock is paused', (
+      tester,
+    ) async {
+      scope.clock.setPaused(PlaybackPauseLayer.routeMoving, paused: true);
+      addTearDown(
+        () => scope.clock.setPaused(
+          PlaybackPauseLayer.routeMoving,
+          paused: false,
+        ),
+      );
+      final outline = await shown(tester, TargetPlatform.iOS);
+
+      expect(outline.paints.last.context.outline!.highlight, isNull);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+    });
+
+    testWidgets('desktop: the sticker replaces the outline at once', (
+      tester,
+    ) async {
+      final outline = await shown(tester, TargetPlatform.macOS);
+      final before = outline.paints.length;
+      final sticker = producer.last.advance(AssetStage.full);
+
+      await tester.pump();
+
+      expect(sticker.paints.single.context.opacity, 1);
+      expect(outline.paints, hasLength(before));
+    });
+
+    testWidgets('iOS: the outline fades out over 200 ms as the sticker rises', (
+      tester,
+    ) async {
+      final outline = await shown(tester, TargetPlatform.iOS);
+      producer.last.advance(AssetStage.full);
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(outline.paints.last.context.opacity, closeTo(0.5, 0.01));
+      await tester.pump(const Duration(milliseconds: 120));
+      expect(outline.isDisposed, isTrue);
     });
   });
 

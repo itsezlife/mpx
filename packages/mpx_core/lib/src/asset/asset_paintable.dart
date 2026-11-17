@@ -5,6 +5,7 @@ import 'package:mpx_core/src/asset/asset_fit.dart';
 import 'package:mpx_core/src/asset/asset_profile.dart';
 import 'package:mpx_core/src/asset/asset_texture.dart';
 import 'package:mpx_core/src/asset/atlas_sprite.dart';
+import 'package:mpx_core/src/asset/outline_paintable.dart';
 
 /// What a surface passes to [AssetPaintable.paint] besides the rectangle.
 @immutable
@@ -20,7 +21,12 @@ final class AssetPaintContext {
     this.restFrame = AssetRestFrame.first,
     this.fit = AssetFit.contain,
     this.halfFrameRate = false,
+    this.outline,
   }) : assert(opacity >= 0 && opacity <= 1, 'opacity must be within 0..1');
+
+  /// How the surface wants an outline preview drawn (`OutlinePaintable`), or
+  /// null for its default; other paintables ignore it.
+  final OutlineLook? outline;
 
   /// Colour a template asset (`AssetDecodeMode.template`) is drawn in, and the
   /// colour of a placeholder. Null leaves an asset in its own colours.

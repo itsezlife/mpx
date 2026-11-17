@@ -61,6 +61,11 @@ typedef PlayerPlaylistLoader = Future<Uint8List> Function(BytesRequest request);
 /// probe ([device]). Without [backgroundAudio] every player pauses when the
 /// app goes to the background, unless it is in picture in picture.
 ///
+/// A player that has not played yet (a prepared neighbour in a viewer or a
+/// pager) buffers only [preparedBuffer] ahead, enough for its first frame
+/// and a short start, so neighbours the user never plays cost little; it
+/// buffers as usual from its first play on.
+///
 /// One per process: it receives the platform's reports on fixed channels.
 final class NativePlayerBackend implements PlayerBackend {
   /// Creates the backend over [readers], the process's native reader.
@@ -72,6 +77,7 @@ final class NativePlayerBackend implements PlayerBackend {
     required PlayerSourcesOf sourcesOf,
     IBytesResolver? playlists,
     bool backgroundAudio = false,
+    PreparedBuffer preparedBuffer = PreparedBuffer.standard,
   }) : this.over(
          host: PlayerHostApi(),
          publish: (request) async {
@@ -82,6 +88,7 @@ final class NativePlayerBackend implements PlayerBackend {
          sourcesOf: sourcesOf,
          loadPlaylist: (playlists ?? BytesResolver.shared()).resolve,
          backgroundAudio: backgroundAudio,
+         preparedBuffer: preparedBuffer,
        );
 
   /// Creates the backend over [host], a stand-in for the platform side in
@@ -95,6 +102,7 @@ final class NativePlayerBackend implements PlayerBackend {
     required PlayerSourcesOf sourcesOf,
     PlayerPlaylistLoader? loadPlaylist,
     bool backgroundAudio = false,
+    this.preparedBuffer = PreparedBuffer.standard,
     bool receive = true,
     Stopwatch? clock,
     Timer Function(void Function() check)? startWatchdog,
@@ -161,6 +169,9 @@ final class NativePlayerBackend implements PlayerBackend {
   final PlayerSourcesOf _sourcesOf;
   final PlayerPlaylistLoader _loadPlaylist;
   final bool _backgroundAudio;
+
+  /// How far a player that has not played yet buffers ahead.
+  final PreparedBuffer preparedBuffer;
 
   late final _Receiver _receiver;
   late final _NativeAudioFocus _audioFocus;
@@ -689,6 +700,8 @@ final class _NativePlayerEngine implements PlayerEngine {
         speed: _speed,
         looping: _looping,
         volume: _volume,
+        preparedBufferMs: backend.preparedBuffer.ahead.inMilliseconds,
+        preparedBufferBytes: backend.preparedBuffer.bytes,
       );
       PlayerTrace.mark('create-sent', _trace);
       final id = await backend._host.create(
@@ -1053,4 +1066,45 @@ final class _Stream {
   void _ensureOpen() {
     if (_closed) throw StateError('Stream $id is closed');
   }
+}
+
+/// How far ahead a player that has not played yet buffers: at most [ahead]
+/// of media and [bytes] of it, whichever comes first. A prepared, paused
+/// player would otherwise fill its whole forward buffer (tens of seconds,
+/// tens of megabytes for a large video) for an item the user may never play.
+/// The cap lifts at the player's first play.
+@immutable
+final class PreparedBuffer {
+  /// Creates a cap of [ahead] and [bytes].
+  const PreparedBuffer({required this.ahead, required this.bytes})
+    : assert(bytes >= 0, 'A byte cap is not negative.');
+
+  /// About two seconds and 2 MiB: a first frame and a start that needs no
+  /// wait, as the reference fetches for a neighbour.
+  static const PreparedBuffer standard = PreparedBuffer(
+    ahead: Duration(seconds: 2),
+    bytes: 2 * 1024 * 1024,
+  );
+
+  /// No cap: a prepared player buffers as a playing one.
+  static const PreparedBuffer none = PreparedBuffer(
+    ahead: Duration.zero,
+    bytes: 0,
+  );
+
+  /// The most media buffered ahead; zero for no cap.
+  final Duration ahead;
+
+  /// The most bytes buffered; zero for no cap.
+  final int bytes;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PreparedBuffer && other.ahead == ahead && other.bytes == bytes;
+
+  @override
+  int get hashCode => Object.hash(ahead, bytes);
+
+  @override
+  String toString() => 'PreparedBuffer($ahead, $bytes bytes)';
 }

@@ -10,6 +10,8 @@ import 'package:mpx_core/src/asset/asset_producer.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_spec.dart';
 import 'package:mpx_core/src/asset/mini_thumbnail.dart';
+import 'package:mpx_core/src/asset/outline_paintable.dart';
+import 'package:mpx_core/src/asset/svg_path_data.dart';
 import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 import 'package:mpx_core/src/image/image_paintable.dart';
@@ -19,6 +21,7 @@ import 'package:mpx_core/src/pipeline/content_fetcher.dart';
 import 'package:mpx_core/src/pipeline/decoder.dart';
 import 'package:mpx_core/src/pipeline/descriptor_directory.dart';
 import 'package:mpx_core/src/pipeline/media_resolver.dart';
+import 'package:mpx_core/src/pipeline/preview_store.dart';
 import 'package:mpx_core/src/pipeline/priority_lane.dart';
 
 /// How much the pipeline does at once, and how much it remembers.
@@ -110,6 +113,15 @@ final class AssetPipelineError implements Exception {
 ///   per content (`AssetPipelineLimits.decodedPreviews`), so the next attach
 ///   of the content, at any spec, draws its preview inside `produce`. A
 ///   template decode (alpha only) draws none.
+/// - **Derived previews.** With a [PreviewStore], content whose descriptor
+///   carries no preview reads one from the store (from memory at once, else
+///   from disk before the thumbnail fetch is queued); one that lands after a
+///   higher stage is dropped. Content that has none in either derives one
+///   when its first frame or full stage is decoded: the frame is drawn into
+///   at most 40 px, PNG-encoded unblurred and written, once per content per
+///   process, from the decoded picture (a playing one lends its first-frame
+///   still), never from the content's file. Vector animations derive none:
+///   their outline is the host's.
 /// - **Staged preloads.** While only staged preloads hold an entry
 ///   (`AssetDemand.preloadStage`), the attempt stops at their stage: after the
 ///   resolve for `metadata`, after a prefix fetch (`FetchRequest.prefix`, not
@@ -147,7 +159,9 @@ final class AssetPipeline implements AssetProducer {
     MediaResolver? resolver,
     AssetPipelineLimits limits = const AssetPipelineLimits(),
     PreviewBlur? previewBlur,
+    PreviewStore? previews,
   }) : _fetcher = fetcher,
+       _previewStore = previews,
        _decoders = decoders,
        _previewBlur =
            previewBlur ?? PreviewBlur.forPlatform(defaultTargetPlatform),
@@ -174,6 +188,9 @@ final class AssetPipeline implements AssetProducer {
   final DecoderRegistry _decoders;
   final DescriptorDirectory _directory;
   final PreviewBlur _previewBlur;
+  final PreviewStore? _previewStore;
+  // The content whose preview this process derived (or started to).
+  final Set<MediaKey> _derived = {};
   final _DecodedPreviews _previews;
   late final PriorityLane<_Work> _fetchLane;
   late final PriorityLane<_Work> _decodeLane;
@@ -196,6 +213,36 @@ final class AssetPipeline implements AssetProducer {
     }
     _directory.dispose();
     _previews.dispose();
+  }
+
+  // Encodes the frame drawn in [picture] and keeps it as the preview of
+  // [key]: in the store, and decoded for the next attach of the process.
+  Future<void> _storeDerived(
+    MediaKey key,
+    ui.Picture picture,
+    int width,
+    int height,
+  ) async {
+    final store = _previewStore!;
+    try {
+      final image = await picture.toImage(width, height);
+      final ByteData? data;
+      try {
+        data = await image.toByteData(format: ui.ImageByteFormat.png);
+      } finally {
+        image.dispose();
+      }
+      if (data == null || _disposed) return;
+      final png = data.buffer.asUint8List();
+      store.write(key, png);
+      (await _previews.decode(key, png, _previewBlur))?.dispose();
+    } on Object {
+      // A frame that cannot be encoded leaves the content without a stored
+      // preview: it shows as before, and the next process derives again.
+      return;
+    } finally {
+      picture.dispose();
+    }
   }
 
   // Whether preload work waits ([holdPreloads]).
@@ -459,30 +506,151 @@ final class _Job implements AssetTask {
   // Draws the preview of [known]: at once when it is decoded already, else
   // once its decode lands, beside the fetches.
   void _preview(MediaDescriptor known) {
-    if (known.preview case final MediaPreview$Raster raster?
-        when request.spec.decodeMode != AssetDecodeMode.template) {
-      final previews = pipeline._previews;
-      if (previews.take(request.key) case final image?) {
-        _advancePreview(image);
-        return;
-      }
-      _previewDecoding = previews
-          .decode(request.key, raster.encoded, pipeline._previewBlur)
-          .then((image) {
-            _previewDecoding = null;
-            if (image != null) {
-              if (_cancelled) {
-                image.dispose();
-              } else {
-                // An attempt that ended already drops it (the scope disposes
-                // a report after the end), as it drops a stage below its own.
-                _advancePreview(image);
-              }
-            }
-            settleIfIdle();
-          });
+    final previews = pipeline._previews;
+    final key = request.key;
+    if (known.preview case MediaPreview$Outline(
+      :final pathData,
+      :final viewBox,
+    )) {
+      _hasPreview = true;
+      _outline(pathData, viewBox);
+      return;
+    }
+    // A template decode is alpha only: a picture would show its colours.
+    if (request.spec.decodeMode == AssetDecodeMode.template) return;
+    switch (known.preview) {
+      case MediaPreview$Raster(:final encoded):
+        _hasPreview = true;
+        if (previews.take(key) case final image?) {
+          _advancePreview(image);
+          return;
+        }
+        _landPreview(previews.decode(key, encoded, pipeline._previewBlur));
+      case MediaPreview$Outline():
+        break;
+      case null:
+        final store = pipeline._previewStore;
+        if (store == null) return;
+        if (previews.take(key) case final image?) {
+          _hasPreview = true;
+          _advancePreview(image);
+          return;
+        }
+        if (store.peek(key) case final png?) {
+          _hasPreview = true;
+          _landPreview(previews.decode(key, png, pipeline._previewBlur));
+          return;
+        }
+        _readingStore = true;
+        _landPreview(
+          store.read(key).then((png) {
+            _readingStore = false;
+            if (png == null || _cancelled) return null;
+            _hasPreview = true;
+            return previews.decode(key, png, pipeline._previewBlur);
+          }),
+        );
     }
   }
+
+  // Parsing an outline is cheap: it is drawn inside produce. One that does
+  // not parse leaves the stage where it is.
+  void _outline(String pathData, MediaDimensions viewBox) {
+    final path = SvgPathData.parse(pathData);
+    if (path == null) {
+      if (kDebugMode) {
+        debugPrint(
+          'mpx_core: the outline preview of ${request.key} does not parse; '
+          'it is not drawn.',
+        );
+      }
+      return;
+    }
+    progress.advance(
+      AssetStage.preview,
+      OutlinePaintable(
+        path,
+        ui.Size(viewBox.width.toDouble(), viewBox.height.toDouble()),
+      ),
+      // The path data stands for the path's own size.
+      bytes: pathData.length * 4,
+    );
+  }
+
+  // Draws the preview [decoding] lands, unless the attempt was cancelled.
+  void _landPreview(Future<ui.Image?> decoding) {
+    _previewDecoding = decoding.then((image) {
+      _previewDecoding = null;
+      if (image == null) return;
+      if (_cancelled) {
+        image.dispose();
+      } else {
+        // An attempt that ended already drops it (the scope disposes a
+        // report after the end), as it drops a stage below its own.
+        _advancePreview(image);
+      }
+    });
+  }
+
+  // Whether the content has a preview: the descriptor's, or a stored one.
+  bool _hasPreview = false;
+
+  // Whether the store is still asked for one.
+  bool _readingStore = false;
+
+  /// Derives the preview of content that has none from [paintable], the
+  /// first decoded frame or full stage of its content; see "Derived
+  /// previews" on the pipeline.
+  void deriveFrom(AssetPaintable paintable) {
+    final known = descriptor;
+    if (pipeline._previewStore == null ||
+        known == null ||
+        _hasPreview ||
+        _readingStore ||
+        known.kind == MediaKind.vectorAnimation ||
+        request.spec.decodeMode == AssetDecodeMode.template) {
+      return;
+    }
+    // A playing paintable may draw into a texture: its still is the frame.
+    final source = paintable.isAnimated ? paintable.firstFrame : paintable;
+    if (source == null) return;
+    final size =
+        source.pictureSize ??
+        paintable.pictureSize ??
+        switch (known.dimensions) {
+          final dimensions? => ui.Size(
+            dimensions.width.toDouble(),
+            dimensions.height.toDouble(),
+          ),
+          null => null,
+        };
+    if (size == null || size.isEmpty) return;
+    if (!pipeline._derived.add(request.key)) return;
+    final (width, height) = _derivedEdge.sizeOf(
+      size.width.round(),
+      size.height.round(),
+    );
+    final recorder = ui.PictureRecorder();
+    source.paint(
+      ui.Canvas(recorder),
+      ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      const AssetPaintContext(animate: false),
+    );
+    unawaited(
+      pipeline._storeDerived(
+        request.key,
+        recorder.endRecording(),
+        width,
+        height,
+      ),
+    );
+  }
+
+  // The size a derived preview is kept at: at most 40 px, unblurred.
+  static const PreviewBlurPass _derivedEdge = PreviewBlurPass(
+    maxEdge: 40,
+    radius: 0,
+  );
 
   void _advancePreview(ui.Image image) => progress.advance(
     AssetStage.preview,
@@ -711,6 +879,11 @@ final class _DecodeProgress implements AssetProgress {
       return;
     }
     final job = _work.job;
+    // Drawn before the cache takes it: the cache may dispose it at once.
+    if (_work.part == FetchPart.content &&
+        stage.index >= AssetStage.firstFrame.index) {
+      job.deriveFrom(paintable);
+    }
     job.progress.advance(stage, paintable, bytes: bytes, tier: tier);
     final spec = job.request.spec;
     final isFinal =

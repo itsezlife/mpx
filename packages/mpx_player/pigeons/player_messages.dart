@@ -76,6 +76,8 @@ class NativePlayerSettings {
     required this.speed,
     required this.looping,
     required this.volume,
+    required this.preparedBufferMs,
+    required this.preparedBufferBytes,
   });
 
   int startAtUs;
@@ -87,6 +89,12 @@ class NativePlayerSettings {
   double speed;
   bool looping;
   double volume;
+
+  /// How far ahead a player that has not played yet buffers: at most this
+  /// much media and [preparedBufferBytes] of it, enough for its first frame
+  /// and a short start. Lifted at the first play. 0 lifts it from the start.
+  int preparedBufferMs;
+  int preparedBufferBytes;
 }
 
 /// One native player's state at the moment it was sent.

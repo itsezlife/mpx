@@ -7,6 +7,7 @@ import 'package:mpx_core/src/asset/asset_profile.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_spec.dart';
 import 'package:mpx_core/src/asset/asset_transfer.dart';
+import 'package:mpx_core/src/asset/outline_paintable.dart';
 import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 
@@ -177,7 +178,15 @@ abstract interface class AssetBinding implements Listenable {
 
   /// Paints the asset into [rect] at the scope's playback time: [paintable]
   /// clipped to the profile's corner radius, in [tint] and at [opacity].
-  void paint(Canvas canvas, Rect rect, {Color? tint, double opacity = 1});
+  ///
+  /// [outline] is how an outline preview is drawn (`AssetPaintContext.outline`).
+  void paint(
+    Canvas canvas,
+    Rect rect, {
+    Color? tint,
+    double opacity = 1,
+    OutlineLook? outline,
+  });
 
   /// Paints the stand-in this binding kept under the stage that replaced it,
   /// into [rect], and says whether there was one: the stand-in the last rise
@@ -190,7 +199,18 @@ abstract interface class AssetBinding implements Listenable {
   /// releases it too. Only a binding that was attached while the stand-in was
   /// showing has one: a binding attached after the rise has nothing to keep
   /// under it.
-  bool paintStandIn(Canvas canvas, Rect rect);
+  ///
+  /// [contentOpacity] is how far the stage over it has faded in. A raster
+  /// stand-in ignores it and stays opaque. An outline preview, or any stand-in
+  /// under content that may be transparent (a vector animation), is drawn at
+  /// `1 - contentOpacity`, so it never shows through the content's
+  /// transparent parts once the fade ends.
+  bool paintStandIn(
+    Canvas canvas,
+    Rect rect, {
+    double contentOpacity = 0,
+    OutlineLook? outline,
+  });
 
   /// Lets go of the stand-in of [paintStandIn]; the entry disposes the
   /// thumbnail when every binding that waited for the content has. Idempotent,

@@ -156,4 +156,50 @@ void main() {
 
     expect(binding.readiness.stage, AssetStage.none);
   });
+
+  group('an outline preview', () {
+    MediaDescriptor sticker(String path) => MediaDescriptor(
+      key: const MediaKey.remote('sticker'),
+      kind: MediaKind.still,
+      preview: MediaPreview.outline(path, const MediaDimensions(512, 512)),
+    );
+
+    test('is drawn in the attach frame', () {
+      final item = sticker('M0 0H512V512Z');
+      final harness = PipelineHarness(known: [item], autoFetch: false);
+      addTearDown(harness.dispose);
+
+      final binding = harness.attach(item);
+
+      expect(binding.readiness.stage, AssetStage.preview);
+      expect(binding.paintable, isA<OutlinePaintable>());
+    });
+
+    test('is drawn for a template decode too: it has no colours', () {
+      final item = sticker('M0 0H512V512Z');
+      final harness = PipelineHarness(known: [item], autoFetch: false);
+      addTearDown(harness.dispose);
+
+      final binding = harness.attach(
+        item,
+        const AssetSpec(
+          pixelWidth: 64,
+          pixelHeight: 64,
+          decodeMode: AssetDecodeMode.template,
+        ),
+      );
+
+      expect(binding.readiness.stage, AssetStage.preview);
+    });
+
+    test('that does not parse leaves the stage at none', () {
+      final item = sticker('M0 0A5 5 0 0 1 10 0Z');
+      final harness = PipelineHarness(known: [item], autoFetch: false);
+      addTearDown(harness.dispose);
+
+      final binding = harness.attach(item);
+
+      expect(binding.readiness.stage, AssetStage.none);
+    });
+  });
 }

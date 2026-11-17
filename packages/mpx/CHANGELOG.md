@@ -11,6 +11,10 @@
   `defaultTargetPlatform`, and `MpxStack.autoDownload` exposes the policy.
   Missing videos over the limit now show their stand-ins and wait for a
   tap instead of downloading.
+- `BytesCachePreviewStore`: derived previews as rows of the bytes cache
+  under `BytesQuota.previews`, with a 512-entry memory tier and writes
+  after the frame. `MpxStack.create(previews:, previewBlur:)` uses it by
+  default; `MpxStack.previews` exposes it.
 - `NativeRangedContentPublisher` hands a clip over once its index (the tail
   of a file whose `moov` follows its media data) and a first stretch
   (`firstStretchBytes`, 2 MiB) are there, and pauses its fetching when its

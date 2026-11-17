@@ -51,6 +51,27 @@
   more permissive attach start it. Breaking: `AssetDemand` implementers add
   `downloadContexts` and `autoDownload`. `FakeAutoDownloadPolicy` is in
   `testing.dart`.
+- Outline previews: `SvgPathData` reads SVG path data (no arcs), and the
+  pipeline draws a descriptor's `MediaPreview.outline` as an
+  `OutlinePaintable` inside `produce`. `ContentView` fills it with the
+  style's `outlineFill`, or the host's tint at `outlineTintOpacity`, and
+  runs the platform's `OutlineShimmer` only while shown and the clock runs
+  (`OutlineLook` through `AssetPaintContext.outline`,
+  `AssetBinding.paint(outline:)` and `paintStandIn(outline:)`).
+- `PreviewStore` (`AssetPipeline.previews`; `FakePreviewStore` and
+  `PreviewStoreContract` in `testing.dart`): content whose descriptor has
+  no preview reads a stored one, and derives one from its first decoded
+  frame (at most 40 px, PNG, unblurred, once per content per process)
+  when the store has none. Vector animations derive none.
+- `MediaLoadingStyle` (`stages`: `MediaStageStyle`; `$Android`, `$IOS`,
+  `$Desktop`, `forPlatform`, `copyWith`) and `MediaLoadingStyleScope`,
+  resolved from the theme's platform. `ContentView` rises through stages
+  as the style says: a thumbnail fades over its preview, content over
+  `stageFade` (or `gifFade` for a playing loop) with Android's 5 %
+  scale-in, the desktop swaps at once, a raster preview gets the desktop
+  wash, and an outline or a stand-in under a vector animation fades out
+  (`AssetBinding.paintStandIn(contentOpacity:)`). `ContentView.loadingStyle`
+  overrides the resolved style.
 - `AssetStage.preview`, between `none` and `placeholder`: `AssetPipeline`
   decodes a descriptor's raster preview beside the fetches (no fetch slot),
   blurred once with `PreviewBlur` (`$Android`, `$IOS`, `$Desktop`,

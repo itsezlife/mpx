@@ -6,6 +6,7 @@ import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:mpx/src/download/network_auto_download_policy.dart';
 import 'package:mpx/src/fetch/bytes_cache_fetcher.dart';
 import 'package:mpx/src/fetch/ranged_content_publisher.dart';
+import 'package:mpx/src/preview/bytes_cache_preview_store.dart';
 import 'package:mpx/src/signals/device_signals.dart';
 import 'package:mpx_core/mpx_core.dart';
 
@@ -90,6 +91,7 @@ final class MpxStack {
     required this.signals,
     required this.autoDownload,
     required this.registeredQuotas,
+    required this.previews,
     required List<FutureOr<void> Function()> teardowns,
   }) : _teardowns = teardowns;
 
@@ -114,6 +116,10 @@ final class MpxStack {
   /// - [publisher] builds what publishes content of some kinds for native
   ///   readers instead of downloading it first (the software video decoder
   ///   reads clips that way); see [MpxPublisherFactory].
+  /// - [previews] keeps the previews the pipeline derives; it defaults to a
+  ///   [BytesCachePreviewStore] over the stack's store, under
+  ///   [BytesQuota.previews]. [previewBlur] is how previews and small
+  ///   thumbnails are blurred, the target platform's by default.
   /// - [platformTextures] lends a [FrameTexturePool] over the platform's
   ///   texture host where there is one.
   /// - [autoDownload] decides which missing content downloads by itself.
@@ -138,6 +144,8 @@ final class MpxStack {
     ValueListenable<bool>? scrolling,
     BytesDiagnostics diagnostics = const BytesDiagnostics.silent(),
     AutoDownloadPolicy? autoDownload,
+    PreviewStore? previews,
+    PreviewBlur? previewBlur,
   }) async {
     final teardowns = <FutureOr<void> Function()>[];
     void own(FutureOr<void> Function() teardown) => teardowns.add(teardown);
@@ -213,11 +221,14 @@ final class MpxStack {
       ranged: ranged,
       publisher: ranged == null ? null : publisher?.call(ranged),
     );
+    final previewStore = previews ?? BytesCachePreviewStore(store);
     final pipeline = AssetPipeline(
       fetcher: fetcher,
       decoders: registry,
       resolver: resolver,
       limits: limits,
+      previews: previewStore,
+      previewBlur: previewBlur,
     );
     own(pipeline.dispose);
     final scope = AssetCacheScope(
@@ -253,6 +264,7 @@ final class MpxStack {
       signals: deviceSignals,
       autoDownload: downloadPolicy,
       registeredQuotas: Map.unmodifiable(quotas),
+      previews: previewStore,
       teardowns: teardowns,
     );
   }
@@ -302,6 +314,9 @@ final class MpxStack {
 
   /// The registered quotas by name.
   final Map<String, RegisteredQuota> registeredQuotas;
+
+  /// Where the pipeline keeps the previews it derives.
+  final PreviewStore previews;
 
   final List<FutureOr<void> Function()> _teardowns;
   bool _disposed = false;

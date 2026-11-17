@@ -248,4 +248,26 @@ void main() {
       reason: 'the name is taken by the stack registration',
     );
   });
+
+  testWidgets('derived previews go to the store under the previews quota', (
+    tester,
+  ) async {
+    final stack = await create();
+    final previews = stack.previews as BytesCachePreviewStore;
+    const key = MediaKey.remote('derived');
+    final png = Uint8List.fromList([9, 9, 9]);
+
+    await tester.runAsync(() async {
+      previews.write(key, png);
+      await previews.flush();
+      expect(
+        await stack.store.read(BytesCachePreviewStore.cacheKeyOf(key)),
+        png,
+      );
+    });
+  });
+
+  test('the standard quotas the stack opens include the previews', () {
+    expect(BytesQuota.standard, contains(BytesQuota.previews));
+  });
 }

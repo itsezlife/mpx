@@ -5,5 +5,6 @@ library;
 export 'src/download/network_auto_download_policy.dart';
 export 'src/fetch/bytes_cache_fetcher.dart';
 export 'src/fetch/ranged_content_publisher.dart';
+export 'src/preview/bytes_cache_preview_store.dart';
 export 'src/signals/device_signals.dart';
 export 'src/stack/mpx_stack.dart';
