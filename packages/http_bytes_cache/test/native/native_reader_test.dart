@@ -30,7 +30,11 @@ void main() {
           await BytesCache.open(directory: dir.path, throwOnOpenFailure: true)
               as IRangedBytesStore;
       client = HttpBytesClient();
-      ranged = RangedBytes(store: store, client: client, chunkBytes: 1000);
+      ranged = RangedBytes(
+        store: store,
+        client: client,
+        parts: const RangedParts(partBytes: 1000),
+      );
       readers = NativeRangedReaders(ranged, readAheadBytes: 1000);
     });
 

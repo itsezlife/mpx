@@ -69,7 +69,10 @@ Future<void> main() async {
   final framesDirectory = '${Directory.systemTemp.path}/mpx_example_frames';
   if (kMpxLab) {
     await Lab.start(cacheDirs: [cacheDirectory, framesDirectory]);
-    if (Lab.corpus case final corpus?) {
+    if (Lab.corpus != null && !Lab.homeShowsCorpus) {
+      _media = const [];
+      _withSound = const {};
+    } else if (Lab.corpus case final corpus?) {
       _media = [
         for (final e in corpus.entries)
           (MediaKey.remote('corpus-${e.file}'), e.kind.media, e.file, e.file),

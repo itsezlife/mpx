@@ -146,11 +146,14 @@ final class NativeRangedReaders implements Finalizable {
         each._hints.add(cancel);
       }
     }
+    // A reader reads forward as the media plays: one part at a time, none
+    // planned ahead of it to be thrown away when it leaves the screen.
     publication.resource
         .ensure(
           ByteRange(offset, end),
           priority: PriorityToken(level),
           cancelToken: cancel,
+          streaming: true,
         )
         .then(
           (_) {

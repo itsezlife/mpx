@@ -113,6 +113,8 @@ final class MpxStack {
   ///   a serious or critical thermal status pause playback through
   ///   [PlaybackPauseLayer.lowPower]; the app lifecycle drives the other
   ///   layers ([PlaybackActivity]).
+  /// - [rangedParts] splits the ranged downloads into parts, several in
+  ///   flight per file; the client's slots cap them in total.
   /// - [client] defaults to an [HttpBytesClient] with the retry, timeout and
   ///   conditional middlewares, whose file-bound GETs run on a transfer
   ///   worker (`HttpBytesTransfers`); a host client is not closed by
@@ -151,6 +153,7 @@ final class MpxStack {
     AutoDownloadPolicy? autoDownload,
     PreviewStore? previews,
     PreviewBlur? previewBlur,
+    RangedParts rangedParts = const RangedParts(),
   }) async {
     final teardowns = <FutureOr<void> Function()>[];
     void own(FutureOr<void> Function() teardown) => teardowns.add(teardown);
@@ -164,7 +167,11 @@ final class MpxStack {
     own(store.close);
     final http = client ?? _defaultClient();
     if (client == null) own(http.close);
-    final rangedBytes = RangedBytes(store: store, client: http);
+    final rangedBytes = RangedBytes(
+      store: store,
+      client: http,
+      parts: rangedParts,
+    );
     final ranged = rangedBytes.isSupported ? rangedBytes : null;
     if (ranged != null) own(ranged.close);
     final quotas = <String, RegisteredQuota>{

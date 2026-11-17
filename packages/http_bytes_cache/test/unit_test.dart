@@ -10,6 +10,7 @@ import 'native/native_reader_test.dart' as native_reader_test;
 import 'open/open_test.dart' as open_test;
 import 'ranged/byte_range_set_test.dart' as byte_range_set_test;
 import 'ranged/fast_start_test.dart' as fast_start_test;
+import 'ranged/parallel_parts_test.dart' as parallel_parts_test;
 import 'ranged/ranged_alias_test.dart' as ranged_alias_test;
 import 'ranged/ranged_resource_test.dart' as ranged_resource_test;
 import 'ranged/ranged_store_test.dart' as ranged_store_test;
@@ -71,6 +72,7 @@ void main() => group('Unit', () {
   ranged_store_test.main();
   ranged_resource_test.main();
   ranged_transfer_test.main();
+  parallel_parts_test.main();
   fast_start_test.main();
   ranged_alias_test.main();
   native_reader_test.main();

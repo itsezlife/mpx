@@ -60,7 +60,8 @@ resume, the whole body buffered by design.
 | Row | Key, total length, strong validator (ETag, or a strong Last-Modified), range set of present bytes, last use |
 | Payload | One sparse file per resource. Blob port gains write-at-offset, ranged read, ranges query |
 | Eviction | Whole resources by last use within their quota; never a resource with an open reader |
-| Requests | Single range only. `If-Range` with a strong ETag. A `200` answer to a ranged request drops every span and keeps the new body. No `Accept-Ranges`: sequential full download |
+| Requests | Single range only. `If-Range` with a strong ETag. A `200` answer to a ranged request drops every span, stops the resource's other parts and keeps the new body. No `Accept-Ranges`: sequential full download |
+| Parts | Missing bytes go out as parts (`RangedParts`): range GETs of up to 512 KiB, split down to 128 KiB for a short ask, 4 in flight per resource, the client's slots capping the total. Each is written at its offset as it arrives; parts land in any order. The part at an ask's first missing byte goes at the ask's priority and never waits on the per-resource cap; the parts ahead go one priority lower. An ask to the end learns the length from its first part. A streaming ask (the native reader's: a reader moving forward at the rate the media plays) goes one whole part at a time with none ahead; parts ahead of playback only added requests, and aborts when a reader left the screen (device A/B, 2026-11-18: 2x requests, 3-4x aborts in the feed, playback-bound either way). A cancelled ask stops only the parts nobody else waits on; landed spans stay. Settled 2026-11-18: one GET after another left a high-latency link idle a round trip between them |
 | Ownership | The cache owns range requests, writes into the sparse file and range index, and the "range landed" signal |
 | Reads | A native reader by key, part of this package: it reads the sparse file directly and blocks on a missing range; the missing range asks Dart to fetch it at a priority, and Dart signals over FFI once it is written. `mpx_player` opens it inside its `DataSource` and resource loader; any other player may |
 | Native names | `http_bytes_cache_*`, short `hbc_*` allowed for C symbols |
@@ -181,7 +182,7 @@ resume, the whole body buffered by design.
   "not cached" (absent or in flight). Over a store that keeps files, content
   goes out as its file under a lease the decoder releases (the fetch
   contract gained a release point, ADR 0003); a missing part whose location
-  is immutable is fetched as a ranged resource in one GET to the end, and
+  is immutable is fetched as a ranged resource, in parts, and
   the content kinds a host's `RangedContentPublisher` takes go out
   published to the native reader, read as they download, once their index
   and a first stretch are there. A first cut let the decoder block on

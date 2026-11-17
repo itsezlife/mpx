@@ -97,8 +97,8 @@ void main() {
     expect(File(path).existsSync(), isFalse);
   });
 
-  test('a missing part is fetched into the store in one GET and goes out '
-      'as its file', () async {
+  test('a missing part smaller than a part is fetched into the store in one '
+      'GET and goes out as its file', () async {
     final reports = <(int, int?)>[];
 
     final content = await fetcher().fetch(
@@ -110,7 +110,8 @@ void main() {
       ),
     );
 
-    expect(requested, ['/${still.key.encoded} bytes=0-']);
+    // The first part asks for 512 KiB; the server sends the 5000 there are.
+    expect(requested, ['/${still.key.encoded} bytes=0-524287']);
     expect(File((content as FetchedFile).path).readAsBytesSync(), clip);
     expect(store.contains(keyOf(still)), isTrue);
     expect(reports.last, (clip.length, clip.length));

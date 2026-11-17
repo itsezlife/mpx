@@ -60,14 +60,63 @@ final class RangesReset extends RangedEvent {
   const RangesReset();
 }
 
+/// How a ranged resource is split into parts, and how many of them run at
+/// once.
+///
+/// An ask for missing bytes goes out as single-range GETs (parts) of at
+/// most [partBytes]. A short ask is split down to [minPartBytes] so it still
+/// runs several parts: a 512 KiB read-ahead goes out as four 128 KiB parts.
+/// At most [perResource] parts of one resource run at once, beyond the part
+/// at an ask's first missing byte, which never waits on this cap. The total
+/// across resources is the client's ([HttpBytesClient.maxConcurrent]).
+///
+/// Parts in flight keep a high-latency link busy: one GET after another
+/// leaves it idle for a round trip between them.
+@immutable
+final class RangedParts {
+  /// Parts of [minPartBytes] to [partBytes], [perResource] at once per
+  /// resource.
+  const RangedParts({
+    this.partBytes = 512 * 1024,
+    this.minPartBytes = 128 * 1024,
+    this.perResource = 4,
+  }) : assert(partBytes > 0, 'partBytes must be > 0'),
+       assert(minPartBytes > 0, 'minPartBytes must be > 0'),
+       assert(perResource > 0, 'perResource must be > 0');
+
+  /// Bytes one part asks for at most.
+  final int partBytes;
+
+  /// Bytes a part is split down to at least (capped at [partBytes]).
+  final int minPartBytes;
+
+  /// Parts of one resource in flight at once.
+  final int perResource;
+
+  /// The size of each part for an ask missing [missing] bytes: spread over
+  /// [perResource] parts, between [minPartBytes] and [partBytes].
+  int sizeFor(int missing) {
+    final floor = minPartBytes < partBytes ? minPartBytes : partBytes;
+    final spread = (missing + perResource - 1) ~/ perResource;
+    return spread < floor ? floor : (spread > partBytes ? partBytes : spread);
+  }
+}
+
 /// Fetches ranged resources into an [IRangedBytesStore].
 ///
 /// One [RangedResource] per key: every [open] of a key shares its bytes, its
-/// fetches and its events until the last handle closes. Bytes are fetched in
-/// single-range GETs of [chunkBytes] through [client] (so its middlewares,
-/// priorities and slots apply), written to the sparse file in pieces of at
-/// least [writeBytes], and announced as [RangeLanded]. An ask that runs to
-/// the end ([ByteRange.end] null) is one GET to the end, not a chunk.
+/// fetches and its events until the last handle closes. Missing bytes are
+/// fetched in parts ([RangedParts]): single-range GETs through [client] (so
+/// its middlewares, priorities and slots apply), several in flight at once,
+/// each written to the sparse file at its offset as it arrives, in pieces of
+/// at least [writeBytes], and announced as [RangeLanded]. Parts land in any
+/// order; a reader waits for the bytes it asked for, wherever they come
+/// from. An ask that runs to the end ([ByteRange.end] null) learns the
+/// length from its first part, then goes on in parts.
+///
+/// The part at an ask's first missing byte goes out at the ask's priority;
+/// the parts ahead of it one step lower, so bytes something reads now
+/// overtake bytes read ahead in the client's queue.
 ///
 /// When the client [HttpBytesClient.canTransfer] and the store keeps files,
 /// each GET is a transfer: its body is written into the sparse file on the
@@ -75,12 +124,12 @@ final class RangesReset extends RangedEvent {
 /// landed. The bytes never enter it.
 ///
 /// A `206` adds bytes. A `200` to a range GET means the server ignores ranges
-/// or the representation changed: every span is dropped and the new body is
-/// kept as it streams. Without `Accept-Ranges` the resource is read
-/// sequentially from then on. A validator that differs from the stored one
-/// drops the spans as well; with [HttpBytesConditionalMiddleware] in the
-/// client's chain, the GET carries `If-Range` so the server answers the
-/// change at once.
+/// or the representation changed: every span is dropped, the resource's
+/// other parts stop, and the new body is kept as it streams. Without
+/// `Accept-Ranges` the resource is read sequentially from then on. A
+/// validator that differs from the stored one drops the spans as well; with
+/// [HttpBytesConditionalMiddleware] in the client's chain, the GET carries
+/// `If-Range` so the server answers the change at once.
 ///
 /// Needs a store that [IRangedBytesStore.supportsRanges] (the VM store);
 /// [isSupported] is false otherwise and [open] throws [UnsupportedError].
@@ -89,18 +138,17 @@ final class RangedBytes {
   RangedBytes({
     required IBytesStore store,
     HttpBytesClient? client,
-    this.chunkBytes = 512 * 1024,
+    this.parts = const RangedParts(),
     this.writeBytes = 64 * 1024,
-  }) : assert(chunkBytes > 0, 'chunkBytes must be > 0'),
-       assert(writeBytes > 0, 'writeBytes must be > 0'),
+  }) : assert(writeBytes > 0, 'writeBytes must be > 0'),
        _store = store,
        _client = client;
 
   final IBytesStore _store;
   final HttpBytesClient? _client;
 
-  /// Bytes one range GET asks for at most.
-  final int chunkBytes;
+  /// How missing bytes are split and how many parts run at once.
+  final RangedParts parts;
 
   /// Bytes buffered from the network before one write to the sparse file.
   final int writeBytes;
@@ -189,13 +237,26 @@ final class RangedResource {
   /// Asks for bytes a running GET will bring join it instead of asking
   /// again. [cancelToken] stops this ask with [HttpBytesException$Cancelled];
   /// a GET nobody waits on any more is aborted (its bytes so far stay).
+  ///
+  /// A [streaming] ask is a reader moving forward through the bytes as they
+  /// play (a player's read-ahead): it goes out one whole part at a time from
+  /// its first missing byte, with no parts ahead. Its bytes are needed in
+  /// order and at the rate they play, so parts ahead would add requests
+  /// without adding speed, and each one a reader leaving the screen stops
+  /// is a GET thrown away.
   Future<void> ensure(
     ByteRange range, {
     PriorityToken? priority,
     CancelToken? cancelToken,
+    bool streaming = false,
   }) {
     _ensureOpen();
-    return _core.ensure(range, priority: priority, cancelToken: cancelToken);
+    return _core.ensure(
+      range,
+      priority: priority,
+      cancelToken: cancelToken,
+      streaming: streaming,
+    );
   }
 
   /// [ensure]s [range] (which must be closed, or open with a known length)
@@ -318,49 +379,90 @@ final class _RangedCore {
     ByteRange want, {
     PriorityToken? priority,
     CancelToken? cancelToken,
+    bool streaming = false,
   }) async {
-    while (true) {
-      if (_shutDown) throw StateError('RangedResource is closed');
-      if (cancelToken?.isCancelled ?? false) {
-        throw HttpBytesException$Cancelled(
-          error: CancelledException(cancelToken!.reason),
-        );
+    final ask = _Ask(priority?.priority ?? RequestPriority.visible);
+    // One link for the whole ask, however many parts and landings it waits
+    // through: a long-lived token must not keep every past wait alive.
+    final wait = cancelToken == null ? null : CancelToken();
+    final unlink = wait == null ? null : cancelToken!.link(wait);
+    try {
+      while (true) {
+        _settle(ask);
+        if (_shutDown) throw StateError('RangedResource is closed');
+        if (cancelToken?.isCancelled ?? false) {
+          throw HttpBytesException$Cancelled(
+            error: CancelledException(cancelToken!.reason),
+          );
+        }
+        final current = state;
+        final total = current.totalLength ?? knownTotal;
+        final end = switch ((want.end, total)) {
+          (final e?, final t?) => e < t ? e : t,
+          (final e?, null) => e,
+          (null, final t?) => t,
+          (null, null) => null,
+        };
+        if (end != null && want.start >= end) return;
+        final int gapStart;
+        if (end == null) {
+          // Length unknown: the first part learns it.
+          gapStart = current.ranges.contiguousFrom(want.start);
+        } else {
+          final gap = current.ranges.firstGap(want.start, end);
+          if (gap == null) return;
+          gapStart = gap.$1;
+        }
+        // Planned once, from what the ask misses when its end is known: the
+        // parts of one ask keep their size as the gap closes.
+        final size = end == null || streaming
+            ? owner.parts.partBytes
+            : ask.partBytes ??= owner.parts.sizeFor(end - gapStart);
+        // The lead runs a whole part even past the ask's end (a reader
+        // moving on finds the next bytes there); the parts ahead stay
+        // inside the ask.
+        final lead =
+            _leadAt(gapStart) ??
+            _start(gapStart, end: total, size: size, priority: ask.priority);
+        ask.join(lead, ask.priority);
+        final from = lead.range?.end;
+        if (end != null && from != null && !streaming) {
+          _planAhead(ask, from: from, end: end, size: size);
+        }
+        // Wake on every landing and every part's end, not only the lead's:
+        // a part behind a slow one lands, and the next one starts.
+        final changed = _changed.future;
+        if (wait == null) {
+          await changed;
+        } else {
+          await Future.any([changed, wait.whenCancel]);
+        }
       }
-      final current = state;
-      final total = current.totalLength ?? knownTotal;
-      final end = switch ((want.end, total)) {
-        (final e?, final t?) => e < t ? e : t,
-        (final e?, null) => e,
-        (null, final t?) => t,
-        (null, null) => null,
-      };
-      if (end != null && want.start >= end) return;
-      final int gapStart;
-      if (end == null) {
-        // Length unknown: fetch from the first missing byte to learn it.
-        gapStart = current.ranges.contiguousFrom(want.start);
-      } else {
-        final gap = current.ranges.firstGap(want.start, end);
-        if (gap == null) return;
-        gapStart = gap.$1;
+    } finally {
+      unlink?.call();
+      ask.leave(abortIdle: cancelToken?.isCancelled ?? false);
+    }
+  }
+
+  /// Throws what ended a part [ask] waits on: its error, or a server that
+  /// sent nothing where the part starts.
+  void _settle(_Ask ask) {
+    for (final fetch in ask.ended()) {
+      if (fetch.superseded) continue;
+      if (fetch.error case final error?) {
+        Error.throwWithStackTrace(error, fetch.stackTrace!);
       }
-      final fetch =
-          _covering(gapStart) ??
-          _start(gapStart, total, priority, toEnd: want.end == null);
-      // Wake on every landing, not only at the end of the GET: a sequential
-      // GET may run for the whole file while the bytes asked for land early.
-      await fetch.step(priority: priority, cancelToken: cancelToken);
-      if (!fetch.isDone) continue;
+      final start = fetch.start;
+      if (fetch.landedBytes > 0 || start == null) continue;
       final after = state;
-      final gapFilled = after.ranges.covers(gapStart, gapStart + 1);
       final ended = switch (after.totalLength ?? knownTotal) {
-        final t? => gapStart >= t,
+        final t? => start >= t,
         null => false,
       };
-      if (!gapFilled && !ended && fetch.landedBytes == 0) {
+      if (!ended && !after.ranges.covers(start, start + 1)) {
         throw HttpBytesException$Internal(
           code: 'range_not_served',
-          message: 'The server did not send bytes at $gapStart of $key.',
+          message: 'The server did not send bytes at $start of $key.',
           statusCode: 0,
           data: <String, Object?>{'url': request.url.toString()},
         );
@@ -368,45 +470,111 @@ final class _RangedCore {
     }
   }
 
-  /// A running GET that will bring the byte at [offset].
-  _Fetch? _covering(int offset) {
+  /// Completes on every landing and every part's end, then is replaced.
+  Completer<void> _changed = Completer<void>();
+
+  void notify() {
+    final changed = _changed;
+    _changed = Completer<void>();
+    changed.complete();
+  }
+
+  /// A running GET an ask whose first missing byte is [offset] joins: one
+  /// about to write it, or the whole body of a resource read sequentially.
+  _Fetch? _leadAt(int offset) {
     for (final fetch in _fetches) {
-      if (fetch.covers(offset)) return fetch;
+      if (fetch.isStopping) continue;
+      if (sequentialOnly ? fetch.range == null : fetch.joins(offset)) {
+        return fetch;
+      }
     }
     return null;
   }
 
+  /// A running part that will write the byte at [offset], however far
+  /// from its next byte.
+  _Fetch? _bringing(int offset) {
+    for (final fetch in _fetches) {
+      if (!fetch.isStopping && fetch.brings(offset)) return fetch;
+    }
+    return null;
+  }
+
+  /// Starts the parts ahead of an ask's first one, from [from] to [end],
+  /// while the resource has fewer than [RangedParts.perResource] in flight,
+  /// joining the running parts on the way.
+  void _planAhead(
+    _Ask ask, {
+    required int from,
+    required int end,
+    required int size,
+  }) {
+    final level = ask.priority.index > 0
+        ? RequestPriority.values[ask.priority.index - 1]
+        : ask.priority;
+    var offset = from;
+    while (offset < end && _fetches.length < owner.parts.perResource) {
+      final gap = state.ranges.firstGap(offset, end);
+      if (gap == null) return;
+      offset = gap.$1;
+      final running = _bringing(offset);
+      if (running != null) {
+        ask.join(running, level);
+        final next = running.range?.end;
+        if (next == null) return;
+        offset = next;
+        continue;
+      }
+      final part = _start(offset, end: gap.$2, size: size, priority: level);
+      ask.join(part, level);
+      offset = part.range!.end!;
+    }
+  }
+
+  /// Starts a GET from [start]: a part of at most [size] bytes, stopping at
+  /// [end] and at the next byte held, or the whole body when the resource is
+  /// read sequentially.
   _Fetch _start(
-    int start,
-    int? total,
-    PriorityToken? priority, {
-    required bool toEnd,
+    int start, {
+    required int? end,
+    required int size,
+    required RequestPriority priority,
   }) {
     final ByteRange? range;
     if (sequentialOnly) {
       range = null;
-    } else if (toEnd) {
-      // To the next byte held, or the end: one GET for a whole body.
-      range = ByteRange(start, state.ranges.nextPresentFrom(start));
     } else {
+      var stop = start + size;
       final next = state.ranges.nextPresentFrom(start);
-      var end = start + owner.chunkBytes;
-      if (next != null && next < end) end = next;
-      if (total != null && total < end) end = total;
-      range = ByteRange(start, end);
+      if (next != null && next < stop) stop = next;
+      if (end != null && end < stop) stop = end;
+      range = ByteRange(start, stop);
     }
     final fetch = _Fetch(
       core: this,
       range: range,
-      priority: PriorityToken(
-        priority?.priority ?? RequestPriority.visible,
-      ),
+      priority: PriorityToken(priority),
     );
     _fetches.add(fetch);
-    unawaited(
-      fetch.run().whenComplete(() => _fetches.remove(fetch)),
-    );
+    unawaited(fetch.run());
     return fetch;
+  }
+
+  /// Stops every part but [keep]: a `200` replaced the representation, and
+  /// their bytes are the old one's or come again in [keep]'s body.
+  void supersedeAllBut(_Fetch keep) {
+    for (final fetch in List.of(_fetches)) {
+      if (identical(fetch, keep) || fetch.isDone) continue;
+      fetch
+        ..superseded = true
+        ..abort();
+    }
+  }
+
+  /// [fetch] ended: forget it and wake the asks.
+  void ended(_Fetch fetch) {
+    _fetches.remove(fetch);
+    notify();
   }
 
   /// Writes [bytes] at [offset] and announces them, after a reset when the
@@ -501,25 +669,75 @@ final class _RangedCore {
   }
 }
 
-/// One GET bringing bytes into a ranged resource: a range GET, or the whole
-/// body when the resource is read sequentially.
+/// What one ensure waits on: the parts it started or joined.
+final class _Ask {
+  _Ask(this.priority);
+
+  final RequestPriority priority;
+  final Set<_Fetch> _joined = {};
+
+  /// The size of this ask's parts, once its end is known.
+  int? partBytes;
+
+  /// Counts this ask on [fetch] once, raising it to [level].
+  void join(_Fetch fetch, RequestPriority level) {
+    fetch.raise(level);
+    if (_joined.add(fetch)) fetch.interest++;
+  }
+
+  /// The joined parts that ended since the last call; they are left.
+  List<_Fetch> ended() {
+    final done = [
+      for (final fetch in _joined)
+        if (fetch.isDone) fetch,
+    ];
+    for (final fetch in done) {
+      _joined.remove(fetch);
+      fetch.interest--;
+    }
+    return done;
+  }
+
+  /// Leaves every joined part. A cancelled ask ([abortIdle]) aborts the
+  /// parts nobody else waits on; their landed bytes stay.
+  void leave({required bool abortIdle}) {
+    for (final fetch in _joined) {
+      fetch.interest--;
+      if (abortIdle && fetch.interest == 0 && !fetch.isDone) fetch.abort();
+    }
+    _joined.clear();
+  }
+}
+
+/// One GET bringing bytes into a ranged resource: a part (a range GET), or
+/// the whole body when the resource is read sequentially.
 final class _Fetch {
   _Fetch({required this.core, required this.range, required this.priority})
-    : cursor = range?.start ?? 0;
+    : start = range?.start,
+      cursor = range?.start ?? 0;
 
   final _RangedCore core;
 
   /// The range asked for; null for a whole-body GET.
   ByteRange? range;
+
+  /// The first byte asked for; null for a whole-body GET.
+  final int? start;
   final PriorityToken priority;
   final CancelToken _token = CancelToken();
-  final Completer<void> _done = Completer<void>();
 
-  /// Completes on the next landing or at the end, then is replaced.
-  Completer<void> _step = Completer<void>();
-  var _waiters = 0;
+  /// Asks waiting on this GET.
+  int interest = 0;
 
-  bool get isDone => _done.isCompleted;
+  bool isDone = false;
+
+  /// What ended the GET before its body did.
+  Object? error;
+  StackTrace? stackTrace;
+
+  /// Stopped because another part's `200` replaced the representation: it
+  /// ends quietly and records nothing more.
+  bool superseded = false;
 
   /// Next byte this GET will write.
   int cursor;
@@ -532,86 +750,43 @@ final class _Fetch {
   /// is fetched now, not after the body that comes before it.
   static const int joinWindow = 32 * 1024;
 
-  bool covers(int offset) =>
-      !_done.isCompleted &&
+  /// Whether an ask whose first missing byte is [offset] waits on this GET.
+  bool joins(int offset) => brings(offset) && offset - cursor < joinWindow;
+
+  /// Whether this GET will write the byte at [offset].
+  bool brings(int offset) =>
       cursor <= offset &&
-      offset - cursor < joinWindow &&
       switch (range?.end) {
         final end? => offset < end,
         null => true,
       };
 
+  void raise(RequestPriority level) {
+    if (level.isAbove(priority.priority)) priority.priority = level;
+  }
+
   void abort() => _token.cancel();
 
-  /// Waits for this GET's next landing, or its end (failing with its
-  /// error), joining at [priority]. A waiter that cancels leaves; the GET is
-  /// aborted when nobody waits on it any more.
-  Future<void> step({PriorityToken? priority, CancelToken? cancelToken}) {
-    final mine = priority?.priority ?? RequestPriority.visible;
-    if (mine.isAbove(this.priority.priority)) this.priority.priority = mine;
-    final next = isDone ? _done.future : _step.future;
-    _waiters++;
-    if (cancelToken == null) {
-      return next.whenComplete(() => _waiters--);
-    }
-    final result = Completer<void>();
-    void leave() {
-      _waiters--;
-      if (_waiters == 0 && !_done.isCompleted) abort();
-    }
-
-    // The wait listens to a child token linked for this step only. A
-    // listener on [cancelToken] itself would stay until it cancels, and an
-    // ask steps once per landing and per GET with the same token: a
-    // long-lived token would keep every past wait, and its GET, alive.
-    final wait = CancelToken();
-    final unlink = cancelToken.link(wait);
-    unawaited(
-      wait.whenCancel.then((_) {
-        if (result.isCompleted) return;
-        result.completeError(
-          HttpBytesException$Cancelled(
-            error: CancelledException(cancelToken.reason),
-          ),
-        );
-        leave();
-      }),
-    );
-    next.then(
-      (_) {
-        unlink();
-        if (result.isCompleted) return;
-        _waiters--;
-        result.complete();
-      },
-      onError: (Object error, StackTrace stackTrace) {
-        unlink();
-        if (result.isCompleted) return;
-        _waiters--;
-        result.completeError(error, stackTrace);
-      },
-    );
-    return result.future;
-  }
+  /// Ended, or on its way out: an ask starts a GET of its own instead.
+  bool get isStopping => isDone || _token.isCancelled;
 
   Future<void> run() async {
     try {
       await _transfer();
-      if (!_done.isCompleted) _done.complete();
-      if (!_step.isCompleted) _step.complete();
     } on Object catch (error, stackTrace) {
-      if (!_done.isCompleted) _done.completeError(error, stackTrace);
-      if (!_step.isCompleted) _step.completeError(error, stackTrace);
+      if (!superseded) {
+        this.error = error;
+        this.stackTrace = stackTrace;
+      }
     }
-    // Nobody may be waiting any more; keep the error from going uncaught.
-    _done.future.ignore();
-    _step.future.ignore();
+    isDone = true;
+    core.ended(this);
   }
 
-  void _landed() {
-    final step = _step;
-    _step = Completer<void>();
-    step.complete();
+  void _landed(int end, int bytes) {
+    cursor = end;
+    landedBytes += bytes;
+    core.notify();
   }
 
   Future<void> _transfer() async {
@@ -657,6 +832,10 @@ final class _Fetch {
       return;
     }
 
+    if (superseded) {
+      transfer?.cancel();
+      return;
+    }
     final validator = _validatorOf(response.headers);
     int offset;
     final int? total;
@@ -682,6 +861,7 @@ final class _Fetch {
         offset = 0;
         total = response.totalLength;
         if (!response.acceptsRanges) core.sequentialOnly = true;
+        if (asked != null) core.supersedeAllBut(this);
         if (asked != null || !_sameRepresentation(stored, validator)) {
           await core.reset(validator: validator, totalLength: total);
         }
@@ -694,15 +874,14 @@ final class _Fetch {
         core.lease.path,
         offset: offset,
         onLanded: (start, end) async {
+          if (superseded) return;
           await core.record(
             start,
             end,
             validator: validator,
             totalLength: total,
           );
-          cursor = end;
-          landedBytes += end - start;
-          _landed();
+          _landed(end, end - start);
         },
       );
       return;
@@ -710,13 +889,11 @@ final class _Fetch {
 
     final pending = BytesBuilder(copy: false);
     Future<void> flush() async {
-      if (pending.isEmpty) return;
+      if (pending.isEmpty || superseded) return;
       final bytes = pending.takeBytes();
       await core.land(offset, bytes, validator: validator, totalLength: total);
       offset += bytes.length;
-      cursor = offset;
-      landedBytes += bytes.length;
-      _landed();
+      _landed(offset, bytes.length);
     }
 
     await for (final chunk in response.stream) {
