@@ -433,7 +433,7 @@ class _GalleryPagerState extends State<GalleryPager>
 
   @override
   void panStart() {
-    _phase = GalleryDragPhase.panning;
+    setState(() => _phase = GalleryDragPhase.panning);
     _base = _controller._page;
     _raw = 0;
     _zoomedDrag = true;
@@ -475,7 +475,7 @@ class _GalleryPagerState extends State<GalleryPager>
 
   @override
   void panEnd(Offset velocity) {
-    _phase = GalleryDragPhase.idle;
+    setState(() => _phase = GalleryDragPhase.idle);
     if (_raw != 0) {
       page?.panEnd(Offset.zero);
       pageEnd(widget.axis == Axis.horizontal ? velocity.dx : velocity.dy);
@@ -581,10 +581,16 @@ class _GalleryPagerState extends State<GalleryPager>
             drag: this,
             taps: this,
             tapRules: widget.taps,
-            child: ClipRect(
-              child: ValueListenableBuilder<double>(
-                valueListenable: _controller._position,
-                builder: (context, position, _) => _pages(context, position),
+            child: MouseRegion(
+              cursor: _cursor,
+              onEnter: _hovered,
+              onHover: _hovered,
+              onExit: (_) => _hovered(null),
+              child: ClipRect(
+                child: ValueListenableBuilder<double>(
+                  valueListenable: _controller._position,
+                  builder: (context, position, _) => _pages(context, position),
+                ),
               ),
             ),
           ),
@@ -594,6 +600,31 @@ class _GalleryPagerState extends State<GalleryPager>
   }
 
   bool get _rtl => widget.textDirection == TextDirection.rtl;
+
+  // --- Cursor ---------------------------------------------------------------
+
+  // The side strip under the mouse that pages (-1, 1), or 0.
+  int _hoverStrip = 0;
+
+  // A pointer over a strip that pages shows it is clickable; a pan of a
+  // zoomed picture shows it moves.
+  MouseCursor get _cursor => _phase == GalleryDragPhase.panning
+      ? SystemMouseCursors.move
+      : _hoverStrip != 0
+      ? SystemMouseCursors.click
+      : MouseCursor.defer;
+
+  void _hovered(PointerEvent? event) {
+    var strip = 0;
+    final rule = widget.physics.sideTap;
+    if (event != null && rule != null && widget.axis == Axis.horizontal) {
+      final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
+      strip = rule.directionAt(event.localPosition, _size, dpr);
+      if (_rtl) strip = -strip;
+      if (strip != 0 && !_canPage(strip)) strip = 0;
+    }
+    if (strip != _hoverStrip) setState(() => _hoverStrip = strip);
+  }
 
   VoidCallback? _semanticsStep({required bool horizontal, required bool next}) {
     if ((widget.axis == Axis.horizontal) != horizontal) return null;

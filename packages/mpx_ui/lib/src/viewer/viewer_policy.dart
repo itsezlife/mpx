@@ -685,6 +685,7 @@ final class ViewerVideoRules {
     this.doubleTapSeek,
     this.doubleTapFullscreen = false,
     this.doubleTapZooms = true,
+    this.clickPlays = false,
     this.hold,
     this.seekPreviewBox,
     this.start = ViewerVideoStart.beginning,
@@ -732,6 +733,10 @@ final class ViewerVideoRules {
   /// video's picture like a photo's.
   final bool doubleTapZooms;
 
+  /// Whether a click on the video plays or pauses it, rather than showing
+  /// or hiding the controls.
+  final bool clickPlays;
+
   /// The held-press speed-up; null for none.
   final ViewerHoldSpeed? hold;
 
@@ -765,6 +770,7 @@ final class ViewerVideoRules {
     ViewerDoubleTapSeek? doubleTapSeek,
     bool? doubleTapFullscreen,
     bool? doubleTapZooms,
+    bool? clickPlays,
     ViewerHoldSpeed? hold,
     Size? seekPreviewBox,
     bool? prepareNeighbours,
@@ -779,6 +785,7 @@ final class ViewerVideoRules {
     doubleTapSeek: doubleTapSeek ?? this.doubleTapSeek,
     doubleTapFullscreen: doubleTapFullscreen ?? this.doubleTapFullscreen,
     doubleTapZooms: doubleTapZooms ?? this.doubleTapZooms,
+    clickPlays: clickPlays ?? this.clickPlays,
     hold: hold ?? this.hold,
     seekPreviewBox: seekPreviewBox ?? this.seekPreviewBox,
     prepareNeighbours: prepareNeighbours ?? this.prepareNeighbours,
@@ -853,6 +860,7 @@ final class ViewerPolicy {
     this.dismissVelocity,
     this.backgroundFadeDistance,
     this.backgroundClickCloses = false,
+    this.pictureClickCloses = false,
     this.doubleTapEdgeInset = 0,
     this.desktopInput = false,
   });
@@ -1045,6 +1053,7 @@ final class ViewerPolicy {
     backgroundOpacityFloor: 1,
     backgroundFadeWidthFraction: 1 / 4,
     backgroundClickCloses: true,
+    pictureClickCloses: true,
     // Zoom steps animate linearly over the toolkit's widget fade, whose
     // value the reference does not ship; 200 ms like its other fades.
     settleDuration: Duration(milliseconds: 200),
@@ -1076,6 +1085,7 @@ final class ViewerPolicy {
 
       doubleTapFullscreen: true,
       doubleTapZooms: false,
+      clickPlays: true,
       hold: ViewerHoldSpeed(delay: Duration(milliseconds: 200), rate: 2),
     ),
     chrome: ViewerChromeMetrics.desktop,
@@ -1145,6 +1155,10 @@ final class ViewerPolicy {
   /// Whether a click on the background around the picture closes the
   /// viewer.
   final bool backgroundClickCloses;
+
+  /// Whether a click on a photo or an animation closes the viewer too,
+  /// rather than showing or hiding the chrome.
+  final bool pictureClickCloses;
 
   /// How long a picture takes to spring back from a drag, and to snap its
   /// zoom into range.
@@ -1356,6 +1370,7 @@ final class ViewerPolicy {
     double? backgroundFadeWidthFraction,
     double? backgroundFadeDistance,
     bool? backgroundClickCloses,
+    bool? pictureClickCloses,
     Duration? settleDuration,
     Curve? settleCurve,
     Duration? slideOffDuration,
@@ -1402,6 +1417,7 @@ final class ViewerPolicy {
     backgroundFadeDistance:
         backgroundFadeDistance ?? this.backgroundFadeDistance,
     backgroundClickCloses: backgroundClickCloses ?? this.backgroundClickCloses,
+    pictureClickCloses: pictureClickCloses ?? this.pictureClickCloses,
     settleDuration: settleDuration ?? this.settleDuration,
     settleCurve: settleCurve ?? this.settleCurve,
     slideOffDuration: slideOffDuration ?? this.slideOffDuration,

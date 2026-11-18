@@ -876,6 +876,62 @@ class MediaViewerState extends State<MediaViewer>
     }
   }
 
+  // --- Trackpad ---------------------------------------------------------------
+
+  // A trackpad's vertical pan pages like the wheel: one item per this much,
+  // a wheel notch's worth.
+  static const double _trackpadStep = 120;
+  // Its horizontal swipe is slowed to this share and goes to the
+  // neighbour once it passes [_swipeCommit], once per gesture.
+  static const double _swipeSlow = 0.2;
+  static const double _swipeCommit = 50 * 0.35;
+  // A pinch zooms one step per this much change of its scale.
+  static const double _pinchStep = 0.25;
+
+  Axis? _trackpadAxis;
+  double _trackpadPan = 0;
+  bool _swiped = false;
+  double _pinchAt = 1;
+
+  void _onPanZoomStart(PointerPanZoomStartEvent event) {
+    _trackpadAxis = null;
+    _trackpadPan = 0;
+    _swiped = false;
+    _pinchAt = 1;
+  }
+
+  void _onPanZoomUpdate(PointerPanZoomUpdateEvent event) {
+    if (_phase != _Phase.open) return;
+    if ((event.scale - _pinchAt).abs() >= _pinchStep) {
+      final zoomIn = event.scale > _pinchAt;
+      _pinchAt += zoomIn ? _pinchStep : -_pinchStep;
+      _zoomStep(zoomIn: zoomIn, focal: event.localPosition);
+      return;
+    }
+    final pan = event.pan;
+    // The swipe's orientation locks once one axis leads by a pixel.
+    _trackpadAxis ??= (pan.dx.abs() - pan.dy.abs()).abs() > 1
+        ? (pan.dx.abs() > pan.dy.abs() ? Axis.horizontal : Axis.vertical)
+        : null;
+    switch (_trackpadAxis) {
+      case Axis.vertical:
+        // Fingers up scroll on, as the wheel turned down.
+        _trackpadPan -= event.panDelta.dy;
+        while (_trackpadPan.abs() >= _trackpadStep) {
+          final forward = _trackpadPan > 0;
+          _trackpadPan -= forward ? _trackpadStep : -_trackpadStep;
+          _pageBy(forward ? 1 : -1);
+        }
+      case Axis.horizontal:
+        if (_swiped || (pan.dx * _swipeSlow).abs() < _swipeCommit) return;
+        _swiped = true;
+        // Fingers to the right bring the previous item.
+        _pageBy(pan.dx > 0 ? -1 : 1);
+      case null:
+        break;
+    }
+  }
+
   void _onHover(PointerHoverEvent event) {
     final last = _lastHover;
     _lastHover = event.position;
@@ -1322,7 +1378,20 @@ class MediaViewerState extends State<MediaViewer>
           onKeyEvent: _onKey,
           child: Listener(
             onPointerSignal: _onPointerSignal,
-            child: MouseRegion(onHover: _onHover, child: viewer),
+            onPointerPanZoomStart: _onPanZoomStart,
+            onPointerPanZoomUpdate: _onPanZoomUpdate,
+            // The cursor hides with a video's controls.
+            child: ValueListenableBuilder<bool>(
+              valueListenable: _controls,
+              builder: (context, visible, child) => MouseRegion(
+                onHover: _onHover,
+                cursor: visible || _session == null
+                    ? MouseCursor.defer
+                    : SystemMouseCursors.none,
+                child: child,
+              ),
+              child: viewer,
+            ),
           ),
         );
       }
@@ -1396,8 +1465,10 @@ class MediaViewerState extends State<MediaViewer>
       doubleTapZoom: video && !_video.doubleTapZooms
           ? null
           : policy.doubleTapZoomFor(fitted, _size, pixels: item.size),
-      onTap: () {
-        _controls.value = !_controls.value;
+      onTap: switch ((session, policy.pictureClickCloses)) {
+        (final playing?, _) when _video.clickPlays => playing.togglePlay,
+        (null, true) => () => unawaited(close()),
+        _ => () => _controls.value = !_controls.value,
       },
       onBackgroundTap: policy.backgroundClickCloses
           ? () => unawaited(close())
