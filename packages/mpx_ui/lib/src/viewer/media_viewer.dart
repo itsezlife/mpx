@@ -145,6 +145,12 @@ final class ViewerController extends ChangeNotifier {
 /// [ViewerChrome.openFile], released when the action completes) and the
 /// picture as it shows.
 ///
+/// The viewer covers the whole screen and asks for clear system bars: a
+/// zoomed picture runs under the status and navigation bars, which the
+/// chrome covers with its bar fill while it shows. On Android before 15 the
+/// window reaches under the navigation bar only when the host is
+/// edge-to-edge (`SystemUiMode.edgeToEdge`).
+///
 /// ## Video
 ///
 /// With [players] a video item plays on the player pool: it opens where the
@@ -1399,9 +1405,33 @@ class MediaViewerState extends State<MediaViewer>
           ),
         );
       }
-      return viewer;
+      return AnnotatedRegion<SystemUiOverlayStyle>(
+        value: _systemBars(background),
+        child: viewer,
+      );
     },
   );
+
+  // The system bars over the viewer: clear, so the picture runs under them
+  // (the chrome brings its own scrims), with icons that read on the
+  // viewer's background. Without it the bars keep the host's style: dark
+  // icons lost on the black, and the platform's contrast scrim drawn over
+  // the navigation bar as a band the picture stops at.
+  static SystemUiOverlayStyle _systemBars(Color background) {
+    final dark = background.computeLuminance() < 0.5;
+    final icons = dark ? Brightness.light : Brightness.dark;
+    return SystemUiOverlayStyle(
+      statusBarColor: const Color(0x00000000),
+      statusBarIconBrightness: icons,
+      // iOS names the bar's background, not its icons.
+      statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+      systemStatusBarContrastEnforced: false,
+      systemNavigationBarColor: const Color(0x00000000),
+      systemNavigationBarDividerColor: const Color(0x00000000),
+      systemNavigationBarIconBrightness: icons,
+      systemNavigationBarContrastEnforced: false,
+    );
+  }
 
   List<ViewerQuality> _qualities() {
     final item = widget.source.itemAt(_index);

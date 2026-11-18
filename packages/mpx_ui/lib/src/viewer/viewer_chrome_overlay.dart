@@ -152,7 +152,18 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
                 if (item != null) ?_caption(context, item, metrics),
                 if (widget.chrome.thumbnails && widget.source.count > 1)
                   _strip(metrics),
-                SizedBox(height: padding.bottom + widget.bottomInset),
+                SizedBox(height: widget.bottomInset),
+                // The navigation bar's scrim, the bars' fill, as the top
+                // bar's covers the status bar: the system bar itself is
+                // clear and the picture runs on under it.
+                ColoredBox(
+                  key: const ValueKey('mpx-viewer-navigation-scrim'),
+                  color: widget.tokens.barFill,
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: padding.bottom,
+                  ),
+                ),
               ],
             ),
           ),
