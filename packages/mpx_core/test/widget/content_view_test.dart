@@ -1500,6 +1500,94 @@ void main() {
       expect(clip.clipRRect, RRect.fromRectXY(picture, 6, 6));
     });
 
+    testWidgets('a rounded view keeps every stage inside its rounded clip '
+        'in every frame of a rise: the stand-in beneath, the content before '
+        'its picture size is known, and its texture under the fade', (
+      tester,
+    ) async {
+      const size = Size(40, 40);
+      const radius = 8.0;
+      final rounded = AssetPreset(
+        size: size,
+        spec: AssetSpec.atDensity(
+          logicalWidth: size.width,
+          logicalHeight: size.height,
+          devicePixelRatio: 1,
+        ),
+        profile: const AssetProfile(animate: true, cornerRadius: radius),
+      );
+      final boundary = GlobalKey();
+      await tester.pumpWidget(
+        host(
+          RepaintBoundary(
+            key: boundary,
+            child: ContentView(content: _sticker, preset: rounded),
+          ),
+        ),
+      );
+      // A square picture: the rounded area is the whole box.
+      const picture = Size(64, 64);
+      producer.last.advance(
+        AssetStage.placeholder,
+        pictureSize: picture,
+        fill: const Color(0xFFFF0000),
+      );
+      await tester.pump();
+      await tester.pump(_pastFade);
+
+      // The content arrives knowing nothing of its picture's size; its
+      // texture comes a frame later.
+      final content = producer.last.advance(
+        AssetStage.full,
+        animated: true,
+        fill: const Color(0xFF0000FF),
+      );
+
+      // A texture draws nothing in a test: once the stand-in has gone only
+      // the layers can tell.
+      Future<void> expectRounded(String frame, {bool drawn = true}) async {
+        final render = tester.renderObject(find.byKey(boundary));
+        final root = render.debugLayer! as OffsetLayer;
+        final pixels = await tester.runAsync(() async {
+          final image = await root.toImage(Offset.zero & size);
+          final bytes = await image.toByteData();
+          image.dispose();
+          return bytes!;
+        });
+        int alphaAt(int x, int y) =>
+            pixels!.getUint8((y * size.width.toInt() + x) * 4 + 3);
+        expect(alphaAt(0, 0), 0, reason: '$frame: the top left corner shows');
+        expect(alphaAt(39, 39), 0, reason: '$frame: a corner shows');
+        if (drawn) {
+          expect(alphaAt(20, 20), greaterThan(0), reason: '$frame: blank');
+        }
+        for (final layer in [
+          ..._find<PictureLayer>(root),
+          ..._find<TextureLayer>(root),
+        ]) {
+          final clips = _ancestors(
+            layer,
+          ).takeWhile((up) => up != root).whereType<ClipRRectLayer>();
+          expect(
+            clips.any((clip) => clip.clipRRect!.tlRadiusX == radius),
+            isTrue,
+            reason: '$frame: $layer is outside the rounded clip',
+          );
+        }
+      }
+
+      await tester.pump();
+      await expectRounded('first frame, no picture size');
+      content.texture = const AssetTexture(id: 9, width: 64, height: 64);
+      for (var i = 1; i <= 5; i++) {
+        ticks.tick(Duration(milliseconds: 50 * i));
+        await tester.pump(const Duration(milliseconds: 50));
+        // The rise lasts 250 ms: the stand-in is gone in the last frame.
+        await expectRounded('rise frame $i', drawn: i < 5);
+      }
+      expect(_find<TextureLayer>(tester.layers.first), isNotEmpty);
+    });
+
     testWidgets('a cover preset fills its box with the frame and is clipped '
         'to the box', (tester) async {
       const size = Size(40, 20);

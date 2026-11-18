@@ -1,4 +1,4 @@
-import 'dart:ui' show Size;
+import 'dart:ui' show Color, Size;
 
 import 'package:mpx_core/src/asset/asset_cache_budgets.dart';
 import 'package:mpx_core/src/asset/asset_producer.dart';
@@ -27,7 +27,8 @@ final class FakeAssetAttempt implements AssetTask {
 
   /// Reports [stage] with a fresh paintable and returns it. [frames] gives
   /// the paintable a sequence to play (and makes it animated). An animated
-  /// paintable has a first-frame still unless [firstFrameStill] is false.
+  /// paintable has a first-frame still unless [firstFrameStill] is false;
+  /// [fill] is the colour it paints its rectangle in.
   FakeAssetPaintable advance(
     AssetStage stage, {
     int bytes = 100,
@@ -36,6 +37,7 @@ final class FakeAssetAttempt implements AssetTask {
     List<Duration> frames = const [],
     bool firstFrameStill = true,
     Size? pictureSize,
+    Color? fill,
   }) {
     final plays = animated || frames.isNotEmpty;
     final paintable = FakeAssetPaintable(
@@ -43,6 +45,7 @@ final class FakeAssetAttempt implements AssetTask {
       isAnimated: plays,
       frameDurations: frames,
       pictureSize: pictureSize,
+      fill: fill,
       firstFrame: plays && firstFrameStill
           ? FakeAssetPaintable(label: '${request.key}@${stage.name}:frame0')
           : null,

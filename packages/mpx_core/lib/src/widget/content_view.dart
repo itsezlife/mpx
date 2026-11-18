@@ -76,6 +76,10 @@ import 'package:mpx_core/src/widget/viewport_visibility.dart';
 /// paintable before it reads the texture, which is what tells the paintable
 /// that a surface that composites shows it.
 ///
+/// A corner radius clips everything the view paints to the picture's
+/// rounded area, in one clip: its fill, its placeholder, the stand-in a
+/// stage rises over and the stage, texture and fade included.
+///
 /// ## Placeholder
 ///
 /// While the binding has nothing of its own to show (it paints the scope's
@@ -774,12 +778,43 @@ class _RenderContent extends RenderBox {
     size = computeDryLayout(constraints);
   }
 
+  // The rounded clip every stage is painted in: a layer while the view
+  // composites, so the texture and the opacity of a rise sit inside it too.
+  final LayerHandle<ClipRRectLayer> _clip = LayerHandle<ClipRRectLayer>();
+
+  @override
+  void dispose() {
+    _clip.layer = null;
+    super.dispose();
+  }
+
   @override
   void paint(PaintingContext context, Offset offset) {
     if (_armed) {
       _armed = false;
       _onPaintedUnseen!();
     }
+    if (_binding.profile.cornerRadius <= 0) {
+      _clip.layer = null;
+      _paintStages(context, offset);
+      return;
+    }
+    // Every stage inside the one rounded area, from its first frame: the
+    // fill, the placeholder, the stand-in a stage rises over and the stage
+    // itself. A stand-in, a fill or a placeholder draws its whole box; only
+    // the binding's own paint rounded itself.
+    final area = _roundedArea(Offset.zero & size);
+    _clip.layer = context.pushClipRRect(
+      needsCompositing,
+      offset,
+      area.outerRect,
+      area,
+      _paintStages,
+      oldLayer: _clip.layer,
+    );
+  }
+
+  void _paintStages(PaintingContext context, Offset offset) {
     final box = offset & size;
     // While the binding would paint the scope's placeholder (nothing exists
     // yet, or a first frame the profile does not show yet) the view's own
@@ -863,11 +898,23 @@ class _RenderContent extends RenderBox {
     ..scale(scale, scale)
     ..translate(-centre.dx, -centre.dy);
 
-  // The picture's rounded area: the circle of a round box.
+  // The picture's rounded area: the circle of a round box. A paintable that
+  // does not know its picture's size yet rounds its texture's frame, as
+  // the texture layer does.
   RRect _roundedArea(Rect box) {
     final profile = _binding.profile;
+    final paintable = _binding.paintable;
+    final texture = paintable.texture;
+    final picture =
+        paintable.pictureSize ??
+        (texture == null
+            ? null
+            : Size(
+                texture.frameWidth.toDouble(),
+                texture.frameHeight.toDouble(),
+              ));
     return RRect.fromRectAndRadius(
-      profile.roundedArea(box, _binding.paintable.pictureSize),
+      profile.roundedArea(box, picture),
       Radius.circular(profile.cornerRadius),
     );
   }

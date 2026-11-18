@@ -29,6 +29,7 @@ final class FakeAssetPaintable extends AssetPaintable {
     this.frameDurations = const [],
     this.firstFrame,
     this.pictureSize,
+    this.fill,
   }) : isAnimated = isAnimated ?? frameDurations.isNotEmpty;
 
   /// Names this paintable in test output.
@@ -36,6 +37,10 @@ final class FakeAssetPaintable extends AssetPaintable {
 
   @override
   final Size? pictureSize;
+
+  /// The colour it fills the rectangle it is painted in with, so a test can
+  /// read where a paint reached; null paints nothing.
+  final Color? fill;
 
   @override
   final bool isAnimated;
@@ -144,6 +149,12 @@ final class FakeAssetPaintable extends AssetPaintable {
   void paint(Canvas canvas, Rect rect, AssetPaintContext context) {
     assert(!isDisposed, '$label painted after dispose');
     paints.add((rect: rect, context: context));
+    if (fill case final fill?) {
+      canvas.drawRect(
+        rect,
+        Paint()..color = fill.withValues(alpha: fill.a * context.opacity),
+      );
+    }
     _play(context);
   }
 
