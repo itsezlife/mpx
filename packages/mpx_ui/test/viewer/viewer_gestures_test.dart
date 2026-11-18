@@ -263,6 +263,88 @@ void main() {
       expect(harness.page(tester).pan.dy, 50);
     });
 
+    testWidgets(
+      'Android: a pinch released past 3x settles at 3x around its start, '
+      'and the finger lifted last throws nothing',
+      (tester) async {
+        final harness = ViewerHarness();
+        await harness.pump(tester);
+
+        // Off-centre: the pinch starts at (100, 350), 100 left of and 50
+        // above the centre.
+        var t = Duration.zero;
+        Future<void> step(TestGesture finger, Offset by) async {
+          t += const Duration(milliseconds: 8);
+          await finger.moveBy(by, timeStamp: t);
+          await tester.pump(const Duration(milliseconds: 8));
+        }
+
+        final a = await tester.startGesture(const Offset(60, 350));
+        final b = await tester.startGesture(const Offset(140, 350));
+        await tester.pump();
+        // Apart to four times the span, past the largest zoom.
+        for (var i = 0; i < 8; i++) {
+          await step(a, const Offset(-15, 0));
+          await step(b, const Offset(15, 0));
+        }
+        final page = harness.page(tester);
+        expect(page.zoom, closeTo(4, 1e-9));
+
+        // One finger lifts, the other keeps moving fast sideways and lifts.
+        await b.up(timeStamp: t);
+        await tester.pump();
+        for (var i = 0; i < 4; i++) {
+          await step(a, const Offset(-40, 0));
+        }
+        await a.up(timeStamp: t);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // The start point (-100, -50) from the centre keeps its place at
+        // 3x: pan (200, 100), the vertical clamped to the 50 the picture
+        // has.
+        expect(page.zoom, closeTo(3, 1e-9));
+        expect(page.pan.dx, closeTo(200, 1e-6));
+        expect(page.pan.dy, closeTo(50, 1e-6));
+        // Nothing moves on after the settle.
+        await tester.pump(const Duration(seconds: 1));
+        expect(page.pan.dx, closeTo(200, 1e-6));
+        expect(page.pan.dy, closeTo(50, 1e-6));
+        expect(harness.state(tester).index, 0);
+      },
+    );
+
+    testWidgets('Android: a pinch released below 1x goes back to rest', (
+      tester,
+    ) async {
+      final harness = ViewerHarness();
+      await harness.pump(tester);
+      await _doubleTap(tester, const Offset(100, 350));
+      final page = harness.page(tester);
+      expect(page.zoom, 3);
+
+      final a = await tester.startGesture(const Offset(0, 350));
+      final b = await tester.startGesture(const Offset(200, 350));
+      await tester.pump();
+      // Together to a tenth of the span: 0.3x.
+      await a.moveTo(const Offset(90, 350));
+      await b.moveTo(const Offset(110, 350));
+      await tester.pump();
+      expect(page.zoom, lessThan(1));
+      await b.up();
+      await tester.pump();
+      await a.moveBy(const Offset(-60, 0));
+      await tester.pump();
+      await a.up();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(page.zoom, 1);
+      expect(page.pan, Offset.zero);
+      await tester.pump(const Duration(seconds: 1));
+      expect(page.pan, Offset.zero);
+      expect(harness.state(tester).index, 0);
+    });
+
     testWidgets('a picture zoomed by a pinch pans on with the finger left', (
       tester,
     ) async {

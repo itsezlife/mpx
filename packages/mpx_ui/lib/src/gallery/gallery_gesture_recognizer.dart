@@ -291,12 +291,14 @@ class GalleryGestureRecognizer extends OneSequenceGestureRecognizer {
       if (_phase == GalleryDragPhase.pinching) {
         if (_positions.length < 2) {
           target.pinchEnd();
-          // The finger left keeps panning a picture the pinch zoomed.
+          // The finger left keeps panning a picture the pinch zoomed, but
+          // never flings it: its first moves are the pinch coming apart,
+          // and a throw from them sends the picture off sideways.
           final page = target.page;
           if (_positions.isNotEmpty && page != null && page.isZoomed) {
             _primary = _positions.keys.first;
             _last = _positions[_primary]!;
-            _velocity = VelocityTracker.withKind(event.kind);
+            _velocity = null;
             _phase = GalleryDragPhase.panning;
             target.panStart();
           } else {

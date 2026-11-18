@@ -333,6 +333,11 @@ class ViewerPhotoPageState extends State<ViewerPhotoPage>
     required bool leftOpen,
     required bool rightOpen,
   }) {
+    // A settle owns the picture until it lands: the finger a pinch leaves
+    // waits, as a fresh touch stops the settle first (`stop`). Moving the
+    // picture under the settle would fight it, and a release mid-settle
+    // would aim a new one at a pan the old one was carrying.
+    if (_settle.isAnimating) return 0;
     final policy = widget.policy;
     final bounds = _bounds(_zoom);
     var x = _pan.dx;
@@ -369,6 +374,7 @@ class ViewerPhotoPageState extends State<ViewerPhotoPage>
 
   @override
   void panEnd(Offset velocity) {
+    if (_settle.isAnimating) return;
     final bounds = _bounds(_zoom);
     bool inside(double value, double bound) => value.abs() <= bound + 0.5;
     final flings = widget.policy.zoomFling && velocity.distance > 50;
