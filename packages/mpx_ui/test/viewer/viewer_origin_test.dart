@@ -578,6 +578,45 @@ void main() {
     });
   });
 
+  testWidgets("the frame of a rounded tile a player draws is the player's "
+      'frame alone, at its own proportion', (tester) async {
+    await pumpHost(
+      tester,
+      Align(
+        alignment: Alignment.topLeft,
+        child: ViewerOrigin(
+          index: 0,
+          borderRadius: const BorderRadius.all(Radius.circular(12)),
+          fit: BoxFit.contain,
+          child: SizedBox.square(
+            dimension: 160,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              // A player's picture over its view, letterboxed 16:9.
+              child: const ContentPicture(
+                child: Center(
+                  child: SizedBox(
+                    width: 160,
+                    height: 90,
+                    child: Texture(textureId: 5),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final bridge = ViewerOriginScope.of(
+      tester.element(find.byType(ViewerOrigin)),
+    ).bridgeFor(source);
+
+    final frame = bridge.frameOf(0)!;
+    addTearDown(frame.dispose);
+    // The texture's own 160 x 90, not the tile's rounded square.
+    expect((frame.width, frame.height), (160, 90));
+  });
+
   testWidgets('the frame of a rounded thumbnail that shows its picture whole '
       'is the picture, square-cornered, at its own proportion', (tester) async {
     await pumpHost(

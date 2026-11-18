@@ -132,22 +132,85 @@ void main() {
       );
     });
 
-    testWidgets('of a texture is read from the surface', (tester) async {
+    testWidgets('of a texture is its frame alone, at its own proportion', (
+      tester,
+    ) async {
       final root = await view(tester);
       producer.last
-          .advance(
-            AssetStage.full,
-            animated: true,
-            pictureSize: const Size(1200, 900),
-          )
+          .advance(AssetStage.full, animated: true)
           .texture = const AssetTexture(
         id: 3,
-        width: 1200,
-        height: 900,
+        width: 1280,
+        height: 960,
+        frameWidth: 1200,
+        frameHeight: 900,
       );
       await tester.pump();
+      await tester.pump(_pastFade);
+
+      final frame = ContentView.frameIn(root, pixelRatio: 2);
+      expect(frame, isA<ContentFrame$Picture>());
+      final image = (frame as ContentFrame$Picture).image;
+      addTearDown(image.dispose);
+      // The 4:3 frame covering 40 x 40 at 2x.
+      expect((image.width, image.height), (107, 80));
+    });
+
+    testWidgets("of a surface's own picture is its texture, unclipped and "
+        'whole', (tester) async {
+      final key = GlobalKey();
+      await tester.pumpWidget(
+        host(
+          SizedBox.square(
+            key: key,
+            dimension: 40,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: const ContentPicture(
+                child: OverflowBox(
+                  maxWidth: 80,
+                  maxHeight: 45,
+                  child: SizedBox(
+                    width: 80,
+                    height: 45,
+                    child: Texture(textureId: 7),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      final frame = ContentView.frameIn(
+        tester.renderObject(find.byKey(key)),
+        pixelRatio: 2,
+      );
+      expect(frame, isA<ContentFrame$Picture>());
+      final image = (frame as ContentFrame$Picture).image;
+      addTearDown(image.dispose);
+      expect((image.width, image.height), (160, 90));
+    });
+
+    testWidgets("of a surface's own picture with no texture is the surface", (
+      tester,
+    ) async {
+      final key = GlobalKey();
+      await tester.pumpWidget(
+        host(
+          SizedBox.square(
+            key: key,
+            dimension: 40,
+            child: const ContentPicture(
+              child: ColoredBox(color: Color(0xFF00FF00)),
+            ),
+          ),
+        ),
+      );
       expect(
-        ContentView.frameIn(root, pixelRatio: 1),
+        ContentView.frameIn(
+          tester.renderObject(find.byKey(key)),
+          pixelRatio: 1,
+        ),
         isA<ContentFrame$Surface>(),
       );
     });

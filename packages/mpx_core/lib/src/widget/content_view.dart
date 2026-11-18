@@ -267,18 +267,24 @@ class ContentView extends StatefulWidget {
   /// surface that takes it over (a viewer opening from it): the whole
   /// picture at its own proportion, unclipped by the view's corners and
   /// uncut by its fit, at [pixelRatio] times the size that covers the view.
+  /// A picture in a texture (a video's frames, a player) is the texture's
+  /// current frame rendered alone, without the clips around it.
   ///
   /// Only content is a frame of the view's own ([ContentFrame$Picture]): a
   /// view that shows a preview, a thumbnail or nothing yet answers
   /// [ContentFrame$StandIn], as the surface taking over has the same
-  /// stand-ins. A picture the view cannot paint again (a texture), one it
-  /// does not know the size of, a surface's own picture around it
-  /// ([ContentPicture] over a player), or no view at all answers
-  /// [ContentFrame$Surface]: read the surface as it shows.
+  /// stand-ins. Under a surface's own picture ([ContentPicture] over a
+  /// player) the frame is its topmost texture's. A view whose picture size
+  /// is unknown, a surface's picture with no texture, or no view at all
+  /// answers [ContentFrame$Surface]: read the surface as it shows.
   static ContentFrame frameIn(RenderObject root, {required double pixelRatio}) {
     final picture = pictureIn(root);
     if (picture != null && picture.child is! _RenderContent) {
-      return const ContentFrame$Surface._();
+      // A surface's own picture (a player over a view): the player's
+      // texture, whole, when it shows one.
+      return picture is _RenderPictureBoundary
+          ? picture._textureFrame(pixelRatio)
+          : const ContentFrame$Surface._();
     }
     final view = _contentIn(picture ?? root);
     return view == null
@@ -334,7 +340,52 @@ class ContentPicture extends SingleChildRenderObjectWidget {
       _RenderPictureBoundary();
 }
 
-class _RenderPictureBoundary extends RenderRepaintBoundary {}
+class _RenderPictureBoundary extends RenderRepaintBoundary {
+  // The topmost texture the surface painted, whole at the size it was laid
+  // out, or the surface itself when it painted none.
+  ContentFrame _textureFrame(double pixelRatio) {
+    TextureLayer? top;
+    void visit(Layer layer) {
+      if (layer is TextureLayer) top = layer;
+      if (layer is ContainerLayer) {
+        for (
+          var child = layer.firstChild;
+          child != null;
+          child = child.nextSibling
+        ) {
+          visit(child);
+        }
+      }
+    }
+
+    final own = layer;
+    if (own != null) visit(own);
+    final texture = top;
+    if (texture == null || texture.rect.isEmpty) {
+      return const ContentFrame$Surface._();
+    }
+    final size = texture.rect.size;
+    return ContentFrame$Picture._(
+      _textureImage(
+        texture.textureId,
+        Offset.zero & size,
+        Offset.zero & size,
+        pixelRatio,
+      ),
+    );
+  }
+}
+
+// Texture [id] drawn at [rect] alone, read in [bounds]: no clip or fade of
+// the surface that shows it.
+ui.Image _textureImage(int id, Rect rect, Rect bounds, double pixelRatio) {
+  final root = OffsetLayer()..append(TextureLayer(rect: rect, textureId: id));
+  try {
+    return root.toImageSync(bounds, pixelRatio: pixelRatio);
+  } finally {
+    root.dispose();
+  }
+}
 
 class _ContentViewState extends State<ContentView> {
   AssetBinding? _binding;
@@ -882,17 +933,41 @@ class _RenderContent extends RenderBox {
       return const ContentFrame$StandIn._();
     }
     final paintable = _binding.paintable;
-    final picture = paintable.pictureSize;
-    if (paintable.texture != null ||
-        picture == null ||
-        picture.isEmpty ||
-        !hasSize ||
-        size.isEmpty) {
+    final texture = paintable.texture;
+    final picture =
+        paintable.pictureSize ??
+        (texture == null
+            ? null
+            : Size(
+                texture.frameWidth.toDouble(),
+                texture.frameHeight.toDouble(),
+              ));
+    if (picture == null || picture.isEmpty || !hasSize || size.isEmpty) {
       return const ContentFrame$Surface._();
     }
-    final scale =
-        math.max(size.width / picture.width, size.height / picture.height) *
-        pixelRatio;
+    final cover = math.max(
+      size.width / picture.width,
+      size.height / picture.height,
+    );
+    if (texture != null) {
+      // The frame, centred in its texture, fills the bounds; the rest of the
+      // texture falls outside them.
+      final frame = Offset.zero & picture * cover;
+      final scale = frame.width / texture.frameWidth;
+      return ContentFrame$Picture._(
+        _textureImage(
+          texture.id,
+          Rect.fromCenter(
+            center: frame.center,
+            width: texture.width * scale,
+            height: texture.height * scale,
+          ),
+          frame,
+          pixelRatio,
+        ),
+      );
+    }
+    final scale = cover * pixelRatio;
     final width = math.max(1, (picture.width * scale).round());
     final height = math.max(1, (picture.height * scale).round());
     final recorder = ui.PictureRecorder();

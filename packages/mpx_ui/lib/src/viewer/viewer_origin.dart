@@ -247,9 +247,11 @@ final class _SourcedBridge implements OriginBridge {
 /// `ContentView` in it, whole and at its own proportion, unrounded and
 /// uncropped (`ContentView.frameIn`), so it lies exactly on the page's
 /// picture; none while that view shows only a preview or a thumbnail, which
-/// the page has too. A picture the view cannot paint again (a player's
-/// texture) is read as the thumbnail shows it, without the status control
-/// or badge over it (`ContentView.pictureIn`), else the whole thumbnail.
+/// the page has too. A picture in a texture (a video's frames, a player
+/// over its view) is the texture's current frame alone, unclipped. Only a
+/// surface with neither is read as it shows, without the status control
+/// or badge over it (`ContentView.pictureIn`), else the whole thumbnail;
+/// the page's player covers that frame from its first frame.
 class ViewerOrigin extends StatefulWidget {
   /// Marks [child] as the origin of [index] or of [media].
   const ViewerOrigin({
