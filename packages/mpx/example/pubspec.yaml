@@ -32,7 +32,13 @@ dependencies:
   share_plus: ^13.3.1
 
 dev_dependencies:
+  # The device run of the viewer's gestures (integration_test/) and the
+  # driver that saves its screenshots (test_driver/).
+  flutter_driver:
+    sdk: flutter
   flutter_test:
+    sdk: flutter
+  integration_test:
     sdk: flutter
 
 flutter:
