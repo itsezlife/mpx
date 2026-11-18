@@ -6,20 +6,16 @@ import 'package:mpx_core/src/asset/asset_cache_scope.dart';
 import 'package:mpx_core/src/asset/asset_fade.dart';
 import 'package:mpx_core/src/asset/asset_paintable.dart';
 import 'package:mpx_core/src/asset/asset_preset.dart';
-import 'package:mpx_core/src/asset/asset_profile.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_texture_layer.dart';
-import 'package:mpx_core/src/asset/asset_transfer.dart';
 import 'package:mpx_core/src/asset/outline_paintable.dart';
 import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 import 'package:mpx_core/src/pipeline/auto_download.dart';
 import 'package:mpx_core/src/playback/playback_clock.dart';
 import 'package:mpx_core/src/widget/asset_cache_provider.dart';
-import 'package:mpx_core/src/widget/media_badge.dart';
+import 'package:mpx_core/src/widget/content_status_overlay.dart';
 import 'package:mpx_core/src/widget/media_loading_style.dart';
-import 'package:mpx_core/src/widget/media_status.dart';
-import 'package:mpx_core/src/widget/media_status_control.dart';
 import 'package:mpx_core/src/widget/media_status_mode.dart';
 import 'package:mpx_core/src/widget/viewport_visibility.dart';
 
@@ -484,7 +480,7 @@ class _ContentViewState extends State<ContentView> {
       view = ContentPicture(child: view);
     }
     if (overlays) {
-      view = _Overlays(
+      view = ContentStatusOverlay(
         binding: _binding!,
         status: widget.status,
         badge: widget.badge,
@@ -1003,238 +999,6 @@ class _RenderContent extends RenderBox {
     if (enlarged) canvas.restore();
     return painted;
   }
-}
-
-// --- Status and badge -------------------------------------------------------
-
-/// The status control and the badge over a view's content, in its box.
-///
-/// It rebuilds only when the layout of the controls changes (streamable
-/// video turns from missing to local, or back); the controls follow the
-/// binding themselves and repaint.
-class _Overlays extends StatefulWidget {
-  const _Overlays({
-    required this.binding,
-    required this.status,
-    required this.badge,
-    required this.onPlay,
-    required this.statusBuilder,
-    required this.width,
-    required this.round,
-    required this.child,
-  });
-
-  final AssetBinding binding;
-  final MediaStatusMode status;
-  final bool badge;
-  final VoidCallback? onPlay;
-  final MediaStatusBuilder? statusBuilder;
-  final double width;
-  // Whether the view is a circle: its centre control is the round size.
-  final bool round;
-  final Widget child;
-
-  @override
-  State<_Overlays> createState() => _OverlaysState();
-}
-
-class _OverlaysState extends State<_Overlays> {
-  bool _streaming = false;
-  // The size of the picture, as far as it is known: the badge sits in the
-  // picture a contain fit letterboxes, not at the corner of the box.
-  Size? _picture;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.binding.addListener(_bindingChanged);
-    _streaming = _readStreaming();
-    _picture = _readPicture();
-  }
-
-  @override
-  void didUpdateWidget(_Overlays oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.binding, widget.binding)) {
-      oldWidget.binding.removeListener(_bindingChanged);
-      widget.binding.addListener(_bindingChanged);
-    }
-    _streaming = _readStreaming();
-    _picture = _readPicture();
-  }
-
-  Size? _readPicture() {
-    final binding = widget.binding;
-    if (binding.paintable.pictureSize case final size?) return size;
-    final dimensions = binding.descriptor?.dimensions;
-    if (dimensions == null) return null;
-    return Size(dimensions.width.toDouble(), dimensions.height.toDouble());
-  }
-
-  @override
-  void dispose() {
-    widget.binding.removeListener(_bindingChanged);
-    super.dispose();
-  }
-
-  // Streamable video that is not local and shows no frame: play streams it,
-  // the corner control downloads it.
-  bool _readStreaming() {
-    if (widget.status is! MediaStatusMode$Control) return false;
-    final binding = widget.binding;
-    final descriptor = binding.descriptor;
-    return descriptor != null &&
-        descriptor.streamable &&
-        descriptor.kind == MediaKind.video &&
-        binding.transfer is! AssetTransfer$None &&
-        binding.readiness.stage.index < AssetStage.firstFrame.index;
-  }
-
-  void _bindingChanged() {
-    final streaming = _readStreaming();
-    final picture = _readPicture();
-    if (streaming == _streaming && picture == _picture) return;
-    setState(() {
-      _streaming = streaming;
-      _picture = picture;
-    });
-  }
-
-  Widget _control(MediaStatusControl control) {
-    final builder =
-        widget.statusBuilder ?? MediaLoadingStyleScope.statusBuilderOf(context);
-    return builder == null ? control : builder(context, control);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final style = MediaLoadingStyleScope.resolve(context);
-    final binding = widget.binding;
-    final corner = style.status.compactOffset;
-    final centre = widget.round ? style.status.roundVideoDiameter : null;
-    Widget compact() => Positioned(
-      left: corner.dx,
-      top: corner.dy,
-      child: _control(MediaStatusControl.binding(binding, compact: true)),
-    );
-    final controls = <Widget>[
-      ...switch (widget.status) {
-        MediaStatusMode$None() => const <Widget>[],
-        MediaStatusMode$Arc(:final radius) => [
-          Positioned.fill(
-            // The control keeps its style's size whatever the box: never
-            // stretched to a large tile, free to overflow a small one.
-            child: OverflowBox(
-              minWidth: 0,
-              minHeight: 0,
-              maxWidth: double.infinity,
-              maxHeight: double.infinity,
-              child: _control(
-                MediaStatusControl.binding(
-                  binding,
-                  arcOnly: true,
-                  diameter: 2 * radius,
-                ),
-              ),
-            ),
-          ),
-        ],
-        MediaStatusMode$Control() when _streaming => [
-          Positioned.fill(
-            // The control keeps its style's size whatever the box: never
-            // stretched to a large tile, free to overflow a small one.
-            child: OverflowBox(
-              minWidth: 0,
-              minHeight: 0,
-              maxWidth: double.infinity,
-              maxHeight: double.infinity,
-              child: _control(
-                MediaStatusControl(
-                  status: const MediaStatus.icon(MediaStatusIcon.play),
-                  onTap: widget.onPlay,
-                  diameter: centre,
-                ),
-              ),
-            ),
-          ),
-          compact(),
-        ],
-        MediaStatusMode$Control(:final playAction) => [
-          Positioned.fill(
-            // The control keeps its style's size whatever the box: never
-            // stretched to a large tile, free to overflow a small one.
-            child: OverflowBox(
-              minWidth: 0,
-              minHeight: 0,
-              maxWidth: double.infinity,
-              maxHeight: double.infinity,
-              child: _control(
-                MediaStatusControl.binding(
-                  binding,
-                  playAction: playAction,
-                  onPlay: widget.onPlay,
-                  diameter: centre,
-                ),
-              ),
-            ),
-          ),
-        ],
-        MediaStatusMode$Compact() => [compact()],
-      },
-    ];
-    final badge = style.badge.offset;
-    return Stack(
-      children: [
-        widget.child,
-        ...controls,
-        if (widget.badge)
-          Positioned.fill(
-            child: CustomSingleChildLayout(
-              delegate: _BadgePlace(
-                profile: binding.profile,
-                picture: _picture,
-                // Beside the corner control while it shows, as one row.
-                offset: Offset(
-                  _streaming
-                      ? corner.dx + style.status.compactDiameter + 4
-                      : badge.dx,
-                  badge.dy,
-                ),
-              ),
-              child: MediaBadge.binding(binding, width: widget.width),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-// The badge at [offset] from the top-left of the picture's rounded area: the
-// picture a contain fit letterboxes in the box, or the box.
-class _BadgePlace extends SingleChildLayoutDelegate {
-  const _BadgePlace({
-    required this.profile,
-    required this.picture,
-    required this.offset,
-  });
-
-  final AssetProfile profile;
-  final Size? picture;
-  final Offset offset;
-
-  @override
-  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
-      constraints.loosen();
-
-  @override
-  Offset getPositionForChild(Size size, Size childSize) =>
-      profile.roundedArea(Offset.zero & size, picture).topLeft + offset;
-
-  @override
-  bool shouldRelayout(_BadgePlace oldDelegate) =>
-      oldDelegate.profile != profile ||
-      oldDelegate.picture != picture ||
-      oldDelegate.offset != offset;
 }
 
 /// The one measuring pass of every playing [ContentView], after the frame in

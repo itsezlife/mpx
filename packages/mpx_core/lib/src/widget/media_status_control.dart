@@ -7,6 +7,7 @@ import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/widget/media_loading_style.dart';
 import 'package:mpx_core/src/widget/media_status.dart';
 import 'package:mpx_core/src/widget/media_status_motion.dart';
+import 'package:mpx_core/src/widget/media_status_painting.dart';
 import 'package:mpx_core/src/widget/media_status_style.dart';
 
 /// The round control over media: a disc, a progress arc and an icon
@@ -337,25 +338,16 @@ class _StatusPainter extends CustomPainter {
     final discColor = hovered == null
         ? disc
         : Color.lerp(disc, hovered, hover())!;
-    canvas.drawCircle(
+    MediaStatusPainting.paint(
+      canvas,
       center,
-      diameter / 2 * discScale,
-      Paint()..color = _faded(discColor, opacity),
+      diameter,
+      style,
+      arc: motion.arc,
+      disc: discColor,
+      opacity: opacity,
+      discScale: discScale,
     );
-    if (motion.arc case final arc?) {
-      final stroke = style.arcStrokeAt(diameter);
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: diameter / 2 - style.arcInset),
-        arc.startDegrees * math.pi / 180,
-        arc.sweepDegrees * math.pi / 180,
-        false,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeCap = StrokeCap.round
-          ..strokeWidth = stroke
-          ..color = _faded(style.arcColor, opacity),
-      );
-    }
     final iconSize = diameter * style.iconSize;
     final stroke = math.max(1.3, style.iconStroke * diameter / style.diameter);
     for (final layer in motion.icons) {
@@ -427,9 +419,8 @@ class _StatusPainter extends CustomPainter {
     }
   }
 
-  static Color _faded(Color color, double opacity) => opacity >= 1
-      ? color
-      : color.withValues(alpha: color.a * opacity.clamp(0.0, 1.0));
+  static Color _faded(Color color, double opacity) =>
+      MediaStatusPainting.faded(color, opacity);
 
   @override
   bool shouldRepaint(_StatusPainter oldDelegate) =>

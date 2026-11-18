@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:meta/meta.dart';
 import 'package:mpx_core/src/widget/media_status.dart';
+import 'package:mpx_core/src/widget/media_status_painting.dart';
 import 'package:mpx_core/src/widget/media_status_style.dart';
 
 /// One icon as a status control draws it in a frame: scaled, faded and
@@ -12,9 +13,6 @@ typedef MediaStatusIconLayer = ({
   double opacity,
   double turnDegrees,
 });
-
-/// The progress arc as a status control draws it in a frame.
-typedef MediaStatusArc = ({double startDegrees, double sweepDegrees});
 
 /// The motion of one status control: how far it has come in, which icons
 /// show and how far one has turned into the next, where its arc stands.
@@ -234,15 +232,12 @@ final class MediaStatusMotion {
   MediaStatusArc? get arc {
     if (!_arcShown) return null;
     if (_target.arc && _target.progress == null) {
-      final spinner = style.spinner;
-      final swing = spinner.maxSweepDegrees - spinner.minSweepDegrees;
-      final phase = spinner.sweepPeriod <= Duration.zero
-          ? 0.0
-          : _ratio(_spinning, spinner.sweepPeriod) * 2 * math.pi;
       return (
         startDegrees: _startDegrees,
-        sweepDegrees:
-            spinner.minSweepDegrees + swing * (1 - math.cos(phase)) / 2,
+        sweepDegrees: MediaStatusPainting.spinnerSweepDegrees(
+          style.spinner,
+          _spinning,
+        ),
       );
     }
     return (
