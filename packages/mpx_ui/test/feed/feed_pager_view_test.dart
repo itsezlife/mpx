@@ -80,7 +80,7 @@ void main() {
     await pumpPager(tester);
     final prepared = backend.latestFor(_key(1))!;
 
-    await tester.drag(find.byType(PageView), const Offset(0, -500));
+    await tester.drag(find.byType(GalleryPager), const Offset(0, -500));
     await tester.pumpAndSettle();
 
     expect(pagerOf(tester).index, 1);
@@ -209,5 +209,57 @@ void main() {
 
     await pumpPager(tester);
     expect(pool.soundOwner, _key(0));
+  });
+
+  group('on the gallery pager', () {
+    testWidgets('a short drag goes back; a flick goes on', (tester) async {
+      await pumpPager(tester);
+
+      await tester.drag(find.byType(GalleryPager), const Offset(0, -300));
+      await tester.pumpAndSettle();
+      expect(pagerOf(tester).index, 0);
+
+      await tester.fling(find.byType(GalleryPager), const Offset(0, -100), 800);
+      await tester.pumpAndSettle();
+      expect(pagerOf(tester).index, 1);
+    });
+
+    testWidgets('the most visible page takes the sound during the drag', (
+      tester,
+    ) async {
+      await pumpPager(tester);
+
+      final gesture = await tester.startGesture(const Offset(200, 700));
+      await gesture.moveBy(const Offset(0, -20));
+      await tester.pump();
+      await gesture.moveBy(const Offset(0, -300));
+      await tester.pump();
+      await tester.pump();
+      expect(pagerOf(tester).index, 0);
+      await gesture.moveBy(const Offset(0, -200));
+      await tester.pump();
+      await tester.pump();
+      expect(pagerOf(tester).index, 1);
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(pool.soundOwner, _key(1));
+    });
+
+    testWidgets('an item that ends slides on to the next', (tester) async {
+      await pumpPager(tester);
+      final engine = backend.latestFor(_key(0))!;
+
+      engine.advance(const Duration(minutes: 10));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 150));
+      final position = tester
+          .widget<GalleryPager>(find.byType(GalleryPager))
+          .controller!
+          .position
+          .value;
+      expect(position, allOf(greaterThan(0), lessThan(1)));
+      await tester.pumpAndSettle();
+      expect(pagerOf(tester).index, 1);
+    });
   });
 }

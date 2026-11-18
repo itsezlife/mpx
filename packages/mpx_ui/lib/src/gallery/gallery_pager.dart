@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_ui/src/gallery/gallery_gesture_layer.dart';
 import 'package:mpx_ui/src/gallery/gallery_gesture_recognizer.dart';
@@ -587,9 +588,12 @@ class _GalleryPagerState extends State<GalleryPager>
               onHover: _hovered,
               onExit: (_) => _hovered(null),
               child: ClipRect(
-                child: ValueListenableBuilder<double>(
-                  valueListenable: _controller._position,
-                  builder: (context, position, _) => _pages(context, position),
+                child: _GalleryViewport(
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: _controller._position,
+                    builder: (context, position, _) =>
+                        _pages(context, position),
+                  ),
                 ),
               ),
             ),
@@ -692,6 +696,36 @@ class _GalleryPagerState extends State<GalleryPager>
       ],
     );
   }
+}
+
+/// The pager's window as a viewport: whatever measures how much of itself
+/// shows against the closest enclosing viewport (a feed's slot, an origin's
+/// clip) is clipped by the pager's box, as it is inside a scrollable. The
+/// pages scroll by transforms, not by an offset, so nothing scrolls to
+/// reveal: the offset to reveal is always none.
+class _GalleryViewport extends SingleChildRenderObjectWidget {
+  const _GalleryViewport({required super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderGalleryViewport();
+}
+
+class _RenderGalleryViewport extends RenderProxyBox
+    implements RenderAbstractViewport {
+  @override
+  RevealedOffset getOffsetToReveal(
+    RenderObject target,
+    double alignment, {
+    Rect? rect,
+    Axis? axis,
+  }) => RevealedOffset(
+    offset: 0,
+    rect: MatrixUtils.transformRect(
+      target.getTransformTo(this),
+      rect ?? target.paintBounds,
+    ),
+  );
 }
 
 /// One page in its place: moved, scaled and faded by its placement, offstage
