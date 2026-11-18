@@ -1,5 +1,7 @@
-import 'dart:io';
+import 'dart:ui' as ui;
 
+import 'package:flutter/rendering.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:mpx_example/main.dart' as app;
@@ -39,10 +41,27 @@ void main() {
   }
 
   var shot = 0;
+  // The frame as Flutter composited it, read from the view's layer tree:
+  // the platform's own capture of a simulator's Metal surface comes back
+  // blank, and Android's needs its surface swapped for an image view. The
+  // picture goes to the driver as a platform screenshot would.
   Future<void> screenshot(WidgetTester tester, String name) async {
     await tester.pump();
     shot++;
-    await binding.takeScreenshot('${shot.toString().padLeft(2, '0')}-$name');
+    final view = tester.binding.renderViews.first;
+    final layer = view.debugLayer! as OffsetLayer;
+    final physical = view.flutterView.physicalSize;
+    final image = await layer.toImage(Offset.zero & physical);
+    final png = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    final screenshots =
+        ((binding.reportData ??= <String, dynamic>{})['screenshots'] ??=
+                <dynamic>[])
+            as List<dynamic>;
+    screenshots.add(<String, dynamic>{
+      'screenshotName': '${shot.toString().padLeft(2, '0')}-$name',
+      'bytes': png!.buffer.asUint8List().toList(),
+    });
   }
 
   // A drag in steps, so the page follows the finger frame by frame.
@@ -52,9 +71,13 @@ void main() {
     Offset by, {
     int steps = 20,
   }) async {
+    // Time-stamped a frame apart, as a finger's moves are, so the release
+    // carries the drag's real velocity.
+    var at = Duration.zero;
     final gesture = await tester.startGesture(from);
     for (var i = 0; i < steps; i++) {
-      await gesture.moveBy(by / steps.toDouble());
+      at += const Duration(milliseconds: 16);
+      await gesture.moveBy(by / steps.toDouble(), timeStamp: at);
       await tester.pump(const Duration(milliseconds: 16));
     }
     return gesture;
@@ -73,7 +96,6 @@ void main() {
     await app.main();
     await until(tester, () => find.byType(ViewerOrigin).evaluate().isNotEmpty);
     await wait(tester, 1500);
-    if (Platform.isAndroid) await binding.convertFlutterSurfaceToImage();
     await screenshot(tester, 'home');
 
     // Open on the still.
@@ -87,11 +109,14 @@ void main() {
     await screenshot(tester, 'open');
     expect(viewer().index, 0);
 
-    // A slow drag past half a page goes on to the next.
+    // A drag held still past half a page goes on to the next. The finger
+    // rests while the screenshot is taken, so the release has no velocity
+    // and the distance decides: past a third (Android) or half (iOS) of a
+    // page plus its gap, after the slop that decided the drag.
     final paging = await drag(
       tester,
-      centre + Offset(size.width * 0.3, 0),
-      Offset(-size.width * 0.55, 0),
+      centre + Offset(size.width * 0.35, 0),
+      Offset(-size.width * 0.7, 0),
     );
     await screenshot(tester, 'drag-between-pages');
     await paging.up();
@@ -158,5 +183,10 @@ void main() {
     await wait(tester, 1000);
     await screenshot(tester, 'dismissed');
     expect(find.byType(MediaViewer), findsNothing);
+
+    // The home grid plays its tiles for ever: take the app down so no
+    // frame callback outlives the test.
+    await tester.pumpWidget(const SizedBox());
+    await wait(tester, 300);
   });
 }
