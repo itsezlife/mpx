@@ -9,6 +9,12 @@
 /// `ViewerController` drives the viewer, and its photo and video pages work
 /// alone in a host's own pager.
 ///
+/// `GalleryPager` is the viewer's pager, and any host's: one gesture owner
+/// decides once, from the down point, between a pinch, a pan of a zoomed
+/// picture, a dismiss drag and a page drag, with a reference's
+/// `GalleryPagerPhysics`, tap timings and `GalleryPageTransition`; a zoomed
+/// page hands the rest of a pan on to its neighbour at its edge.
+///
 /// `FeedListView` plays every visible clip of a list muted, as a list-mode
 /// `FeedPolicy` of `mpx_player` says, and preloads the items ahead through
 /// the core's asset cache scope. `FeedPagerView` plays the page shown with
@@ -20,6 +26,13 @@ library;
 export 'src/feed/feed_clip.dart';
 export 'src/feed/feed_list_view.dart';
 export 'src/feed/feed_pager_view.dart';
+export 'src/gallery/gallery_gesture_recognizer.dart' show GalleryDragPhase;
+export 'src/gallery/gallery_keep_alive.dart';
+export 'src/gallery/gallery_page_gestures.dart';
+export 'src/gallery/gallery_page_transition.dart';
+export 'src/gallery/gallery_pager.dart';
+export 'src/gallery/gallery_pager_physics.dart';
+export 'src/gallery/gallery_tap_recognizer.dart' show GalleryTapRules;
 export 'src/viewer/gallery_source.dart';
 export 'src/viewer/media_viewer.dart';
 export 'src/viewer/origin_bridge.dart';

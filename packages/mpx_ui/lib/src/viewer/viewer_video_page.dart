@@ -179,9 +179,11 @@ class ViewerVideoPageState extends State<ViewerVideoPage> {
               onFullscreen: widget.onFullscreen,
             ),
       holdDelay: session == null ? null : policy.video.hold?.delay,
-      onHoldStart: (local, page) => session?.holdStart(
-        atFraction: page.width <= 0 ? 0 : local.dx / page.width,
-      ),
+      onHoldStart: (local, page) =>
+          session?.holdStart(
+            atFraction: page.width <= 0 ? 0 : local.dx / page.width,
+          ) ??
+          false,
       onHoldEnd: () => session?.holdEnd(),
       child: session == null
           ? standIn

@@ -10,6 +10,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_player/mpx_player.dart';
+import 'package:mpx_ui/src/gallery/gallery_keep_alive.dart';
+import 'package:mpx_ui/src/gallery/gallery_pager.dart';
 import 'package:mpx_ui/src/known_descriptors.dart';
 import 'package:mpx_ui/src/viewer/gallery_source.dart';
 import 'package:mpx_ui/src/viewer/origin_bridge.dart';
@@ -335,7 +337,7 @@ class MediaViewerState extends State<MediaViewer>
   // The item the viewer opened on, by its content: indexes move when the
   // source learns of items before it. Null until the source has loaded it.
   late MediaKey? _opened = widget.source.itemAt(widget.initialIndex)?.key;
-  late final PageController _pages = PageController(
+  late final GalleryPagerController _pages = GalleryPagerController(
     initialPage: widget.initialIndex,
   );
   late final AnimationController _transition;
@@ -359,8 +361,6 @@ class MediaViewerState extends State<MediaViewer>
   // The vertical offset of a dismiss drag, and the one a spring back left.
   double _drag = 0;
   double _springFrom = 0;
-  bool _dragging = false;
-  bool _zoomed = false;
   final Set<int> _hidden = {};
 
   // The video on screen and the index it plays.
@@ -559,19 +559,11 @@ class MediaViewerState extends State<MediaViewer>
   void _notifyController() => widget.controller?._changed();
 
   void _pageTo(int index, {bool animate = true}) {
-    if (index < 0 || index >= widget.source.count || !_pages.hasClients) {
-      return;
-    }
+    if (index < 0 || index >= widget.source.count) return;
     if (animate) {
-      unawaited(
-        _pages.animateToPage(
-          index,
-          duration: _policy.controlsDuration,
-          curve: Curves.easeOut,
-        ),
-      );
+      unawaited(_pages.animateTo(index));
     } else {
-      _pages.jumpToPage(index);
+      _pages.jumpTo(index);
     }
   }
 
@@ -854,17 +846,7 @@ class MediaViewerState extends State<MediaViewer>
     LogicalKeyboardKey.digit9,
   ];
 
-  void _pageBy(int delta) {
-    final target = _index + delta;
-    if (target < 0 || target >= widget.source.count || _zoomed) return;
-    unawaited(
-      _pages.animateToPage(
-        target,
-        duration: _policy.controlsDuration,
-        curve: Curves.easeOut,
-      ),
-    );
-  }
+  void _pageBy(int delta) => _pageTo(_pages.page + delta);
 
   void _zoomStep({required bool zoomIn, Offset? focal}) {
     final page = _pageKeys[_index]?.currentState;
@@ -1125,16 +1107,17 @@ class MediaViewerState extends State<MediaViewer>
   late final ViewerDragEvents _dragEvents = ViewerDragEvents(
     onStart: () {
       _springBack.stop();
-      _dragging = true;
       _controls.value = false;
     },
     onUpdate: (offset) {
       if (_phase != _Phase.open) return;
-      setState(() => _drag = offset);
+      // A policy that dismisses only downward holds the picture at rest
+      // against an upward drag.
+      final drag = _policy.dismissDownOnly && offset < 0 ? 0.0 : offset;
+      setState(() => _drag = drag);
       _reportBackdrop();
     },
     onEnd: (offset, velocity) {
-      _dragging = false;
       if (_phase != _Phase.open) return;
       _drag = offset;
       if (_policy.dismisses(offset, _size.height, velocity: velocity)) {
@@ -1325,13 +1308,7 @@ class MediaViewerState extends State<MediaViewer>
                     ? 0
                     : ViewerVideoControls.barHeight,
                 onBack: () => unawaited(close()),
-                onSelectIndex: (index) => unawaited(
-                  _pages.animateToPage(
-                    index,
-                    duration: _policy.controlsDuration,
-                    curve: Curves.easeOut,
-                  ),
-                ),
+                onSelectIndex: _pageTo,
                 onAction: (action, index) =>
                     unawaited(runAction(action, index)),
               ),
@@ -1361,35 +1338,35 @@ class MediaViewerState extends State<MediaViewer>
   }
 
   Widget _pagesView() {
-    final gap = _policy.pageGap;
+    final policy = _policy;
     return Transform.translate(
       offset: Offset(0, _drag),
-      child: ClipRect(
-        child: OverflowBox(
-          alignment: Alignment.centerLeft,
-          minWidth: _size.width + gap,
-          maxWidth: _size.width + gap,
-          child: PageView.builder(
-            controller: _pages,
-            physics: _zoomed || _dragging
-                ? const NeverScrollableScrollPhysics()
-                : const PageScrollPhysics(),
-            itemCount: widget.source.count,
-            onPageChanged: (index) {
-              setState(() => _index = index);
-              _dropOriginFrames(around: index);
-              _notifyController();
-              _syncVideo();
-              _syncNeighbours();
-              widget.source.loadAround(index);
-              widget.onIndexChanged?.call(index);
-            },
-            itemBuilder: (context, index) => Padding(
-              padding: EdgeInsets.only(right: gap),
-              child: _page(index),
-            ),
-          ),
-        ),
+      child: GalleryPager(
+        controller: _pages,
+        count: widget.source.count,
+        gap: policy.pageGap,
+        physics: policy.pager,
+        transition: policy.transition,
+        taps: policy.taps,
+        // The item and its neighbours keep their state (zoom, the origin's
+        // frame); preparation beyond them is the viewer's own.
+        keepAlive: const GalleryKeepAlive.around(1),
+        // The media references never mirror the gallery.
+        textDirection: TextDirection.ltr,
+        dismiss: policy.dismissClaim,
+        onDismissStart: _dragEvents.onStart,
+        onDismissUpdate: _dragEvents.onUpdate,
+        onDismissEnd: _dragEvents.onEnd,
+        onPageChanged: (index) {
+          setState(() => _index = index);
+          _dropOriginFrames(around: index);
+          _notifyController();
+          _syncVideo();
+          _syncNeighbours();
+          widget.source.loadAround(index);
+          widget.onIndexChanged?.call(index);
+        },
+        pageBuilder: (context, index) => _page(index),
       ),
     );
   }
@@ -1416,8 +1393,9 @@ class MediaViewerState extends State<MediaViewer>
       policy: policy,
       drag: _dragEvents,
       maxZoom: policy.maxZoomFor(fitted, _size, pixels: item.size),
-      doubleTapZoom: policy.doubleTapZoomFor(fitted, _size, pixels: item.size),
-      onZoomedChanged: (zoomed) => setState(() => _zoomed = zoomed),
+      doubleTapZoom: video && !_video.doubleTapZooms
+          ? null
+          : policy.doubleTapZoomFor(fitted, _size, pixels: item.size),
       onTap: () {
         _controls.value = !_controls.value;
       },
@@ -1429,9 +1407,11 @@ class MediaViewerState extends State<MediaViewer>
                 session.doubleTap(local, page, onFullscreen: toggleFullscreen)
           : null,
       holdDelay: video ? _video.hold?.delay : null,
-      onHoldStart: (local, page) => session?.holdStart(
-        atFraction: page.width <= 0 ? 0 : local.dx / page.width,
-      ),
+      onHoldStart: (local, page) =>
+          session?.holdStart(
+            atFraction: page.width <= 0 ? 0 : local.dx / page.width,
+          ) ??
+          false,
       onHoldEnd: () => session?.holdEnd(),
       child: RepaintBoundary(
         key: _frameKeys.putIfAbsent(index, GlobalKey.new),
