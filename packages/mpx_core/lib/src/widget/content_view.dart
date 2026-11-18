@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
@@ -259,6 +262,64 @@ class ContentView extends StatefulWidget {
     });
     return found;
   }
+
+  /// The picture the first [ContentView] under [root] shows, read for a
+  /// surface that takes it over (a viewer opening from it): the whole
+  /// picture at its own proportion, unclipped by the view's corners and
+  /// uncut by its fit, at [pixelRatio] times the size that covers the view.
+  ///
+  /// Only content is a frame of the view's own ([ContentFrame$Picture]): a
+  /// view that shows a preview, a thumbnail or nothing yet answers
+  /// [ContentFrame$StandIn], as the surface taking over has the same
+  /// stand-ins. A picture the view cannot paint again (a texture), one it
+  /// does not know the size of, a surface's own picture around it
+  /// ([ContentPicture] over a player), or no view at all answers
+  /// [ContentFrame$Surface]: read the surface as it shows.
+  static ContentFrame frameIn(RenderObject root, {required double pixelRatio}) {
+    final picture = pictureIn(root);
+    if (picture != null && picture.child is! _RenderContent) {
+      return const ContentFrame$Surface._();
+    }
+    final view = _contentIn(picture ?? root);
+    return view == null
+        ? const ContentFrame$Surface._()
+        : view._frame(pixelRatio);
+  }
+
+  static _RenderContent? _contentIn(RenderObject root) {
+    if (root is _RenderContent) return root;
+    _RenderContent? found;
+    root.visitChildren((child) {
+      found ??= _contentIn(child);
+    });
+    return found;
+  }
+}
+
+/// What [ContentView.frameIn] read of a view.
+@immutable
+sealed class ContentFrame {
+  const ContentFrame._();
+}
+
+/// The view's content, whole: [image] has the picture's proportion and
+/// belongs to the caller, who disposes it.
+final class ContentFrame$Picture extends ContentFrame {
+  const ContentFrame$Picture._(this.image) : super._();
+
+  /// The picture.
+  final ui.Image image;
+}
+
+/// The view shows a stand-in (a preview, a thumbnail) or nothing: no frame
+/// of its own.
+final class ContentFrame$StandIn extends ContentFrame {
+  const ContentFrame$StandIn._() : super._();
+}
+
+/// The picture is to be read from the surface as it shows.
+final class ContentFrame$Surface extends ContentFrame {
+  const ContentFrame$Surface._() : super._();
 }
 
 /// Marks [child] as a surface's picture, without the chrome laid over it:
@@ -812,6 +873,40 @@ class _RenderContent extends RenderBox {
       _paintStages,
       oldLayer: _clip.layer,
     );
+  }
+
+  // The content painted again, whole and unclipped, at its own proportion
+  // covering the box: see [ContentView.frameIn].
+  ContentFrame _frame(double pixelRatio) {
+    if (_binding.readiness.stage.index < AssetStage.firstFrame.index) {
+      return const ContentFrame$StandIn._();
+    }
+    final paintable = _binding.paintable;
+    final picture = paintable.pictureSize;
+    if (paintable.texture != null ||
+        picture == null ||
+        picture.isEmpty ||
+        !hasSize ||
+        size.isEmpty) {
+      return const ContentFrame$Surface._();
+    }
+    final scale =
+        math.max(size.width / picture.width, size.height / picture.height) *
+        pixelRatio;
+    final width = math.max(1, (picture.width * scale).round());
+    final height = math.max(1, (picture.height * scale).round());
+    final recorder = ui.PictureRecorder();
+    // The paintable itself: the binding's paint rounds it to the profile's
+    // corners.
+    paintable.paint(
+      Canvas(recorder),
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      AssetPaintContext(tint: _tint),
+    );
+    final drawn = recorder.endRecording();
+    final image = drawn.toImageSync(width, height);
+    drawn.dispose();
+    return ContentFrame$Picture._(image);
   }
 
   void _paintStages(PaintingContext context, Offset offset) {

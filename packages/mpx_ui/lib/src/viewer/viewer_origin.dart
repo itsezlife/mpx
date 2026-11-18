@@ -243,9 +243,13 @@ final class _SourcedBridge implements OriginBridge {
 /// asks: its rectangle on screen, [borderRadius], and the clip of every
 /// scrollable around it; one scrolled out of every viewport has no place,
 /// and the viewer closes without the morph. With [captureFrame] the viewer
-/// starts from the picture it shows now: the picture of the first
-/// `ContentView` in it (`ContentView.pictureIn`), without the status
-/// control or badge over it, else the whole thumbnail.
+/// starts from the picture it shows now: the content of the first
+/// `ContentView` in it, whole and at its own proportion, unrounded and
+/// uncropped (`ContentView.frameIn`), so it lies exactly on the page's
+/// picture; none while that view shows only a preview or a thumbnail, which
+/// the page has too. A picture the view cannot paint again (a player's
+/// texture) is read as the thumbnail shows it, without the status control
+/// or badge over it (`ContentView.pictureIn`), else the whole thumbnail.
 class ViewerOrigin extends StatefulWidget {
   /// Marks [child] as the origin of [index] or of [media].
   const ViewerOrigin({
@@ -361,6 +365,18 @@ class _ViewerOriginState extends State<ViewerOrigin> {
     // in debug builds, where the capture would assert.
     if (kDebugMode && box.debugNeedsPaint) return null;
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
+    // The content itself, the same picture the page shows at the same
+    // proportion: read off the thumbnail it would carry the thumbnail's
+    // corners and letterbox, and stand on the page as a second, smaller
+    // picture over the page's own. A thumbnail that shows only a stand-in
+    // has nothing the page lacks.
+    switch (ContentView.frameIn(box, pixelRatio: dpr)) {
+      case ContentFrame$Picture(:final image):
+        return image;
+      case ContentFrame$StandIn():
+        return null;
+      case ContentFrame$Surface():
+    }
     // The picture alone: a status control or a badge over it would ride the
     // morph and stand in on the page. Without a content view's picture in
     // it, the thumbnail is all picture.

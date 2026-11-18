@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -10,6 +13,16 @@ import 'package:mpx_ui/testing.dart';
 import 'viewer_harness.dart';
 
 const _policy = ViewerPolicy.$Android;
+const _blue = Color(0xFF0000FF);
+
+// The colours of [rgba] pixels, as ARGB.
+List<int> _pixelsOf(ByteData rgba) {
+  final bytes = rgba.buffer.asUint8List();
+  return [
+    for (var i = 0; i < bytes.length; i += 4)
+      bytes[i + 3] << 24 | bytes[i] << 16 | bytes[i + 1] << 8 | bytes[i + 2],
+  ];
+}
 
 void main() {
   late FakeAssetProducer producer;
@@ -327,8 +340,8 @@ void main() {
     frame.dispose();
   });
 
-  testWidgets('the frame of a thumbnail whose content has nothing to show '
-      'is clear: a page it stands in for shows no box', (tester) async {
+  testWidgets('a thumbnail whose content has nothing to show gives no '
+      'frame: a page it stands in for shows no box', (tester) async {
     await pumpHost(
       tester,
       Align(
@@ -351,14 +364,7 @@ void main() {
       tester.element(find.byType(ViewerOrigin)),
     ).bridgeFor(source);
 
-    final frame = bridge.frameOf(0)!;
-    addTearDown(frame.dispose);
-    final pixels = await tester.runAsync(frame.toByteData);
-
-    final bytes = pixels!.buffer.asUint8List();
-    expect([
-      for (var i = 3; i < bytes.length; i += 4) bytes[i],
-    ], everyElement(0));
+    expect(bridge.frameOf(0), isNull);
   });
 
   testWidgets('the frame of a thumbnail is its picture alone: the status '
@@ -404,6 +410,14 @@ void main() {
     // The chrome shows on the thumbnail.
     expect(find.text('0:13'), findsOneWidget);
     expect(find.byType(MediaStatusControl), findsOneWidget);
+    producer.last.advance(
+      AssetStage.full,
+      pictureSize: const Size(1200, 900),
+      fill: _blue,
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('0:13'), findsOneWidget);
 
     final bridge = ViewerOriginScope.of(
       tester.element(find.byType(ViewerOrigin)),
@@ -413,14 +427,11 @@ void main() {
     final pixels = await tester.runAsync(frame.toByteData);
 
     expect((frame.width, frame.height), (120, 90));
-    final bytes = pixels!.buffer.asUint8List();
-    expect([
-      for (var i = 3; i < bytes.length; i += 4) bytes[i],
-    ], everyElement(0));
+    expect(_pixelsOf(pixels!), everyElement(_blue.toARGB32()));
   });
 
-  testWidgets('a picture inset in its thumbnail keeps its place in a frame '
-      "of the thumbnail's size", (tester) async {
+  testWidgets('the frame of a picture inset in its thumbnail is the picture, '
+      'not the box around it', (tester) async {
     await pumpHost(
       tester,
       Align(
@@ -446,6 +457,13 @@ void main() {
         ),
       ),
     );
+    producer.last.advance(
+      AssetStage.full,
+      pictureSize: const Size(1200, 900),
+      fill: _blue,
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     final bridge = ViewerOriginScope.of(
       tester.element(find.byType(ViewerOrigin)),
     ).bridgeFor(source);
@@ -454,12 +472,151 @@ void main() {
     addTearDown(frame.dispose);
     final pixels = await tester.runAsync(frame.toByteData);
 
-    expect((frame.width, frame.height), (120, 90));
-    final bytes = pixels!.buffer.asUint8List();
-    // The host's box around the picture is not the picture.
-    expect([
-      for (var i = 3; i < bytes.length; i += 4) bytes[i],
-    ], everyElement(0));
+    // The 4:3 picture covering its 100 x 70 view; the host's red box around
+    // it is not the picture.
+    expect((frame.width, frame.height), (100, 75));
+    expect(_pixelsOf(pixels!), everyElement(_blue.toARGB32()));
+  });
+
+  group('a rounded tile that shows its picture whole', () {
+    // [shows] is what the tile's view draws: the item's own content, or
+    // other content, so the page's own has nothing yet and the frame alone
+    // stands in.
+    Widget tile({MediaKey? shows}) => Builder(
+      builder: (context) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => MediaViewer.show(
+          context,
+          source: source,
+          initialIndex: 0,
+          policy: _policy,
+          scope: scope,
+        ),
+        child: ViewerOrigin(
+          index: 0,
+          borderRadius: const BorderRadius.all(Radius.circular(12)),
+          fit: BoxFit.contain,
+          child: ContentView(
+            content: shows ?? photoKey(0),
+            scope: scope,
+            preset: AssetPresets.square(
+              extent: 160,
+              devicePixelRatio: 1,
+              profile: const AssetProfile(cornerRadius: 12),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    ContentView page(WidgetTester tester) => tester.widget<ContentView>(
+      find.descendant(
+        of: find.byType(ViewerPhotoPage),
+        matching: find.byType(ContentView),
+      ),
+    );
+
+    testWidgets("showing a preview opens on the page's own stand-ins, no "
+        'second picture over them', (tester) async {
+      await pumpHost(
+        tester,
+        Align(alignment: Alignment.topLeft, child: tile()),
+      );
+      producer.last.advance(
+        AssetStage.preview,
+        pictureSize: const Size(40, 30),
+        fill: _blue,
+      );
+      await tester.pump();
+      await openedFrom(tester, 0);
+      await settleOpen(tester);
+      await tester.pump();
+
+      expect(page(tester).placeholder, isA<ClearPlaceholder>());
+    });
+
+    testWidgets('showing its content opens on that picture lying exactly on '
+        'the media, square-cornered', (tester) async {
+      await pumpHost(
+        tester,
+        Align(
+          alignment: Alignment.topLeft,
+          child: tile(shows: photoKey(19)),
+        ),
+      );
+      producer.last.advance(
+        AssetStage.full,
+        pictureSize: const Size(1200, 900),
+        fill: _blue,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await openedFrom(tester, 0);
+      await settleOpen(tester);
+      await tester.pump();
+
+      // The page's own content is not there yet: the frame alone stands in.
+      expect(page(tester).placeholder, isNot(isA<ClearPlaceholder>()));
+      final still = tester.renderObject<RenderRepaintBoundary>(
+        find
+            .descendant(
+              of: find.byType(ViewerPhotoPage),
+              matching: find.byType(RepaintBoundary),
+            )
+            .first,
+      );
+      expect(still.size, fittedRect.size);
+      final pixels = await tester.runAsync(() async {
+        final image = await still.toImage();
+        final bytes = await image.toByteData();
+        image.dispose();
+        return bytes!;
+      });
+      // Every pixel of the media's rectangle, its corners included, is the
+      // picture.
+      expect(_pixelsOf(pixels!), everyElement(_blue.toARGB32()));
+    });
+  });
+
+  testWidgets('the frame of a rounded thumbnail that shows its picture whole '
+      'is the picture, square-cornered, at its own proportion', (tester) async {
+    await pumpHost(
+      tester,
+      Align(
+        alignment: Alignment.topLeft,
+        child: ViewerOrigin(
+          index: 0,
+          borderRadius: const BorderRadius.all(Radius.circular(12)),
+          fit: BoxFit.contain,
+          child: ContentView(
+            content: photoKey(0),
+            scope: scope,
+            preset: AssetPresets.square(
+              extent: 160,
+              devicePixelRatio: 1,
+              profile: const AssetProfile(cornerRadius: 12),
+            ),
+          ),
+        ),
+      ),
+    );
+    producer.last.advance(
+      AssetStage.full,
+      pictureSize: const Size(1200, 900),
+      fill: _blue,
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    final bridge = ViewerOriginScope.of(
+      tester.element(find.byType(ViewerOrigin)),
+    ).bridgeFor(source);
+
+    final frame = bridge.frameOf(0)!;
+    addTearDown(frame.dispose);
+    final pixels = await tester.runAsync(frame.toByteData);
+    // Covering the 160 square: 213 x 160, every corner drawn.
+    expect((frame.width, frame.height), (213, 160));
+    expect(_pixelsOf(pixels!), everyElement(_blue.toARGB32()));
   });
 
   // A tile of the home grid's kind (a view with its controls) and a feed

@@ -49,6 +49,121 @@ void main() {
     ),
   );
 
+  group('frame', () {
+    // A 40 px rounded square that shows a 4:3 picture whole.
+    const size = Size(40, 40);
+    final rounded = AssetPreset(
+      size: size,
+      spec: AssetSpec.atDensity(
+        logicalWidth: size.width,
+        logicalHeight: size.height,
+        devicePixelRatio: 1,
+      ),
+      profile: const AssetProfile(cornerRadius: 8),
+    );
+
+    Future<RenderObject> view(WidgetTester tester) async {
+      final key = GlobalKey();
+      await tester.pumpWidget(
+        host(
+          SizedBox.fromSize(
+            key: key,
+            size: size,
+            child: ContentView(content: _sticker, preset: rounded),
+          ),
+        ),
+      );
+      return tester.renderObject(find.byKey(key));
+    }
+
+    testWidgets('of content is its whole picture, unrounded, at its own '
+        'proportion and covering the view', (tester) async {
+      final root = await view(tester);
+      producer.last.advance(
+        AssetStage.full,
+        pictureSize: const Size(1200, 900),
+        fill: const Color(0xFF0000FF),
+      );
+      await tester.pump();
+      await tester.pump(_pastFade);
+
+      final frame = ContentView.frameIn(root, pixelRatio: 2);
+      expect(frame, isA<ContentFrame$Picture>());
+      final image = (frame as ContentFrame$Picture).image;
+      addTearDown(image.dispose);
+      // 4:3 covering 40 x 40 at 2x: 107 x 80.
+      expect(image.width, 107);
+      expect(image.height, 80);
+      final pixels = await tester.runAsync(
+        () async => (await image.toByteData())!,
+      );
+      // The corner the view rounds is drawn.
+      expect(pixels!.getUint8(3), 255);
+    });
+
+    testWidgets('of a view that shows only a stand-in is none of its own', (
+      tester,
+    ) async {
+      final root = await view(tester);
+      expect(
+        ContentView.frameIn(root, pixelRatio: 1),
+        isA<ContentFrame$StandIn>(),
+      );
+      producer.last.advance(
+        AssetStage.preview,
+        pictureSize: const Size(40, 30),
+        fill: const Color(0xFF00FF00),
+      );
+      await tester.pump();
+      expect(
+        ContentView.frameIn(root, pixelRatio: 1),
+        isA<ContentFrame$StandIn>(),
+      );
+      producer.last.advance(
+        AssetStage.placeholder,
+        pictureSize: const Size(120, 90),
+        fill: const Color(0xFF00FF00),
+      );
+      await tester.pump();
+      await tester.pump(_pastFade);
+      expect(
+        ContentView.frameIn(root, pixelRatio: 1),
+        isA<ContentFrame$StandIn>(),
+      );
+    });
+
+    testWidgets('of a texture is read from the surface', (tester) async {
+      final root = await view(tester);
+      producer.last
+          .advance(
+            AssetStage.full,
+            animated: true,
+            pictureSize: const Size(1200, 900),
+          )
+          .texture = const AssetTexture(
+        id: 3,
+        width: 1200,
+        height: 900,
+      );
+      await tester.pump();
+      expect(
+        ContentView.frameIn(root, pixelRatio: 1),
+        isA<ContentFrame$Surface>(),
+      );
+    });
+
+    testWidgets('under no view is read from the surface', (tester) async {
+      await tester.pumpWidget(host(const SizedBox.square(dimension: 10)));
+      expect(
+        ContentView.frameIn(
+          tester.renderObject(find.byType(SizedBox)),
+          pixelRatio: 1,
+        ),
+        isA<ContentFrame$Surface>(),
+      );
+    });
+  });
+
   group('attach', () {
     testWidgets('attaches the content with the preset on first build', (
       tester,
