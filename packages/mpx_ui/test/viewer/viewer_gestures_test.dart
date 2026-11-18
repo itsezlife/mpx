@@ -285,4 +285,105 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
     });
   });
+
+  group('dismiss', () {
+    testWidgets(
+      'Android: 30 px twice as vertical as wide dismisses, and the pager '
+      'never moves after',
+      (tester) async {
+        final harness = ViewerHarness();
+        await harness.pump(tester);
+
+        final gesture = await tester.startGesture(_centre);
+        await gesture.moveBy(const Offset(-14, 30));
+        await tester.pump();
+        await gesture.moveBy(const Offset(-200, 40));
+        await tester.pump();
+        expect(harness.state(tester).dragOffset, 40);
+        expect(tester.getCenter(find.byType(ViewerPhotoPage)).dx, 200);
+        await gesture.up();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(harness.closed, 0);
+        expect(harness.state(tester).index, 0);
+      },
+    );
+
+    testWidgets('Android: a drag that is not twice as vertical pages', (
+      tester,
+    ) async {
+      final harness = ViewerHarness();
+      await harness.pump(tester);
+
+      final gesture = await tester.startGesture(_centre);
+      await gesture.moveBy(const Offset(-20, 6));
+      await tester.pump();
+      await gesture.moveBy(const Offset(-150, 150));
+      await tester.pump();
+      expect(harness.state(tester).dragOffset, 0);
+      await _release(tester, gesture);
+      expect(harness.state(tester).index, 1);
+    });
+
+    testWidgets('Android: a fast short flick does not close', (tester) async {
+      final harness = ViewerHarness();
+      await harness.pump(tester);
+
+      await tester.flingFrom(_centre, const Offset(0, 80), 3000);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(harness.closed, 0);
+      expect(harness.state(tester).dragOffset, 0);
+    });
+
+    for (final (name, policy, distance) in [
+      ('Android', _android, 160.0),
+      ('iOS', _ios, 210.0),
+    ]) {
+      for (final sign in [1.0, -1.0]) {
+        testWidgets(
+          '$name: past its fraction ${sign > 0 ? 'down' : 'up'} closes',
+          (tester) async {
+            final harness = ViewerHarness();
+            await harness.pump(tester, policy: policy);
+
+            final gesture = await _drag(tester, Offset(0, sign * distance));
+            await gesture.up();
+            await tester.pump();
+            await tester.pump(const Duration(milliseconds: 400));
+            expect(harness.closed, 1);
+          },
+        );
+      }
+    }
+
+    testWidgets('iOS: the background is gone 80 pt into the drag', (
+      tester,
+    ) async {
+      final harness = ViewerHarness();
+      await harness.pump(tester, policy: _ios);
+
+      final gesture = await _drag(tester, const Offset(0, 40));
+      expect(harness.state(tester).backgroundOpacity, closeTo(0.5, 1e-9));
+      await gesture.moveBy(const Offset(0, 40));
+      await tester.pump();
+      expect(harness.state(tester).backgroundOpacity, 0);
+      await _release(tester, gesture);
+      expect(harness.closed, 0);
+      expect(harness.state(tester).backgroundOpacity, 1);
+    });
+
+    testWidgets('a dismiss drag hides the chrome and leaves it hidden', (
+      tester,
+    ) async {
+      final harness = ViewerHarness();
+      await harness.pump(tester);
+      expect(harness.state(tester).controlsVisible, isTrue);
+
+      final gesture = await _drag(tester, const Offset(0, 60));
+      expect(harness.state(tester).controlsVisible, isFalse);
+      await _release(tester, gesture);
+      expect(harness.state(tester).controlsVisible, isFalse);
+    });
+  });
 }
