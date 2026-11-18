@@ -179,6 +179,19 @@ final class ViewerHarness {
   ViewerPhotoPageState page(WidgetTester tester) =>
       tester.state<ViewerPhotoPageState>(find.byType(ViewerPhotoPage));
 
+  /// The page of the item at [index], shown or kept offstage.
+  ViewerPhotoPageState pageAt(WidgetTester tester, int index) => tester
+      .stateList<ViewerPhotoPageState>(
+        find.byType(ViewerPhotoPage, skipOffstage: false),
+      )
+      .firstWhere(
+        (page) =>
+            page.context
+                .findAncestorWidgetOfExactType<GalleryPageScope>()
+                ?.index ==
+            index,
+      );
+
   PlayerLease lease(WidgetTester tester) => state(tester).videoLease!;
 
   FakePlayerEngine engine(int index) => backend!.latestFor(videoKey(index))!;
