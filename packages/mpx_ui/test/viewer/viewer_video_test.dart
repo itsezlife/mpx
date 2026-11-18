@@ -644,6 +644,41 @@ void main() {
       });
     }
 
+    testWidgets(
+      'before the player knows the length, the time reads the item\'s own',
+      (tester) async {
+        harness = ViewerHarness(
+          items: [
+            GalleryItem(
+              videoKey(0),
+              kind: GalleryMediaKind.video,
+              size: const Size(1200, 900),
+              hasAudio: true,
+              descriptor: MediaDescriptor(
+                key: videoKey(0),
+                kind: MediaKind.video,
+                duration: const Duration(seconds: 52),
+              ),
+            ),
+          ],
+          videoDuration: const Duration(seconds: 60),
+          autoPrepare: false,
+        );
+        await harness.pump(tester);
+        expect(harness.lease(tester).state.value.duration, isNull);
+
+        String time() => tester
+            .widget<Text>(find.byKey(const ValueKey('mpx-viewer-time')))
+            .data!;
+        expect(time(), '0:00 / 0:52');
+
+        // The player's own length wins once it reports one.
+        harness.engine(0).completePrepare();
+        await tester.pump();
+        expect(time(), '0:00 / 1:00');
+      },
+    );
+
     testWidgets('its text is styled whatever the host puts above it', (
       tester,
     ) async {

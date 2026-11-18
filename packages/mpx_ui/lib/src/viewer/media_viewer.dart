@@ -1324,6 +1324,10 @@ class MediaViewerState extends State<MediaViewer>
                   previewFrame: widget.previewFrame,
                   strings: widget.videoStrings,
                   centreTaken: _spinnerShown,
+                  knownDuration: widget.source
+                      .itemAt(_index)
+                      ?.descriptor
+                      ?.duration,
                 ),
               ),
             // A player that waits for its media longer than the policy's

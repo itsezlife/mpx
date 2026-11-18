@@ -25,6 +25,7 @@ final class ViewerHarness {
     List<GalleryItem>? items,
     Duration? videoDuration,
     bool autoFirstFrame = true,
+    bool autoPrepare = true,
     Duration? originPosition,
     Set<int>? loaded,
   }) {
@@ -51,6 +52,7 @@ final class ViewerHarness {
       backend = FakePlayerBackend(
         duration: videoDuration,
         autoFirstFrame: autoFirstFrame,
+        autoPrepare: autoPrepare,
       );
       players = PlayerPool(backend: backend!);
     }
