@@ -88,6 +88,34 @@ void main() {
     expect(find.text('2/3'), findsOneWidget);
   });
 
+  testWidgets('the counter is a pill as wide as its text, zoomed or not', (
+    tester,
+  ) async {
+    final harness = ViewerHarness();
+    await harness.pump(tester, chrome: chrome());
+    final metrics = ViewerPolicy.$Android.chrome;
+    final counter = find.byKey(const ValueKey('mpx-viewer-counter'));
+    final text = tester.getSize(find.text('1 of 3')).width;
+
+    void expectPill() {
+      final rect = tester.getRect(counter);
+      expect(rect.width, closeTo(text + 2 * metrics.counterPadding, 1));
+      expect(rect.height, metrics.counterHeight);
+      expect(rect.center.dx, closeTo(viewerSize.width / 2, 0.5));
+    }
+
+    expectPill();
+
+    // Double tap away from the chrome: the picture zooms under it.
+    await tester.tapAt(const Offset(200, 500));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tapAt(const Offset(200, 500));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(harness.page(tester).isZoomed, isTrue);
+    expectPill();
+  });
+
   testWidgets('a single item has no counter', (tester) async {
     final harness = ViewerHarness(count: 1);
     await harness.pump(tester, chrome: chrome());

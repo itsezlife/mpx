@@ -277,8 +277,13 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
           color: widget.tokens.barFill,
           borderRadius: BorderRadius.circular(metrics.counterRadius),
         ),
-        alignment: Alignment.center,
-        child: Text(text, style: widget.tokens.counter),
+        // As wide as its text: an alignment on the box itself would stretch
+        // the pill across the column, a bar that shows once a zoomed
+        // picture lies under it.
+        child: Align(
+          widthFactor: 1,
+          child: Text(text, style: widget.tokens.counter),
+        ),
       ),
     );
   }
