@@ -132,6 +132,11 @@ Tickets 23-26, 28, 29 (2026-11-13).
   `PlayerSource`s (a `RangedRequest`, container MIME, codec), best first;
   the engine publishes the chosen one to `NativeRangedReaders` and hands
   the platform player its cache key.
+- **Bytes a player pulls**: `watchSource` opens, per source a player reads,
+  the host's account for it (an `AssetOutsideReader` from
+  `AssetCacheScope.openOutsideReader`, ADR 0010), told the bytes the
+  resource holds as they land and closed when the player lets the source
+  go. Two players of one content hold two accounts.
 - **Reader link**: Swift and the Android JNI shim mirror the `hbc_api`
   layout and refuse another version (a published plugin cannot include a
   sibling package's header).

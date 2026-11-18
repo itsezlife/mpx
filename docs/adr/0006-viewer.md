@@ -178,6 +178,30 @@ proportion: the item's size, else the picture a cache entry of it draws
 (`AssetCacheScope.pictureSizeOf`), else the player's, else the origin's frame
 or box.
 
+### Downloads on a page
+
+- The page shown asks for its content while it shows it
+  (`ContentView.requestsDownload`, ADR 0010): opening the viewer, or paging
+  to a photo or an animation, is the user's request to see it, whatever the
+  auto-download policy said in the list. A video asks only when it is the
+  item the viewer opened on, known by its content (`MediaKey`), not by its
+  index, which moves when the source learns of items before it; a video
+  paged to follows the policy (a player streams it, else the page offers
+  the download). The neighbours follow the policy.
+- **Viewer-close rule**: a page's request ends with the page. A download
+  only it started stops on close or paging away, keeping its bytes, and the
+  origin's tile offers the download with them. A download the user asked
+  for (the page's download control) is the user's: it goes on after the
+  viewer closes, with no surface attached, until the content is whole,
+  cancelled or failed, and the tile shows it. A cancel wins over the
+  page's request.
+- The page's status (`ViewerPageStatus`) reads the content's one transfer
+  through an entry of the page's spec. It reads without side effects; the
+  photo-progress delay and the `shows` signal change only when the status
+  does, and a change heard while another widget builds is shown after
+  that frame. A video has one centre control: the download radial until
+  the player's first frame, the buffering spinner held back while it shows.
+
 The origin's frame (`OriginBridge.frameOf`) is the page's placeholder and
 outranks the content's preview and thumbnail until the first frame. Without
 it the page shows the preview, then the thumbnail, fitted to the media's

@@ -86,6 +86,67 @@ A binding reports `AssetTransfer`, sealed:
   cancel shows the download control.
 - Byte reports reach listeners at most once per frame.
 
+### One transfer per content
+
+The transfer belongs to the content, not to an entry: every spec of a key
+(a tile, a list item, a viewer page) shows the same one. The scope keeps
+one record per `MediaKey` and derives the transfer there, from:
+
+| Input | Held as |
+| --- | --- |
+| The user's intent | `none`, `requested` (`download()`), `cancelled` (`cancelDownload()`) |
+| The content's entries | What each entry's attempt last reported (waiting, receiving, awaiting, failed) |
+| The high-water mark | The most bytes any report gave, until the content is whole |
+| Bytes held outside an attempt | Each reader outside the cache, and each spec whose attempt finished while its content still streams |
+| The policy's answer | Kept per content until the policy, the attached tags or the descriptor change |
+
+- One download runs per content. A spec attached while another downloads
+  is answered `manual` and waits, showing that download; once the content
+  is local the waiting specs start again and read it. A policy change
+  starts one spec per content.
+- An entry that is final for its spec shows no transfer, except a failed
+  rest of its streamed content (below), which is its retry.
+- The surfaces show at least the mark: a download a surface comes back to
+  is drawn where it got to, and content awaiting the user after a stopped
+  download shows the bytes it left (`awaitingUser(total, received)`).
+- A record that no entry or reader holds keeps the user's intent for the
+  scope's life and its mark for the last 256 such contents; the rest goes
+  with the last entry.
+
+### Who asks for a download
+
+- **The policy** for the tags attached (above).
+- **A surface that requests its content while it shows it**
+  (`AssetBinding.requestsDownload`, `ContentView.requestsDownload`: a
+  viewer page the user opened). It downloads whatever the policy says, but
+  it is not the user's download: when the surface goes or stops asking, a
+  download nothing else wants stops where it is, its bytes kept, and the
+  content awaits the user.
+- **The user** (`download()`): the whole content (`AssetDemand.downloadRequested`,
+  `FetchRequest.whole`: a fetcher that streams content as it plays fetches
+  the rest behind the reads). It goes on with no surface attached, the
+  entry pinned meanwhile, until the content is whole, the user cancels or
+  it fails. A viewer closed on it leaves it running.
+- **The user's cancel wins** over a requesting surface and the policy.
+
+### Streamed content and readers outside the cache
+
+- Content handed out while it still arrives (`FetchedRanged`) can be final
+  for its spec (its first frame) before all its bytes are here. Its attempt
+  goes on reporting the bytes its paintable pulls, and a failure of the
+  rest a user's download fetches (`FetchedRanged.rest`), after the final
+  stage (`AssetProgress` contract). They count for the content only: its
+  completion reaches every spec, and a failed rest shows as the content's
+  failed transfer, whose `download()` fetches again.
+- A reader outside the cache (a platform player streaming the content)
+  holds a lease, `AssetCacheScope.openOutsideReader(key)`, that it reports
+  its bytes to and closes when it lets the content go; readers count. Their
+  bytes are the download while someone wants the content (the user, a
+  requesting surface, the policy) and no spec downloads it; otherwise they
+  are bytes received over the download control. Bytes a finished attempt
+  streams count as the download only for the user's download. All of the
+  bytes complete the content.
+
 ### Auto-download
 
 - `AutoDownloadPolicy.decide(descriptor, context)` answers `now`, `prefix`
@@ -94,7 +155,7 @@ A binding reports `AssetTransfer`, sealed:
   enters the cache key. An entry downloads when any attached surface's tag
   allows it.
 - A change of the policy (`changes`), or an attach with another tag,
-  restarts waiting entries whose answer became `now`.
+  restarts a waiting entry whose answer became `now`, one per content.
 - The core default is `AutoDownloadPolicy.always`. The composition root's
   default (`NetworkAutoDownloadPolicy` in `mpx`) weighs the network class
   and per-kind size limits, with each platform's reference values.
@@ -104,7 +165,10 @@ A binding reports `AssetTransfer`, sealed:
 - Core widgets driven by plain values: `MediaStatusControl` takes a
   `MediaStatus` (an icon, `MediaStatusIcon` none / download / cancel / play /
   pause, and a progress), and `MediaStatusControl.binding` maps a binding to
-  it. `MediaBadge` shows the duration (or "GIF") and, while receiving,
+  it. `ContentStatusOverlay` lays a binding's control and badge over any
+  picture, as `ContentView` does; `MediaStatusPainting` draws the control's
+  disc, progress arc and spinner on a canvas, for a leaf that paints its
+  own cells. `MediaBadge` shows the duration (or "GIF") and, while receiving,
   "received / total".
 - Their style is a per-platform value (`MediaLoadingStyle`: `stages`,
   `status`, `badge`; `$Android`, `$IOS`, `$Desktop`, `forPlatform`,
@@ -135,8 +199,11 @@ again, so the cost is paid once per item.
 
 - The reference clients draw no box before content: a blurred inline
   thumbnail, or a shape outline, is there from the first frame.
-- One transfer state on the binding is shared by every surface of an
-  entry, so the cell, the feed and the viewer agree.
+- One transfer per content, derived in one place, so the cell, the feed
+  and the viewer agree whatever spec each decodes, and no two of them
+  download the same bytes.
+- A user's download is an intent about the content, not about a surface:
+  it outlives the surface that asked, and a cancel is the last word.
 - Policies are values so they can be tested and so a host can choose
   another platform's feel.
 
@@ -149,6 +216,8 @@ again, so the cost is paid once per item.
 | A failed picture or error glyph | No reference draws one; the control carries the retry |
 | Keeping the inline stand-in in `placeholder` | Loses the preview → thumbnail fade and "has a preview" |
 | Auto-download rules in the core | The network class lives in the composition root |
+| A transfer per entry, reconciled across specs | Two specs downloaded the same bytes, and a cancel or a completion reached one spec only |
+| Reader bytes as two calls (`report`, `end`) by key | Two players of one content ended each other's account; a lease per reader counts them |
 
 ## Consequences
 
