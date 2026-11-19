@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/src/asset/asset_binding.dart';
@@ -174,25 +176,28 @@ class _MediaBadgeState extends State<MediaBadge>
       duration = left.isNegative ? Duration.zero : left;
     }
     // The clip may play on another surface of its entry (this badge's view
-    // only shows the controls): its position is read every frame while it
-    // moves, and the reading stops once it stood still for a while.
-    final moves =
+    // only shows the controls), and nothing tells the badge when it moves:
+    // its position is read every frame while it moves, and, once it stood
+    // still for a while (held by a viewer, paused), a few times a second,
+    // which brings the per-frame reading back as soon as it moves again (a
+    // hold let go, a seek).
+    final follows =
+        !gif &&
         duration != null &&
         position != null &&
-        binding.paintable.isAnimated &&
-        position != _lastPosition;
-    if (moves || playing) {
+        binding.paintable.isAnimated;
+    if (position != _lastPosition || playing) {
       _still = 0;
-    } else {
+    } else if (_ticker?.isActive ?? false) {
       _still++;
     }
     _lastPosition = position;
-    _syncTicker(
-      playing:
-          !gif &&
-          duration != null &&
-          (playing || (position != null && _still < _stillFrames)),
-    );
+    final everyFrame =
+        !gif &&
+        duration != null &&
+        (playing || (follows && _still < _stillFrames));
+    _syncTicker(playing: everyFrame);
+    _syncPoll(polls: follows && !everyFrame);
     return MediaBadge.rowsOf(
       style: style,
       strings: widget.strings,
@@ -208,6 +213,19 @@ class _MediaBadgeState extends State<MediaBadge>
   static const int _stillFrames = 60;
   Duration? _lastPosition;
   int _still = 0;
+
+  // The slow reading of a clip that stands still.
+  static const Duration _pollEvery = Duration(milliseconds: 250);
+  Timer? _poll;
+
+  void _syncPoll({required bool polls}) {
+    if (polls) {
+      _poll ??= Timer.periodic(_pollEvery, (_) => _refresh());
+    } else {
+      _poll?.cancel();
+      _poll = null;
+    }
+  }
 
   // A clip that plays counts down: its position is read every frame, and
   // the badge rebuilds only when the text changes.
@@ -248,6 +266,7 @@ class _MediaBadgeState extends State<MediaBadge>
   @override
   void dispose() {
     _listened?.removeListener(_bindingChanged);
+    _poll?.cancel();
     _ticker?.dispose();
     super.dispose();
   }

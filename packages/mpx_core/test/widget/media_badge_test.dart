@@ -322,6 +322,57 @@ void main() {
       expect(find.text('0:10'), findsOneWidget);
     });
 
+    testWidgets('picks the count-down up again when the clip moves after '
+        'standing still for long (a viewer held it, then seeked it back)', (
+      tester,
+    ) async {
+      const spec = AssetSpec(pixelWidth: 8, pixelHeight: 8);
+      final playing = scope.attach(
+        key,
+        spec,
+        const AssetProfile(animate: true, loop: true),
+      );
+      addTearDown(playing.detach);
+      final content = producer.last
+        ..describe(
+          const MediaDescriptor(
+            key: key,
+            kind: MediaKind.video,
+            duration: Duration(seconds: 13),
+          ),
+        );
+      final clip = content.advance(
+        AssetStage.full,
+        frames: List.filled(13, const Duration(seconds: 1)),
+      );
+      final controls = scope.attach(key, spec, const AssetProfile());
+      addTearDown(controls.detach);
+      await tester.pumpWidget(host(MediaBadge.binding(controls)));
+
+      // Held for seconds: the clip stands still.
+      final hold = scope.holdPlayback(key, spec);
+      for (var i = 0; i < 180; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      // Seeked back and let go, after the viewer's close.
+      clip.seekPlayback(const Duration(seconds: 2));
+      hold.release();
+      for (var i = 0; i < 120; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(find.text('0:11'), findsOneWidget);
+
+      var t = const Duration(seconds: 10);
+      for (var i = 1; i <= 6; i++) {
+        t += const Duration(milliseconds: 500);
+        ticks.tick(t);
+        playing.advancePlayback();
+        await tester.pump(const Duration(milliseconds: 600));
+      }
+
+      expect(find.text('0:08'), findsOneWidget);
+    });
+
     testWidgets('a held or paused clip keeps the time left at its position, '
         'not the whole length', (tester) async {
       final binding = scope.attach(
