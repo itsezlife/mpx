@@ -4,12 +4,12 @@ import 'package:mpx_core/mpx_core.dart';
 
 void main() {
   group('MediaStageStyle', () {
-    test('Android: 150 ms linear fades, a 5 % scale-in, 250 ms for loops', () {
+    test('Android: 150 ms linear fades, no scale-in, 250 ms for loops', () {
       const style = MediaStageStyle.$Android;
       expect(style.fill, isNull);
       expect(style.stageFade, const Duration(milliseconds: 150));
       expect(style.gifFade, const Duration(milliseconds: 250));
-      expect(style.contentScaleIn, 0.05);
+      expect(style.contentScaleIn, 0);
       expect(style.previewWash, isNull);
       expect(style.outlineFill, const Color(0x46000000));
       expect(style.outlineTintOpacity, 70 / 255);

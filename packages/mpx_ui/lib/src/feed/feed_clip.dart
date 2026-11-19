@@ -164,6 +164,14 @@ class FeedClip extends StatelessWidget {
         // still's entry that paints nothing of its own, so the staged view,
         // the clip and a player all get the same control and badge, and
         // the control's taps download or cancel the content.
+        // It takes the fit of what draws the picture, so the badge and the
+        // compact control sit in the picture as it shows: the letterboxed
+        // picture of a contain fit, the cell a cover fit fills.
+        final shownFit = switch (state) {
+          FeedItemState(lease: _?) => _assetFit(fit),
+          FeedItemState(clip: final clip?) => clip.fit,
+          _ => const AssetProfile().fit,
+        };
         return Stack(
           fit: StackFit.expand,
           children: [
@@ -173,7 +181,7 @@ class FeedClip extends StatelessWidget {
             ContentView(
               key: const ValueKey('mpx-feed-overlays'),
               content: item.key,
-              preset: presetOf(const AssetProfile()),
+              preset: presetOf(AssetProfile(fit: shownFit)),
               scope: scope,
               downloadContext: item.downloadContext,
               opacity: 0,
@@ -185,6 +193,13 @@ class FeedClip extends StatelessWidget {
       },
     );
   }
+
+  // The asset fit a player's picture shows as: whole for a fit that keeps
+  // it inside the box, else filling the box.
+  static AssetFit _assetFit(BoxFit fit) => switch (fit) {
+    BoxFit.contain || BoxFit.scaleDown => AssetFit.contain,
+    _ => AssetFit.cover,
+  };
 
   AssetPreset Function(AssetProfile profile)? _presetOf(
     FeedController controller,

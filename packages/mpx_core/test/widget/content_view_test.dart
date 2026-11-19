@@ -1276,13 +1276,35 @@ void main() {
       expect(painted.paints.last.context.opacity, closeTo(0.5, 0.01));
     });
 
-    testWidgets('android: the content shrinks from 1.05 to its size', (
-      tester,
-    ) async {
+    testWidgets('android: the content fades in at its size', (tester) async {
       await tester.pumpWidget(
         on(
           TargetPlatform.android,
           ContentView(content: _sticker, preset: _still),
+        ),
+      );
+      producer.last.advance(AssetStage.full);
+
+      await tester.pump();
+
+      expect(
+        tester.renderObject(find.byType(ContentView)),
+        isNot(paints..scale()),
+      );
+    });
+
+    testWidgets("a host's scale-in shrinks the content from 1.05 to its size", (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        Theme(
+          data: ThemeData(platform: TargetPlatform.android),
+          child: MediaLoadingStyleScope(
+            style: (platform) => platform.copyWith(
+              stages: platform.stages.copyWith(contentScaleIn: 0.05),
+            ),
+            child: host(ContentView(content: _sticker, preset: _still)),
+          ),
         ),
       );
       producer.last.advance(AssetStage.full);

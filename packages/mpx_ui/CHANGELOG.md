@@ -82,9 +82,11 @@
   or attaches.
 - Feed status: `FeedClip(status:, badge:)`, and `status` / `badge` on
   `FeedListView` and `FeedPagerView`, lay the status control and badge over
-  an item whatever draws it, over a `ContentPicture`. A `FeedPagerView` page
-  with a status control shows one centre control; otherwise it shows the
-  buffering spinner past the delay (`FeedClip.showsBuffering`).
+  an item whatever draws it, over a `ContentPicture`, at the corner of the
+  picture as it shows (a playing clip's cover fit fills the cell). A
+  `FeedPagerView` page with a status control shows one centre control;
+  otherwise it shows the buffering spinner past the delay
+  (`FeedClip.showsBuffering`).
 
 ## 0.0.1
 

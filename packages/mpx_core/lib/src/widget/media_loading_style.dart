@@ -45,7 +45,9 @@ final class MediaStageStyle {
 
   /// How much larger the content is drawn as its fade starts: it shrinks to
   /// its size as `1 + contentScaleIn · (1 − easeIn(t))` over the fade, about
-  /// the box's centre. 0 for none.
+  /// the box's centre. 0 for none, the default of every platform: media in
+  /// a chat fades in at its size. A host sets it for a surface whose content
+  /// scales in, as a small map preview may (0.05).
   final double contentScaleIn;
 
   /// A colour washed over a raster preview, or null for none.
@@ -65,12 +67,11 @@ final class MediaStageStyle {
   /// soft edge falls outside the clip.
   final double roundPreviewScale;
 
-  /// Android: 150 ms linear fades (250 ms for a loop) with a 5 % scale-in,
-  /// a flat outline at 70 / 255 of the host's quiet fill.
+  /// Android: 150 ms linear fades (250 ms for a loop) with no scale-in, a
+  /// flat outline at 70 / 255 of the host's quiet fill.
   static const MediaStageStyle $Android = MediaStageStyle(
     stageFade: Duration(milliseconds: 150),
     gifFade: Duration(milliseconds: 250),
-    contentScaleIn: 0.05,
     outlineFill: Color(0x46000000),
     outlineTintOpacity: 70 / 255,
   );

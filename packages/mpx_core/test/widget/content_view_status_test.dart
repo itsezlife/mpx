@@ -115,6 +115,72 @@ void main() {
     expect(badge - box, const Offset(4, 44));
   });
 
+  testWidgets('the badge of a cover fit sits at the corner of the box, the '
+      'picture it shows filling it', (tester) async {
+    const square = AssetPreset(
+      size: Size(160, 160),
+      spec: AssetSpec(pixelWidth: 160, pixelHeight: 160),
+      profile: AssetProfile(cornerRadius: 12, fit: AssetFit.cover),
+    );
+    await tester.pumpWidget(
+      host(const ContentView(content: _key, preset: square, badge: true)),
+    );
+    // A 1:2 picture, cut top and bottom to fill the square.
+    producer.last
+      ..describe(
+        const MediaDescriptor(
+          key: _key,
+          kind: MediaKind.video,
+          byteSize: 4718592,
+          duration: Duration(seconds: 20),
+          dimensions: MediaDimensions(160, 320),
+        ),
+      )
+      ..awaitingUser();
+    await tester.pump();
+    await tester.pump(_gone);
+
+    final box = tester.getTopLeft(find.byType(ContentView));
+    final badge = tester.getTopLeft(find.byType(MediaBadge));
+    expect(badge - box, const Offset(4, 4));
+  });
+
+  testWidgets('the compact control sits inside the picture a contain fit '
+      'letterboxes', (tester) async {
+    const square = AssetPreset(
+      size: Size(160, 160),
+      spec: AssetSpec(pixelWidth: 160, pixelHeight: 160),
+      profile: AssetProfile(),
+    );
+    await tester.pumpWidget(
+      host(
+        const ContentView(
+          content: _key,
+          preset: square,
+          status: MediaStatusMode.compact,
+        ),
+      ),
+    );
+    // A 1:2 picture: drawn 80 x 160 from x = 40 of the square box.
+    producer.last
+      ..describe(
+        const MediaDescriptor(
+          key: _key,
+          kind: MediaKind.still,
+          byteSize: 4718592,
+          dimensions: MediaDimensions(160, 320),
+        ),
+      )
+      ..awaitingUser();
+    await tester.pump();
+    await tester.pump(_gone);
+
+    final box = tester.getTopLeft(find.byType(ContentView));
+    final control = tester.getTopLeft(find.byType(MediaStatusControl));
+    // Android's compact control is at 8 x 8.
+    expect(control - box, const Offset(48, 8));
+  });
+
   testWidgets('a failure turns the control back to download', (tester) async {
     await tester.pumpWidget(
       host(
