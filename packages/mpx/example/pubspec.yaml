@@ -33,7 +33,9 @@ dependencies:
     path: ../../mpx_ui
   mpx_video_decoder:
     path: ../../mpx_video_decoder
-  share_plus: ^13.3.1
+  # 12, not 13: share_plus 13 needs win32 6, and mpx_library's drag and drop
+  # (super_drag_and_drop 0.9) needs device_info_plus < 12, which pins win32 5.
+  share_plus: ^12.0.2
 
 dev_dependencies:
   flutter_test:
@@ -41,6 +43,8 @@ dev_dependencies:
   # Frame-timing benchmarks on a device (integration_test/).
   integration_test:
     sdk: flutter
+  # Writes the clipboard in the clipboard reader's contract run.
+  super_clipboard: ^0.9.1
 
 flutter:
   uses-material-design: true

@@ -70,8 +70,8 @@ final fetcher = LibraryFetcher(library);
 | --- | --- | --- | --- | --- |
 | `PlatformMediaLibrary` | MediaStore (API 24+), partial access on 14+ | PhotoKit, limited access (opt-in) | none yet | none |
 | `PlatformIntake.fileIntake()` | system dialog, camera intent | system dialog, image picker camera (opt-in) | system dialog | hidden file input |
-| `PlatformIntake.dropSource()` | none yet | none yet | none yet | DOM drag events |
-| `PlatformIntake.clipboardReader()` | none yet | none yet | none yet | async clipboard |
+| `PlatformIntake.dropSource()` | drop region | drop region | drop region | DOM drag events |
+| `PlatformIntake.clipboardReader()` | system clipboard | system clipboard | system clipboard | async clipboard |
 
 Android: albums are All media, All photos, All videos, the Camera folder,
 then the other folders by their newest item; pages are newest first by
@@ -89,10 +89,11 @@ On the web a pick that answers nothing within a second of the window
 getting its focus back ends empty (browsers say nothing when the dialog is
 dismissed), and files are blob handles (`IntakeSource.blob`).
 
-Native drag and drop and clipboard reading wait on `super_drag_and_drop`:
-its released line pins `win32` 5, which the set's example cannot take with
-`share_plus` 13, and its next line needs Flutter 3.44. `IntakeDropRegion`
-and `ClipboardReader` take any source meanwhile.
+Native drag and drop and paste go through `super_drag_and_drop` and
+`super_clipboard` 0.9: a dropped or pasted file URI comes back as its file,
+pasted image data is written to a file. Their native core pins `win32` 5
+(through `device_info_plus` < 12), so a host takes `share_plus` 12, not
+13.
 
 ## Permissions
 
@@ -142,8 +143,9 @@ The host that opts in adds the usage strings to `Info.plist`:
 `package:mpx_library/testing.dart` has `FakeMediaLibrary` (scripted access
 transitions, generated assets, added albums, change events, slow cloud-held
 originals), `FakeFileIntake` (scripted picks and captures),
-`FakeDropSource`, `FakeClipboardReader`, and the `MediaLibraryContract` and
-`FileIntakeContract` suites every implementation meets. The web routes have
+`FakeDropSource`, `FakeClipboardReader`, and the `MediaLibraryContract`,
+`FileIntakeContract`, `DropSourceContract` and `ClipboardReaderContract`
+suites every implementation meets. The web routes have
 browser tests: `flutter test --platform chrome test/web`.
 
 ## Docs

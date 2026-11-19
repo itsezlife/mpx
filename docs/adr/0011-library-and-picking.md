@@ -247,9 +247,38 @@ preset.
   surface, library grid, picker selection, camera slot, picker-mode viewer.
 - chat_scroll_view moves its mpx pin once these land (its ADR 046).
 
+## Settled in implementation
+
+- **Camera preview texture.** The camera session's preview is a texture
+  from the Flutter texture registry (an Android `SurfaceProducer` CameraX
+  renders into; a `FlutterTexture` over the capture session's
+  IOSurface-backed buffers), as round video's is, not a texture of
+  `mpx_core`'s frame texture host. That host is a CPU write path: a texture
+  is a pixel buffer a decoder locks, fills and posts through C entry
+  points. A camera is a GPU producer; through the host every frame would be
+  converted (YUV to RGBA on Android) and copied on the CPU, with JNI code in
+  `mpx_capture` to reach the C lock, for a preview that runs as long as the
+  grid shows. Hand-off keeps the same texture, so the host's hold and
+  fresh-frame rules have nothing to do; clipping and corners come from the
+  widgets.
+- **One camera owner per process** across the camera session and round
+  video: opening either takes the camera from the other (a session turns
+  closed, a recording fails as taken over and its file is deleted).
+- **Drop and paste on native platforms** through `super_drag_and_drop` and
+  `super_clipboard` 0.9. Their native core pins `device_info_plus` < 12 and
+  so `win32` 5; the mpx example takes `share_plus` 12 (13 needs `win32` 6).
+  A host on `share_plus` 13 waits for the 0.10 line, which needs Flutter
+  3.44.
+- **Web still preparation** lives in `mpx_capture` (`WebPreparationCodec`):
+  `createImageBitmap` resizes and `OffscreenCanvas.convertToBlob` encodes
+  off the main thread, so no worker; outputs stay in memory.
+- **Opt-in define names**: `MPX_LIBRARY_PHOTOS` and `MPX_LIBRARY_CAMERA`
+  as Swift active compilation conditions on the `mpx_library` target (the
+  mpx example's Podfile shows how).
+
 ## Open in implementation
 
-- The opt-in define names and how they reach Swift Package Manager builds.
+- How the opt-in defines reach Swift Package Manager builds.
 - Whether the grid's swipe select auto-scroll speed comes from the policy or a
   fixed curve.
 - A macOS library adapter over PhotoKit.

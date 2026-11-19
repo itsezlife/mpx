@@ -18,6 +18,9 @@
   input, DOM drag events and the async clipboard.
 - `IntakeDropRegion`, `DropTracker`, `ClipboardReader`, `IntakeFiles`,
   `IntakeKind`; `testing.dart`: `FakeDropSource`, `FakeClipboardReader`.
+- Native drag and drop and paste through `super_drag_and_drop` and
+  `super_clipboard` (`DropSource.wrap` puts the drop region around the
+  host's widget); `DropSourceContract`, `ClipboardReaderContract`.
 - The plugin declares no permission; its manifest holds only the system
   camera's file provider.
 

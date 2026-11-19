@@ -60,11 +60,16 @@ final class DropDone extends DropEvent {
   final int refused;
 }
 
-/// Reports drags over the host's window: the platform's drag and drop
-/// (the web's DOM events through `WebDropSource`), or `FakeDropSource`.
+/// Reports drags over the host's window: `super_drag_and_drop`'s drop
+/// region on native platforms, the web's DOM events, or `FakeDropSource`.
 abstract interface class DropSource {
   /// The drag events, in order. Broadcast.
   Stream<DropEvent> get events;
+
+  /// Puts [child] where drags are taken: the native drop region around it,
+  /// or [child] itself where the source listens to the whole window (the
+  /// web's document).
+  Widget wrap(Widget child);
 }
 
 /// Whether a drag is over the window, from the raw events of a
@@ -241,13 +246,13 @@ class _IntakeDropRegionState extends State<IntakeDropRegion> {
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: _tracker,
-    builder: (context, _) => widget.builder(context, _tracker.offer),
+    builder: (context, _) =>
+        widget.source.wrap(widget.builder(context, _tracker.offer)),
   );
 }
 
-/// Reads files and image data from the system clipboard: the platform's
-/// clipboard (the web's async clipboard through `WebClipboardReader`), or
-/// `FakeClipboardReader`.
+/// Reads files and image data from the system clipboard: `super_clipboard`
+/// on native platforms, the web's async clipboard, or `FakeClipboardReader`.
 abstract interface class ClipboardReader {
   /// The files on the clipboard, and its image data written to local files
   /// (memory on the web); empty when it holds neither.

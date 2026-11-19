@@ -30,6 +30,10 @@ dependencies:
   mpx_core:
     path: ../mpx_core
   # The web's intake (file input, DOM drag events, async clipboard).
+  # Native drag and drop and paste (ADR 0011). 0.9 pins win32 5 through
+  # device_info_plus < 12; hosts stay on share_plus 12 until 0.10.
+  super_clipboard: ^0.9.1
+  super_drag_and_drop: ^0.9.1
   web: ^1.1.1
 
 dev_dependencies:

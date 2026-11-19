@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:mpx_library/src/intake/drop_intake.dart';
 import 'package:mpx_library/src/intake/file_intake.dart';
 
@@ -11,6 +12,9 @@ final class FakeDropSource implements DropSource {
 
   @override
   Stream<DropEvent> get events => _events.stream;
+
+  @override
+  Widget wrap(Widget child) => child;
 
   /// Reports [event].
   void add(DropEvent event) => _events.add(event);

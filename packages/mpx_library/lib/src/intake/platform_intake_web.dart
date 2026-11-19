@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:js_interop';
 
+import 'package:flutter/widgets.dart';
 import 'package:mpx_library/src/intake/drop_intake.dart';
 import 'package:mpx_library/src/intake/file_intake.dart';
 import 'package:web/web.dart' as web;
@@ -118,6 +119,10 @@ final class WebDropSource implements DropSource {
 
   @override
   Stream<DropEvent> get events => _events.stream;
+
+  /// The document is listened to whole: [child] needs no region.
+  @override
+  Widget wrap(Widget child) => child;
 
   void _listen() {
     _handlers

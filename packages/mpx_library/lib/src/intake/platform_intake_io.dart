@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:mpx_library/src/intake/drop_intake.dart';
 import 'package:mpx_library/src/intake/file_intake.dart';
 import 'package:mpx_library/src/intake/intake_kind.dart';
+import 'package:mpx_library/src/intake/native_drop_intake.dart';
 
 /// The native file intake.
 Future<FileIntake> $createFileIntake() async {
@@ -18,12 +19,11 @@ Future<FileIntake> $createFileIntake() async {
   return NativeFileIntake(canCaptureWithSystemCamera: camera ?? false);
 }
 
-/// Native drag and drop needs a plugin the set cannot resolve yet (see the
-/// package README); none here.
-DropSource? $createDropSource() => null;
+/// The native drop source (`super_drag_and_drop`).
+DropSource? $createDropSource() => NativeDropSource();
 
-/// Native clipboard reading needs the same plugin; none here.
-ClipboardReader? $createClipboardReader() => null;
+/// The native clipboard reader (`super_clipboard`).
+ClipboardReader? $createClipboardReader() => NativeClipboardReader();
 
 const MethodChannel _channel = MethodChannel('dev.mpx.library/methods');
 

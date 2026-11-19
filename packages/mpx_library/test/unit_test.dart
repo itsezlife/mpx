@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'fetch/library_fetcher_test.dart' as library_fetcher_test;
 import 'identity/library_keys_test.dart' as library_keys_test;
+import 'intake/fake_drop_intake_contract_test.dart'
+    as fake_drop_intake_contract_test;
 import 'intake/fake_file_intake_contract_test.dart'
     as fake_file_intake_contract_test;
 import 'intake/intake_test.dart' as intake_test;
@@ -20,6 +22,7 @@ import 'platform/platform_media_library_test.dart'
 void main() {
   group('library_fetcher_test', library_fetcher_test.main);
   group('library_keys_test', library_keys_test.main);
+  group('fake_drop_intake_contract_test', fake_drop_intake_contract_test.main);
   group('fake_file_intake_contract_test', fake_file_intake_contract_test.main);
   group('intake_test', intake_test.main);
   group(

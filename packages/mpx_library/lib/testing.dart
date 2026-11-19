@@ -4,6 +4,7 @@
 /// never imports them.
 library;
 
+export 'src/testing/drop_intake_contract.dart';
 export 'src/testing/fake_drop_intake.dart';
 export 'src/testing/fake_file_intake.dart';
 export 'src/testing/fake_media_library.dart';
