@@ -79,12 +79,16 @@ void main() {
       expect(binding.transfer, AssetTransfer.none);
     });
 
-    test('the final stage ends it; a stand-in stage does not', () {
+    test('the final stage ends it, and so does the last byte: a download '
+        'whose bytes are all in is done while the content decodes', () {
       final binding = scope.attach(_key, _spec, _profile);
       producer.last
-        ..transfer(400, 400)
+        ..transfer(399, 400)
         ..advance(AssetStage.placeholder);
-      expect(binding.transfer, const AssetTransfer.receiving(400, 400));
+      expect(binding.transfer, const AssetTransfer.receiving(399, 400));
+
+      producer.last.transfer(400, 400);
+      expect(binding.transfer, AssetTransfer.none);
 
       producer.last.advance(AssetStage.full);
 

@@ -1416,7 +1416,7 @@ final class _Content {
   // content when it changed; a change of bytes only is heard at most once
   // per frame.
   void refresh() {
-    final next = _withSize(_derive());
+    final next = _done(_withSize(_derive()));
     if (next == _transfer) return;
     final bytesOnly =
         next is AssetTransfer$Receiving && _transfer is AssetTransfer$Receiving;
@@ -1493,6 +1493,16 @@ final class _Content {
       _ => value,
     };
   }
+
+  // A download whose every byte is in is no download: the content is local
+  // and decodes. Without this a surface kept cancel and "x / x" over the
+  // content until its decode reached the final stage.
+  static AssetTransfer _done(AssetTransfer transfer) => switch (transfer) {
+    AssetTransfer$Receiving(:final received, total: final total?)
+        when received >= total =>
+      AssetTransfer.none,
+    _ => transfer,
+  };
 
   // The source did not say how large the content is; the host did.
   AssetTransfer _withSize(AssetTransfer transfer) {

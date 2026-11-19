@@ -551,7 +551,9 @@ final class ViewerLoadingRules {
       iconSize: 0.3,
       iconStroke: 3,
     ),
-    photoProgress: ViewerPhotoProgress.spinner,
+    // The photo's radial is the empty disc with an arc of the bytes, as the
+    // reference sets its progress from the file's while it loads.
+    photoProgress: ViewerPhotoProgress.arc,
     bufferingFade: Duration(milliseconds: 200),
     playerFadeIn: Duration(milliseconds: 200),
     playerFadeInHandedOver: Duration(milliseconds: 100),

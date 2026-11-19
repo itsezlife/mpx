@@ -18,7 +18,7 @@ Like a media server, `manifest` also gives every picture entry (still,
 animated, video, loop) the stand-ins a server sends with its message: an
 inline `preview` (a JPEG of at most 40 px, base64, the descriptor's preview
 bytes) and a `thumbnail` file (`<file>.thumb.jpg`, at most 320 px: the
-frame at 1 s of a clip, the first of an animation, a still scaled down)
+frame a tenth into a clip or an animation, a still scaled down)
 written next to the media, which the app's loopback origin serves. Public
 entries get theirs read over HTTP. Existing stand-ins are kept unless
 FORCE=1; an entry ffmpeg cannot read (an animated WebP without its GIF
@@ -122,6 +122,19 @@ def frame(source, out, edge, at=None):
     return run.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > 0
 
 
+def representative_at(entry):
+    """Seconds into a moving [entry] its stand-ins are taken at: a tenth of
+    its length, as a server picks a frame that says what the clip is. Frame
+    0 is often a fade or a flat sky (Big Buck Bunny opens on white), which
+    reads as an empty box. None for a still."""
+    if entry["kind"] not in ("video", "loop", "animated"):
+        return None
+    duration = entry.get("duration")
+    if duration:
+        return round(duration / 10, 2)
+    return 1 if entry["kind"] in ("video", "loop") else None
+
+
 def stand_ins(folder, entry):
     """Adds the server-like `preview` and `thumbnail` of [entry]."""
     if entry["kind"] == "lottie":
@@ -135,7 +148,7 @@ def stand_ins(folder, entry):
         sibling = os.path.join(folder, stem + ".gif")
         if os.path.exists(sibling):
             source = sibling
-    at = 1 if entry["kind"] in ("video", "loop") else None
+    at = representative_at(entry)
     thumb = name + THUMB
     thumb_path = os.path.join(folder, thumb)
     if force or not os.path.exists(thumb_path):

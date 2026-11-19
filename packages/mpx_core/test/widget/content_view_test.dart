@@ -101,6 +101,25 @@ void main() {
       expect(pixels!.getUint8(3), 255);
     });
 
+    testWidgets('reads the frame the view shows without playing it: no '
+        'advance, no clock time of its own', (tester) async {
+      final root = await view(tester);
+      final content = producer.last.advance(
+        AssetStage.full,
+        pictureSize: const Size(1200, 900),
+        frames: List.filled(4, const Duration(milliseconds: 100)),
+      );
+      await tester.pump();
+      await tester.pump(_pastFade);
+      final painted = content.paints.length;
+
+      final frame = ContentView.frameIn(root, pixelRatio: 1);
+      addTearDown((frame as ContentFrame$Picture).image.dispose);
+
+      expect(content.paints.length, painted + 1);
+      expect(content.paints.last.context.animate, isFalse);
+    });
+
     testWidgets('of a view that shows only a stand-in is none of its own', (
       tester,
     ) async {

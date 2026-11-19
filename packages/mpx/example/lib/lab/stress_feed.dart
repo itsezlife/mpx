@@ -109,11 +109,16 @@ class _StressFeedPageState extends State<StressFeedPage> {
     toThermal: (value) => FeedThermal.values.byName(value.name),
   );
 
+  // Each item with its descriptor, so the viewer knows its length and
+  // proportion as the feed does.
   late final ListGallery _gallery = ListGallery([
     for (var i = 0; i < widget.items.count; i++)
       GalleryItem(
         widget.items.keyAt(i),
         kind: widget.items.sourceAt(i).kind.gallery,
+        descriptor: widget.items
+            .sourceAt(i)
+            .descriptorOf(widget.items.keyAt(i)),
       ),
   ]);
 
@@ -132,11 +137,17 @@ class _StressFeedPageState extends State<StressFeedPage> {
     super.dispose();
   }
 
-  AssetPreset _preset(double dpr, AssetProfile profile) => AssetPresets.media(
-    size: const Size(360, _extent - 20),
-    devicePixelRatio: dpr,
-    profile: profile,
-  );
+  static const Size _cell = Size(360, _extent - 20);
+
+  // Content that moves binds the one spec every surface that plays it binds,
+  // as the home grid's tiles do: the viewer then draws the cell's own
+  // playback, holds it on the frame the cell shows and hands it back, with
+  // no second decode starting from its first frame. A still is decoded for
+  // the cell.
+  AssetPreset _preset(int index, double dpr, AssetProfile profile) =>
+      widget.items.sourceAt(index).kind == CorpusKind.still
+      ? AssetPresets.media(size: _cell, devicePixelRatio: dpr, profile: profile)
+      : AssetPresets.animation(size: _cell, profile: profile);
 
   @override
   Widget build(BuildContext context) {
@@ -156,7 +167,7 @@ class _StressFeedPageState extends State<StressFeedPage> {
               items.keyAt(index),
               hasAudio: items.sourceAt(index).kind == CorpusKind.video,
             ),
-            presetOf: (index, profile) => _preset(dpr, profile),
+            presetOf: (index, profile) => _preset(index, dpr, profile),
             // The status control and the badge over every clip.
             status: const MediaStatusMode.control(),
             badge: true,
@@ -165,7 +176,7 @@ class _StressFeedPageState extends State<StressFeedPage> {
                 'stress',
                 index,
                 items.keyAt(index),
-                _preset(dpr, const AssetProfile()).spec,
+                _preset(index, dpr, const AssetProfile()).spec,
               );
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 10),
@@ -181,6 +192,11 @@ class _StressFeedPageState extends State<StressFeedPage> {
                       controller: LabViewer.controller('stress'),
                       policy: LabViewer.policy(context),
                       onBackdropScale: LabViewer.onBackdropScale,
+                      // The bar and the counter, as from the home grid.
+                      chrome: ViewerChrome(
+                        title: (context, index, item) =>
+                            Text(items.sourceAt(index).file),
+                      ),
                     ),
                     child: ViewerOrigin(index: index, child: clip),
                   ),

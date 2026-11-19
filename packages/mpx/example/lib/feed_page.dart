@@ -49,11 +49,14 @@ class _FeedPageState extends State<FeedPage> {
     super.dispose();
   }
 
-  AssetPreset _preset(double dpr, AssetProfile profile) => AssetPresets.media(
-    size: const Size(360, _extent - 20),
-    devicePixelRatio: dpr,
-    profile: profile,
-  );
+  // The clips move: they bind the one spec every surface that plays them
+  // binds, so the viewer draws the cell's own playback and goes on from its
+  // frame.
+  AssetPreset _preset(double dpr, AssetProfile profile) =>
+      AssetPresets.animation(
+        size: const Size(360, _extent - 20),
+        profile: profile,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -103,6 +106,7 @@ class _FeedPageState extends State<FeedPage> {
                       controller: LabViewer.controller('feed'),
                       policy: LabViewer.policy(context),
                       onBackdropScale: LabViewer.onBackdropScale,
+                      chrome: const ViewerChrome(),
                     ),
                     child: ViewerOrigin(index: index, child: clip),
                   ),

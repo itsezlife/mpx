@@ -980,11 +980,13 @@ class _RenderContent extends RenderBox {
     final height = math.max(1, (picture.height * scale).round());
     final recorder = ui.PictureRecorder();
     // The paintable itself: the binding's paint rounds it to the profile's
-    // corners.
+    // corners. Not animating: a paint that animates is a surface playing it,
+    // which would move a pull-driven playback (its clock time, a lease of
+    // its own) and make the view jump as the frame is read.
     paintable.paint(
       Canvas(recorder),
       Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-      AssetPaintContext(tint: _tint),
+      AssetPaintContext(tint: _tint, animate: false),
     );
     final drawn = recorder.endRecording();
     final image = drawn.toImageSync(width, height);

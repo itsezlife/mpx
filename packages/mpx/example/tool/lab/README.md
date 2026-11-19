@@ -155,7 +155,8 @@ name needs a `LAB_COLD=1` run.
 The manifest also carries what a media server sends with each item:
 an inline `preview` (a JPEG of at most 40 px, base64) and a `thumbnail`
 (`<file>.thumb.jpg`, at most 320 px, written next to the media and served
-by the loopback origin). The app puts both in the item's descriptor, so an
+by the loopback origin), both from the frame a tenth into a clip or an
+animation, not its first (often a fade or a flat sky). The app puts both in the item's descriptor, so an
 item that waits for a tap shows its blurred preview, then its thumbnail.
 `FORCE=1` makes them again.
 
