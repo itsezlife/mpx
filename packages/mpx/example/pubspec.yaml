@@ -21,8 +21,8 @@ dependencies:
     path: ..
   mpx_core:
     path: ../../mpx_core
-  # Linked so the set's example builds the library plugin's native side; the
-  # library grid will use it once it lands in mpx_ui.
+  # The device library: its plugin's native side, and the fake library the
+  # grid benchmark scrolls.
   mpx_library:
     path: ../../mpx_library
   mpx_lottie:
@@ -37,6 +37,9 @@ dependencies:
 
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  # Frame-timing benchmarks on a device (integration_test/).
+  integration_test:
     sdk: flutter
 
 flutter:

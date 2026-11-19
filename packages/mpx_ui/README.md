@@ -118,8 +118,46 @@ where the viewer left it.
 - Viewer chrome: bars, counter, caption, thumbnail strip and menu; save and
   share stay the host's actions, handed the cached file and the current frame
 
+## Library grid
+
+A grid over a `mpx_library` album with an ordered selection; it hands the
+host the selection and knows nothing of what it becomes:
+
+```dart
+final selection = OrderedPickerSelection(cap: 10);
+LibraryGrid(
+  library: library,                 // a MediaLibrary
+  album: albums.first,              // the all-media album
+  selection: selection,
+  policy: LibraryGridPolicy.forPlatform(defaultTargetPlatform),
+  labels: const LibraryGridLabels(
+    photo: 'Photo', video: 'Video', open: 'Open', select: 'Select',
+    gif: 'GIF',
+  ),
+  onOpen: (asset, index) => openViewer(index),
+  onRefused: (key, reason) => showLimit(reason),
+  cameraSlotBuilder: (context, signals) => MyCameraPreview(signals),
+);
+```
+
+- Fixed square cells, never measured; thumbnails through `ContentView`
+  under the host's `AssetCacheProvider`, a thumbnail key per cell pixel
+  size; pages load around the viewport with one screen of prefetch.
+- Numbered checks; a tap on the check toggles, a tap on the picture opens.
+  Swipe select: a long press and a drag (`$Android`), or a horizontal pan
+  from x > 44 that fails on 5 pt of vertical movement before 8 pt of
+  horizontal (`$IOS`); the first cell's new state goes to every cell
+  crossed, and the grid scrolls by itself at its edges.
+- A refused toggle (the cap, the host's gate) goes to `onRefused`.
+- The camera slot, one column by two rows at the leading top of the
+  all-media album, is the host's: `mpx_ui` takes no edge to `mpx_capture`.
+  `CameraSlotSignals.shouldPause` says when its preview should pause.
+- Library changes re-read the pages and keep the selection; `$Android`
+  holds them while `viewerOpen`.
+
 ## Docs
 
 - [Spec](../../docs/spec.md)
 - [Package topology (ADR 0001)](../../docs/adr/0001-package-topology.md)
 - [ADR 0006](../../docs/adr/0006-viewer.md)
+- [Library, intake, preparation and picking (ADR 0011)](../../docs/adr/0011-library-and-picking.md)

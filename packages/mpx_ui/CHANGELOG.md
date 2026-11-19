@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Library grid: `LibraryGrid` over a media library album, with
+  `LibraryGridPolicy.$Android` / `$IOS` (columns, gaps, corners, check,
+  selection motion, badges, swipe select, camera slot), the picker
+  selection seam `PickerSelection` and its default `OrderedPickerSelection`,
+  `LibraryGridCell`, `LibraryGridTokens` and `LibraryGridLabels` from the
+  host, and a camera slot the host fills (`CameraSlotBuilder` with
+  `CameraSlotSignals`).
 - `MediaViewer`: a fullscreen photo and video viewer that opens from and
   closes to its origin, with seams `GallerySource` and `OriginBridge`
   (`FakeGallerySource` with `insert(index, item)`, `FakeOriginBridge` and

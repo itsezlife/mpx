@@ -236,6 +236,14 @@ frame per index). The package draws bars, menu and caption; the host supplies
 actions (save and share among them, on every platform, handed the cached file
 path and the current frame) and caption builders; speed, quality, PiP and
 rotation are built in. Tokens come from the host. ADR 0006.
+- Library grid (ADR 0011): `LibraryGrid` over a `mpx_library` album with
+  `LibraryGridPolicy.$Android` / `$IOS`: fixed square cells through the
+  asset cache (a thumbnail key per cell pixel size), pages loaded around the
+  viewport with one screen of prefetch, a **picker selection**
+  (`PickerSelection`, `OrderedPickerSelection` with a cap, a gate and single
+  select) with numbered checks, swipe select per policy, refusals to the
+  host, the host's **camera slot** with its pause signals, change events
+  that keep the selection.
 
 ### mpx_library
 

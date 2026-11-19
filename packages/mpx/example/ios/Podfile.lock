@@ -2,6 +2,8 @@ PODS:
   - file_selector_ios (0.0.1):
     - Flutter
   - Flutter (1.0.0)
+  - integration_test (0.0.1):
+    - Flutter
   - mpx (0.0.1):
     - Flutter
     - FlutterMacOS
@@ -19,6 +21,7 @@ PODS:
 DEPENDENCIES:
   - file_selector_ios (from `.symlinks/plugins/file_selector_ios/ios`)
   - Flutter (from `Flutter`)
+  - integration_test (from `.symlinks/plugins/integration_test/ios`)
   - mpx (from `.symlinks/plugins/mpx/darwin`)
   - mpx_core (from `.symlinks/plugins/mpx_core/darwin`)
   - mpx_library (from `.symlinks/plugins/mpx_library/darwin`)
@@ -30,6 +33,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/file_selector_ios/ios"
   Flutter:
     :path: Flutter
+  integration_test:
+    :path: ".symlinks/plugins/integration_test/ios"
   mpx:
     :path: ".symlinks/plugins/mpx/darwin"
   mpx_core:
@@ -44,6 +49,7 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   file_selector_ios: ec57ec07954363dd730b642e765e58f199bb621a
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
   mpx: ee4afd6125f6ec5d05f9bf3da39c91adde91c282
   mpx_core: 9ae8d0a68d78b47367b4bb8dd47d555532abb832
   mpx_library: 1cef2375b2808f3cecdcac4777d2b8f3b3661e7c

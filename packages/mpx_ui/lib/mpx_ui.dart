@@ -15,11 +15,24 @@
 /// sound and keeps its neighbours' players prepared, as a pager-mode policy
 /// says. Both are built on `mpx_player`'s `FeedController` and `FeedSlot`;
 /// `FeedClip` draws a slot's media in a host's own scrollable.
+///
+/// `LibraryGrid` shows a `mpx_library` album: fixed cells, thumbnails
+/// through the asset cache, a `PickerSelection` (`OrderedPickerSelection`
+/// by default) with numbered checks and swipe select, as a
+/// `LibraryGridPolicy` (`$Android`, `$IOS`) says, and a camera slot the host
+/// fills.
 library;
 
 export 'src/feed/feed_clip.dart';
 export 'src/feed/feed_list_view.dart';
 export 'src/feed/feed_pager_view.dart';
+export 'src/library/library_grid.dart';
+export 'src/library/library_grid_cell.dart';
+export 'src/library/library_grid_layout.dart';
+export 'src/library/library_grid_policy.dart';
+export 'src/library/library_grid_tokens.dart';
+export 'src/library/library_pages.dart';
+export 'src/library/picker_selection.dart';
 export 'src/viewer/gallery_source.dart';
 export 'src/viewer/media_viewer.dart';
 export 'src/viewer/origin_bridge.dart';

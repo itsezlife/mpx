@@ -1,7 +1,7 @@
 name: mpx_ui
 description: >
-  Optional media UI for mpx: a fullscreen media viewer and feed list and
-  pager widgets.
+  Optional media UI for mpx: a fullscreen media viewer, feed list and pager
+  widgets, and a library grid with an ordered picker selection.
 version: 0.0.1
 homepage: https://github.com/itsezlife/mpx
 repository: https://github.com/itsezlife/mpx/tree/main/packages/mpx_ui
@@ -14,7 +14,7 @@ environment:
   flutter: '>=3.38.0'
 
 dependencies:
-  # Edges fixed by ADR 0001; nothing else in the workspace.
+  # Edges fixed by ADR 0001 and 0011; nothing else in the workspace.
   flutter:
     sdk: flutter
   # Only lib/testing.dart needs it: its contract suites are written with the
@@ -26,3 +26,6 @@ dependencies:
     path: ../mpx_player
   mpx_core:
     path: ../mpx_core
+  # The library grid reads the media library (ADR 0011).
+  mpx_library:
+    path: ../mpx_library
