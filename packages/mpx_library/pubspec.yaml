@@ -1,0 +1,38 @@
+name: mpx_library
+description: >
+  Optional device media library and file intake for mpx: access, albums,
+  paged assets, change events, originals and a fetcher for their thumbnails.
+version: 0.0.1
+homepage: https://github.com/itsezlife/mpx
+repository: https://github.com/itsezlife/mpx/tree/main/packages/mpx_library
+issue_tracker: https://github.com/itsezlife/mpx/issues
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+  flutter: '>=3.38.0'
+
+dependencies:
+  # Edges fixed by ADR 0011: mpx_core only. An original is a file lease the
+  # platform hands over, so no bytes cache.
+  flutter:
+    sdk: flutter
+  # Only lib/testing.dart needs it: its contract suites are written with the
+  # test framework, and a library cannot import a dev dependency. Production
+  # entry points never import it.
+  flutter_test:
+    sdk: flutter
+  meta: ^1.17.0
+  mpx_core:
+    path: ../mpx_core
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.mpx.library
+        pluginClass: MpxLibraryPlugin
+      ios:
+        pluginClass: MpxLibraryPlugin
+        sharedDarwinSource: true

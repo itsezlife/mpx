@@ -14,6 +14,7 @@ workspace:
   - packages/mpx_ui
   - packages/mpx_capture
   - packages/mpx_capture/example
+  - packages/mpx_library
   - packages/mpx
   - packages/mpx/example
 

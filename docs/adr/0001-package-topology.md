@@ -1,6 +1,6 @@
 # ADR 0001: Package topology of mpx
 
-mpx is a pub workspace of eight packages: six under the `mpx_` prefix, the
+mpx is a pub workspace of nine packages: seven under the `mpx_` prefix, the
 bytes cache `http_bytes_cache`, and the umbrella `mpx`. A package boundary
 stands only where a host would otherwise pay for what it does not use: heavy
 native code, platform permissions, or a standalone pure-Dart library. Logical
@@ -8,8 +8,9 @@ layers are folders inside a package. Native code lives in the package that
 uses it. The umbrella is a composition root that re-exports nothing.
 
 **Status**: Accepted (decided with the maintainer 2026-11-10; package set
-reduced from eighteen to eight on 2026-11-13)
-**Relates to**: 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009
+reduced from eighteen to eight on 2026-11-13; `mpx_library` added by ADR 0011
+on 2026-11-20)
+**Relates to**: 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0011
 
 ## Context
 
@@ -41,7 +42,8 @@ version and publish overhead without saving any host a dependency.
 | `mpx_video_decoder` | Flutter + build hook | Software video `Decoder` for silent loops, FFmpeg + libvpx library, decode-only |
 | `mpx_player` | Plugin | Player pool, leases, audio owner (ADR 0004); Media3 ExoPlayer and AVPlayer backends reading through the bytes cache's native reader; feed modes, knobs and preload staging (ADR 0005) |
 | `mpx_ui` | Flutter, optional | Fullscreen viewer with its own tokens (ADR 0006); feed list and pager widgets (ADR 0005) |
-| `mpx_capture` | Plugin, optional | Compression and round video; CameraX, Media3 Transformer, MediaCodec and AVFoundation capture code (ADR 0007) |
+| `mpx_library` | Plugin, optional | The device media library (access, albums, paged assets, changes, originals) and the file intake (system file dialog, system camera, drop, paste); library keys and their fetcher (ADR 0011) |
+| `mpx_capture` | Plugin, optional | Compression, still preparation, the camera session and round video; CameraX, Media3 Transformer, MediaCodec and AVFoundation capture code (ADR 0007, 0011) |
 | `mpx` | Plugin | Composition root `MpxStack.create(...)`; the `ContentFetcher` adapter `BytesCacheFetcher` over `http_bytes_cache`; device signals (network class, power saving, thermal status); the set's README and example app |
 
 ### Dependency direction
@@ -52,14 +54,15 @@ Arrows point at the dependency.
 mpx_lottie         -> mpx_core
 mpx_video_decoder  -> mpx_core
 mpx_player         -> mpx_core, http_bytes_cache
-mpx_ui             -> mpx_player, mpx_core
+mpx_library        -> mpx_core
+mpx_ui             -> mpx_player, mpx_core, mpx_library
 mpx_capture        -> mpx_core, http_bytes_cache
 mpx                -> mpx_core, http_bytes_cache
 ```
 
 `mpx_core` and `http_bytes_cache` never depend on each other; `mpx` joins
 them. `mpx` never depends on `mpx_lottie`, `mpx_video_decoder`, `mpx_player`,
-`mpx_ui` or `mpx_capture`: the host passes decoders into the stack and wires
+`mpx_ui`, `mpx_library` or `mpx_capture`: the host passes decoders into the stack and wires
 the optional packages itself, so taking `mpx` never links FFmpeg, Media3 or
 camera code.
 
@@ -68,7 +71,7 @@ camera code.
 | Reason | Packages it separates |
 | --- | --- |
 | Heavy native code a host may not want | `mpx_lottie` (Rust), `mpx_video_decoder` (FFmpeg), `mpx_player` (Media3) |
-| Platform permissions | `mpx_capture` (camera, microphone) |
+| Platform permissions | `mpx_capture` (camera, microphone), `mpx_library` (photo library, the camera through the system camera intent) |
 | A standalone pure-Dart library with value outside media | `http_bytes_cache` |
 | Large optional UI | `mpx_ui` |
 | Wiring that would otherwise force an edge between two of the above | `mpx` |
@@ -95,7 +98,7 @@ reasons.
 | Fakes | Exported only from `testing.dart`; `flutter_test` stays a regular dependency |
 | Native code | Lives in the package whose Dart code calls it; plugins are single, not federated; a plugin may also carry a build hook |
 | Native names | C symbols, libraries, asset ids, channel ids and env vars start with `mpx_` / `dev.mpx.` / `MPX_` and the component that owns them (ADR 0009) |
-| Optional layers | `mpx_ui` and `mpx_capture` are opt-in; nothing below imports them |
+| Optional layers | `mpx_ui`, `mpx_library` and `mpx_capture` are opt-in; nothing below imports them (`mpx_ui` takes `mpx_library` for its library grid) |
 | Identity | Media is keyed by `MediaKey`, never by URL |
 
 ## Why
@@ -189,4 +192,5 @@ ADR 020 (topology) and its native-leaf rule.
 
 ## Related
 
-ADR 0002 (bytes cache), 0003 (core and decoders), 0009 (migration).
+ADR 0002 (bytes cache), 0003 (core and decoders), 0009 (migration), 0011
+(library, intake, preparation and picking).

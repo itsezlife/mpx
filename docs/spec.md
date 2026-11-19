@@ -77,15 +77,19 @@ mpx_core                      plugin: MediaKey / MediaDescriptor, asset cache, p
 mpx_lottie               ---> mpx_core                    (+ build hook: Rust over tlottie)
 mpx_video_decoder        ---> mpx_core                    (+ build hook: FFmpeg + libvpx, decode-only)
 mpx_player               ---> mpx_core, http_bytes_cache  (plugin: pool, Media3 / AVPlayer, feed policies)
-mpx_ui                   ---> mpx_player, mpx_core        (viewer, feed list and pager widgets)
+mpx_library              ---> mpx_core                    (plugin: media library, file intake, library fetcher)
+mpx_ui                   ---> mpx_player, mpx_core,       (viewer, feed list and pager widgets,
+                              mpx_library                 library grid)
 mpx_capture              ---> mpx_core, http_bytes_cache  (plugin: CameraX, Transformer, MediaCodec / AVFoundation)
 mpx                      ---> mpx_core, http_bytes_cache  (plugin: composition root, fetch adapter,
                                                            device signals)
 ```
 
 `mpx_core` and `http_bytes_cache` do not depend on each other; `mpx` joins
-them. `mpx` depends on no decoder, player, UI or capture package; the host
-passes decoders into the stack and wires the optional packages.
+them. `mpx` depends on no decoder, player, UI, library or capture package;
+the host passes decoders into the stack and wires the optional packages.
+`mpx_ui` takes no edge to `mpx_capture`: the library grid leaves a camera
+slot the host fills (ADR 0011).
 
 Stays in chat_scroll_view: `content_model` (rich text, collections, packs,
 library, `ContentKey` and `ContentDescriptor`; pure Dart, no mpx dependency),
@@ -233,6 +237,21 @@ actions (save and share among them, on every platform, handed the cached file
 path and the current frame) and caption builders; speed, quality, PiP and
 rotation are built in. Tokens come from the host. ADR 0006.
 
+### mpx_library
+
+The device media library and the file intake, a plugin that declares no
+permission (the host declares them, and opts into the Apple code with
+`MPX_LIBRARY_PHOTOS` / `MPX_LIBRARY_CAMERA`). `MediaLibrary`: `access`
+(a listenable **library access**), `requestAccess`, `manageSelected`,
+`openSettings`, `albums`, `page(album, offset, limit)`, `changes`,
+`thumbnail`, `original` (a file lease). A library asset is
+`MediaKey.external('device-library:<id>')`, each thumbnail size its own
+key; `LibraryFetcher` serves them to the pipeline ahead of the host's
+network fetcher. `FileIntake`: `pickFiles(filter, multiple)` and
+`captureWithSystemCamera(kind)`, answering intake files. Android
+(MediaStore) and iOS (PhotoKit) adapters; the intake also on macOS and
+web. ADR 0011.
+
 ### mpx_capture
 
 Compression before send against a shared preset table, and round video
@@ -267,6 +286,27 @@ The composition root, a plugin.
   carries the README with the diagram of the whole set, and the example app.
   ADR 0001.
 
+### Glossary (library and picking, ADR 0011)
+
+| Term | Meaning |
+| --- | --- |
+| Media library | The device's photo and video library behind `MediaLibrary` |
+| Library access | How far the user lets the host read it: not determined, denied, restricted, limited, partial, full |
+| Manage selected | Letting the user change the items a limited or partial access covers |
+| Library album | One album of the library; the all-media album comes first |
+| Library asset | One photo or video of the library, keyed by its platform id |
+| Library page | A window of an album's assets by offset |
+| File intake | Taking files in from outside the library: system dialog, system camera, drop, paste |
+| Intake file | A file the intake took in: a path or a blob handle, with name, size, MIME, modified time |
+| Media preparation | Making a picked item ready to upload: stills scaled and encoded, videos compressed, thumbnails and metadata |
+| Preparation policy | The per-platform values of media preparation |
+| Camera session | A live camera with a preview texture, photo and video capture |
+| Capture surface | The minimal full-screen camera over a camera session |
+| Library grid | The grid of a library album's thumbnails with selection |
+| Picker selection | The ordered selection seam the grid and the picker-mode viewer share |
+| Camera slot | The grid cell the host fills with a camera preview |
+| Picker-mode viewer | The viewer composed for picking, with a check, a counter and a host slot |
+
 ## 4. Cross-cutting rules
 
 - No package re-exports another package's API, `mpx` included. Hosts import
@@ -276,7 +316,7 @@ The composition root, a plugin.
   code never downcasts to a fake or a concrete cache.
 - Native code lives in the package whose Dart calls it. Build hooks:
   `mpx_lottie`, `mpx_video_decoder`. Plugins (`mpx_core`, `mpx_player`,
-  `mpx_capture`, `mpx`) are single, not federated, and support Swift Package
+  `mpx_library`, `mpx_capture`, `mpx`) are single, not federated, and support Swift Package
   Manager.
 - A new package needs a reason from ADR 0001's list (heavy native code,
   permissions, standalone pure Dart, large optional UI, wiring); anything else
@@ -284,7 +324,8 @@ The composition root, a plugin.
 - Native names (C symbols, libraries, asset ids, channel ids, env vars) start
   with the `mpx` prefix and the owning component: `mpx_lottie_*`, `dev.mpx.frame_texture`,
   `MPX_VIDEO_FFMPEG_DIR`, `http_bytes_cache_*` / `hbc_*`. No `chat_` remains.
-- `mpx_ui` and `mpx_capture` are optional. Nothing below them imports them.
+- `mpx_ui`, `mpx_library` and `mpx_capture` are optional. Nothing below them
+  imports them.
 - No reference-client citations (file names, line numbers, client names) in
   code, tests, READMEs or CHANGELOGs. Provenance lives in ADRs and planning
   scratch only.
@@ -317,10 +358,14 @@ The composition root, a plugin.
 | Viewer policy (default) | `$Android` | `$IOS` | `$Desktop`, in-app overlay |
 | Compression | Media3 Transformer | AVAssetReader → AVAssetWriter | same as iOS |
 | Round video | CameraX preview → GL → MediaCodec | AVCaptureSession → AVAssetWriter | same as iOS |
+| Media library | MediaStore | PhotoKit (host opt-in) | later |
+| File intake | system dialog, system camera | system dialog, system camera | system dialog, drop, paste |
 | Prebuilt natives | arm64-v8a | arm64 | arm64 |
 
-Windows, Linux and web: fog. Everything needed on Apple is available from
-iOS 15 / macOS 12 (ADR 0004).
+Windows and Linux: fog. Web has two columns of v1 (ADR 0011):
+`mpx_library`'s intake (a file input, drop and paste) and `mpx_capture`'s
+still preparation (canvas in a worker); the rest of web stays fog.
+Everything needed on Apple is available from iOS 15 / macOS 12 (ADR 0004).
 
 ## 6. Open across ADRs
 

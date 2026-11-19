@@ -35,7 +35,8 @@ A new test file is added there; a test restores any global state it changes.
 | `packages/mpx_video_decoder` | Software video decoder for silent loops + native library | [0003](docs/adr/0003-media-core-and-decoders.md) |
 | `packages/mpx_player` | Plugin: player pool, leases, audio owner, feed modes | [0004](docs/adr/0004-player.md), [0005](docs/adr/0005-feed.md) |
 | `packages/mpx_ui` | Optional: fullscreen viewer, feed widgets | [0006](docs/adr/0006-viewer.md) |
-| `packages/mpx_capture` | Optional plugin: compression, round video | [0007](docs/adr/0007-capture.md) |
+| `packages/mpx_library` | Optional plugin: device media library, file intake, library keys and fetcher | [0011](docs/adr/0011-library-and-picking.md) |
+| `packages/mpx_capture` | Optional plugin: compression, still preparation, camera session, round video | [0007](docs/adr/0007-capture.md), [0011](docs/adr/0011-library-and-picking.md) |
 | `packages/mpx` | Plugin: composition root, fetch adapter, device signals | [0001](docs/adr/0001-package-topology.md) |
 
 Dependency direction (arrows point at the dependency; ADR 0001):
@@ -43,7 +44,8 @@ Dependency direction (arrows point at the dependency; ADR 0001):
 ```
 mpx_lottie, mpx_video_decoder -> mpx_core
 mpx_player                    -> mpx_core, http_bytes_cache
-mpx_ui                        -> mpx_player, mpx_core
+mpx_library                   -> mpx_core
+mpx_ui                        -> mpx_player, mpx_core, mpx_library
 mpx_capture, mpx              -> mpx_core, http_bytes_cache
 ```
 
@@ -52,8 +54,8 @@ mpx_capture, mpx              -> mpx_core, http_bytes_cache
 There are no workspace lints; review holds these:
 
 - Edges exactly as above. `mpx_core` and `http_bytes_cache` never depend on
-  each other; `mpx` never depends on the decoders, the player, the UI or
-  capture.
+  each other; `mpx` never depends on the decoders, the player, the UI,
+  the library or capture.
 - No package re-exports another package's API, `mpx` included.
 - Fakes and contract suites only from each package's `lib/testing.dart`; every
   new seam gets a fake, and a contract suite when it has more than one
@@ -74,7 +76,7 @@ There are no workspace lints; review holds these:
 | What | Where |
 | --- | --- |
 | The whole system on one page, build order | [docs/spec.md](docs/spec.md) |
-| Decisions (topology, bytes cache, core, player, feed, viewer, capture, publishing, migration, loading stages) | [docs/adr/](docs/adr/) |
+| Decisions (topology, bytes cache, core, player, feed, viewer, capture, publishing, migration, loading stages, library and picking) | [docs/adr/](docs/adr/) |
 
 Read the ADR for the package you touch before changing its shape. A decision
 that changes an ADR updates that ADR in the same change.

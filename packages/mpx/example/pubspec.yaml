@@ -21,6 +21,10 @@ dependencies:
     path: ..
   mpx_core:
     path: ../../mpx_core
+  # Linked so the set's example builds the library plugin's native side; the
+  # library grid will use it once it lands in mpx_ui.
+  mpx_library:
+    path: ../../mpx_library
   mpx_lottie:
     path: ../../mpx_lottie
   mpx_player:
