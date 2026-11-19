@@ -26,6 +26,8 @@ dependencies:
     path: ../http_bytes_cache
   mpx_core:
     path: ../mpx_core
+  # The web's still encoder (createImageBitmap, OffscreenCanvas).
+  web: ^1.1.1
 
 flutter:
   plugin:

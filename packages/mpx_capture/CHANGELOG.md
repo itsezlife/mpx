@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `WebPreparationCodec`: still preparation on the web (object URLs in,
+  JPEGs in memory out, `PreparedMedia.bytes`); `PreparationInput.byteSize`.
 - Camera session: `CameraSessions.open` (one session per process) gives a
   preview texture, photos, videos, a camera switch, a flash mode, pause and
   resume, and a frame-rate cap for small previews; `CameraPreview` shows

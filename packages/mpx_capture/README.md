@@ -73,8 +73,10 @@ thumbnail only.
 downscale. `$Web` keeps the original unless it is past 2560 px, a PNG or BMP
 over 2 MB, or not a JPEG, PNG, BMP or GIF, and encodes again at 90 a result
 over 6 MB. Animated stills always go as they are. Android writes baseline
-JPEGs only. The web encoder is not there yet: the `$Web` policy's values are
-ready for it.
+JPEGs only. On the web `WebPreparationCodec` takes object URLs of the picked
+blobs as paths and answers outputs in memory (`PreparedMedia.bytes`):
+`createImageBitmap` decodes and resizes, `OffscreenCanvas` encodes, both off
+the main thread; pass `PreparationInput.byteSize` there.
 
 ### Camera session
 

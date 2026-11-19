@@ -1,23 +1,30 @@
 import 'dart:async';
 import 'dart:collection';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:mpx_capture/src/job/capture_job.dart';
 import 'package:mpx_capture/src/prepare/preparation_codec.dart';
 import 'package:mpx_capture/src/prepare/preparation_policy.dart';
+import 'package:mpx_capture/src/prepare/prepared_files_io.dart'
+    if (dart.library.js_interop) 'package:mpx_capture/src/prepare/prepared_files_web.dart'
+    as files;
 import 'package:mpx_capture/src/preset/compression_preset.dart';
 import 'package:mpx_capture/src/transcode/transcoder.dart';
 import 'package:mpx_core/mpx_core.dart';
 
-/// One item to prepare: a local file and, when known, its MIME type.
+/// One item to prepare: a local file (an object URL on the web) and, when
+/// known, its MIME type and size.
 @immutable
 final class PreparationInput {
   /// Describes the file at [path].
-  const PreparationInput(this.path, {this.mimeType});
+  const PreparationInput(this.path, {this.mimeType, this.byteSize});
 
-  /// Absolute path of the file.
+  /// Absolute path of the file; on the web, an object URL of its blob.
   final String path;
+
+  /// Its size in bytes, when the host knows it (always on the web, which
+  /// has no file to ask).
+  final int? byteSize;
 
   /// Its MIME type, when the host knows it.
   final String? mimeType;
@@ -101,6 +108,7 @@ final class PreparedMedia {
     this.thumbnailDimensions,
     this.hasAudio = false,
     this.animated = false,
+    this.bytes,
   });
 
   /// What it is sent as.
@@ -136,6 +144,11 @@ final class PreparedMedia {
   /// Whether it moves without sound: an animated still, or a silent video
   /// that loops.
   final bool animated;
+
+  /// The output itself where the platform writes no files (the web): an
+  /// encoded JPEG to upload instead of [path]. Null for a file output and
+  /// for an original.
+  final Uint8List? bytes;
 
   @override
   String toString() =>
@@ -346,6 +359,7 @@ final class MediaPreparer {
           dimensions: encoded.dimensions,
           thumbnail: thumbnail?.bytes,
           thumbnailDimensions: thumbnail?.dimensions,
+          bytes: encoded.bytes,
         );
     }
   }
@@ -402,7 +416,7 @@ final class MediaPreparer {
         kind: PreparedKind.video,
         path: path,
         isOriginal: true,
-        byteSize: await File(path).length(),
+        byteSize: item.input.byteSize ?? await files.lengthOf(path),
         mimeType: item.input.mimeType ?? 'video/mp4',
         dimensions: source.dimensions,
         duration: source.duration,
@@ -446,8 +460,7 @@ final class MediaPreparer {
 
   Future<PreparedMedia> _file(_Pending item) async {
     final path = item.input.path;
-    final file = File(path);
-    final byteSize = file.existsSync() ? await file.length() : 0;
+    final byteSize = item.input.byteSize ?? await files.lengthOf(path);
     StillSource? still;
     try {
       still = await codec.probeStill(path);
@@ -496,10 +509,7 @@ final class MediaPreparer {
       '${_written++}.$extension';
 
   static void _delete(List<String> paths) {
-    for (final path in paths) {
-      final file = File(path);
-      if (file.existsSync()) file.deleteSync();
-    }
+    paths.forEach(files.delete);
   }
 }
 
