@@ -19,7 +19,7 @@ dependencies:
 ```dart
 import 'package:mpx_library/mpx_library.dart';
 
-final MediaLibrary library = ...; // the platform adapter, or FakeMediaLibrary
+final MediaLibrary library = PlatformMediaLibrary(); // or FakeMediaLibrary
 
 if (library.access.value == LibraryAccess.notDetermined) {
   await library.requestAccess();
@@ -58,6 +58,41 @@ final fetcher = LibraryFetcher(library);
 - `FileIntake`: the system file dialog (`pickFiles(filter, multiple)`) and
   the system camera (`captureWithSystemCamera(kind)`), answering
   `IntakeFile`s with a de-duplication key.
+- `IntakeDropRegion` over a `DropSource` (enter / over / leave / drop,
+  nested enters counted, a 500 ms watchdog, files only, a size ceiling),
+  `ClipboardReader`, `IntakeFiles.fromPath` / `fromBytes` for a host field
+  that already reads pasted media, and `IntakeKind.classify` (photo, video,
+  animation, audio, file).
+
+## Platforms
+
+| Route | Android | iOS | macOS, other desktops | Web |
+| --- | --- | --- | --- | --- |
+| `PlatformMediaLibrary` | MediaStore (API 24+), partial access on 14+ | PhotoKit, limited access (opt-in) | none yet | none |
+| `PlatformIntake.fileIntake()` | system dialog, camera intent | system dialog, image picker camera (opt-in) | system dialog | hidden file input |
+| `PlatformIntake.dropSource()` | none yet | none yet | none yet | DOM drag events |
+| `PlatformIntake.clipboardReader()` | none yet | none yet | none yet | async clipboard |
+
+Android: albums are All media, All photos, All videos, the Camera folder,
+then the other folders by their newest item; pages are newest first by
+modified date (taken date on API 28 and below); MediaStore's change
+notifications are collected for 2 s into one `LibraryChange.reload()`.
+`manageSelected` asks again, so Android 14 shows its choice of items.
+Originals are copied into the app's cache folder for the lease.
+
+iOS: albums are Recents (newest first), Favorites, the non-empty smart
+albums, then user albums, newest created first; albums other than Recents
+are oldest first and `startsAtEnd`. Changes come out per album from
+PhotoKit's change details. Originals download from iCloud with progress.
+
+On the web a pick that answers nothing within a second of the window
+getting its focus back ends empty (browsers say nothing when the dialog is
+dismissed), and files are blob handles (`IntakeSource.blob`).
+
+Native drag and drop and clipboard reading wait on `super_drag_and_drop`:
+its released line pins `win32` 5, which the set's example cannot take with
+`share_plus` 13, and its next line needs Flutter 3.44. `IntakeDropRegion`
+and `ClipboardReader` take any source meanwhile.
 
 ## Permissions
 
@@ -106,9 +141,10 @@ The host that opts in adds the usage strings to `Info.plist`:
 
 `package:mpx_library/testing.dart` has `FakeMediaLibrary` (scripted access
 transitions, generated assets, added albums, change events, slow cloud-held
-originals), `FakeFileIntake` (scripted picks and captures), and the
-`MediaLibraryContract` and `FileIntakeContract` suites every implementation
-meets.
+originals), `FakeFileIntake` (scripted picks and captures),
+`FakeDropSource`, `FakeClipboardReader`, and the `MediaLibraryContract` and
+`FileIntakeContract` suites every implementation meets. The web routes have
+browser tests: `flutter test --platform chrome test/web`.
 
 ## Docs
 

@@ -10,17 +10,22 @@ import 'fetch/library_fetcher_test.dart' as library_fetcher_test;
 import 'identity/library_keys_test.dart' as library_keys_test;
 import 'intake/fake_file_intake_contract_test.dart'
     as fake_file_intake_contract_test;
+import 'intake/intake_test.dart' as intake_test;
 import 'library/fake_media_library_contract_test.dart'
     as fake_media_library_contract_test;
 import 'library/fake_media_library_test.dart' as fake_media_library_test;
+import 'platform/platform_media_library_test.dart'
+    as platform_media_library_test;
 
 void main() {
   group('library_fetcher_test', library_fetcher_test.main);
   group('library_keys_test', library_keys_test.main);
   group('fake_file_intake_contract_test', fake_file_intake_contract_test.main);
+  group('intake_test', intake_test.main);
   group(
     'fake_media_library_contract_test',
     fake_media_library_contract_test.main,
   );
   group('fake_media_library_test', fake_media_library_test.main);
+  group('platform_media_library_test', platform_media_library_test.main);
 }

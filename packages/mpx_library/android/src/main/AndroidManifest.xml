@@ -5,4 +5,27 @@
       READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ_MEDIA_VISUAL_USER_SELECTED
       and READ_EXTERNAL_STORAGE (maxSdkVersion 32) itself; see the README.
     -->
+    <application>
+        <!--
+          Shares the system camera's output file with the camera app. A
+          class of its own, so it never collides with a host's provider.
+        -->
+        <provider
+            android:name="dev.mpx.library.MpxLibraryFileProvider"
+            android:authorities="${applicationId}.mpx_library.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/mpx_library_paths" />
+        </provider>
+    </application>
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.VIDEO_CAPTURE" />
+        </intent>
+    </queries>
 </manifest>

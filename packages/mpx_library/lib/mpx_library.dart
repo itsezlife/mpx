@@ -12,10 +12,16 @@ library;
 
 export 'src/fetch/library_fetcher.dart';
 export 'src/identity/library_keys.dart';
+export 'src/intake/drop_intake.dart';
 export 'src/intake/file_intake.dart';
+export 'src/intake/intake_files.dart';
+export 'src/intake/intake_kind.dart';
+export 'src/intake/platform_intake.dart';
 export 'src/library/library_access.dart';
 export 'src/library/library_album.dart';
 export 'src/library/library_asset.dart';
 export 'src/library/library_change.dart';
 export 'src/library/library_page.dart';
 export 'src/library/media_library.dart';
+export 'src/platform/library_wire.dart';
+export 'src/platform/platform_media_library.dart';

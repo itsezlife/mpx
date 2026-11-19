@@ -8,6 +8,8 @@ PODS:
   - mpx_core (0.0.1):
     - Flutter
     - FlutterMacOS
+  - mpx_library (0.0.1):
+    - Flutter
   - mpx_player (0.0.1):
     - Flutter
     - FlutterMacOS
@@ -19,6 +21,7 @@ DEPENDENCIES:
   - Flutter (from `Flutter`)
   - mpx (from `.symlinks/plugins/mpx/darwin`)
   - mpx_core (from `.symlinks/plugins/mpx_core/darwin`)
+  - mpx_library (from `.symlinks/plugins/mpx_library/darwin`)
   - mpx_player (from `.symlinks/plugins/mpx_player/darwin`)
   - share_plus (from `.symlinks/plugins/share_plus/ios`)
 
@@ -31,6 +34,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/mpx/darwin"
   mpx_core:
     :path: ".symlinks/plugins/mpx_core/darwin"
+  mpx_library:
+    :path: ".symlinks/plugins/mpx_library/darwin"
   mpx_player:
     :path: ".symlinks/plugins/mpx_player/darwin"
   share_plus:
@@ -41,9 +46,10 @@ SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   mpx: ee4afd6125f6ec5d05f9bf3da39c91adde91c282
   mpx_core: 9ae8d0a68d78b47367b4bb8dd47d555532abb832
+  mpx_library: 1cef2375b2808f3cecdcac4777d2b8f3b3661e7c
   mpx_player: ac175bf85c8d8d97bcfdff9479c3056f8a06184a
   share_plus: eccd7beb7cea61271aeed1800e8ccb2b952c0c7f
 
-PODFILE CHECKSUM: 3889b4a9c624308af7c6fa57ab6a977d7ea3a7c7
+PODFILE CHECKSUM: 00737aa83f3db464c137e38213ef63113d9a68c9
 
 COCOAPODS: 1.16.2

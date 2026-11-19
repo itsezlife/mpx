@@ -51,3 +51,8 @@ android {
         minSdk = 24
     }
 }
+
+dependencies {
+    // ContextCompat and the file provider of the system camera intake.
+    implementation("androidx.core:core-ktx:1.16.0")
+}
