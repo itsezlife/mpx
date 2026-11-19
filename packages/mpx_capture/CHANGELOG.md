@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Media preparation: `MediaPreparer.prepare(input, intent, policy)` makes a
+  picked item ready to upload (stills scaled and encoded, videos
+  compressed or passed through, thumbnails, facts), two at a time, with
+  progress and cancel. `PreparationPolicy.$Android`, `$IOS`, `$Desktop`
+  and `$Web` hold each platform's sizes, JPEG qualities, thumbnails and
+  video offers. `PlatformPreparationCodec` reads and encodes stills on
+  Android, iOS and macOS.
+- `CompressionPreset.tiny`: the 432 px step (at most 750 kbps), offered by
+  the Android policy only. `CompressionPreset.offeredFor` keeps offering the
+  five shared steps (`CompressionPreset.shared`).
+- `testing.dart`: `FakePreparationCodec` and `PreparationCodecContract`.
 - Android fixes from device runs: compressed files no longer carry a
   400 KB reserved head (the index goes at the end); a source that fits is
   remuxed; cancelling a recording returns once its file is deleted.

@@ -37,6 +37,8 @@ class MpxCapturePlugin :
     private var sink: EventChannel.EventSink? = null
     private val main = Handler(Looper.getMainLooper())
     private val background: ExecutorService = Executors.newSingleThreadExecutor()
+    // Media preparation runs two items at a time (ADR 0011).
+    private val preparation: ExecutorService = Executors.newFixedThreadPool(2)
     private lateinit var transcoder: CaptureTranscoder
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -56,6 +58,7 @@ class MpxCapturePlugin :
         recorders.values.toList().forEach { it.cancel() }
         recorders.clear()
         background.shutdown()
+        preparation.shutdown()
     }
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
@@ -122,6 +125,25 @@ class MpxCapturePlugin :
         }
     }
 
+    /** Runs [work] on a preparation thread and answers on the main thread. */
+    private fun prepare(result: MethodChannel.Result, work: () -> Map<String, Any?>) {
+        preparation.execute {
+            try {
+                val value = work()
+                main.post { result.success(value) }
+            } catch (error: CaptureException) {
+                main.post { result.error(error.code, error.message, null) }
+            } catch (error: Exception) {
+                main.post { result.error("failed", error.message ?: "$error", null) }
+            } catch (error: OutOfMemoryError) {
+                main.post { result.error("failed", "out of memory", null) }
+            }
+        }
+    }
+
+    private fun <T> MethodCall.need(key: String): T =
+        argument<T>(key) ?: throw CaptureException.failed("$method: missing $key")
+
     private fun recorder(call: MethodCall): RoundVideoRecorder? =
         call.argument<Int>("job")?.let { recorders[it] }
 
@@ -154,6 +176,20 @@ class MpxCapturePlugin :
                         main.post { result.error(error.code, error.message, null) }
                     }
                 }
+            }
+            "stillProbe" -> prepare(result) {
+                StillCodec.probe(call.need("path"))
+            }
+            "stillEncode" -> prepare(result) {
+                StillCodec.encode(
+                    call.need("path"),
+                    call.need("maxSide"),
+                    call.need("quality"),
+                    call.argument<String>("output"),
+                )
+            }
+            "videoThumbnail" -> prepare(result) {
+                StillCodec.videoThumbnail(call.need("path"), call.need("maxSide"), call.need("quality"))
             }
             "compress" -> {
                 try {

@@ -254,13 +254,20 @@ web. ADR 0011.
 
 ### mpx_capture
 
-Compression before send against a shared preset table, and round video
-messages. Output seam reports bytes written, final size and a header-rewritten
+Compression before send against a shared preset table (with the 432 px
+step the Android policy offers), media preparation, and round video
+messages. **Media preparation** (`MediaPreparer.prepare(input, intent,
+policy)`, two items at a time, off the UI isolate) scales and encodes
+stills, compresses or passes videos through, and reads thumbnails and
+facts, by a **preparation policy** (`PreparationPolicy.$Android` /
+`$IOS` / `$Desktop` / `$Web`, ADR 0011). Output seam reports bytes written, final size and a header-rewritten
 signal; the result lands in `http_bytes_cache` as a local resource under a
 `MediaKey.local` key, and the host aliases the server key to it after upload.
-Camera and microphone permissions live only here. Seams: `CompressionPreset`,
-`RoundVideoConfig`, `Transcoder`, `RoundVideoRecorder`, `CaptureProgress`
-*(all working)*. ADR 0007.
+Camera and microphone permissions live here; `mpx_library`'s system camera
+intake is the one exception (the iOS camera usage string). Seams:
+`CompressionPreset`, `RoundVideoConfig`, `Transcoder`, `RoundVideoRecorder`,
+`CaptureProgress`, `PreparationCodec`, `MediaPreparer`,
+`PreparationPolicy`. ADR 0007, 0011.
 
 ### mpx
 
@@ -357,6 +364,7 @@ The composition root, a plugin.
 | PiP | own overlay window + system PiP | system `AVPictureInPictureController` | system `AVPictureInPictureController` |
 | Viewer policy (default) | `$Android` | `$IOS` | `$Desktop`, in-app overlay |
 | Compression | Media3 Transformer | AVAssetReader → AVAssetWriter | same as iOS |
+| Still preparation | downsampled decode, `Bitmap.compress` | ImageIO thumbnail and destination | same as iOS, progressive |
 | Round video | CameraX preview → GL → MediaCodec | AVCaptureSession → AVAssetWriter | same as iOS |
 | Media library | MediaStore | PhotoKit (host opt-in) | later |
 | File intake | system dialog, system camera | system dialog, system camera | system dialog, drop, paste |

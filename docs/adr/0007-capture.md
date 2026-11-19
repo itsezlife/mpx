@@ -7,8 +7,9 @@ result lands in `http_bytes_cache` as a local resource under a local content
 key so the sender's own item plays at once; after upload the host aliases the
 server key to it.
 
-**Status**: Accepted (decided with the maintainer 2026-11-10)
-**Relates to**: 0001, 0002, 0008
+**Status**: Accepted (decided with the maintainer 2026-11-10; amended by ADR
+0011 on 2026-11-20: still preparation, the 432 preset, the camera session)
+**Relates to**: 0001, 0002, 0008, 0011
 
 ## Context
 
@@ -25,7 +26,7 @@ Our FFmpeg build is decode-only under LGPL.
 
 | In v1 | Not in v1 |
 | --- | --- |
-| Compression before send | In-app camera for regular photo and video |
+| Compression before send, and still preparation (ADR 0011) | In-app camera for regular photo and video (moved into v1 by ADR 0011) |
 | Round video messages | Pre-send editor (trim, crop, filters) |
 | Progress and cancel | Upload while recording or converting |
 
@@ -33,6 +34,7 @@ Our FFmpeg build is decode-only under LGPL.
 
 | Preset | Max side | Video kbps | Audio kbps / channels |
 | --- | --- | --- | --- |
+| 432 (ADR 0011; Android policy only) | 432 | ≤ 750 | 32 / 1 |
 | Very low | 480 | 400 | 32 / 1 |
 | Low | 640 | 700 | 32 / 1 |
 | Medium | 848 | 1600 | 64 / 2 |
@@ -40,6 +42,10 @@ Our FFmpeg build is decode-only under LGPL.
 | Very high | 1920 | 6600 | 64 / 2 |
 
 H.264, 1 s GOP. The output bitrate never exceeds the source bitrate.
+
+Which steps a platform offers, and the stills' side limits, JPEG qualities
+and thumbnails, are the preparation policies of ADR 0011
+(`PreparationPolicy.$Android` / `$IOS` / `$Desktop` / `$Web`).
 
 ### Round video
 
@@ -117,6 +123,9 @@ native AAC, which stays LGPL.
 
 - `mpx_capture` carries CameraX, Media3 Transformer and AVFoundation
   capture code; hosts that skip capture never link them.
+- Camera and microphone permissions live here, with one exception (ADR
+  0011): `mpx_library`'s system camera intake needs the iOS camera usage
+  string, with no session.
 - The host owns upload and any server-tuned round video values.
 - Thumbnails come from the capture stream and feed the decode tier as stills.
 - `MediaKey` has a `local` variant; the bytes cache gains alias

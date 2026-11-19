@@ -77,6 +77,22 @@ public class MpxCapturePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
           DispatchQueue.main.async { result(CaptureError.wrap(error).flutter) }
         }
       }
+    case "stillProbe":
+      prepare(result) { try StillCodec.probe(path: try Self.need(args, "path")) }
+    case "stillEncode":
+      prepare(result) {
+        try StillCodec.encode(
+          path: try Self.need(args, "path"), maxSide: try Self.need(args, "maxSide"),
+          quality: try Self.need(args, "quality"),
+          progressive: args["progressive"] as? Bool ?? false,
+          output: args["output"] as? String)
+      }
+    case "videoThumbnail":
+      prepare(result) {
+        try StillCodec.videoThumbnail(
+          path: try Self.need(args, "path"), maxSide: try Self.need(args, "maxSide"),
+          quality: try Self.need(args, "quality"))
+      }
     case "compress":
       do {
         try transcoder.enqueue(CompressionRequest(args))
@@ -111,6 +127,33 @@ public class MpxCapturePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     default:
       result(FlutterMethodNotImplemented)
     }
+  }
+
+  /// Media preparation runs two items at a time (ADR 0011), off the main
+  /// thread; the answer goes back on the main thread.
+  private let preparation: OperationQueue = {
+    let queue = OperationQueue()
+    queue.name = "dev.mpx.capture.prepare"
+    queue.maxConcurrentOperationCount = 2
+    queue.qualityOfService = .userInitiated
+    return queue
+  }()
+
+  private func prepare(_ result: @escaping FlutterResult, _ work: @escaping () throws -> [String: Any]) {
+    preparation.addOperation {
+      let answer: Any
+      do {
+        answer = try work()
+      } catch {
+        answer = CaptureError.wrap(error).flutter
+      }
+      DispatchQueue.main.async { result(answer) }
+    }
+  }
+
+  private static func need<T>(_ args: [String: Any], _ key: String) throws -> T {
+    guard let value = args[key] as? T else { throw CaptureError.failed("missing \(key)") }
+    return value
   }
 
   private func recorder(_ args: [String: Any]) -> RoundVideoRecorder? {

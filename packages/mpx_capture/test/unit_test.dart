@@ -7,6 +7,10 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'cache/capture_cache_test.dart' as capture_cache_test;
+import 'prepare/fake_preparation_codec_contract_test.dart'
+    as fake_preparation_codec_contract_test;
+import 'prepare/media_preparer_test.dart' as media_preparer_test;
+import 'prepare/preparation_policy_test.dart' as preparation_policy_test;
 import 'preset/compression_preset_test.dart' as compression_preset_test;
 import 'round/fake_round_video_recorder_contract_test.dart'
     as fake_round_video_recorder_contract_test;
@@ -17,6 +21,12 @@ import 'transcode/fake_transcoder_contract_test.dart'
 void main() {
   group('capture_cache_test', capture_cache_test.main);
   group('compression_preset_test', compression_preset_test.main);
+  group('preparation_policy_test', preparation_policy_test.main);
+  group(
+    'fake_preparation_codec_contract_test',
+    fake_preparation_codec_contract_test.main,
+  );
+  group('media_preparer_test', media_preparer_test.main);
   group(
     'fake_round_video_recorder_contract_test',
     fake_round_video_recorder_contract_test.main,

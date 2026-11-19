@@ -3,14 +3,20 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:mpx_core/mpx_core.dart';
 
-/// The shared table of compression steps a video is sent at.
+/// The table of compression steps a video is sent at.
 ///
 /// One table for every platform: each step caps the long side of the frame
 /// and sets the H.264 video bitrate and the AAC audio bitrate and channel
 /// count. Every encoder writes a keyframe each second. [planFor] turns a step
 /// and a source into the concrete output; the output bitrate never exceeds
 /// the source's.
+///
+/// [shared] are the five steps every platform knows; [tiny] is the 432 px
+/// step only the Android preparation policy offers, below [veryLow].
 enum CompressionPreset {
+  /// 432 px, at most 750 kbps video, 32 kbps mono audio.
+  tiny(maxSide: 432, videoKbps: 750, audioKbps: 32, audioChannels: 1),
+
   /// 480 px, 400 kbps video, 32 kbps mono audio.
   veryLow(maxSide: 480, videoKbps: 400, audioKbps: 32, audioChannels: 1),
 
@@ -51,13 +57,23 @@ enum CompressionPreset {
   /// [audioKbps] in bits per second.
   int get audioBitrate => audioKbps * 1000;
 
-  /// The steps worth offering for a source of [dimensions]: every step below
-  /// its long side, and the first step that holds it whole. A step above
-  /// that one would only re-encode at the same size with more bits.
+  /// The five steps every platform knows, [veryLow] to [veryHigh].
+  static const List<CompressionPreset> shared = [
+    veryLow,
+    low,
+    medium,
+    high,
+    veryHigh,
+  ];
+
+  /// The [shared] steps worth offering for a source of [dimensions]: every
+  /// step below its long side, and the first step that holds it whole. A
+  /// step above that one would only re-encode at the same size with more
+  /// bits. A platform's own offer comes from its preparation policy.
   static List<CompressionPreset> offeredFor(MediaDimensions dimensions) {
     final longSide = math.max(dimensions.width, dimensions.height);
     final offered = <CompressionPreset>[];
-    for (final preset in values) {
+    for (final preset in shared) {
       offered.add(preset);
       if (preset.maxSide >= longSide) break;
     }

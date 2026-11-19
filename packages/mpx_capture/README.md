@@ -1,6 +1,6 @@
 # mpx_capture
 
-Optional media capture for mpx: compression before send against a shared preset table, round video messages, and capture output kept in the bytes cache.
+Optional media capture for mpx: compression before send against a shared preset table, media preparation by a per-platform policy, round video messages, and capture output kept in the bytes cache.
 
 ## Install
 
@@ -33,6 +33,48 @@ final job = transcoder.compress(
 job.progress.listen((p) => print('${p.bytesWritten} B, ${p.fraction}'));
 final output = await job.output; // or job.cancel()
 ```
+
+### Media preparation
+
+One call per picked item before upload, two at a time, off the UI isolate:
+
+```dart
+final preparer = MediaPreparer(
+  codec: const PlatformPreparationCodec(),
+  transcoder: const PlatformTranscoder(),
+  outputDirectory: tempDir.path,
+);
+final policy = PreparationPolicy.forPlatform(defaultTargetPlatform);
+
+final job = preparer.prepare(
+  PreparationInput(path, mimeType: 'image/jpeg'),
+  const PreparationIntent.photo(highQuality: false),
+  policy,
+);
+job.progress.listen((fraction) => print(fraction));
+final prepared = await job.result; // or job.cancel()
+// prepared.path, .isOriginal, .dimensions, .thumbnail, .mimeType ...
+```
+
+A video goes `PreparationIntent.video(preset: ...)`, with the steps the
+policy offers (`policy.offeredPresets(source)`) and its default
+(`policy.defaultPreset(source, remembered: ...)`; the host remembers the
+user's choice); `PreparationIntent.file()` keeps the bytes and makes a
+thumbnail only.
+
+| Policy | Still long side (HQ) | JPEG (HQ) | Thumbnail | Video |
+| --- | --- | --- | --- | --- |
+| `$Android` | 1280 (2560) | 80 (99) | 90 px at 55 | 432 / 640 / 848 / 1280 by the long side (> 1280: four, > 854: three, > 640: two, else one); default the remembered step, at most 848; 1000 MB or more not compressed |
+| `$IOS` | 1280 (2560) | 60 (60) | 320 px at 40 | 480 to 1920 clamped to the source; default the remembered step, else 848 |
+| `$Desktop` | 1280 (2560) | 87, progressive | 320 px at 87 | none |
+| `$Web` | 2560 | 92, or 90 for PNG / BMP over 2 MB | poster 720 px at 90 | none |
+
+`$Desktop` keeps an original JPEG of at most 4 bits per pixel that needs no
+downscale. `$Web` keeps the original unless it is past 2560 px, a PNG or BMP
+over 2 MB, or not a JPEG, PNG, BMP or GIF, and encodes again at 90 a result
+over 6 MB. Animated stills always go as they are. Android writes baseline
+JPEGs only. The web encoder is not there yet: the `$Web` policy's values are
+ready for it.
 
 ### Round video
 
@@ -84,12 +126,15 @@ streams from.
 
 | Preset | Max side | Video kbps | Audio kbps / channels |
 | --- | --- | --- | --- |
+| `tiny` | 432 | 750 | 32 / 1 |
 | `veryLow` | 480 | 400 | 32 / 1 |
 | `low` | 640 | 700 | 32 / 1 |
 | `medium` | 848 | 1600 | 64 / 2 |
 | `high` | 1280 | 3000 | 64 / 2 |
 | `veryHigh` | 1920 | 6600 | 64 / 2 |
 
+`tiny` is offered by the Android preparation policy only;
+`CompressionPreset.shared` holds the other five.
 H.264 High with a keyframe every second, AAC audio, MP4 out. The output
 bitrate never exceeds the source's, and the frame is never scaled up. An
 H.264 source that would not change is remuxed instead of re-encoded
@@ -150,7 +195,7 @@ activity.
 ## Testing
 
 `package:mpx_capture/testing.dart` has `FakeTranscoder`,
-`FakeRoundVideoRecorder` and their contract suites. The example app runs
+`FakePreparationCodec`, `FakeRoundVideoRecorder` and their contract suites. The example app runs
 them against the platform:
 
 ```shell
@@ -165,4 +210,5 @@ flutter test integration_test/round_video_test.dart -d macos # asks for access
 - [Spec](../../docs/spec.md)
 - [Package topology (ADR 0001)](../../docs/adr/0001-package-topology.md)
 - [Capture (ADR 0007)](../../docs/adr/0007-capture.md)
+- [Library, intake, preparation and picking (ADR 0011)](../../docs/adr/0011-library-and-picking.md)
 - [Bytes cache, local keys and alias (ADR 0002)](../../docs/adr/0002-bytes-cache.md)

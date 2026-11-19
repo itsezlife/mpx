@@ -22,6 +22,7 @@ void main() {
           p: (p.maxSide, p.videoKbps, p.audioKbps, p.audioChannels),
       };
       expect(table, {
+        CompressionPreset.tiny: (432, 750, 32, 1),
         CompressionPreset.veryLow: (480, 400, 32, 1),
         CompressionPreset.low: (640, 700, 32, 1),
         CompressionPreset.medium: (848, 1600, 64, 2),
@@ -37,6 +38,22 @@ void main() {
   });
 
   group('CompressionPreset.planFor', () {
+    test('the 432 step takes a 720p source to 432 under the 750 kbps '
+        'ceiling', () {
+      final plan = CompressionPreset.tiny.planFor(_source(1280, 720));
+      expect(plan.size, const MediaDimensions(432, 242));
+      expect(plan.videoBitrate, 750000);
+      expect(plan.audioBitrate, 32000);
+      expect(plan.audioChannels, 1);
+      expect(
+        CompressionPreset.tiny
+            .planFor(_source(1280, 720, videoBitrate: 500000))
+            .videoBitrate,
+        500000,
+        reason: 'the source-bitrate ceiling applies',
+      );
+    });
+
     test('scales the long side down to the preset, keeping aspect', () {
       final plan = CompressionPreset.high.planFor(_source(1920, 1080));
       expect(plan.size, const MediaDimensions(1280, 720));
@@ -161,7 +178,7 @@ void main() {
     test('a source above every step gets all of them', () {
       expect(
         CompressionPreset.offeredFor(const MediaDimensions(3840, 2160)),
-        CompressionPreset.values,
+        CompressionPreset.shared,
       );
     });
   });
