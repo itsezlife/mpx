@@ -279,7 +279,14 @@ class ContentView extends StatefulWidget {
   /// is unknown, a surface's picture with no texture, or no view at all
   /// answers [ContentFrame$Surface]: read the surface as it shows.
   static ContentFrame frameIn(RenderObject root, {required double pixelRatio}) {
-    final picture = pictureIn(root);
+    var picture = pictureIn(root);
+    // A surface that marks a view as its picture (controls laid over it)
+    // wraps the view's own mark: the view is the picture, read as a view.
+    // Read as a surface it would be the view's texture whole, its margins
+    // around the frame included, and the frame a small part of it.
+    while (picture != null && picture.child is _RenderPictureBoundary) {
+      picture = picture.child! as _RenderPictureBoundary;
+    }
     if (picture != null && picture.child is! _RenderContent) {
       // A surface's own picture (a player over a view): the player's
       // texture, whole, when it shows one.
@@ -342,30 +349,62 @@ class ContentPicture extends SingleChildRenderObjectWidget {
 }
 
 class _RenderPictureBoundary extends RenderRepaintBoundary {
-  // The topmost texture the surface painted, whole at the size it was laid
-  // out, or the surface itself when it painted none.
+  // The topmost texture the surface painted, whole at its size on screen
+  // (where the layers above it place and scale it, its clips aside), or the
+  // surface itself when it painted none.
+  //
+  // A player lays its texture out at the video's size and scales it to the
+  // view: read at the laid-out size the frame was the video's size times the
+  // pixel ratio, past what a GPU renders into one image, and the page drew
+  // it as a small picture.
   ContentFrame _textureFrame(double pixelRatio) {
     TextureLayer? top;
-    void visit(Layer layer) {
-      if (layer is TextureLayer) top = layer;
+    Matrix4? topTransform;
+    void visit(Layer layer, Matrix4 above) {
+      if (layer is TextureLayer) {
+        top = layer;
+        topTransform = above;
+      }
       if (layer is ContainerLayer) {
+        final inner = switch (layer) {
+          TransformLayer(:final transform?, :final offset) =>
+            above.clone()
+              ..translateByDouble(offset.dx, offset.dy, 0, 1)
+              ..multiply(transform),
+          OffsetLayer(:final offset) =>
+            above.clone()..translateByDouble(offset.dx, offset.dy, 0, 1),
+          _ => above,
+        };
         for (
           var child = layer.firstChild;
           child != null;
           child = child.nextSibling
         ) {
-          visit(child);
+          visit(child, inner);
         }
       }
     }
 
     final own = layer;
-    if (own != null) visit(own);
+    // The boundary's own layer is at its origin: its offset is where the
+    // boundary sits in its parent.
+    if (own != null) {
+      for (
+        var child = own.firstChild;
+        child != null;
+        child = child.nextSibling
+      ) {
+        visit(child, Matrix4.identity());
+      }
+    }
     final texture = top;
-    if (texture == null || texture.rect.isEmpty) {
+    final transform = topTransform;
+    if (texture == null || transform == null || texture.rect.isEmpty) {
       return const ContentFrame$Surface._();
     }
-    final size = texture.rect.size;
+    final shown = MatrixUtils.transformRect(transform, texture.rect);
+    if (shown.isEmpty) return const ContentFrame$Surface._();
+    final size = shown.size;
     return ContentFrame$Picture._(
       _textureImage(
         texture.textureId,

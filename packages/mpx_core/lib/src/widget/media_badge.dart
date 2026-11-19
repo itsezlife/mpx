@@ -138,8 +138,8 @@ class _MediaBadgeState extends State<MediaBadge>
   }
 
   void _listen() {
-    _listened?.removeListener(_refresh);
-    _listened = widget.binding?..addListener(_refresh);
+    _listened?.removeListener(_bindingChanged);
+    _listened = widget.binding?..addListener(_bindingChanged);
   }
 
   List<String> _read() {
@@ -173,7 +173,26 @@ class _MediaBadgeState extends State<MediaBadge>
       final left = duration - position;
       duration = left.isNegative ? Duration.zero : left;
     }
-    _syncTicker(playing: playing && !gif);
+    // The clip may play on another surface of its entry (this badge's view
+    // only shows the controls): its position is read every frame while it
+    // moves, and the reading stops once it stood still for a while.
+    final moves =
+        duration != null &&
+        position != null &&
+        binding.paintable.isAnimated &&
+        position != _lastPosition;
+    if (moves || playing) {
+      _still = 0;
+    } else {
+      _still++;
+    }
+    _lastPosition = position;
+    _syncTicker(
+      playing:
+          !gif &&
+          duration != null &&
+          (playing || (position != null && _still < _stillFrames)),
+    );
     return MediaBadge.rowsOf(
       style: style,
       strings: widget.strings,
@@ -184,6 +203,12 @@ class _MediaBadgeState extends State<MediaBadge>
     );
   }
 
+  // How many frames a position that stands still is read before the badge
+  // stops reading it; a change of the binding reads it again.
+  static const int _stillFrames = 60;
+  Duration? _lastPosition;
+  int _still = 0;
+
   // A clip that plays counts down: its position is read every frame, and
   // the badge rebuilds only when the text changes.
   void _syncTicker({required bool playing}) {
@@ -193,6 +218,13 @@ class _MediaBadgeState extends State<MediaBadge>
     } else if (!playing && (ticker?.isActive ?? false)) {
       ticker!.stop();
     }
+  }
+
+  // The binding changed (a hold ended, it came into view): its position may
+  // move again.
+  void _bindingChanged() {
+    _still = 0;
+    _refresh();
   }
 
   void _refresh() {
@@ -215,7 +247,7 @@ class _MediaBadgeState extends State<MediaBadge>
 
   @override
   void dispose() {
-    _listened?.removeListener(_refresh);
+    _listened?.removeListener(_bindingChanged);
     _ticker?.dispose();
     super.dispose();
   }

@@ -175,6 +175,51 @@ void main() {
       expect((image.width, image.height), (107, 80));
     });
 
+    testWidgets("of a view's texture marked as a surface's picture (a feed "
+        "cell's controls over it) is the view's frame, not its texture's "
+        'margins', (tester) async {
+      final key = GlobalKey();
+      await tester.pumpWidget(
+        host(
+          SizedBox.fromSize(
+            key: key,
+            size: size,
+            child: ContentPicture(
+              child: ContentView(
+                content: _sticker,
+                preset: AssetPreset(
+                  size: size,
+                  spec: rounded.spec,
+                  profile: const AssetProfile(animate: true),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      producer.last
+          .advance(AssetStage.full, animated: true)
+          .texture = const AssetTexture(
+        id: 3,
+        width: 2048,
+        height: 2048,
+        frameWidth: 1200,
+        frameHeight: 900,
+      );
+      await tester.pump();
+      await tester.pump(_pastFade);
+
+      final frame = ContentView.frameIn(
+        tester.renderObject(find.byKey(key)),
+        pixelRatio: 2,
+      );
+      expect(frame, isA<ContentFrame$Picture>());
+      final image = (frame as ContentFrame$Picture).image;
+      addTearDown(image.dispose);
+      // The 4:3 frame covering 40 x 40 at 2x, not the 2048 square texture.
+      expect((image.width, image.height), (107, 80));
+    });
+
     testWidgets("of a surface's own picture is its texture, unclipped and "
         'whole', (tester) async {
       final key = GlobalKey();
@@ -208,6 +253,43 @@ void main() {
       final image = (frame as ContentFrame$Picture).image;
       addTearDown(image.dispose);
       expect((image.width, image.height), (160, 90));
+    });
+
+    testWidgets("of a player's texture laid out at the video's size and "
+        'scaled to the view is the picture at its size on screen', (
+      tester,
+    ) async {
+      final key = GlobalKey();
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            key: key,
+            width: 400,
+            height: 200,
+            child: const ContentPicture(
+              child: ClipRect(
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: 1920,
+                    height: 1080,
+                    child: Texture(textureId: 7),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      final frame = ContentView.frameIn(
+        tester.renderObject(find.byKey(key)),
+        pixelRatio: 2,
+      );
+      expect(frame, isA<ContentFrame$Picture>());
+      final image = (frame as ContentFrame$Picture).image;
+      addTearDown(image.dispose);
+      // 16:9 covering 400 x 200: 400 x 225, at 2x; not 1920 x 1080 at 2x.
+      expect((image.width, image.height), (800, 450));
     });
 
     testWidgets("of a surface's own picture with no texture is the surface", (
