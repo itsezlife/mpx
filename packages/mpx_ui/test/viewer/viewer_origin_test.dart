@@ -478,6 +478,106 @@ void main() {
     expect(_pixelsOf(pixels!), everyElement(_blue.toARGB32()));
   });
 
+  testWidgets('a video tile whose content arrived while the viewer held it '
+      'shows that content on landing, never its stand-in again', (
+    tester,
+  ) async {
+    const sky = Color(0xFF80C0FF);
+    const hole = Color(0xFF306020);
+    final videos = FakeGallerySource([
+      GalleryItem(
+        videoKey(0),
+        kind: GalleryMediaKind.video,
+        size: const Size(1600, 900),
+        hasAudio: true,
+      ),
+    ]);
+    addTearDown(videos.dispose);
+    final pool = PlayerPool(
+      backend: FakePlayerBackend(duration: const Duration(seconds: 20)),
+    );
+    addTearDown(pool.dispose);
+    final tile = GlobalKey();
+    await pumpHost(
+      tester,
+      Align(
+        alignment: Alignment.topLeft,
+        child: Builder(
+          builder: (context) => GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => MediaViewer.show(
+              context,
+              source: videos,
+              initialIndex: 0,
+              policy: _policy,
+              scope: scope,
+              players: pool,
+            ),
+            child: ViewerOrigin(
+              index: 0,
+              child: RepaintBoundary(
+                key: tile,
+                child: ContentView(
+                  content: videoKey(0),
+                  scope: scope,
+                  preset: AssetPresets.animation(
+                    size: const Size(160, 90),
+                    profile: const AssetProfile(animate: true),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    // Not downloaded: the tile shows the thumbnail.
+    final attempt = producer.last
+      ..advance(
+        AssetStage.placeholder,
+        pictureSize: const Size(1600, 900),
+        fill: sky,
+      );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    await tester.tap(find.byType(ViewerOrigin));
+    await tester.pump();
+    await tester.pump();
+    await settleOpen(tester);
+    // The content arrives while the viewer plays the item.
+    attempt.advance(
+      AssetStage.full,
+      animated: true,
+      pictureSize: const Size(1600, 900),
+      frames: List.filled(20, const Duration(seconds: 1)),
+      fill: hole,
+    );
+    await tester.pump();
+
+    viewer(tester).close().ignore();
+    await tester.pump();
+    await tester.pump(_policy.closeDuration);
+    Future<int> centre() async {
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(tile),
+      );
+      final bytes = await tester.runAsync(() async {
+        final image = await boundary.toImage();
+        final data = await image.toByteData();
+        image.dispose();
+        return data!;
+      });
+      return _pixelsOf(bytes!)[(45 * 160) + 80];
+    }
+
+    // Every frame after landing shows the content, none the thumbnail.
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(await centre(), hole.toARGB32(), reason: 'frame $i');
+    }
+  });
+
   group('a rounded tile that shows its picture whole', () {
     // [shows] is what the tile's view draws: the item's own content, or
     // other content, so the page's own has nothing yet and the frame alone

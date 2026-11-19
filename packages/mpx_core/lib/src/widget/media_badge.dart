@@ -164,9 +164,14 @@ class _MediaBadgeState extends State<MediaBadge>
         ? descriptor?.duration
         : null;
     final playing = binding.isPlaying && duration != null;
-    if (playing) {
-      final position = binding.paintable.playbackPosition;
-      if (position != null) duration -= position;
+    // The time left at the clip's position, held, paused or playing: a clip
+    // that stops (a viewer holds it, it scrolls away) keeps the time of its
+    // frame rather than going back to its whole length. Only a clip that
+    // never played reads its length.
+    final position = binding.paintable.playbackPosition;
+    if (duration != null && position != null) {
+      final left = duration - position;
+      duration = left.isNegative ? Duration.zero : left;
     }
     _syncTicker(playing: playing && !gif);
     return MediaBadge.rowsOf(

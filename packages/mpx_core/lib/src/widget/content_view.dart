@@ -5,6 +5,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/src/asset/asset_binding.dart';
+import 'package:mpx_core/src/asset/asset_binding_base.dart';
 import 'package:mpx_core/src/asset/asset_cache_scope.dart';
 import 'package:mpx_core/src/asset/asset_fade.dart';
 import 'package:mpx_core/src/asset/asset_paintable.dart';
@@ -871,6 +872,13 @@ class _RenderContent extends RenderBox {
   }
 
   void _bindingChanged() {
+    // A stage that arrives while the binding's frame is held (a viewer
+    // plays the content meanwhile, its surface hidden) swaps in: the hold
+    // ends on a surface that shows the content, never on a fade from the
+    // stand-in it had before.
+    if (_binding case final AssetBindingBase held when held.holdsFrame) {
+      _fade.settle();
+    }
     markNeedsPaint();
     final playing = _binding.paintable.isAnimated;
     if (playing == _playing) return;

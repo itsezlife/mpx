@@ -287,6 +287,48 @@ void main() {
       expect(find.text('0:10'), findsOneWidget);
     });
 
+    testWidgets('a held or paused clip keeps the time left at its position, '
+        'not the whole length', (tester) async {
+      final binding = scope.attach(
+        key,
+        const AssetSpec(pixelWidth: 8, pixelHeight: 8),
+        const AssetProfile(animate: true, loop: true),
+      );
+      addTearDown(binding.detach);
+      producer.last
+        ..describe(
+          const MediaDescriptor(
+            key: key,
+            kind: MediaKind.video,
+            duration: Duration(seconds: 13),
+          ),
+        )
+        ..advance(
+          AssetStage.full,
+          frames: List.filled(13, const Duration(seconds: 1)),
+        );
+      await tester.pumpWidget(host(MediaBadge.binding(binding)));
+      for (var i = 1; i <= 6; i++) {
+        ticks.tick(Duration(milliseconds: 500 * i));
+        binding.advancePlayback();
+      }
+      await tester.pump();
+      expect(find.text('0:10'), findsOneWidget);
+
+      final hold = scope.holdPlayback(
+        key,
+        const AssetSpec(pixelWidth: 8, pixelHeight: 8),
+      );
+      await tester.pump();
+      expect(binding.isPlaying, isFalse);
+      expect(find.text('0:10'), findsOneWidget);
+
+      hold.release();
+      binding.visible = false;
+      await tester.pump();
+      expect(find.text('0:10'), findsOneWidget);
+    });
+
     testWidgets('a host style from its theme changes colours and text only', (
       tester,
     ) async {

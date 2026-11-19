@@ -32,6 +32,17 @@ final class AssetFade {
   /// The stage the fade is bringing in, or null when none fades.
   AssetStage? get rising => _rising;
 
+  /// Takes the binding's stage as shown, with no fade: a stage that arrived
+  /// while no surface showed the binding playing (its frame held) has no
+  /// rise to show, and fading it in later would bring back the stand-in it
+  /// replaced.
+  void settle() {
+    final stage = _binding.readiness.stage;
+    if (stage.index <= _shown.index) return;
+    _shown = stage;
+    _rising = null;
+  }
+
   /// The opacity to draw the binding's stage at in the frame at
   /// [frameTime]: 1 once its fade has run or when it swaps, else rising from
   /// 0 over the length [lengthOf] gives the rise from the stage shown before
