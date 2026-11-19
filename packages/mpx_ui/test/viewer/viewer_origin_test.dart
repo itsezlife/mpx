@@ -578,6 +578,136 @@ void main() {
     }
   });
 
+  group('a feed list item', () {
+    // A list as the stress feed builds it: 220 px slots, the clip in 10 px
+    // of padding, full width.
+    Future<void> pumpFeed(WidgetTester tester) => pumpHost(
+      tester,
+      FeedListView(
+        itemCount: 6,
+        itemExtent: 220,
+        scope: scope,
+        itemOf: (index) => FeedItem(photoKey(index)),
+        presetOf: (index, profile) => AssetPresets.animation(
+          size: const Size(360, 200),
+          profile: profile,
+        ),
+        status: const MediaStatusMode.control(),
+        badge: true,
+        cellBuilder: (context, index, clip) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Center(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => MediaViewer.show(
+                context,
+                source: source,
+                initialIndex: index,
+                policy: _policy,
+                scope: scope,
+              ),
+              child: ViewerOrigin(index: index, child: clip),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    Rect itemRect(WidgetTester tester, int index) => tester.getRect(
+      find.byWidgetPredicate(
+        (widget) => widget is ViewerOrigin && widget.index == index,
+      ),
+    );
+
+    testWidgets('opens from its picture rect and closes onto it, with nothing '
+        'painted in its slot meanwhile', (tester) async {
+      await pumpFeed(tester);
+      final item = itemRect(tester, 1);
+      expect(item, const Rect.fromLTWH(0, 230, 400, 200));
+
+      await openedFrom(tester, 1);
+      // The morph starts on the item's picture (the 4:3 picture covers it).
+      expectRect(morphRect(tester), item);
+      expect(originOpacity(tester, 1).opacity, 0);
+
+      await settleOpen(tester);
+      await nearlyClosed(tester);
+      expectRect(morphRect(tester), item);
+    });
+    testWidgets('of a video the viewer plays opens from its picture rect '
+        'and closes onto it', (tester) async {
+      final videos = FakeGallerySource([
+        for (var i = 0; i < 6; i++)
+          GalleryItem(
+            videoKey(i),
+            kind: GalleryMediaKind.video,
+            size: const Size(1920, 1080),
+            hasAudio: true,
+          ),
+      ]);
+      addTearDown(videos.dispose);
+      final pool = PlayerPool(
+        backend: FakePlayerBackend(duration: const Duration(seconds: 20)),
+      );
+      addTearDown(pool.dispose);
+      await pumpHost(
+        tester,
+        FeedListView(
+          itemCount: 6,
+          itemExtent: 220,
+          scope: scope,
+          itemOf: (index) => FeedItem(videoKey(index), hasAudio: true),
+          presetOf: (index, profile) => AssetPresets.animation(
+            size: const Size(360, 200),
+            profile: profile,
+          ),
+          status: const MediaStatusMode.control(),
+          badge: true,
+          cellBuilder: (context, index, clip) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Center(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => MediaViewer.show(
+                  context,
+                  source: videos,
+                  initialIndex: index,
+                  policy: _policy,
+                  scope: scope,
+                  players: pool,
+                ),
+                child: ViewerOrigin(index: index, child: clip),
+              ),
+            ),
+          ),
+        ),
+      );
+      for (final attempt in producer.attempts) {
+        attempt.advance(
+          AssetStage.placeholder,
+          pictureSize: const Size(1920, 1080),
+          fill: const Color(0xFF80C0FF),
+        );
+      }
+      await tester.pump();
+      final item = itemRect(tester, 1);
+
+      await openedFrom(tester, 1);
+      final first = morphRect(tester);
+      // The 16:9 picture covering the 400 x 200 item.
+      expect(first.width, closeTo(400, 2), reason: '$first vs $item');
+      expect(first.center.dx, closeTo(item.center.dx, 2));
+      expect(first.center.dy, closeTo(item.center.dy, 2));
+      expect(originOpacity(tester, 1).opacity, 0);
+
+      await settleOpen(tester);
+      await nearlyClosed(tester);
+      final last = morphRect(tester);
+      expect(last.width, closeTo(400, 2), reason: '$last vs $item');
+      expect(last.center.dy, closeTo(item.center.dy, 2));
+    });
+  });
+
   group('a rounded tile that shows its picture whole', () {
     // [shows] is what the tile's view draws: the item's own content, or
     // other content, so the page's own has nothing yet and the frame alone
