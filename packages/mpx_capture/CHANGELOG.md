@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Camera session: `CameraSessions.open` (one session per process) gives a
+  preview texture, photos, videos, a camera switch, a flash mode, pause and
+  resume, and a frame-rate cap for small previews; `CameraPreview` shows
+  it; `CameraCaptureSurface` is the minimal full-screen camera (tap for a
+  photo, hold for a video, switch, flash, close) that takes the running
+  session over and gives it back without a restart, putting shots into the
+  bytes store under `MediaKey.local`. `PlatformCameraSessions`: CameraX on
+  Android, AVCaptureSession on iOS and macOS.
+- `testing.dart`: `FakeCameraSessions` and `CameraSessionContract`.
 - Media preparation: `MediaPreparer.prepare(input, intent, policy)` makes a
   picked item ready to upload (stills scaled and encoded, videos
   compressed or passed through, thumbnails, facts), two at a time, with

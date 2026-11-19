@@ -32,6 +32,9 @@ class MpxCapturePlugin :
     private var activity: ActivityPluginBinding? = null
     private val permissionReplies = mutableListOf<MethodChannel.Result>()
     private val recorders = mutableMapOf<Int, RoundVideoRecorder>()
+    // One camera session per process (ADR 0011); a new open takes it over.
+    private var camera: CameraSession? = null
+    private val cameraWaiters = mutableListOf<() -> Unit>()
     private lateinit var methods: MethodChannel
     private lateinit var events: EventChannel
     private var sink: EventChannel.EventSink? = null
@@ -57,6 +60,8 @@ class MpxCapturePlugin :
         transcoder.cancelAll()
         recorders.values.toList().forEach { it.cancel() }
         recorders.clear()
+        camera?.close()
+        camera = null
         background.shutdown()
         preparation.shutdown()
     }
@@ -77,6 +82,8 @@ class MpxCapturePlugin :
         // A request no activity can answer stays unanswered: deny it.
         permissionReplies.forEach { it.success(false) }
         permissionReplies.clear()
+        cameraWaiters.toList().forEach { it() }
+        cameraWaiters.clear()
     }
 
     override fun onRequestPermissionsResult(
@@ -84,6 +91,11 @@ class MpxCapturePlugin :
         permissions: Array<out String>,
         grantResults: IntArray,
     ): Boolean {
+        if (requestCode == CAMERA_REQUEST) {
+            cameraWaiters.toList().forEach { it() }
+            cameraWaiters.clear()
+            return true
+        }
         if (requestCode != PERMISSION_REQUEST) return false
         val granted = RoundVideoRecorder.hasPermissions(context)
         permissionReplies.forEach { it.success(granted) }
@@ -100,6 +112,83 @@ class MpxCapturePlugin :
             arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO),
             PERMISSION_REQUEST,
         )
+    }
+
+    // --- Camera session ---
+
+    /** Asks for the camera (and the microphone with [audio]) when not yet granted, then runs [then]. */
+    private fun askCamera(audio: Boolean, then: () -> Unit) {
+        val wanted = buildList {
+            if (!CameraSession.hasCamera(context)) add(Manifest.permission.CAMERA)
+            if (audio && !CameraSession.hasMicrophone(context)) add(Manifest.permission.RECORD_AUDIO)
+        }
+        val host: Activity = activity?.activity ?: return then()
+        if (wanted.isEmpty()) return then()
+        cameraWaiters += then
+        if (cameraWaiters.size > 1) return
+        host.requestPermissions(wanted.toTypedArray(), CAMERA_REQUEST)
+    }
+
+    private fun openCamera(call: MethodCall, result: MethodChannel.Result) {
+        val id = call.argument<Int>("id") ?: return result.error("failed", "cameraOpen: missing id", null)
+        val audio = call.argument<Boolean>("audio") ?: true
+        camera?.let { previous ->
+            previous.close()
+            emit(mapOf("job" to previous.id, "type" to "camera", "state" to "closed"))
+        }
+        camera = null
+        askCamera(audio) {
+            val session = CameraSession(
+                context, id, textures, ::emit,
+                facing = call.argument<String>("facing") ?: "back",
+                frameRateCap = call.argument<Int>("frameRateCap"),
+                audio = audio,
+            )
+            camera = session
+            session.open { opened -> result.success(opened) }
+        }
+    }
+
+    private fun camera(call: MethodCall, result: MethodChannel.Result): CameraSession? {
+        val session = camera
+        if (session == null || session.id != call.argument<Int>("id")) {
+            result.error("failed", "camera session closed", null)
+            return null
+        }
+        return session
+    }
+
+    private fun onCamera(call: MethodCall, result: MethodChannel.Result) {
+        if (call.method == "cameraOpen") return openCamera(call, result)
+        if (call.method == "cameraClose") {
+            if (camera?.id == call.argument<Int>("id")) {
+                camera?.close()
+                camera = null
+            }
+            return result.success(null)
+        }
+        val session = camera(call, result) ?: return
+        fun reply(outcome: Result<Map<String, Any?>>) = outcome.fold(
+            onSuccess = { result.success(it) },
+            onFailure = { error ->
+                val failure = error as? CaptureException ?: CaptureException.failed(error.message ?: "$error")
+                result.error(failure.code, failure.message, null)
+            },
+        )
+        when (call.method) {
+            "cameraCap" -> session.setFrameRateCap(call.argument<Int>("fps")).also { result.success(null) }
+            "cameraSwitch" -> result.success(session.switchCamera())
+            "cameraFlash" -> session.setFlash(call.argument<String>("mode") ?: "off").also { result.success(null) }
+            "cameraPause" -> session.pause().also { result.success(null) }
+            "cameraResume" -> session.resume().also { result.success(null) }
+            "cameraPhoto" -> session.capturePhoto(call.argument<String>("output") ?: "", ::reply)
+            "cameraRecordStart" -> session.startRecording(call.argument<String>("output") ?: "").fold(
+                onSuccess = { result.success(null) },
+                onFailure = { error -> result.error("failed", error.message, null) },
+            )
+            "cameraRecordStop" -> session.stopRecording(::reply)
+            else -> result.notImplemented()
+        }
     }
 
     private fun startRound(call: MethodCall, result: MethodChannel.Result) {
@@ -207,6 +296,9 @@ class MpxCapturePlugin :
                 if (recorder == null) result.success(null) else recorder.cancel { result.success(null) }
             }
             "permissions" -> requestPermissions(result)
+            "cameraOpen", "cameraClose", "cameraCap", "cameraSwitch", "cameraFlash",
+            "cameraPause", "cameraResume", "cameraPhoto", "cameraRecordStart",
+            "cameraRecordStop" -> onCamera(call, result)
             "roundStart" -> startRound(call, result)
             "roundPause" -> {
                 recorder(call)?.pause()
@@ -230,6 +322,7 @@ class MpxCapturePlugin :
 }
 
 private const val PERMISSION_REQUEST = 0x6d70
+private const val CAMERA_REQUEST = 0x6d71
 
 /** An error that crosses the channel; [code] picks the Dart exception. */
 class CaptureException(val code: String, override val message: String) : Exception(message) {

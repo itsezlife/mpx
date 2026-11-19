@@ -14,6 +14,8 @@ public class MpxCapturePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   private let transcoder = CaptureTranscoder()
   private let textures: FlutterTextureRegistry
   private var recorders: [Int: RoundVideoRecorder] = [:]
+  // One camera session per process (ADR 0011); a new open takes it over.
+  private var camera: CameraSession?
 
   init(textures: FlutterTextureRegistry) {
     self.textures = textures
@@ -77,6 +79,9 @@ public class MpxCapturePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
           DispatchQueue.main.async { result(CaptureError.wrap(error).flutter) }
         }
       }
+    case "cameraOpen", "cameraClose", "cameraCap", "cameraSwitch", "cameraFlash",
+      "cameraPause", "cameraResume", "cameraPhoto", "cameraRecordStart", "cameraRecordStop":
+      onCamera(call.method, args, result: result)
     case "stillProbe":
       prepare(result) { try StillCodec.probe(path: try Self.need(args, "path")) }
     case "stillEncode":
@@ -126,6 +131,76 @@ public class MpxCapturePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       result(nil)
     default:
       result(FlutterMethodNotImplemented)
+    }
+  }
+
+  // MARK: - Camera session
+
+  private func onCamera(_ method: String, _ args: [String: Any], result: @escaping FlutterResult) {
+    let id = args["id"] as? Int ?? -1
+    if method == "cameraOpen" { return openCamera(id, args, result: result) }
+    if method == "cameraClose" {
+      if camera?.id == id {
+        camera?.close()
+        camera = nil
+      }
+      return result(nil)
+    }
+    guard let session = camera, session.id == id else {
+      return result(CaptureError.failed("camera session closed").flutter)
+    }
+    func reply(_ outcome: Result<[String: Any], Error>) {
+      DispatchQueue.main.async {
+        switch outcome {
+        case .success(let value): result(value)
+        case .failure(let error): result(CaptureError.wrap(error).flutter)
+        }
+      }
+    }
+    switch method {
+    case "cameraCap":
+      session.setFrameRateCap(args["fps"] as? Int)
+      result(nil)
+    case "cameraSwitch":
+      session.switchCamera { facing in DispatchQueue.main.async { result(facing) } }
+    case "cameraFlash":
+      session.setFlash(args["mode"] as? String ?? "off")
+      result(nil)
+    case "cameraPause":
+      session.pause()
+      result(nil)
+    case "cameraResume":
+      session.resume()
+      result(nil)
+    case "cameraPhoto":
+      session.capturePhoto(output: args["output"] as? String ?? "", reply)
+    case "cameraRecordStart":
+      session.startRecording(output: args["output"] as? String ?? "") { error in
+        DispatchQueue.main.async { result(error.map { CaptureError.wrap($0).flutter }) }
+      }
+    case "cameraRecordStop":
+      session.stopRecording(reply)
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  private func openCamera(_ id: Int, _ args: [String: Any], result: @escaping FlutterResult) {
+    if let previous = camera {
+      previous.close()
+      emit(["job": previous.id, "type": "camera", "state": "closed"])
+    }
+    camera = nil
+    let audio = args["audio"] as? Bool ?? true
+    CameraSession.requestAccess(audio: audio) {
+      DispatchQueue.main.async {
+        let session = CameraSession(
+          id: id, textures: self.textures, facing: args["facing"] as? String ?? "back",
+          frameRateCap: args["frameRateCap"] as? Int, audio: audio)
+        session.emit = { [weak self] event in self?.emit(event) }
+        self.camera = session
+        session.open { opened in DispatchQueue.main.async { result(opened) } }
+      }
     }
   }
 

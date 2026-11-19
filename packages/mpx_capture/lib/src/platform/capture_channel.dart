@@ -16,7 +16,14 @@ import 'package:mpx_core/mpx_core.dart';
 /// | `done` | `path`, `size`, `durationUs`, `width`, `height`, `headerRewritten`, `reencoded` |
 /// | `error` | `code` (`failed`, `permission`), `message` |
 ///
-/// The stream is listened to only while a job is registered.
+/// A camera session's events come on the same stream under its session id
+/// (from the same counter), to the listener [listen] registered:
+///
+/// | type | fields |
+/// | --- | --- |
+/// | `camera` | `state`, `textureId`, `previewWidth`, `previewHeight`, `quarterTurns`, `facing`, `hasFlash`, `canSwitch` |
+///
+/// The stream is listened to only while a job or a session is registered.
 final class CaptureChannel {
   CaptureChannel._();
 
@@ -29,6 +36,7 @@ final class CaptureChannel {
   static const EventChannel _events = EventChannel('dev.mpx.capture/events');
 
   final Map<int, CaptureJob> _jobs = {};
+  final Map<int, void Function(Map<Object?, Object?>)> _listeners = {};
   // Cancelled in [register] once the last registered job settles.
   // ignore: cancel_subscriptions
   StreamSubscription<Object?>? _subscription;
@@ -40,6 +48,27 @@ final class CaptureChannel {
   /// Routes events for [id] to [job] until it settles.
   void register(int id, CaptureJob job) {
     _jobs[id] = job;
+    _subscribe();
+    unawaited(
+      job.output.then<void>((_) {}, onError: (Object _) {}).whenComplete(() {
+        _jobs.remove(id);
+        _unsubscribeWhenIdle();
+      }),
+    );
+  }
+
+  /// Routes events for [id] to [onEvent] until [unlisten].
+  void listen(int id, void Function(Map<Object?, Object?>) onEvent) {
+    _listeners[id] = onEvent;
+    _subscribe();
+  }
+
+  /// Stops routing events for [id].
+  void unlisten(int id) {
+    if (_listeners.remove(id) != null) _unsubscribeWhenIdle();
+  }
+
+  void _subscribe() {
     _subscription ??= _events.receiveBroadcastStream().listen(
       _onEvent,
       onError: (Object error, StackTrace stackTrace) {
@@ -48,18 +77,18 @@ final class CaptureChannel {
           job.fail(CaptureFailed('event stream: $error'), stackTrace);
         }
         _jobs.clear();
+        for (final listener in _listeners.values.toList()) {
+          listener({'type': 'camera', 'state': 'failed'});
+        }
       },
     );
-    unawaited(
-      job.output.then<void>((_) {}, onError: (Object _) {}).whenComplete(() {
-        _jobs.remove(id);
-        if (_jobs.isEmpty) {
-          final subscription = _subscription;
-          _subscription = null;
-          unawaited(subscription?.cancel());
-        }
-      }),
-    );
+  }
+
+  void _unsubscribeWhenIdle() {
+    if (_jobs.isNotEmpty || _listeners.isNotEmpty) return;
+    final subscription = _subscription;
+    _subscription = null;
+    unawaited(subscription?.cancel());
   }
 
   /// Calls [method] with [arguments], turning a platform error into a
@@ -93,6 +122,7 @@ final class CaptureChannel {
 
   void _onEvent(Object? event) {
     if (event is! Map<Object?, Object?>) return;
+    if (_listeners[event['job']] case final listener?) return listener(event);
     final job = _jobs[event['job']];
     if (job == null) return;
     switch (event['type']) {

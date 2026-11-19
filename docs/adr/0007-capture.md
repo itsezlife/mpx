@@ -63,6 +63,7 @@ and thumbnails, are the preparation policies of ADR 0011
 | --- | --- | --- |
 | Compression | Media3 Transformer (H.264 + AAC, `Presentation` to preset size, encoder settings for the bitrate, transmux when nothing changes) | AVAssetReader → AVAssetWriter with explicit settings; AVAssetExportSession only for passthrough |
 | Round video | CameraX preview → our GL stage → MediaCodec | AVCaptureSession → AVAssetWriter |
+| Camera session (ADR 0011) | CameraX Preview, ImageCapture, VideoCapture (its `Recorder` is fine for regular video) | AVCaptureSession: a video data output into the texture, a photo output, AVAssetWriter |
 
 ### Output seam
 

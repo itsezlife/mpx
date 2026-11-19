@@ -260,14 +260,18 @@ messages. **Media preparation** (`MediaPreparer.prepare(input, intent,
 policy)`, two items at a time, off the UI isolate) scales and encodes
 stills, compresses or passes videos through, and reads thumbnails and
 facts, by a **preparation policy** (`PreparationPolicy.$Android` /
-`$IOS` / `$Desktop` / `$Web`, ADR 0011). Output seam reports bytes written, final size and a header-rewritten
+`$IOS` / `$Desktop` / `$Web`, ADR 0011). A **camera session**
+(`CameraSessions.open`, one per process) gives a preview texture, photos,
+videos, a camera switch, a flash, pause and a frame-rate cap; the minimal
+**capture surface** (`CameraCaptureSurface`) takes the running session
+over from a small preview and gives it back without a restart. Output seam reports bytes written, final size and a header-rewritten
 signal; the result lands in `http_bytes_cache` as a local resource under a
 `MediaKey.local` key, and the host aliases the server key to it after upload.
 Camera and microphone permissions live here; `mpx_library`'s system camera
 intake is the one exception (the iOS camera usage string). Seams:
 `CompressionPreset`, `RoundVideoConfig`, `Transcoder`, `RoundVideoRecorder`,
 `CaptureProgress`, `PreparationCodec`, `MediaPreparer`,
-`PreparationPolicy`. ADR 0007, 0011.
+`PreparationPolicy`, `CameraSession`, `CameraSessions`. ADR 0007, 0011.
 
 ### mpx
 
@@ -366,6 +370,7 @@ The composition root, a plugin.
 | Compression | Media3 Transformer | AVAssetReader → AVAssetWriter | same as iOS |
 | Still preparation | downsampled decode, `Bitmap.compress` | ImageIO thumbnail and destination | same as iOS, progressive |
 | Round video | CameraX preview → GL → MediaCodec | AVCaptureSession → AVAssetWriter | same as iOS |
+| Camera session | CameraX Preview, ImageCapture, VideoCapture | AVCaptureSession, photo output, AVAssetWriter | same as iOS |
 | Media library | MediaStore | PhotoKit (host opt-in) | later |
 | File intake | system dialog, system camera | system dialog, system camera | system dialog, drop, paste |
 | Prebuilt natives | arm64-v8a | arm64 | arm64 |

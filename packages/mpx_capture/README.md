@@ -1,6 +1,6 @@
 # mpx_capture
 
-Optional media capture for mpx: compression before send against a shared preset table, media preparation by a per-platform policy, round video messages, and capture output kept in the bytes cache.
+Optional media capture for mpx: compression before send against a shared preset table, media preparation by a per-platform policy, a live camera session with a minimal capture surface, round video messages, and capture output kept in the bytes cache.
 
 ## Install
 
@@ -75,6 +75,42 @@ over 2 MB, or not a JPEG, PNG, BMP or GIF, and encodes again at 90 a result
 over 6 MB. Animated stills always go as they are. Android writes baseline
 JPEGs only. The web encoder is not there yet: the `$Web` policy's values are
 ready for it.
+
+### Camera session
+
+A live camera a host shows small (a grid's camera slot) and hands to a
+full-screen capture surface without a restart:
+
+```dart
+const sessions = PlatformCameraSessions();
+final session = await sessions.open(frameRateCap: 30); // asks for access
+// session.value.value.state: available, denied or failed
+
+// The small preview; the host pauses it when it is off screen.
+CameraPreview(session: session);
+await session.pause();
+await session.resume();
+
+// Full screen: tap for a photo, hold for a video.
+await CameraCaptureSurface.show(
+  context,
+  session: session,
+  labels: const CaptureSurfaceLabels(
+    close: 'Close', shutter: 'Shutter',
+    switchCamera: 'Switch camera', flash: 'Flash',
+  ),
+  outputDirectory: tempDir.path,
+  cache: CaptureCache(store: store), // shots land under MediaKey.local
+  onCaptured: (shot) => print(shot.key),
+);
+await session.dispose();
+```
+
+One session per process: a second `open` takes the camera over, and the
+first turns `closed`. The surface lifts the session's frame-rate cap while
+it shows and restores it on close; `CaptureKinds` limits it to photos or
+videos. The preview mirrors a front camera; captures are never mirrored.
+iOS records without sound during a call.
 
 ### Round video
 
@@ -154,17 +190,19 @@ H.264 source that would not change is remuxed instead of re-encoded
 
 ## Platforms
 
-| Platform | Compression | Round video |
-| --- | --- | --- |
-| Android (API 24+) | Media3 Transformer | CameraX preview through a GL stage into MediaCodec, MediaMuxer |
-| iOS 15+, macOS 12+ | AVAssetReader into AVAssetWriter; an export session for a remux | AVCaptureSession into AVAssetWriter |
+| Platform | Compression | Camera session | Round video |
+| --- | --- | --- | --- |
+| Android (API 24+) | Media3 Transformer | CameraX Preview, ImageCapture, VideoCapture | CameraX preview through a GL stage into MediaCodec, MediaMuxer |
+| iOS 15+, macOS 12+ | AVAssetReader into AVAssetWriter; an export session for a remux | AVCaptureSession, a photo output, AVAssetWriter | AVCaptureSession into AVAssetWriter |
 
 One compression runs at a time; jobs started together queue. On a Mac the
 first camera counts as front, a second one as back.
 
 ## Permissions
 
-Compression needs none. Round video needs the camera and the microphone;
+Compression and preparation need none. The camera session needs the
+camera, and the microphone to record sound; `open` asks for both and opens
+`denied` without the camera. Round video needs the camera and the microphone;
 `requestPermission()` asks for both, and `start` fails with
 `CapturePermissionDenied` without them. The host declares them:
 
@@ -195,7 +233,8 @@ activity.
 ## Testing
 
 `package:mpx_capture/testing.dart` has `FakeTranscoder`,
-`FakePreparationCodec`, `FakeRoundVideoRecorder` and their contract suites. The example app runs
+`FakePreparationCodec`, `FakeCameraSessions`, `FakeRoundVideoRecorder` and
+their contract suites. The example app runs
 them against the platform:
 
 ```shell

@@ -63,4 +63,7 @@ dependencies {
     implementation("androidx.camera:camera-core:1.6.2")
     implementation("androidx.camera:camera-camera2:1.6.2")
     implementation("androidx.camera:camera-lifecycle:1.6.2")
+    // The camera session (ADR 0011): CameraX VideoCapture records regular
+    // video (codec and size need no control there, unlike round video).
+    implementation("androidx.camera:camera-video:1.6.2")
 }
