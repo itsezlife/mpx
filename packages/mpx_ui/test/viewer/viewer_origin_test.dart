@@ -634,78 +634,92 @@ void main() {
       await nearlyClosed(tester);
       expectRect(morphRect(tester), item);
     });
-    testWidgets('of a video the viewer plays opens from its picture rect '
-        'and closes onto it', (tester) async {
-      final videos = FakeGallerySource([
-        for (var i = 0; i < 6; i++)
-          GalleryItem(
-            videoKey(i),
-            kind: GalleryMediaKind.video,
-            size: const Size(1920, 1080),
-            hasAudio: true,
-          ),
-      ]);
-      addTearDown(videos.dispose);
-      final pool = PlayerPool(
-        backend: FakePlayerBackend(duration: const Duration(seconds: 20)),
-      );
-      addTearDown(pool.dispose);
-      await pumpHost(
-        tester,
-        FeedListView(
-          itemCount: 6,
-          itemExtent: 220,
-          scope: scope,
-          itemOf: (index) => FeedItem(videoKey(index), hasAudio: true),
-          presetOf: (index, profile) => AssetPresets.animation(
-            size: const Size(360, 200),
-            profile: profile,
-          ),
-          status: const MediaStatusMode.control(),
-          badge: true,
-          cellBuilder: (context, index, clip) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Center(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => MediaViewer.show(
-                  context,
-                  source: videos,
-                  initialIndex: index,
-                  policy: _policy,
-                  scope: scope,
-                  players: pool,
+    for (final failsInList in [false, true]) {
+      testWidgets(
+        'of a video the viewer plays opens from its picture rect '
+        'and closes onto it${failsInList ? ', its list decode failed' : ''}',
+        (tester) async {
+          final videos = FakeGallerySource([
+            for (var i = 0; i < 6; i++)
+              GalleryItem(
+                videoKey(i),
+                kind: GalleryMediaKind.video,
+                size: const Size(1920, 1080),
+                hasAudio: true,
+              ),
+          ]);
+          addTearDown(videos.dispose);
+          final pool = PlayerPool(
+            backend: FakePlayerBackend(duration: const Duration(seconds: 20)),
+          );
+          addTearDown(pool.dispose);
+          await pumpHost(
+            tester,
+            FeedListView(
+              itemCount: 6,
+              itemExtent: 220,
+              scope: scope,
+              itemOf: (index) => FeedItem(videoKey(index), hasAudio: true),
+              presetOf: (index, profile) => AssetPresets.animation(
+                size: const Size(360, 200),
+                profile: profile,
+              ),
+              status: const MediaStatusMode.control(),
+              badge: true,
+              cellBuilder: (context, index, clip) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Center(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => MediaViewer.show(
+                      context,
+                      source: videos,
+                      initialIndex: index,
+                      policy: _policy,
+                      scope: scope,
+                      players: pool,
+                    ),
+                    child: ViewerOrigin(index: index, child: clip),
+                  ),
                 ),
-                child: ViewerOrigin(index: index, child: clip),
               ),
             ),
-          ),
-        ),
+          );
+          for (final attempt in producer.attempts) {
+            attempt.advance(
+              AssetStage.placeholder,
+              pictureSize: const Size(1920, 1080),
+              fill: const Color(0xFF80C0FF),
+            );
+            // A list cannot decode it (AV1 on the software path): it stays on
+            // its stand-in.
+            if (failsInList) {
+              attempt.fail(
+                UnsupportedError('av1'),
+                kind: AssetFailureKind.permanent,
+              );
+            }
+          }
+          await tester.pump();
+          await tester.pump(const Duration(seconds: 1));
+          final item = itemRect(tester, 1);
+
+          await openedFrom(tester, 1);
+          final first = morphRect(tester);
+          // The 16:9 picture covering the 400 x 200 item.
+          expect(first.width, closeTo(400, 2), reason: '$first vs $item');
+          expect(first.center.dx, closeTo(item.center.dx, 2));
+          expect(first.center.dy, closeTo(item.center.dy, 2));
+          expect(originOpacity(tester, 1).opacity, 0);
+
+          await settleOpen(tester);
+          await nearlyClosed(tester);
+          final last = morphRect(tester);
+          expect(last.width, closeTo(400, 2), reason: '$last vs $item');
+          expect(last.center.dy, closeTo(item.center.dy, 2));
+        },
       );
-      for (final attempt in producer.attempts) {
-        attempt.advance(
-          AssetStage.placeholder,
-          pictureSize: const Size(1920, 1080),
-          fill: const Color(0xFF80C0FF),
-        );
-      }
-      await tester.pump();
-      final item = itemRect(tester, 1);
-
-      await openedFrom(tester, 1);
-      final first = morphRect(tester);
-      // The 16:9 picture covering the 400 x 200 item.
-      expect(first.width, closeTo(400, 2), reason: '$first vs $item');
-      expect(first.center.dx, closeTo(item.center.dx, 2));
-      expect(first.center.dy, closeTo(item.center.dy, 2));
-      expect(originOpacity(tester, 1).opacity, 0);
-
-      await settleOpen(tester);
-      await nearlyClosed(tester);
-      final last = morphRect(tester);
-      expect(last.width, closeTo(400, 2), reason: '$last vs $item');
-      expect(last.center.dy, closeTo(item.center.dy, 2));
-    });
+    }
   });
 
   group('a rounded tile that shows its picture whole', () {
