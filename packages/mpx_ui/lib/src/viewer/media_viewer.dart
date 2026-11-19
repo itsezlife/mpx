@@ -602,8 +602,15 @@ class MediaViewerState extends State<MediaViewer>
     final cache = _cache;
     final startAt = _startOf(_index, item);
     // The loop stands still while the player plays the item: one decode of
-    // the content at a time.
-    _loopHold = cache?.holdPlayback(item.key, _loopSpec);
+    // the content at a time. It stands on the frame its surface showed, read
+    // before the hold: every surface of it (the origin, the page under the
+    // player) draws that frame and no other until the hold ends, whatever
+    // its texture keeps meanwhile.
+    _loopHold = cache?.holdPlayback(
+      item.key,
+      _loopSpec,
+      picture: _originFrame(_index)?.clone(),
+    );
     _session = ViewerVideoSession(
       players: players,
       item: item,

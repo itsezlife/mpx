@@ -219,6 +219,16 @@ final class FakeAssetPaintable extends AssetPaintable {
   @override
   void keepFrame({required bool keep}) => keepsFrame = keep;
 
+  /// Every [holdPicture], in order: a picture to hold, or null for none; the
+  /// test disposes them.
+  final List<Image?> heldPictures = [];
+
+  /// The picture held now ([holdPicture]), or null.
+  Image? get heldPicture => heldPictures.lastOrNull;
+
+  @override
+  void holdPicture(Image? picture) => heldPictures.add(picture);
+
   @override
   void playbackResumed() {
     resumes++;

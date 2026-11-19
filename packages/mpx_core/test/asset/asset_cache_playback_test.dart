@@ -491,6 +491,48 @@ void main() {
       expect(paintable.resumes, resumes + 1);
     });
 
+    test('every surface draws the picture of the first hold until the last '
+        "is released; a later hold's picture is disposed", () {
+      final a = animated();
+      final paintable = a.paintable as FakeAssetPaintable;
+      Image picture() {
+        final recorder = PictureRecorder();
+        Canvas(recorder).drawRect(
+          const Rect.fromLTWH(0, 0, 2, 2),
+          Paint()..color = const Color(0xFF0000FF),
+        );
+        final drawn = recorder.endRecording();
+        final image = drawn.toImageSync(2, 2);
+        drawn.dispose();
+        return image;
+      }
+
+      final first = picture();
+      final second = picture();
+      addTearDown(first.dispose);
+      final hold = scope.holdPlayback(_key, _large, picture: first);
+      final again = scope.holdPlayback(_key, _large, picture: second);
+
+      expect(paintable.heldPictures, [first]);
+      expect(second.debugDisposed, isTrue);
+
+      again.release();
+      expect(paintable.heldPicture, first);
+      hold.release();
+      expect(paintable.heldPictures, [first, null]);
+    });
+
+    test('a picture held for no entry is disposed', () {
+      final recorder = PictureRecorder();
+      Canvas(recorder).drawPaint(Paint());
+      final drawn = recorder.endRecording();
+      final image = drawn.toImageSync(1, 1);
+      drawn.dispose();
+
+      scope.holdPlayback(_key, _large, picture: image);
+      expect(image.debugDisposed, isTrue);
+    });
+
     test('an entry that does not exist has nothing to hold', () {
       final hold = scope.holdPlayback(_key, _large);
 

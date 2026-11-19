@@ -577,6 +577,108 @@ void main() {
       },
     );
 
+    // Composites from [from] to [to] ms, as a surface on screen does.
+    Future<void> composite(VideoAnimationPaintable p, int from, int to) async {
+      for (var ms = from; ms < to; ms += 16) {
+        p.advancePlayback(AssetPaintContext(time: Duration(milliseconds: ms)));
+        await tick();
+      }
+    }
+
+    ui.Image? drawn(VideoAnimationPaintable p, int ms) {
+      final canvas = _RecordingCanvas();
+      p.paint(
+        canvas,
+        const Rect.fromLTWH(0, 0, 16, 16),
+        AssetPaintContext(time: Duration(milliseconds: ms), animate: false),
+      );
+      return canvas.draws.singleOrNull?.image;
+    }
+
+    test('held with a picture, every surface draws that picture and not the '
+        'texture; let go, it stays until the texture shows frames posted '
+        'since', () async {
+      final p = paintable();
+      addTearDown(p.dispose);
+      await composite(p, 0, 100);
+      expect(p.texture, isNotNull);
+      final picture = _solid(0xFFFF0000, side: 8);
+      final mine = picture.clone();
+      addTearDown(mine.dispose);
+
+      p.holdPicture(picture);
+      expect(p.texture, isNull);
+      expect(drawn(p, 100)!.isCloneOf(mine), isTrue);
+
+      p.holdPicture(null);
+      // The texture may still queue frames from before the hold.
+      expect(p.texture, isNull);
+      expect(drawn(p, 100)!.isCloneOf(mine), isTrue);
+
+      await composite(p, 116, 250);
+      expect(p.texture, isNotNull);
+      expect(picture.debugDisposed, isTrue);
+    });
+
+    test('a seek without a picture while held lets the held picture go with '
+        'the hold: the clip is no longer on that frame', () async {
+      final p = paintable();
+      addTearDown(p.dispose);
+      await composite(p, 0, 100);
+      final picture = _solid(0xFFFF0000, side: 8);
+      final mine = picture.clone();
+      addTearDown(mine.dispose);
+
+      p
+        ..holdPicture(picture)
+        ..seekPlayback(Duration.zero)
+        ..holdPicture(null);
+
+      expect(picture.debugDisposed, isTrue);
+      expect(drawn(p, 100)?.isCloneOf(mine) ?? false, isFalse);
+    });
+
+    test("a seek's picture on a texture stays until frames posted after the "
+        "seek's frame have pushed the older ones out", () async {
+      final frames = FakeTextureFrameWriter();
+      scheduler.dispose();
+      scheduler = VideoFrameScheduler(
+        engine: engine,
+        atlas: VideoFrameAtlas.create(
+          upload: (pixels, side) async => _solid(0xFF000000, side: 4),
+          sizeClasses: const [64],
+        ),
+        clock: clock,
+        textures: pool,
+        textureWriter: frames,
+        startTimer: timers.start,
+      );
+      final p = paintable();
+      addTearDown(p.dispose);
+      await composite(p, 0, 100);
+      expect(p.texture, isNotNull);
+      final picture = _solid(0xFFFF0000, side: 8);
+      final mine = picture.clone();
+      addTearDown(mine.dispose);
+
+      p.seekPlayback(const Duration(milliseconds: 40), picture: picture);
+      final before = frames.posts.length;
+      var ms = 100;
+      while (frames.posts.length - before < 2) {
+        p.advancePlayback(AssetPaintContext(time: Duration(milliseconds: ms)));
+        await tick();
+        ms += 16;
+        // The seek's frame and the one after are posted: two the texture
+        // may still show older ones before.
+        expect(p.texture, isNull);
+        expect(drawn(p, ms)!.isCloneOf(mine), isTrue);
+        if (ms > 2000) fail('no frames posted');
+      }
+      await composite(p, ms, ms + 200);
+      expect(p.texture, isNotNull);
+      expect(picture.debugDisposed, isTrue);
+    });
+
     test('a surface that only paints keeps drawing sprites', () async {
       final p = paintable();
       addTearDown(p.dispose);

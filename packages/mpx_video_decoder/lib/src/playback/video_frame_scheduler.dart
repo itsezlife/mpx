@@ -150,6 +150,17 @@ final class VideoFrameLease {
 
   bool get _shown => _posts >= VideoFrameScheduler._postsBeforeShown;
 
+  /// Hides the texture until the frames posted from now on have pushed out
+  /// any it queued before ([texture] is null meanwhile): a frame posted while
+  /// it was off screen, or from before a seek, would show first. For a
+  /// holder that draws a picture of its own meanwhile (a seek's picture).
+  void hideQueued() {
+    if (_texture != null) _posts = 0;
+  }
+
+  /// Whether [hideQueued] still hides the texture.
+  bool get isPriming => !_released && _texture != null && !_shown;
+
   /// Stops decoding and keeps the frame on show: a pass that does not loop
   /// ended on its last frame. The slot stays leased until [release].
   void hold() => _holding = true;
