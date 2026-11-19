@@ -4,7 +4,9 @@
 /// never imports them.
 library;
 
+export 'src/testing/camera_ownership_contract.dart';
 export 'src/testing/camera_session_contract.dart';
+export 'src/testing/fake_camera.dart';
 export 'src/testing/fake_camera_session.dart';
 export 'src/testing/fake_preparation_codec.dart';
 export 'src/testing/fake_round_video_recorder.dart';

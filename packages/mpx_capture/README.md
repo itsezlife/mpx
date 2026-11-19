@@ -106,8 +106,10 @@ await CameraCaptureSurface.show(
 await session.dispose();
 ```
 
-One session per process: a second `open` takes the camera over, and the
-first turns `closed`. The surface lifts the session's frame-rate cap while
+One camera owner per process: a second `open` takes the camera over and
+the first turns `closed`; a round video recording takes it over the same
+way (the session closes), and a session opened during a recording fails
+the recording with `CaptureFailed` (taken over) and deletes its file. The surface lifts the session's frame-rate cap while
 it shows and restores it on close; `CaptureKinds` limits it to photos or
 videos. The preview mirrors a front camera; captures are never mirrored.
 iOS records without sound during a call.

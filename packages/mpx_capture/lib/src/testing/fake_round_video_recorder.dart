@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:mpx_capture/src/job/capture_job.dart';
 import 'package:mpx_capture/src/round/round_video_recorder.dart';
+import 'package:mpx_capture/src/testing/fake_camera.dart';
 import 'package:mpx_core/mpx_core.dart';
 
 /// A [RoundVideoRecorder] with no camera: each [tick] records one frame of
@@ -14,14 +15,21 @@ import 'package:mpx_core/mpx_core.dart';
 /// scaled down, at least 1); finishing patches the first byte, so the
 /// completion reports a rewritten head. [permitted] answers
 /// [requestPermission] and gates [start]; [cameras] lists what
-/// [RoundVideoRecording.switchCamera] can move between.
+/// [RoundVideoRecording.switchCamera] can move between. A recording takes
+/// [camera]: a `FakeCameraSessions` over the same one closes when a
+/// recording starts, and a session opened later fails the recording as taken
+/// over.
 final class FakeRoundVideoRecorder implements RoundVideoRecorder {
   /// Creates a fake recorder.
   FakeRoundVideoRecorder({
     this.permitted = true,
     this.cameras = const {CameraFacing.front, CameraFacing.back},
     this.tick = const Duration(milliseconds: 1),
-  });
+    FakeCamera? camera,
+  }) : camera = camera ?? FakeCamera();
+
+  /// The camera recordings own in turn.
+  final FakeCamera camera;
 
   /// Whether camera and microphone are allowed.
   bool permitted;
@@ -53,6 +61,12 @@ final class FakeRoundVideoRecorder implements RoundVideoRecorder {
       camera: cameras.contains(config.camera) ? config.camera : cameras.first,
       cameras: cameras,
       tick: tick,
+    );
+    camera.take(recording, recording._takenOver);
+    unawaited(
+      recording.job.output
+          .then<void>((_) {}, onError: (Object _) {})
+          .whenComplete(() => camera.drop(recording)),
     );
     recordings.add(recording);
     return recording;
@@ -181,6 +195,12 @@ final class FakeRoundVideoRecording implements RoundVideoRecording {
         _position.inMicroseconds / config.maxDuration.inMicroseconds,
       ),
     );
+  }
+
+  void _takenOver() {
+    if (job.isDone) return;
+    _discard();
+    job.fail(const CaptureFailed('camera taken over'));
   }
 
   void _discard() {

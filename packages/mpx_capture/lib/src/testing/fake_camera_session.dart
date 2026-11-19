@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:mpx_capture/src/camera/camera_session.dart';
 import 'package:mpx_capture/src/job/capture_job.dart';
 import 'package:mpx_capture/src/round/round_video_recorder.dart';
+import 'package:mpx_capture/src/testing/fake_camera.dart';
 import 'package:mpx_core/mpx_core.dart';
 
 /// [CameraSessions] without a camera, for tests and for hosts without a
@@ -12,13 +13,19 @@ import 'package:mpx_core/mpx_core.dart';
 final class FakeCameraSessions implements CameraSessions {
   /// Creates the opener. Without [allowed] sessions open denied; [cameras]
   /// says how many cameras there are (one cannot switch); [hasFlash] and
-  /// [textureId] are what every session reports.
+  /// [textureId] are what every session reports. Sessions take [camera]
+  /// (a fresh one by default); a `FakeRoundVideoRecorder` over the same one
+  /// takes it over, and is taken over by a session.
   FakeCameraSessions({
     this.allowed = true,
     this.cameras = 2,
     this.hasFlash = true,
     this.textureId,
-  });
+    FakeCamera? camera,
+  }) : camera = camera ?? FakeCamera();
+
+  /// The camera the sessions own in turn.
+  final FakeCamera camera;
 
   /// Whether camera access is granted.
   bool allowed;
@@ -44,7 +51,6 @@ final class FakeCameraSessions implements CameraSessions {
     int? frameRateCap,
     bool audio = true,
   }) async {
-    await current?._takeOver();
     openCount++;
     final session = FakeCameraSession._(
       this,
@@ -60,6 +66,7 @@ final class FakeCameraSessions implements CameraSessions {
         frameRateCap: frameRateCap,
       ),
     );
+    camera.take(session, session._close);
     current = session;
     return session;
   }
@@ -179,10 +186,9 @@ final class FakeCameraSession implements CameraSession {
     if (_disposed) return;
     _disposed = true;
     _close();
+    _owner.camera.drop(this);
     if (identical(_owner.current, this)) _owner.current = null;
   }
-
-  Future<void> _takeOver() async => _close();
 
   void _close() {
     if (_now.state == CameraSessionState.closed) return;

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:mpx_capture/src/camera/camera_claim.dart';
 import 'package:mpx_capture/src/camera/camera_session.dart';
 import 'package:mpx_capture/src/job/capture_job.dart';
 import 'package:mpx_capture/src/platform/capture_channel.dart';
@@ -10,12 +11,12 @@ import 'package:mpx_core/mpx_core.dart';
 /// data output into a Flutter texture, a photo output, an asset writer) on
 /// iOS and macOS. iOS records without sound while a call is active.
 ///
-/// One session per process: opening another closes the one before.
+/// One camera owner per process: opening a session closes the session
+/// before and fails a running round video recording as taken over, and a
+/// round video recording closes the session.
 final class PlatformCameraSessions implements CameraSessions {
   /// Creates the opener; it holds nothing until [open].
   const PlatformCameraSessions();
-
-  static _PlatformCameraSession? _current;
 
   static CaptureChannel get _channel => CaptureChannel.instance;
 
@@ -25,15 +26,12 @@ final class PlatformCameraSessions implements CameraSessions {
     int? frameRateCap,
     bool audio = true,
   }) async {
-    final previous = _current;
-    _current = null;
-    previous?._closedHere();
     final id = _channel.nextJobId();
     final session = _PlatformCameraSession(
       id,
       CameraSessionValue(facing: facing, frameRateCap: frameRateCap),
     );
-    _current = session;
+    CameraClaim.take(session, session._closedHere);
     _channel.listen(id, session._onEvent);
     try {
       final opened = await _channel.invoke<Map<Object?, Object?>>(
@@ -157,9 +155,7 @@ final class _PlatformCameraSession implements CameraSession {
   Future<void> dispose() async {
     if (_now.state == CameraSessionState.closed) return;
     _closedHere();
-    if (identical(PlatformCameraSessions._current, this)) {
-      PlatformCameraSessions._current = null;
-    }
+    CameraClaim.drop(this);
     await _channel.invoke<void>('cameraClose', _args());
   }
 

@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:mpx_capture/src/camera/camera_claim.dart';
 import 'package:mpx_capture/src/job/capture_job.dart';
 import 'package:mpx_capture/src/platform/capture_channel.dart';
 import 'package:mpx_capture/src/round/round_video_recorder.dart';
@@ -30,6 +33,19 @@ final class PlatformRoundVideoRecorder implements RoundVideoRecorder {
       onCancel: () => _channel.invoke<void>('cancel', {'job': id}),
     );
     _channel.register(id, job);
+    // The camera has one owner: a session open now closes, and a session
+    // opened later fails this recording as taken over.
+    final owner = Object();
+    CameraClaim.take(
+      owner,
+      () => job.fail(const CaptureFailed('camera taken over')),
+    );
+    job.output.ignore();
+    unawaited(
+      job.output
+          .then<void>((_) {}, onError: (Object _) {})
+          .whenComplete(() => CameraClaim.drop(owner)),
+    );
     try {
       final started = await _channel
           .invoke<Map<Object?, Object?>>('roundStart', {

@@ -132,11 +132,7 @@ class MpxCapturePlugin :
     private fun openCamera(call: MethodCall, result: MethodChannel.Result) {
         val id = call.argument<Int>("id") ?: return result.error("failed", "cameraOpen: missing id", null)
         val audio = call.argument<Boolean>("audio") ?: true
-        camera?.let { previous ->
-            previous.close()
-            emit(mapOf("job" to previous.id, "type" to "camera", "state" to "closed"))
-        }
-        camera = null
+        takeCamera()
         askCamera(audio) {
             val session = CameraSession(
                 context, id, textures, ::emit,
@@ -191,12 +187,32 @@ class MpxCapturePlugin :
         }
     }
 
+    /**
+     * One camera owner per process: whatever opens the camera next ends the
+     * session (it turns closed) and any round video recording (it fails as
+     * taken over, its file deleted).
+     */
+    private fun takeCamera() {
+        camera?.let { previous ->
+            previous.close()
+            emit(mapOf("job" to previous.id, "type" to "camera", "state" to "closed"))
+        }
+        camera = null
+        recorders.toList().forEach { (job, recorder) ->
+            recorder.cancel {
+                emit(CaptureException.failed("camera taken over").event(job))
+            }
+        }
+        recorders.clear()
+    }
+
     private fun startRound(call: MethodCall, result: MethodChannel.Result) {
         val config = try {
             RoundVideoConfig.from(call)
         } catch (error: CaptureException) {
             return result.error(error.code, error.message, null)
         }
+        takeCamera()
         val recorder = RoundVideoRecorder(
             context, config, textures, ::emit,
             onFinish = { recorders.remove(config.job) },

@@ -10,7 +10,10 @@
   session over and gives it back without a restart, putting shots into the
   bytes store under `MediaKey.local`. `PlatformCameraSessions`: CameraX on
   Android, AVCaptureSession on iOS and macOS.
-- `testing.dart`: `FakeCameraSessions` and `CameraSessionContract`.
+- One camera owner per process across camera sessions and round video:
+  opening either takes the camera over from the other.
+- `testing.dart`: `FakeCameraSessions`, `FakeCamera`,
+  `CameraSessionContract` and `CameraOwnershipContract`.
 - Media preparation: `MediaPreparer.prepare(input, intent, policy)` makes a
   picked item ready to upload (stills scaled and encoded, videos
   compressed or passed through, thumbnails, facts), two at a time, with

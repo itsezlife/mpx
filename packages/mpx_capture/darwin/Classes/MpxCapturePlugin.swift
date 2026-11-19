@@ -185,12 +185,24 @@ public class MpxCapturePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     }
   }
 
-  private func openCamera(_ id: Int, _ args: [String: Any], result: @escaping FlutterResult) {
+  /// One camera owner per process: whatever opens the camera next ends the
+  /// session (it turns closed) and any round video recording (it fails as
+  /// taken over, its file deleted).
+  private func takeCamera() {
     if let previous = camera {
       previous.close()
       emit(["job": previous.id, "type": "camera", "state": "closed"])
     }
     camera = nil
+    for (job, recorder) in recorders {
+      recorder.cancel()
+      emit(CaptureError.failed("camera taken over").event(job: job))
+    }
+    recorders.removeAll()
+  }
+
+  private func openCamera(_ id: Int, _ args: [String: Any], result: @escaping FlutterResult) {
+    takeCamera()
     let audio = args["audio"] as? Bool ?? true
     CameraSession.requestAccess(audio: audio) {
       DispatchQueue.main.async {
@@ -243,6 +255,7 @@ public class MpxCapturePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     } catch {
       return result(CaptureError.wrap(error).flutter)
     }
+    takeCamera()
     let recorder = RoundVideoRecorder(config: config, textures: textures)
     recorder.emit = { [weak self] event in self?.emit(event) }
     recorder.onFinish = { [weak self] in
