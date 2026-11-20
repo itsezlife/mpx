@@ -463,7 +463,13 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
   // frame there is no play / pause at all: the page's download radial or
   // the spinner is the centre, never a pause over a picture not playing.
   Widget _centre(Widget button, PlayerState state) {
-    final unplayed = state.firstFrameRendered ? 0.0 : 1.0;
+    // A policy without a centre while playing leaves it empty over a
+    // playing video: the button stands for play only.
+    final unplayed =
+        !state.firstFrameRendered ||
+            (state.playing && !widget.rules.centreWhilePlaying)
+        ? 1.0
+        : 0.0;
     Widget faded(double spinner) {
       final taken = math.max(spinner, unplayed);
       return IgnorePointer(

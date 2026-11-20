@@ -189,7 +189,11 @@ abstract final class PickerViewer {
     // takes it away.
     final rules = resolved.copyWith(
       // A tap on a video plays or pauses it; never the chrome.
-      video: resolved.video.copyWith(autoHides: false, clickPlays: true),
+      video: resolved.video.copyWith(
+        autoHides: false,
+        clickPlays: true,
+        centreWhilePlaying: false,
+      ),
     );
     final index = ValueNotifier(initialIndex);
     final controller = ViewerController();

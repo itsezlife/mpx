@@ -685,6 +685,7 @@ final class ViewerVideoRules {
     required this.speed,
     required this.loops,
     this.autoHides = true,
+    this.centreWhilePlaying = true,
     this.doubleTapSeek,
     this.doubleTapFullscreen = false,
     this.doubleTapZooms = true,
@@ -723,6 +724,11 @@ final class ViewerVideoRules {
   /// ([autoHide]); a picker-mode viewer's never do, they go only on a tap
   /// or with the close.
   final bool autoHides;
+
+  /// Whether the centre play / pause button shows over a playing video (as
+  /// a pause); without it the centre is empty while the video plays and
+  /// shows play when it pauses, as a picker-mode viewer draws it.
+  final bool centreWhilePlaying;
 
   /// The speeds offered and where a choice applies.
   final ViewerSpeedRule speed;
@@ -774,6 +780,7 @@ final class ViewerVideoRules {
     bool? controlsVisibleOnOpen,
     Duration? autoHide,
     bool? autoHides,
+    bool? centreWhilePlaying,
     ViewerSpeedRule? speed,
     bool Function(Duration? duration, {required bool hasAudio})? loops,
     ViewerDoubleTapSeek? doubleTapSeek,
@@ -790,6 +797,7 @@ final class ViewerVideoRules {
     controlsVisibleOnOpen: controlsVisibleOnOpen ?? this.controlsVisibleOnOpen,
     autoHide: autoHide ?? this.autoHide,
     autoHides: autoHides ?? this.autoHides,
+    centreWhilePlaying: centreWhilePlaying ?? this.centreWhilePlaying,
     speed: speed ?? this.speed,
     loops: loops ?? this.loops,
     doubleTapSeek: doubleTapSeek ?? this.doubleTapSeek,

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `ViewerVideoRules.centreWhilePlaying`: the picker-mode viewer leaves the
+  centre empty over a playing video and shows play when it pauses; its
+  info line comes back when the viewer pages back to the video.
 - Picker-mode viewer: a tap on a photo toggles its selection
   (`LibraryGridPolicy.viewerTapSelects`), a tap on a video plays or pauses
   it, and neither hides the chrome. `MediaViewer.onPictureTap` lets a host

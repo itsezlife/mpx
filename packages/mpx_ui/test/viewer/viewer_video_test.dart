@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_ui/mpx_ui.dart';
+import 'package:mpx_ui/testing.dart';
 
 import 'viewer_harness.dart';
 
@@ -578,6 +579,43 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
       expect(harness.lease(tester).state.value.playing, isTrue);
       expect(harness.state(tester).controlsVisible, isTrue);
+    });
+
+    testWidgets('a policy without a centre while playing shows nothing over '
+        'a playing video and the play button over a paused one', (
+      tester,
+    ) async {
+      harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+      );
+      await harness.pump(
+        tester,
+        policy: ViewerPolicy.$Android.copyWith(
+          video: ViewerPolicy.$Android.video.copyWith(
+            autoHides: false,
+            centreWhilePlaying: false,
+          ),
+        ),
+      );
+      double centre() => tester
+          .widgetList<Opacity>(
+            find.ancestor(
+              of: find.byKey(const ValueKey('mpx-viewer-play')),
+              matching: find.byType(Opacity),
+            ),
+          )
+          .map((o) => o.opacity)
+          .reduce((a, b) => a * b);
+      expect(harness.lease(tester).state.value.playing, isTrue);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(centre(), 0);
+
+      harness.lease(tester).pause();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(centre(), 1);
+      expectThemedText(tester);
     });
 
     testWidgets('stay while paused', (tester) async {
