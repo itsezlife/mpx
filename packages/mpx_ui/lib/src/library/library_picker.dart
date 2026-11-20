@@ -52,6 +52,7 @@ class LibraryPicker extends StatefulWidget {
     this.onRefused,
     this.onReorder,
     this.viewerTitle,
+    this.viewerBottomSlotHoldsKeyboard = false,
     this.viewerSubtitleOf,
     this.onRemoved,
     this.onOpen,
@@ -114,6 +115,11 @@ class LibraryPicker extends StatefulWidget {
   /// the place [to] (0-based) of the selection: `OrderedPickerSelection.move`
   /// for the default selection; no reorder when null.
   final void Function(MediaKey key, int to)? onReorder;
+
+  /// Whether the picker-mode viewer's bottom slot holds the keyboard's and
+  /// the safe area's place itself (a host dock): see
+  /// `PickerViewerChrome.bottomSlotHoldsKeyboard`.
+  final bool viewerBottomSlotHoldsKeyboard;
 
   /// The picker-mode viewer's title: where the media goes (a chat's name);
   /// none when null.
@@ -324,6 +330,7 @@ class LibraryPickerState extends State<LibraryPicker> {
       onRefused: widget.onRefused,
       onReorder: widget.onReorder,
       title: widget.viewerTitle,
+      bottomSlotHoldsKeyboard: widget.viewerBottomSlotHoldsKeyboard,
       subtitleOf: widget.viewerSubtitleOf,
       bridge: _origins.currentState?.bridgeFor(gallery),
     );

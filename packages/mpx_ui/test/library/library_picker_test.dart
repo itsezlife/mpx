@@ -83,6 +83,7 @@ final class PickerHarness {
     double keyboard = 0,
     double top = 0,
     String? viewerTitle,
+    bool slotHoldsKeyboard = false,
     void Function(List<MediaKey> keys)? onRemoved,
     ScrollController? controller,
     LibraryGridLookup? lookup,
@@ -146,6 +147,7 @@ final class PickerHarness {
                         : null,
                     onReorder: reorder ? selection.move : null,
                     viewerTitle: viewerTitle,
+                    viewerBottomSlotHoldsKeyboard: slotHoldsKeyboard,
                     onRemoved: onRemoved,
                     viewerBottomBuilder: viewerSlot
                         ? (context, item) {

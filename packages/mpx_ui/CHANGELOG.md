@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `LibraryPicker.viewerBottomSlotHoldsKeyboard` (`PickerViewer.show` and
+  `PickerViewerChrome.bottomSlotHoldsKeyboard`): a host dock that holds the
+  keyboard's and the safe area's place sits on the screen's bottom edge,
+  never lifted; the viewer's controls still stand on its height.
 - `ViewerPolicy.controlsReturnOnSpringBack`: the picker-mode viewer's
   chrome comes back when a dismiss drag springs back without closing.
 - `ViewerVideoRules.centreWhilePlaying`: the picker-mode viewer leaves the

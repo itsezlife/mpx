@@ -177,6 +177,7 @@ abstract final class PickerViewer {
     void Function(MediaKey key, PickerRefusal reason)? onRefused,
     void Function(MediaKey key, int to)? onReorder,
     String? title,
+    bool bottomSlotHoldsKeyboard = false,
     String? Function(LibraryAsset asset)? subtitleOf,
     ValueChanged<int>? onIndexChanged,
     OriginBridge? bridge,
@@ -257,6 +258,7 @@ abstract final class PickerViewer {
                     onShow: controller.jumpTo,
                     onReorder: onReorder,
                     title: title,
+                    bottomSlotHoldsKeyboard: bottomSlotHoldsKeyboard,
                     subtitleOf: subtitleOf,
                     onBottomHeight: (height) => bar.value = height,
                     viewer: controller,
@@ -291,6 +293,7 @@ class PickerViewerChrome extends StatefulWidget {
     this.onReorder,
     this.viewer,
     this.onBottomHeight,
+    this.bottomSlotHoldsKeyboard = false,
     this.title,
     this.subtitleOf,
     super.key,
@@ -332,6 +335,14 @@ class PickerViewerChrome extends StatefulWidget {
   /// screen (the bar, the keyboard under it and the safe area), so the
   /// viewer's own bottom controls stand above it.
   final ValueChanged<double>? onBottomHeight;
+
+  /// Whether the host's bottom slot holds the keyboard's and the safe
+  /// area's place itself (a dock that grows over the keyboard): the slot
+  /// then sits on the screen's bottom edge and is never lifted by the
+  /// keyboard; the viewer's controls and the bottom scrim still stand on
+  /// its height. Off: the chrome lifts the slot to the higher of the
+  /// keyboard and the safe area.
+  final bool bottomSlotHoldsKeyboard;
 
   /// The top bar's title: where the media goes (a chat's name).
   final String? title;
@@ -623,10 +634,12 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
   );
 
   // How high the host's bottom bar stands over the screen's bottom.
-  static double _barLift(BuildContext context) => math.max(
-    MediaQuery.viewInsetsOf(context).bottom,
-    MediaQuery.viewPaddingOf(context).bottom,
-  );
+  double _barLift(BuildContext context) => widget.bottomSlotHoldsKeyboard
+      ? 0
+      : math.max(
+          MediaQuery.viewInsetsOf(context).bottom,
+          MediaQuery.viewPaddingOf(context).bottom,
+        );
 
   // The host bar's height, which the bottom scrim and the viewer's bottom
   // controls follow.

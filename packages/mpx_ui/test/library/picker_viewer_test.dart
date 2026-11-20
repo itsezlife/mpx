@@ -490,6 +490,36 @@ void main() {
     });
   }
 
+  testWidgets('a slot that holds the keyboard itself stays at the bottom '
+      'edge as the keyboard shows and hides; the controls stay above it', (
+    tester,
+  ) async {
+    final h = PickerHarness();
+    await h.pump(tester, viewerSlot: true, slotHoldsKeyboard: true);
+    await _open(tester, 2);
+    final slot = find.byKey(const ValueKey('slot'));
+    double viewerBottom() =>
+        MediaQuery.paddingOf(tester.element(find.byType(MediaViewer))).bottom;
+    MediaQueryData frame(double inset) => MediaQueryData(
+      size: const Size(390, 800),
+      viewInsets: EdgeInsets.only(bottom: inset),
+      viewPadding: const EdgeInsets.only(bottom: 48),
+      padding: EdgeInsets.only(bottom: math.max(0, 48 - inset)),
+    );
+    for (final inset in [
+      for (var i = 0.0; i <= 358; i += 22) i,
+      for (var i = 358.0; i >= 0; i -= 22) i,
+    ]) {
+      h.media.value = frame(inset);
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(tester.getRect(slot).bottom, 800, reason: 'at an inset of $inset');
+    }
+    await tester.pump();
+    // The slot is 60 high; the viewer's controls stand on it.
+    expect(viewerBottom(), 60);
+    expectThemedText(tester);
+  });
+
   testWidgets('the check goes through the gate', (tester) async {
     final h = PickerHarness();
     final gated = OrderedPickerSelection(
