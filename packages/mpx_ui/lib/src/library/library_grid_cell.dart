@@ -5,6 +5,7 @@ import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_ui/src/library/library_grid_policy.dart';
 import 'package:mpx_ui/src/library/library_grid_tokens.dart';
+import 'package:mpx_ui/src/viewer/viewer_origin.dart';
 
 /// One cell of the library grid: the thumbnail through the asset cache, the
 /// check with its order number, the duration or GIF badge, the subtype
@@ -27,8 +28,13 @@ class LibraryGridCell extends StatelessWidget {
     required this.onOpen,
     this.radius = BorderRadius.zero,
     this.decoration,
+    this.originIndex,
     super.key,
   });
+
+  /// The asset's index in the gallery a viewer pages, so the picture is the
+  /// viewer's origin under a `ViewerOriginScope` (it opens from and closes
+  /// to it, and hides while the viewer covers it); null for none.
 
   /// The asset, or null while its page loads.
   final LibraryAsset? asset;
@@ -66,6 +72,9 @@ class LibraryGridCell extends StatelessWidget {
   /// The host's mark over the picture (a spoiler, say), or null.
   final Widget? decoration;
 
+  /// See the constructor.
+  final int? originIndex;
+
   bool get _selected => order != null;
 
   @override
@@ -86,6 +95,13 @@ class LibraryGridCell extends StatelessWidget {
         profile: const AssetProfile(fit: AssetFit.cover),
       ),
     );
+    if (originIndex case final index?) {
+      picture = ViewerOrigin(
+        index: index,
+        borderRadius: radius,
+        child: picture,
+      );
+    }
     if (policy.selectedImageScale != 1) {
       picture = AnimatedScale(
         scale: _selected ? policy.selectedImageScale : 1,

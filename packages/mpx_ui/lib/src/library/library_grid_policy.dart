@@ -64,6 +64,9 @@ final class LibraryGridPolicy {
     required this.cameraPlacement,
     required this.defersChangesWhileViewerOpen,
     required this.errorHaptic,
+    required this.keepsDeniedCameraSlot,
+    required this.viewerCheckSize,
+    this.selectedStripHeight = 103,
     this.disabledOpacity = 0.3,
     this.swipeStartInset = 44,
     this.swipeVerticalSlop = 5,
@@ -95,6 +98,8 @@ final class LibraryGridPolicy {
     cameraPlacement: CameraSlotPlacement.allMediaAlbum,
     defersChangesWhileViewerOpen: true,
     errorHaptic: false,
+    keepsDeniedCameraSlot: true,
+    viewerCheckSize: 34,
   );
 
   /// iOS's values.
@@ -120,6 +125,8 @@ final class LibraryGridPolicy {
     cameraPlacement: CameraSlotPlacement.allMediaAlbumAtThreeColumns,
     defersChangesWhileViewerOpen: false,
     errorHaptic: true,
+    keepsDeniedCameraSlot: false,
+    viewerCheckSize: 29,
   );
 
   /// [$IOS] on iOS and macOS, [$Android] elsewhere.
@@ -192,6 +199,16 @@ final class LibraryGridPolicy {
 
   /// Whether a refused toggle plays the error haptic.
   final bool errorHaptic;
+
+  /// The check of the picker-mode viewer.
+  final double viewerCheckSize;
+
+  /// The height of the picker-mode viewer's strip of selected items.
+  final double selectedStripHeight;
+
+  /// Whether the camera slot stays when camera access is denied (its
+  /// builder is told); otherwise it goes and a banner says why.
+  final bool keepsDeniedCameraSlot;
 
   /// The opacity of a cell the selection's gate refuses.
   final double disabledOpacity;

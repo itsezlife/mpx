@@ -272,6 +272,16 @@ preset.
 - **Web still preparation** lives in `mpx_capture` (`WebPreparationCodec`):
   `createImageBitmap` resizes and `OffscreenCanvas.convertToBlob` encodes
   off the main thread, so no worker; outputs stay in memory.
+- **Picker-mode viewer** is `MediaViewer` itself under a route that lays
+  `PickerViewerChrome` (check, counter with the selected strip, host
+  bottom slot) over it, paging a `LibraryGallerySource` over the grid's
+  pages; the grid's cells are `ViewerOrigin`s, which hide the cell while
+  the viewer covers it. No piece of 0006 needed a new slot. The origin
+  comes back at once on close (the morph lands on it), not with a 0.3 s
+  fade.
+- **Library picker**: `LibraryPicker` composes the album switcher, the
+  access states and banners, the grid and the picker-mode viewer; the host
+  places the switcher through `headerBuilder`.
 - **Opt-in define names**: `MPX_LIBRARY_PHOTOS` and `MPX_LIBRARY_CAMERA`
   as Swift active compilation conditions on the `mpx_library` target (the
   mpx example's Podfile shows how).

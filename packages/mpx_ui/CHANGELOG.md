@@ -9,6 +9,11 @@
   `LibraryGridCell`, `LibraryGridTokens` and `LibraryGridLabels` from the
   host, and a camera slot the host fills (`CameraSlotBuilder` with
   `CameraSlotSignals`).
+- Library picker: `LibraryPicker` with `LibraryAlbumSwitcher`, the access
+  states (not determined, denied, restricted, limited and partial banners,
+  camera denied, not allowed, empty) in the host's `LibraryPickerLabels`,
+  and the picker-mode viewer `PickerViewer` (`LibraryGallerySource`,
+  `PickerViewerChrome`, `PickerViewerItem`).
 - `MediaViewer`: a fullscreen photo and video viewer that opens from and
   closes to its origin, with seams `GallerySource` and `OriginBridge`
   (`FakeGallerySource` with `insert(index, item)`, `FakeOriginBridge` and

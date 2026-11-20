@@ -155,6 +155,16 @@ LibraryGrid(
 - Library changes re-read the pages and keep the selection; `$Android`
   holds them while `viewerOpen`.
 
+`LibraryPicker` puts it together: the album switcher (a drop-down of
+covers, names and counts on `$Android`, a menu from the title on `$IOS`),
+the grid in every library access state (a Manage banner for iOS's limited
+access, a banner that asks again for Android 14's partial access, the
+denied and restricted states, an empty album, media not allowed), and the
+picker-mode viewer (`PickerViewer`): the fullscreen viewer over the album
+with a check through the same selection, a counter that shows the selected
+items, and a bottom slot the host fills (`viewerBottomBuilder`; with
+nothing checked its `keys` are the item shown).
+
 ## Docs
 
 - [Spec](../../docs/spec.md)

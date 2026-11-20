@@ -243,7 +243,10 @@ rotation are built in. Tokens come from the host. ADR 0006.
   (`PickerSelection`, `OrderedPickerSelection` with a cap, a gate and single
   select) with numbered checks, swipe select per policy, refusals to the
   host, the host's **camera slot** with its pause signals, change events
-  that keep the selection.
+  that keep the selection. `LibraryPicker` adds the album switcher, every
+  library access state with its banners, and the **picker-mode viewer**
+  (`PickerViewer`, the viewer under the picker's check, counter and host
+  bottom slot).
 
 ### mpx_library
 

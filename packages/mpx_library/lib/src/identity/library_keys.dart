@@ -58,9 +58,14 @@ abstract final class LibraryKeys {
       MediaKey$External('$_assetPrefix${id.value}');
 
   /// The key of [asset]'s thumbnail fitted into a square of [pixels].
-  static MediaKey$External thumbnailKeyOf(LibraryAsset asset, int pixels) {
+  static MediaKey$External thumbnailKeyOf(LibraryAsset asset, int pixels) =>
+      thumbnailKeyFor(asset.id, pixels);
+
+  /// The key of the asset [id]'s thumbnail fitted into a square of
+  /// [pixels].
+  static MediaKey$External thumbnailKeyFor(LibraryAssetId id, int pixels) {
     if (pixels <= 0) throw ArgumentError.value(pixels, 'pixels', 'not > 0');
-    return MediaKey$External('$_thumbnailPrefix$pixels:${asset.id.value}');
+    return MediaKey$External('$_thumbnailPrefix$pixels:${id.value}');
   }
 
   /// What [key] names, or null when it is not a library key.

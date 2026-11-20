@@ -25,6 +25,7 @@ final class CameraSlotSignals {
     required this.onScreen,
     required this.viewerOpen,
     required this.active,
+    this.cameraDenied = false,
   });
 
   /// Whether any of the slot is in the viewport.
@@ -36,6 +37,10 @@ final class CameraSlotSignals {
   /// Whether the host's page holding the grid is active and uncovered.
   final bool active;
 
+  /// Whether the host says camera access is denied (the slot shows its
+  /// "allow access" state instead of a preview).
+  final bool cameraDenied;
+
   /// Whether the preview should pause: off screen, covered, or inactive.
   bool get shouldPause => !onScreen || viewerOpen || !active;
 
@@ -44,15 +49,16 @@ final class CameraSlotSignals {
       other is CameraSlotSignals &&
       other.onScreen == onScreen &&
       other.viewerOpen == viewerOpen &&
-      other.active == active;
+      other.active == active &&
+      other.cameraDenied == cameraDenied;
 
   @override
-  int get hashCode => Object.hash(onScreen, viewerOpen, active);
+  int get hashCode => Object.hash(onScreen, viewerOpen, active, cameraDenied);
 
   @override
   String toString() =>
       'CameraSlotSignals(onScreen: $onScreen, viewerOpen: $viewerOpen, '
-      'active: $active)';
+      'active: $active, cameraDenied: $cameraDenied)';
 }
 
 /// Builds the camera slot's content (a live preview): `mpx_ui` takes no
@@ -93,14 +99,22 @@ class LibraryGrid extends StatefulWidget {
     this.onRefused,
     this.cameraSlotBuilder,
     this.cameraAllowed = true,
+    this.cameraDenied = false,
+    this.onCameraTap,
+    this.onCameraLongPress,
     this.decorationBuilder,
     this.physics,
     this.controller,
     this.viewerOpen = false,
     this.active = true,
     this.pageSize = 60,
+    this.pages,
     super.key,
   });
+
+  /// The album's pages when the host shares them (with a picker-mode
+  /// viewer, say); the host owns and disposes them. Null for the grid's own
+  /// over [album].
 
   /// The library read.
   final MediaLibrary library;
@@ -134,6 +148,17 @@ class LibraryGrid extends StatefulWidget {
   /// allowed); false shows no slot.
   final bool cameraAllowed;
 
+  /// Whether camera access is denied: [LibraryGridPolicy.$IOS] shows no
+  /// slot then; [LibraryGridPolicy.$Android] keeps it and tells its builder
+  /// ([CameraSlotSignals.cameraDenied]).
+  final bool cameraDenied;
+
+  /// Called by a tap on the camera slot.
+  final VoidCallback? onCameraTap;
+
+  /// Called by a long press on the camera slot.
+  final VoidCallback? onCameraLongPress;
+
   /// Builds a host mark over a cell's picture (a spoiler, say), or null.
   final Widget? Function(BuildContext context, LibraryAsset asset)?
   decorationBuilder;
@@ -152,6 +177,9 @@ class LibraryGrid extends StatefulWidget {
 
   /// Assets per page read.
   final int pageSize;
+
+  /// See the constructor.
+  final LibraryPages? pages;
 
   @override
   State<LibraryGrid> createState() => LibraryGridState();
@@ -189,11 +217,19 @@ class LibraryGridState extends State<LibraryGrid>
   ScrollController get _controller =>
       widget.controller ?? (_ownController ??= ScrollController());
 
-  LibraryPages _makePages() => LibraryPages(
-    library: widget.library,
-    album: widget.album,
-    pageSize: widget.pageSize,
-  )..addListener(_rebuild);
+  LibraryPages _makePages() =>
+      (widget.pages ??
+            LibraryPages(
+              library: widget.library,
+              album: widget.album,
+              pageSize: widget.pageSize,
+            ))
+        ..addListener(_rebuild);
+
+  void _dropPages() {
+    _pages.removeListener(_rebuild);
+    if (!identical(_pages, widget.pages)) _pages.dispose();
+  }
 
   @override
   void initState() {
@@ -202,6 +238,27 @@ class LibraryGridState extends State<LibraryGrid>
     _controller.addListener(_onScroll);
     _subscribe();
     _updateSignals();
+    if (widget.album.startsAtEnd) _jumpToStart();
+  }
+
+  // An album opens at its top, or at its end when it runs oldest first
+  // (`startsAtEnd`): after the frame that lays it out, and again once its
+  // first page grew the extent.
+  void _jumpToStart() {
+    void jump() {
+      if (!mounted || !_controller.hasClients) return;
+      final position = _controller.position;
+      _controller.jumpTo(
+        widget.album.startsAtEnd ? position.maxScrollExtent : 0,
+      );
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      jump();
+      if (widget.album.startsAtEnd) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => jump());
+      }
+    });
   }
 
   @override
@@ -214,14 +271,12 @@ class LibraryGridState extends State<LibraryGrid>
     }
     if (!identical(old.library, widget.library) ||
         old.album.id != widget.album.id ||
-        old.pageSize != widget.pageSize) {
-      _pages.dispose();
+        old.pageSize != widget.pageSize ||
+        !identical(old.pages, widget.pages)) {
+      _pages.removeListener(_rebuild);
+      if (old.pages == null) _pages.dispose();
       _pages = _makePages();
-      if (old.album.id != widget.album.id && _controller.hasClients) {
-        _controller.jumpTo(
-          widget.album.startsAtEnd ? _controller.position.maxScrollExtent : 0,
-        );
-      }
+      if (old.album.id != widget.album.id) _jumpToStart();
     }
     if (!identical(old.library, widget.library)) {
       unawaited(_changes?.cancel());
@@ -244,7 +299,7 @@ class LibraryGridState extends State<LibraryGrid>
     _controller.removeListener(_onScroll);
     unawaited(_changes?.cancel());
     _ticker?.dispose();
-    _pages.dispose();
+    _dropPages();
     _ownController?.dispose();
     _signals.dispose();
     super.dispose();
@@ -276,6 +331,7 @@ class LibraryGridState extends State<LibraryGrid>
       onScreen: offset < slotEnd,
       viewerOpen: widget.viewerOpen,
       active: widget.active,
+      cameraDenied: widget.cameraDenied,
     );
   }
 
@@ -470,6 +526,7 @@ class LibraryGridState extends State<LibraryGrid>
           final camera =
               widget.cameraSlotBuilder != null &&
               widget.cameraAllowed &&
+              !(widget.cameraDenied && !policy.keepsDeniedCameraSlot) &&
               policy.showsCameraSlot(
                 isAllMedia: widget.album.kind == LibraryAlbumKind.allMedia,
                 columns: columns,
@@ -546,11 +603,22 @@ class LibraryGridState extends State<LibraryGrid>
       topEnd: row == 0 && column == columns - 1 ? corner : Radius.zero,
     ).resolve(Directionality.of(context));
     if (camera && child == 0) {
-      return ClipRRect(
-        borderRadius: radius,
-        child: ColoredBox(
-          color: widget.tokens.cameraSlotBackground,
-          child: widget.cameraSlotBuilder!(context, _signals),
+      return Semantics(
+        button: true,
+        label: widget.labels.camera,
+        onTap: widget.onCameraTap,
+        onLongPress: widget.onCameraLongPress,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onCameraTap,
+          onLongPress: widget.onCameraLongPress,
+          child: ClipRRect(
+            borderRadius: radius,
+            child: ColoredBox(
+              color: widget.tokens.cameraSlotBackground,
+              child: widget.cameraSlotBuilder!(context, _signals),
+            ),
+          ),
         ),
       );
     }
@@ -562,6 +630,7 @@ class LibraryGridState extends State<LibraryGrid>
     final key = asset == null ? null : LibraryKeys.libraryKeyOf(asset);
     return LibraryGridCell(
       key: key == null ? null : ValueKey<MediaKey>(key),
+      originIndex: index,
       asset: asset,
       extent: extent,
       thumbnailPixels: pixels,

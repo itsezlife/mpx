@@ -13,7 +13,10 @@ import 'library/library_grid_cell_golden_test.dart'
     as library_grid_cell_golden_test;
 import 'library/library_grid_layout_test.dart' as library_grid_layout_test;
 import 'library/library_grid_test.dart' as library_grid_test;
+import 'library/library_picker_golden_test.dart' as library_picker_golden_test;
+import 'library/library_picker_test.dart' as library_picker_test;
 import 'library/picker_selection_test.dart' as picker_selection_test;
+import 'library/picker_viewer_test.dart' as picker_viewer_test;
 import 'viewer/media_viewer_test.dart' as media_viewer_test;
 import 'viewer/origin_bridge_contract_test.dart' as origin_bridge_contract_test;
 import 'viewer/viewer_chrome_test.dart' as viewer_chrome_test;
@@ -31,7 +34,10 @@ void main() {
   group('library_grid_cell_golden_test', library_grid_cell_golden_test.main);
   group('library_grid_layout_test', library_grid_layout_test.main);
   group('library_grid_test', library_grid_test.main);
+  group('library_picker_golden_test', library_picker_golden_test.main);
+  group('library_picker_test', library_picker_test.main);
   group('picker_selection_test', picker_selection_test.main);
+  group('picker_viewer_test', picker_viewer_test.main);
   group('media_viewer_test', media_viewer_test.main);
   group('origin_bridge_contract_test', origin_bridge_contract_test.main);
   group('viewer_chrome_test', viewer_chrome_test.main);

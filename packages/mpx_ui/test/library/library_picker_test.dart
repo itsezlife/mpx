@@ -1,0 +1,372 @@
+import 'package:flutter/widgets.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
+import 'package:mpx_library/mpx_library.dart';
+import 'package:mpx_library/testing.dart';
+import 'package:mpx_ui/mpx_ui.dart';
+
+const gridLabels = LibraryGridLabels(
+  photo: 'Photo',
+  video: 'Video',
+  open: 'Open',
+  select: 'Select',
+  gif: 'GIF',
+  camera: 'Camera',
+);
+
+const stateLabels = LibraryPickerLabels(
+  allMedia: 'All media',
+  allPhotos: 'All photos',
+  allVideos: 'All videos',
+  cameraAlbum: 'Camera',
+  favourites: 'Favourites',
+  empty: 'No photos yet',
+  deniedTitle: 'Access to media',
+  deniedText: 'Allow access to your photos and videos.',
+  allowAccess: 'Allow access',
+  openSettings: 'Open Settings',
+  camera: 'Camera',
+  restricted: 'Access is restricted',
+  limitedText: 'You allowed some photos',
+  manage: 'Manage',
+  selectMore: 'Select more photos',
+  changeSettings: 'Change settings',
+  partialText: 'You allowed some photos and videos',
+  cameraDeniedText: 'Allow camera access',
+);
+
+MediaKey key(int index) =>
+    LibraryKeys.libraryKeyOf(FakeMediaLibrary.assetAt(index));
+
+/// A picker over a fake library in a 390 x 800 window.
+final class PickerHarness {
+  PickerHarness({
+    int assets = 30,
+    LibraryAccess access = LibraryAccess.full,
+    LibraryAccess grantOnRequest = LibraryAccess.full,
+  }) : library = FakeMediaLibrary(
+         assets: assets,
+         access: access,
+         grantOnRequest: grantOnRequest,
+       ) {
+    clock = PlaybackClock(ticks: ManualPlaybackTickSource());
+    scope = AssetCacheScope(producer: FakeAssetProducer(), clock: clock);
+  }
+
+  final FakeMediaLibrary library;
+  late final PlaybackClock clock;
+  late final AssetCacheScope scope;
+  final OrderedPickerSelection selection = OrderedPickerSelection();
+  final List<(MediaKey, PickerRefusal)> refusals = [];
+  final List<PickerViewerItem> slotItems = [];
+  int cameras = 0;
+  int cameraTaps = 0;
+  int cameraLongPresses = 0;
+  final List<CameraSlotSignals> signals = [];
+
+  Future<void> pump(
+    WidgetTester tester, {
+    LibraryGridPolicy policy = LibraryGridPolicy.$Android,
+    bool mediaAllowed = true,
+    bool cameraDenied = false,
+    bool cameraSlot = false,
+    PickerSelection? picker,
+    bool viewerSlot = false,
+  }) async {
+    tester.view
+      ..physicalSize = const Size(390, 800)
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    addTearDown(() async {
+      scope.dispose();
+      clock.dispose();
+      await library.dispose();
+    });
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: MediaQuery(
+          data: const MediaQueryData(size: Size(390, 800)),
+          child: AssetCacheProvider(
+            scope: scope,
+            child: Navigator(
+              onGenerateRoute: (_) => PageRouteBuilder<void>(
+                pageBuilder: (context, _, _) => LibraryPicker(
+                  library: library,
+                  selection: picker ?? selection,
+                  labels: gridLabels,
+                  stateLabels: stateLabels,
+                  policy: policy,
+                  mediaAllowed: mediaAllowed,
+                  notAllowedText: 'Media is not allowed here',
+                  cameraDenied: cameraDenied,
+                  onCamera: () => cameras++,
+                  onCameraTap: () => cameraTaps++,
+                  onCameraLongPress: () => cameraLongPresses++,
+                  onRefused: (key, reason) => refusals.add((key, reason)),
+                  cameraSlotBuilder: cameraSlot
+                      ? (context, value) {
+                          signals.add(value.value);
+                          value.addListener(() => signals.add(value.value));
+                          return const SizedBox.expand(key: ValueKey('camera'));
+                        }
+                      : null,
+                  viewerBottomBuilder: viewerSlot
+                      ? (context, item) {
+                          slotItems.add(item);
+                          return const SizedBox(
+                            key: ValueKey('slot'),
+                            height: 60,
+                          );
+                        }
+                      : null,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await settle(tester);
+  }
+
+  static Future<void> settle(WidgetTester tester) async {
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  }
+}
+
+Finder cell(int index) => find.byKey(ValueKey(key(index)));
+
+void main() {
+  group('access states', () {
+    testWidgets('not determined asks once and shows the outcome', (
+      tester,
+    ) async {
+      final h = PickerHarness(
+        access: LibraryAccess.notDetermined,
+        grantOnRequest: LibraryAccess.denied,
+      );
+      await h.pump(tester);
+      expect(h.library.requestAccessCalls, 1);
+      expect(find.text('Access to media'), findsOneWidget);
+    });
+
+    testWidgets(r'denied on $Android: camera and access buttons', (
+      tester,
+    ) async {
+      final h = PickerHarness(access: LibraryAccess.denied);
+      await h.pump(tester);
+      await tester.tap(find.byKey(const ValueKey('mpx-denied-camera')));
+      expect(h.cameras, 1);
+      await tester.tap(find.byKey(const ValueKey('mpx-denied-access')));
+      await PickerHarness.settle(tester);
+      expect(h.library.requestAccessCalls, 1);
+      expect(h.library.openSettingsCalls, 1, reason: 'still denied: settings');
+      expect(find.byType(LibraryGrid), findsNothing);
+    });
+
+    testWidgets(r'denied on $IOS: Open Settings and a camera tile', (
+      tester,
+    ) async {
+      final h = PickerHarness(access: LibraryAccess.denied);
+      await h.pump(tester, policy: LibraryGridPolicy.$IOS);
+      await tester.tap(find.byKey(const ValueKey('mpx-denied-settings')));
+      expect(h.library.openSettingsCalls, 1);
+      await tester.tap(find.byKey(const ValueKey('mpx-denied-camera-tile')));
+      expect(h.cameras, 1);
+    });
+
+    testWidgets('restricted shows the host text', (tester) async {
+      final h = PickerHarness(access: LibraryAccess.restricted);
+      await h.pump(tester);
+      expect(find.text('Access is restricted'), findsOneWidget);
+    });
+
+    testWidgets(r'limited on $IOS: the Manage banner and its menu', (
+      tester,
+    ) async {
+      final h = PickerHarness(access: LibraryAccess.limited);
+      await h.pump(tester, policy: LibraryGridPolicy.$IOS);
+      expect(find.byType(LibraryGrid), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('mpx-limited-banner')));
+      await PickerHarness.settle(tester);
+      await tester.tap(find.byKey(const ValueKey('mpx-manage-0')));
+      await PickerHarness.settle(tester);
+      expect(h.library.manageSelectedCalls, 1);
+      await tester.tap(find.byKey(const ValueKey('mpx-limited-banner')));
+      await PickerHarness.settle(tester);
+      await tester.tap(find.byKey(const ValueKey('mpx-manage-1')));
+      await PickerHarness.settle(tester);
+      expect(h.library.openSettingsCalls, 1);
+    });
+
+    testWidgets(r'partial on $Android: a banner that asks again', (
+      tester,
+    ) async {
+      final h = PickerHarness(access: LibraryAccess.partial);
+      await h.pump(tester);
+      expect(find.byType(LibraryGrid), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('mpx-partial-banner')));
+      await PickerHarness.settle(tester);
+      expect(h.library.manageSelectedCalls, 1);
+    });
+
+    testWidgets('not allowed hides the grid behind the host text', (
+      tester,
+    ) async {
+      final h = PickerHarness();
+      await h.pump(tester, mediaAllowed: false);
+      expect(find.text('Media is not allowed here'), findsOneWidget);
+      expect(find.byType(LibraryGrid), findsNothing);
+    });
+
+    testWidgets('an empty library shows the empty text', (tester) async {
+      final h = PickerHarness(assets: 0);
+      await h.pump(tester);
+      expect(find.text('No photos yet'), findsOneWidget);
+    });
+
+    testWidgets('a transition to full access shows the grid', (tester) async {
+      final h = PickerHarness(access: LibraryAccess.denied);
+      await h.pump(tester);
+      h.library.setAccess(LibraryAccess.full);
+      await PickerHarness.settle(tester);
+      expect(find.byType(LibraryGrid), findsOneWidget);
+      expect(cell(0), findsOneWidget);
+    });
+  });
+
+  group('camera denied', () {
+    testWidgets(r'$IOS: a banner and no camera slot', (tester) async {
+      final h = PickerHarness();
+      await h.pump(
+        tester,
+        policy: LibraryGridPolicy.$IOS,
+        cameraDenied: true,
+        cameraSlot: true,
+      );
+      expect(
+        find.byKey(const ValueKey('mpx-camera-denied-banner')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('camera')), findsNothing);
+    });
+
+    testWidgets(r'$Android: the slot stays and its builder is told', (
+      tester,
+    ) async {
+      final h = PickerHarness();
+      await h.pump(tester, cameraDenied: true, cameraSlot: true);
+      expect(find.byKey(const ValueKey('camera')), findsOneWidget);
+      expect(h.signals.last.cameraDenied, isTrue);
+    });
+  });
+
+  group('camera slot', () {
+    testWidgets('tap and long press reach the host; it is a Camera button', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      final h = PickerHarness();
+      await h.pump(tester, cameraSlot: true);
+      await tester.tap(find.byKey(const ValueKey('camera')));
+      await tester.longPress(find.byKey(const ValueKey('camera')));
+      expect(h.cameraTaps, 1);
+      expect(h.cameraLongPresses, 1);
+      expect(find.bySemanticsLabel('Camera'), findsOneWidget);
+      expect(h.signals.last.shouldPause, isFalse);
+      handle.dispose();
+    });
+
+    testWidgets(r'placement: $IOS only at 3 columns, never in other albums', (
+      tester,
+    ) async {
+      final h = PickerHarness();
+      h.library.addAlbum(
+        const LibraryAlbumId('camera'),
+        kind: LibraryAlbumKind.camera,
+        title: 'Camera',
+        assets: [FakeMediaLibrary.assetAt(0).id],
+      );
+      await h.pump(tester, policy: LibraryGridPolicy.$IOS, cameraSlot: true);
+      expect(find.byKey(const ValueKey('camera')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('mpx-album-switcher')));
+      await PickerHarness.settle(tester);
+      await tester.tap(find.byKey(const ValueKey('mpx-album-camera')));
+      await PickerHarness.settle(tester);
+      expect(find.byKey(const ValueKey('camera')), findsNothing);
+    });
+  });
+
+  group('album switcher', () {
+    for (final policy in [LibraryGridPolicy.$Android, LibraryGridPolicy.$IOS]) {
+      testWidgets(
+        'lists albums with counts and rebinds the grid '
+        '(${identical(policy, LibraryGridPolicy.$IOS) ? 'iOS' : 'Android'})',
+        (tester) async {
+          final h = PickerHarness();
+          h.library.addAlbum(
+            const LibraryAlbumId('camera'),
+            kind: LibraryAlbumKind.camera,
+            title: '',
+            assets: [
+              FakeMediaLibrary.assetAt(5).id,
+              FakeMediaLibrary.assetAt(6).id,
+            ],
+          );
+          await h.pump(tester, policy: policy);
+          expect(find.text('All media'), findsOneWidget);
+          await tester.tap(find.byKey(const ValueKey('mpx-album-switcher')));
+          await PickerHarness.settle(tester);
+          expect(find.text('30'), findsOneWidget);
+          expect(find.text('2'), findsOneWidget);
+          await tester.tap(find.byKey(const ValueKey('mpx-album-camera')));
+          await PickerHarness.settle(tester);
+          expect(find.text('Camera'), findsWidgets);
+          expect(cell(5), findsOneWidget);
+          expect(cell(0), findsNothing);
+        },
+      );
+    }
+
+    testWidgets('an album that starts at the end opens scrolled to it', (
+      tester,
+    ) async {
+      final h = PickerHarness(assets: 200);
+      h.library.addAlbum(
+        const LibraryAlbumId('old-first'),
+        kind: LibraryAlbumKind.user,
+        title: 'Trip',
+        startsAtEnd: true,
+        assets: [for (var i = 0; i < 200; i++) FakeMediaLibrary.assetAt(i).id],
+      );
+      await h.pump(tester, policy: LibraryGridPolicy.$IOS);
+      await tester.tap(find.byKey(const ValueKey('mpx-album-switcher')));
+      await PickerHarness.settle(tester);
+      await tester.tap(find.byKey(const ValueKey('mpx-album-old-first')));
+      await PickerHarness.settle(tester);
+      expect(cell(199), findsOneWidget);
+      expect(cell(0), findsNothing);
+    });
+  });
+
+  testWidgets('resuming reads the albums again', (tester) async {
+    final h = PickerHarness();
+    await h.pump(tester);
+    h.library.addAlbum(
+      const LibraryAlbumId('new'),
+      kind: LibraryAlbumKind.user,
+      title: 'New album',
+      assets: [FakeMediaLibrary.assetAt(1).id],
+    );
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await PickerHarness.settle(tester);
+    await tester.tap(find.byKey(const ValueKey('mpx-album-switcher')));
+    await PickerHarness.settle(tester);
+    expect(find.text('New album'), findsOneWidget);
+  });
+}
