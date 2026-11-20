@@ -8,8 +8,11 @@ import 'package:mpx_library/mpx_library.dart';
 ///
 /// [assetAt] answers what is loaded and asks for the page that holds the
 /// index when it is not; nothing else is read, so a grid over a large album
-/// loads only the pages near its viewport. [reload] drops every page (a
-/// library change) and the grid asks again as it builds.
+/// loads only the pages near its viewport. [reload] (a library change, a
+/// resume) marks every page stale: a stale page still answers while the
+/// grid's next build reads it afresh, and the fresh read replaces it in
+/// place, so a reload never blanks the grid and one that changed nothing
+/// changes nothing on screen.
 final class LibraryPages extends ChangeNotifier {
   /// Creates the window over [album] of [library], [pageSize] assets a page.
   LibraryPages({
@@ -29,6 +32,8 @@ final class LibraryPages extends ChangeNotifier {
   final int pageSize;
 
   final Map<int, List<LibraryAsset>> _pages = {};
+  // Pages read since the last reload; a page held but not here is stale.
+  final Set<int> _fresh = {};
   final Set<int> _loading = {};
   int _total;
   int _generation = 0;
@@ -44,19 +49,18 @@ final class LibraryPages extends ChangeNotifier {
   LibraryAsset? assetAt(int index) {
     if (index < 0 || index >= _total) return null;
     final page = index ~/ pageSize;
+    if (!_fresh.contains(page)) _request(page);
     final assets = _pages[page];
-    if (assets == null) {
-      _request(page);
-      return null;
-    }
+    if (assets == null) return null;
     final offset = index - page * pageSize;
     return offset < assets.length ? assets[offset] : null;
   }
 
-  /// Drops every page; they load again as they are asked for.
+  /// Marks every page stale; each is read again when next asked for and
+  /// answers what it held until then.
   void reload() {
     _generation++;
-    _pages.clear();
+    _fresh.clear();
     _loading.clear();
     if (!_disposed) notifyListeners();
   }
@@ -77,9 +81,12 @@ final class LibraryPages extends ChangeNotifier {
       );
       pageReads++;
       if (_disposed || generation != _generation) return;
+      _fresh.add(page);
+      final same =
+          result.total == _total && listEquals(_pages[page], result.assets);
       _pages[page] = result.assets;
       _total = result.total;
-      notifyListeners();
+      if (!same) notifyListeners();
     } on Object catch (error, stackTrace) {
       FlutterError.reportError(
         FlutterErrorDetails(

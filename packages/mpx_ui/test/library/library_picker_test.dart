@@ -369,4 +369,22 @@ void main() {
     await PickerHarness.settle(tester);
     expect(find.text('New album'), findsOneWidget);
   });
+
+  testWidgets('a resume with nothing changed keeps the grid as it is', (
+    tester,
+  ) async {
+    final h = PickerHarness();
+    await h.pump(tester);
+    final grid = tester.state<LibraryGridState>(find.byType(LibraryGrid));
+    final pages = grid.pages;
+    expect(cell(0), findsOneWidget);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    for (var i = 0; i < 4; i++) {
+      await tester.pump();
+      expect(cell(0), findsOneWidget);
+    }
+    expect(grid.pages, same(pages));
+  });
 }

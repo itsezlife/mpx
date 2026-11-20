@@ -195,7 +195,14 @@ class LibraryPickerState extends State<LibraryPicker> {
         : albums.where((a) => a.id == _album!.id).firstOrNull;
     setState(() {
       _albums = albums;
-      _bind(keep ?? albums.firstOrNull);
+      if (keep != null && _pages != null) {
+        // The album shown is still there: its pages read again in place,
+        // so a resume that changed nothing changes nothing on screen.
+        _album = keep;
+        _pages!.reload();
+      } else {
+        _bind(albums.firstOrNull);
+      }
     });
   }
 
