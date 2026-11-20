@@ -19,6 +19,7 @@ MediaKey _key(int index) =>
     LibraryKeys.libraryKeyOf(FakeMediaLibrary.assetAt(index));
 
 void main() {
+  late FakeAssetProducer producer;
   late AssetCacheScope scope;
   late PlaybackClock clock;
   late OrderedPickerSelection selection;
@@ -26,7 +27,8 @@ void main() {
 
   setUp(() {
     clock = PlaybackClock(ticks: ManualPlaybackTickSource());
-    scope = AssetCacheScope(producer: FakeAssetProducer(), clock: clock);
+    producer = FakeAssetProducer();
+    scope = AssetCacheScope(producer: producer, clock: clock);
     selection = OrderedPickerSelection();
     for (final i in [4, 1, 7]) {
       selection.toggle(_key(i));
@@ -75,6 +77,19 @@ void main() {
       tester.getCenter(cell(4)).dx,
       lessThan(tester.getCenter(cell(1)).dx),
     );
+  });
+
+  testWidgets('each library item tells the cache its thumbnail, so its '
+      'library key resolves', (tester) async {
+    await pumpPreview(tester);
+    final keys = producer.known.map((d) => d.key).toSet();
+    final thumbnails = find.descendant(
+      of: cell(4),
+      matching: find.byType(ContentView),
+    );
+    final key = tester.widget<ContentView>(thumbnails).content;
+    expect(keys, contains(key));
+    expect(producer.attempts.map((a) => a.request.key), contains(key));
   });
 
   testWidgets('a tap on the order deselects; a tap on the picture opens', (

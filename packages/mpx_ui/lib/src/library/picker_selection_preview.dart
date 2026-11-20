@@ -273,6 +273,14 @@ class _PreviewItem extends StatelessWidget {
       final target? => LibraryKeys.thumbnailKeyFor(target.asset, pixels),
       null => content,
     };
+    if (thumbnail != content) {
+      // A library key resolves only through its descriptor, which the grid
+      // tells for its cells; the preview holds keys alone, and a library
+      // thumbnail is a still whatever the asset is.
+      AssetCacheProvider.maybeOf(
+        context,
+      )?.know(MediaDescriptor(key: thumbnail, kind: MediaKind.still));
+    }
     final check = policy.checkSize;
     final hit = policy.checkHitSize;
     return Semantics(

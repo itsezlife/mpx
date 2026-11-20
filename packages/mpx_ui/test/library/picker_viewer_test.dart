@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_library/testing.dart';
 import 'package:mpx_ui/mpx_ui.dart';
@@ -62,6 +63,18 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('mpx-picker-viewer-counter')));
     await tester.pump();
     expect(find.byType(ListView), findsWidgets, reason: 'the selected strip');
+    // The strip's thumbnails are told to the cache, so their keys resolve.
+    final strip = tester.widgetList<ContentView>(
+      find.descendant(
+        of: find.byType(ListView).last,
+        matching: find.byType(ContentView),
+      ),
+    );
+    expect(strip, hasLength(2));
+    final known = h.producer.known.map((d) => d.key).toSet();
+    for (final view in strip) {
+      expect(known, contains(view.content));
+    }
     await _close(tester);
   });
 

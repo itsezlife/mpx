@@ -389,6 +389,19 @@ class _SelectedStrip extends StatelessWidget {
     final side = height - 16;
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
     final pixels = (side * dpr).ceil();
+    // A library key resolves only through its descriptor; the strip holds
+    // keys alone, and a library thumbnail is a still.
+    final scope = AssetCacheProvider.maybeOf(context);
+    for (final key in keys) {
+      if (LibraryKeys.read(key) case final target?) {
+        scope?.know(
+          MediaDescriptor(
+            key: LibraryKeys.thumbnailKeyFor(target.asset, pixels),
+            kind: MediaKind.still,
+          ),
+        );
+      }
+    }
     return ColoredBox(
       color: tokens.shade,
       child: ListView(
