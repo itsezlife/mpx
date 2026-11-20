@@ -1206,6 +1206,8 @@ class _BarTitleState extends State<_BarTitle> with TickerProviderStateMixin {
   late final AnimationController _swap;
   String? _old;
   String? _now;
+  // Whether the line went (no info for the item shown).
+  bool _gone = false;
 
   @override
   void initState() {
@@ -1230,19 +1232,24 @@ class _BarTitleState extends State<_BarTitle> with TickerProviderStateMixin {
   void didUpdateWidget(_BarTitle oldWidget) {
     super.didUpdateWidget(oldWidget);
     final next = _line(widget.subtitle);
-    if (next == _now) return;
     if (next == null) {
-      _presence.reverse().ignore();
+      // Going: the old text stays drawn while it fades out.
+      if (!_gone) _presence.reverse().ignore();
+      _gone = true;
       return;
     }
-    if (_now == null) {
-      // Coming: the line fades in where it stands, no swap.
+    if (_gone || _now == null) {
+      // Coming, the same line or another: it fades in where it stands, with
+      // no swap. A line that went keeps its text for its fade-out, so
+      // coming back to it is a coming, not a "no change".
+      _gone = false;
       _old = null;
       _now = next;
       _swap.value = 1;
       _presence.forward().ignore();
       return;
     }
+    if (next == _now) return;
     _old = _now;
     _now = next;
     _swap.forward(from: 0).ignore();

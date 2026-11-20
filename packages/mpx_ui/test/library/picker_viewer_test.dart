@@ -291,6 +291,31 @@ void main() {
       expect(lineOpacity(tester, after), 1);
     });
 
+    testWidgets('Android: paging away from a video and back brings its '
+        'line back', (tester) async {
+      final h = PickerHarness();
+      await h.pump(tester, viewerSlot: true, viewerTitle: 'Chat');
+      await _open(tester, 3);
+      const text = '1920x1080, 0:08, ~2.3 MB';
+      expect(lineOpacity(tester, text), 1);
+      Future<void> page(double dx) async {
+        await tester.fling(find.byType(MediaViewer), Offset(dx, 0), 2000);
+        for (var i = 0; i < 40; i++) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        await tester.pump(const Duration(milliseconds: 400));
+      }
+
+      await page(-300);
+      expect(tester.state<MediaViewerState>(find.byType(MediaViewer)).index, 4);
+      expect(lineOpacity(tester, text), 0, reason: 'gone with the photo');
+      await page(300);
+      expect(tester.state<MediaViewerState>(find.byType(MediaViewer)).index, 3);
+      expect(lineOpacity(tester, text), 1);
+      expect(titleScale(tester), closeTo(0.87, 1e-6));
+      expectThemedText(tester);
+    });
+
     testWidgets('iOS: no info line', (tester) async {
       final h = PickerHarness();
       await h.pump(
