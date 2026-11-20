@@ -351,7 +351,7 @@ class _PreviewItem extends StatelessWidget {
                               ),
                               child: Text(
                                 '${order ?? ''}',
-                                style: tokens.checkNumber,
+                                style: tokens.orderNumber(order ?? 0),
                                 maxLines: 1,
                               ),
                             ),

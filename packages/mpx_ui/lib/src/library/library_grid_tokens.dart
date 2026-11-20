@@ -54,6 +54,16 @@ final class LibraryGridTokens {
   /// The order number in a check.
   final TextStyle checkNumber;
 
+  /// [checkNumber] for [order]: at its size up to two digits, stepped down
+  /// to 10/14 of it at three and 8/14 at four or more, so the number fits
+  /// its circle.
+  TextStyle orderNumber(int order) {
+    final digits = '$order'.length;
+    if (digits <= 2) return checkNumber;
+    final size = checkNumber.fontSize ?? 13;
+    return checkNumber.copyWith(fontSize: size * (digits == 3 ? 10 : 8) / 14);
+  }
+
   /// Badge text and icons.
   final Color badgeForeground;
 

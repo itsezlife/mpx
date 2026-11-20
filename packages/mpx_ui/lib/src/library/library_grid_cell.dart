@@ -267,7 +267,7 @@ class _Check extends StatelessWidget {
         ),
       ),
       child: selected
-          ? Text('$order', style: tokens.checkNumber, maxLines: 1)
+          ? Text('$order', style: tokens.orderNumber(order!), maxLines: 1)
           : null,
     );
     if (policy.checkSpring > Duration.zero) {

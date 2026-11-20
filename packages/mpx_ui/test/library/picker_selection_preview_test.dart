@@ -72,6 +72,25 @@ void main() {
   Finder orderIn(int index, String order) =>
       find.descendant(of: cell(index), matching: find.text(order));
 
+  testWidgets('an order of three digits steps the number down', (tester) async {
+    for (var i = 10; i < 107; i++) {
+      selection.toggle(_key(i));
+    }
+    await pumpPreview(tester);
+    await tester.drag(
+      find.byType(PickerSelectionPreview),
+      const Offset(0, -5000),
+    );
+    await tester.pumpAndSettle();
+    final number = find.text('100');
+    expect(number, findsOneWidget);
+    expect(
+      tester.widget<Text>(number).style!.fontSize,
+      closeTo(13 * 10 / 14, 1e-9),
+    );
+    expectThemedText(tester);
+  });
+
   testWidgets('shows the selected items in their order', (tester) async {
     await pumpPreview(tester);
     expect(orderIn(4, '1'), findsOneWidget);

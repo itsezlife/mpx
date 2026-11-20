@@ -695,7 +695,7 @@ class _ViewerCheck extends StatelessWidget {
     ),
     child: order == null
         ? null
-        : Text('$order', style: tokens.checkNumber, maxLines: 1),
+        : Text('$order', style: tokens.orderNumber(order!), maxLines: 1),
   );
 }
 

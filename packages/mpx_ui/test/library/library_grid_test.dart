@@ -238,6 +238,28 @@ void main() {
     expect(selection.keys, [_key(0), _key(3), _key(4)]);
   });
 
+  testWidgets('an order of three digits steps the number down to fit its '
+      'check', (tester) async {
+    for (var i = 0; i < 100; i++) {
+      selection.toggle(_key(i));
+    }
+    await pumpGrid(tester, controller: ScrollController());
+    final grid = tester.state<LibraryGridState>(find.byType(LibraryGrid));
+    expect(grid.pages.total, 10000);
+    await tester.drag(find.byType(LibraryGrid), const Offset(0, -3500));
+    await tester.pumpAndSettle();
+    final number = find.descendant(of: cell(99), matching: find.text('100'));
+    expect(number, findsOneWidget);
+    final style = tester.widget<Text>(number).style!;
+    // Two digits at the token's size; three at 10/14 of it.
+    expect(style.fontSize, closeTo(13 * 10 / 14, 1e-9));
+    expect(
+      tester.getSize(number).width,
+      lessThanOrEqualTo(LibraryGridPolicy.$Android.checkSize),
+    );
+    expectThemedText(tester);
+  });
+
   testWidgets(r'$IOS swipe: a horizontal pan selects', (tester) async {
     await pumpGrid(tester, policy: LibraryGridPolicy.$IOS);
     final start = tester.getCenter(cell(1));
