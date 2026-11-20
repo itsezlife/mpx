@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Picker-mode viewer: a tap on a photo toggles its selection
+  (`LibraryGridPolicy.viewerTapSelects`), a tap on a video plays or pauses
+  it, and neither hides the chrome. `MediaViewer.onPictureTap` lets a host
+  take a picture tap; the gallery viewer's tap is unchanged.
 - Order numbers step down to fit three or more digits. The grid's marks
   follow each platform (a play mark before a video's duration, a live
   photo's corner mark, HD on a checked photo with `highQuality`, GIF on

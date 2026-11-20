@@ -188,7 +188,8 @@ abstract final class PickerViewer {
     // The picker's chrome never hides by itself: only a tap or the close
     // takes it away.
     final rules = resolved.copyWith(
-      video: resolved.video.copyWith(autoHides: false),
+      // A tap on a video plays or pauses it; never the chrome.
+      video: resolved.video.copyWith(autoHides: false, clickPlays: true),
     );
     final index = ValueNotifier(initialIndex);
     final controller = ViewerController();
@@ -210,6 +211,19 @@ abstract final class PickerViewer {
                   _AboveBar(
                     bar: bar,
                     child: MediaViewer(
+                      // A tap on a photo toggles its selection (when the
+                      // policy says so); on a video with no player it does
+                      // nothing. The chrome stays either way.
+                      onPictureTap: (index, item) {
+                        if (item.kind == GalleryMediaKind.video ||
+                            !gridPolicy.viewerTapSelects) {
+                          return;
+                        }
+                        if (selection.toggle(item.key)
+                            case PickerToggle$Refused(:final reason)) {
+                          onRefused?.call(item.key, reason);
+                        }
+                      },
                       source: source,
                       initialIndex: initialIndex,
                       bridge: origins,

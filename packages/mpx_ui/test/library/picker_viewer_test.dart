@@ -328,26 +328,48 @@ void main() {
       expectThemedText(tester);
     });
 
-    testWidgets('a tap fades it out and in; it never hides by itself', (
-      tester,
-    ) async {
+    testWidgets('it never hides by itself', (tester) async {
       final h = PickerHarness();
       await h.pump(tester, viewerSlot: true);
       await _open(tester, 2);
       final viewer = tester.widget<MediaViewer>(find.byType(MediaViewer));
       expect(viewer.policy!.video.autoHides, isFalse);
+      expect(viewer.policy!.video.clickPlays, isTrue);
       await tester.pump(const Duration(seconds: 5));
       expect(opacity(tester), 1);
+    });
 
+    testWidgets('a tap on a photo selects it, again deselects it; the chrome '
+        'stays', (tester) async {
+      final h = PickerHarness();
+      await h.pump(tester, viewerSlot: true);
+      await _open(tester, 2);
+      Future<void> tap() async {
+        await tester.tapAt(const Offset(195, 400));
+        for (var i = 0; i < 10; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+      }
+
+      await tap();
+      expect(h.selection.keys, [key(2)]);
+      expect(opacity(tester), 1);
+      await tap();
+      expect(h.selection.keys, isEmpty);
+      expect(opacity(tester), 1);
+      expectThemedText(tester);
+    });
+
+    testWidgets('a tap on a video with no player neither selects it nor '
+        'hides the chrome', (tester) async {
+      final h = PickerHarness();
+      await h.pump(tester, viewerSlot: true);
+      await _open(tester, 3);
       await tester.tapAt(const Offset(195, 400));
       for (var i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 50));
       }
-      expect(opacity(tester), 0);
-      await tester.tapAt(const Offset(195, 400));
-      for (var i = 0; i < 10; i++) {
-        await tester.pump(const Duration(milliseconds: 50));
-      }
+      expect(h.selection.keys, isEmpty);
       expect(opacity(tester), 1);
     });
   });

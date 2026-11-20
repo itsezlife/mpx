@@ -77,6 +77,7 @@ final class LibraryGridPolicy {
     this.gifBadge = true,
     this.liveCornerMark = false,
     this.videoPlayMark = false,
+    this.viewerTapSelects = true,
   });
 
   /// Android's values.
@@ -250,6 +251,11 @@ final class LibraryGridPolicy {
 
   /// Whether a video's badge leads with a play mark (`$Android`).
   final bool videoPlayMark;
+
+  /// Whether a single tap on a photo in the picker-mode viewer toggles its
+  /// selection; a tap on a video plays or pauses it either way, and the
+  /// chrome stays.
+  final bool viewerTapSelects;
 
   /// The shortest side from which a screen counts as a tablet.
   final double tabletShortestSide;

@@ -201,6 +201,7 @@ class MediaViewer extends StatefulWidget {
     this.controller,
     this.videoStartOf,
     this.onVideoLeft,
+    this.onPictureTap,
   });
 
   /// The items.
@@ -271,6 +272,12 @@ class MediaViewer extends StatefulWidget {
   /// [videoStartOf].
   final void Function(int index, GalleryItem item, Duration position)?
   onVideoLeft;
+
+  /// A single tap on the picture of an item with no player under it: the
+  /// host takes it (a picker toggles the item's selection) in place of the
+  /// policy's own (the chrome shows or hides, or the viewer closes). A
+  /// video with a player under it plays or pauses as the policy says.
+  final void Function(int index, GalleryItem item)? onPictureTap;
 
   /// Pushes a viewer as a transparent route over [context]'s navigator and
   /// completes when it has closed.
@@ -1521,6 +1528,8 @@ class MediaViewerState extends State<MediaViewer>
           : policy.doubleTapZoomFor(fitted, _size, pixels: item.size),
       onTap: switch ((session, policy.pictureClickCloses)) {
         (final playing?, _) when _video.clickPlays => playing.togglePlay,
+        (null, _) when widget.onPictureTap != null =>
+          () => widget.onPictureTap!(index, item),
         (null, true) => () => unawaited(close()),
         _ => () => _controls.value = !_controls.value,
       },
