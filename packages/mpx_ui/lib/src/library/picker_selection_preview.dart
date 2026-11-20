@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/mpx_library.dart';
+import 'package:mpx_ui/src/library/library_grid_cell.dart';
 import 'package:mpx_ui/src/library/library_grid_policy.dart';
 import 'package:mpx_ui/src/library/library_grid_tokens.dart';
 import 'package:mpx_ui/src/library/picker_selection.dart';
@@ -36,6 +37,7 @@ class PickerSelectionPreview extends StatefulWidget {
     this.onRefused,
     this.controller,
     this.padding,
+    this.assetOf,
     super.key,
   });
 
@@ -66,6 +68,10 @@ class PickerSelectionPreview extends StatefulWidget {
 
   /// Padding around the items; the policy's padding when null.
   final EdgeInsets? padding;
+
+  /// The library item behind a key, so an item shows the grid's marks (a
+  /// video's duration); no marks for a key it does not know.
+  final LibraryAsset? Function(MediaKey key)? assetOf;
 
   @override
   State<PickerSelectionPreview> createState() => PickerSelectionPreviewState();
@@ -277,6 +283,7 @@ class PickerSelectionPreviewState extends State<PickerSelectionPreview> {
         tokens: widget.tokens,
         labels: widget.labels,
         hidden: !lifted && key == _lifted,
+        asset: widget.assetOf?.call(key),
         onOpen: () => widget.onOpen?.call(key, keys.indexOf(key)),
         onDeselect: () => _deselect(key),
         onLift: (global, inCell) => _lift(key, global, inCell),
@@ -366,6 +373,7 @@ class _PreviewItem extends StatelessWidget {
     required this.tokens,
     required this.labels,
     required this.hidden,
+    required this.asset,
     required this.onOpen,
     required this.onDeselect,
     required this.onLift,
@@ -383,6 +391,7 @@ class _PreviewItem extends StatelessWidget {
   final LibraryGridTokens tokens;
   final LibraryGridLabels labels;
   final bool hidden;
+  final LibraryAsset? asset;
   final VoidCallback onOpen;
   final VoidCallback onDeselect;
   final void Function(Offset global, Offset inCell) onLift;
@@ -441,6 +450,13 @@ class _PreviewItem extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (asset case final asset?)
+                      LibraryAssetMarks(
+                        asset: asset,
+                        policy: policy,
+                        tokens: tokens,
+                        labels: labels,
+                      ),
                     PositionedDirectional(
                       top: 0,
                       end: 0,

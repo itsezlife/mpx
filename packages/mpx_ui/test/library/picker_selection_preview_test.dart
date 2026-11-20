@@ -58,6 +58,12 @@ void main() {
               labels: _labels,
               onOpen: (key, index) => opened.add((key, index)),
               onReorder: reorder ? selection.move : null,
+              assetOf: (key) => switch (LibraryKeys.read(key)) {
+                final target? => FakeMediaLibrary.assetAt(
+                  int.parse(target.asset.value.split('-').last),
+                ),
+                null => null,
+              },
             ),
           ),
         ),
@@ -139,6 +145,25 @@ void main() {
     expect(list.scrollOffset, greaterThan(40));
     await gesture.up();
     await tester.pumpAndSettle();
+  });
+
+  testWidgets("each item shows the grid's marks: a video its duration", (
+    tester,
+  ) async {
+    selection.toggle(_key(3));
+    await pumpPreview(tester);
+    expect(
+      find.descendant(of: cell(3), matching: find.text('0:08')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: cell(3),
+        matching: find.byKey(const ValueKey('mpx-mark-play')),
+      ),
+      findsOneWidget,
+    );
+    expectThemedText(tester);
   });
 
   testWidgets('shows the selected items in their order', (tester) async {
