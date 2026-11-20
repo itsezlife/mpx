@@ -12,7 +12,9 @@ import android.os.Build
 /**
  * The app's audio focus as the Dart player pool's sound owner uses it.
  *
- * Requested while one player is audible and abandoned when none is. A
+ * Requested while one player is audible and abandoned when none is, as the
+ * mode says: `exclusive` takes focus (other apps pause), `duck` asks them
+ * to lower their sound, `mix` takes none and plays over them. A
  * transient loss (a call, an alarm, a duck request) reports `interrupted`,
  * a permanent one `lost`, a regain `gained`; headphones coming out while
  * focus is held report `outputRemoved`. The pool decides what each means.
@@ -45,7 +47,7 @@ internal class MpxAudioFocus(
             }
         }
 
-    fun request() {
+    fun request(mode: NativeAudioFocusMode) {
         if (held) return
         held = true
         val filter = IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
@@ -55,10 +57,18 @@ internal class MpxAudioFocus(
         } else {
             context.registerReceiver(noisy, filter)
         }
+        // Mixing asks for nothing: the music that plays goes on.
+        if (mode == NativeAudioFocusMode.MIX) return
+        val gain =
+            if (mode == NativeAudioFocusMode.DUCK) {
+                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+            } else {
+                AudioManager.AUDIOFOCUS_GAIN
+            }
         val result =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val made =
-                    AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    AudioFocusRequest.Builder(gain)
                         .setAudioAttributes(
                             AudioAttributes.Builder()
                                 .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -75,7 +85,7 @@ internal class MpxAudioFocus(
                 audio.requestAudioFocus(made)
             } else {
                 @Suppress("DEPRECATION")
-                audio.requestAudioFocus(listener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)
+                audio.requestAudioFocus(listener, AudioManager.STREAM_MUSIC, gain)
             }
         when (result) {
             AudioManager.AUDIOFOCUS_REQUEST_FAILED -> report(NativeAudioFocusChange.LOST)

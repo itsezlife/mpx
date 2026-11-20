@@ -197,6 +197,13 @@ enum NativePlayerPhase: Int, CaseIterable {
   case failed = 4
 }
 
+/// How a request takes the platform's sound; see `PlayerAudioFocus`.
+enum NativeAudioFocusMode: Int, CaseIterable {
+  case exclusive = 0
+  case duck = 1
+  case mix = 2
+}
+
 /// What the platform's audio session says; see `AudioFocusChange`.
 enum NativeAudioFocusChange: Int, CaseIterable {
   case gained = 0
@@ -777,24 +784,30 @@ private class PlayerMessagesPigeonCodecReader: FlutterStandardReader {
     case 130:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return NativeAudioFocusChange(rawValue: enumResultAsInt)
+        return NativeAudioFocusMode(rawValue: enumResultAsInt)
       }
       return nil
     case 131:
-      return NativePlayerSource.fromList(self.readValue() as! [Any?])
+      let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
+      if let enumResultAsInt = enumResultAsInt {
+        return NativeAudioFocusChange(rawValue: enumResultAsInt)
+      }
+      return nil
     case 132:
-      return NativeStreamPart.fromList(self.readValue() as! [Any?])
+      return NativePlayerSource.fromList(self.readValue() as! [Any?])
     case 133:
-      return NativePlayerSettings.fromList(self.readValue() as! [Any?])
+      return NativeStreamPart.fromList(self.readValue() as! [Any?])
     case 134:
-      return NativePlayerSnapshot.fromList(self.readValue() as! [Any?])
+      return NativePlayerSettings.fromList(self.readValue() as! [Any?])
     case 135:
-      return NativeDecoderInfo.fromList(self.readValue() as! [Any?])
+      return NativePlayerSnapshot.fromList(self.readValue() as! [Any?])
     case 136:
-      return NativeDeviceProbe.fromList(self.readValue() as! [Any?])
+      return NativeDecoderInfo.fromList(self.readValue() as! [Any?])
     case 137:
-      return NativeStillRequest.fromList(self.readValue() as! [Any?])
+      return NativeDeviceProbe.fromList(self.readValue() as! [Any?])
     case 138:
+      return NativeStillRequest.fromList(self.readValue() as! [Any?])
+    case 139:
       return NativeStill.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -807,32 +820,35 @@ private class PlayerMessagesPigeonCodecWriter: FlutterStandardWriter {
     if let value = value as? NativePlayerPhase {
       super.writeByte(129)
       super.writeValue(value.rawValue)
-    } else if let value = value as? NativeAudioFocusChange {
+    } else if let value = value as? NativeAudioFocusMode {
       super.writeByte(130)
       super.writeValue(value.rawValue)
-    } else if let value = value as? NativePlayerSource {
+    } else if let value = value as? NativeAudioFocusChange {
       super.writeByte(131)
-      super.writeValue(value.toList())
-    } else if let value = value as? NativeStreamPart {
+      super.writeValue(value.rawValue)
+    } else if let value = value as? NativePlayerSource {
       super.writeByte(132)
       super.writeValue(value.toList())
-    } else if let value = value as? NativePlayerSettings {
+    } else if let value = value as? NativeStreamPart {
       super.writeByte(133)
       super.writeValue(value.toList())
-    } else if let value = value as? NativePlayerSnapshot {
+    } else if let value = value as? NativePlayerSettings {
       super.writeByte(134)
       super.writeValue(value.toList())
-    } else if let value = value as? NativeDecoderInfo {
+    } else if let value = value as? NativePlayerSnapshot {
       super.writeByte(135)
       super.writeValue(value.toList())
-    } else if let value = value as? NativeDeviceProbe {
+    } else if let value = value as? NativeDecoderInfo {
       super.writeByte(136)
       super.writeValue(value.toList())
-    } else if let value = value as? NativeStillRequest {
+    } else if let value = value as? NativeDeviceProbe {
       super.writeByte(137)
       super.writeValue(value.toList())
-    } else if let value = value as? NativeStill {
+    } else if let value = value as? NativeStillRequest {
       super.writeByte(138)
+      super.writeValue(value.toList())
+    } else if let value = value as? NativeStill {
+      super.writeByte(139)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -868,7 +884,7 @@ protocol PlayerHostApi {
   func setLooping(playerId: Int64, looping: Bool) throws
   func setVolume(playerId: Int64, volume: Double) throws
   func dispose(playerId: Int64) throws
-  func requestAudioFocus() throws
+  func requestAudioFocus(mode: NativeAudioFocusMode) throws
   func abandonAudioFocus() throws
   func probe() throws -> NativeDeviceProbe
   func isPictureInPictureSupported() throws -> Bool
@@ -1030,9 +1046,11 @@ class PlayerHostApiSetup {
     }
     let requestAudioFocusChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.mpx_player.PlayerHostApi.requestAudioFocus\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
-      requestAudioFocusChannel.setMessageHandler { _, reply in
+      requestAudioFocusChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let modeArg = args[0] as! NativeAudioFocusMode
         do {
-          try api.requestAudioFocus()
+          try api.requestAudioFocus(mode: modeArg)
           reply(wrapResult(nil))
         } catch {
           reply(wrapError(error))

@@ -114,6 +114,9 @@ int _deepHash(Object? value) {
 /// Where a native player stands; `idle` never crosses the channel.
 enum NativePlayerPhase { preparing, ready, buffering, ended, failed }
 
+/// How a request takes the platform's sound; see `PlayerAudioFocus`.
+enum NativeAudioFocusMode { exclusive, duck, mix }
+
 /// What the platform's audio session says; see `AudioFocusChange`.
 enum NativeAudioFocusChange { gained, lost, interrupted, outputRemoved }
 
@@ -784,32 +787,35 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is NativePlayerPhase) {
       buffer.putUint8(129);
       writeValue(buffer, value.index);
-    } else if (value is NativeAudioFocusChange) {
+    } else if (value is NativeAudioFocusMode) {
       buffer.putUint8(130);
       writeValue(buffer, value.index);
-    } else if (value is NativePlayerSource) {
+    } else if (value is NativeAudioFocusChange) {
       buffer.putUint8(131);
-      writeValue(buffer, value.encode());
-    } else if (value is NativeStreamPart) {
+      writeValue(buffer, value.index);
+    } else if (value is NativePlayerSource) {
       buffer.putUint8(132);
       writeValue(buffer, value.encode());
-    } else if (value is NativePlayerSettings) {
+    } else if (value is NativeStreamPart) {
       buffer.putUint8(133);
       writeValue(buffer, value.encode());
-    } else if (value is NativePlayerSnapshot) {
+    } else if (value is NativePlayerSettings) {
       buffer.putUint8(134);
       writeValue(buffer, value.encode());
-    } else if (value is NativeDecoderInfo) {
+    } else if (value is NativePlayerSnapshot) {
       buffer.putUint8(135);
       writeValue(buffer, value.encode());
-    } else if (value is NativeDeviceProbe) {
+    } else if (value is NativeDecoderInfo) {
       buffer.putUint8(136);
       writeValue(buffer, value.encode());
-    } else if (value is NativeStillRequest) {
+    } else if (value is NativeDeviceProbe) {
       buffer.putUint8(137);
       writeValue(buffer, value.encode());
-    } else if (value is NativeStill) {
+    } else if (value is NativeStillRequest) {
       buffer.putUint8(138);
+      writeValue(buffer, value.encode());
+    } else if (value is NativeStill) {
+      buffer.putUint8(139);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -824,22 +830,25 @@ class _PigeonCodec extends StandardMessageCodec {
         return value == null ? null : NativePlayerPhase.values[value];
       case 130:
         final value = readValue(buffer) as int?;
-        return value == null ? null : NativeAudioFocusChange.values[value];
+        return value == null ? null : NativeAudioFocusMode.values[value];
       case 131:
-        return NativePlayerSource.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : NativeAudioFocusChange.values[value];
       case 132:
-        return NativeStreamPart.decode(readValue(buffer)!);
+        return NativePlayerSource.decode(readValue(buffer)!);
       case 133:
-        return NativePlayerSettings.decode(readValue(buffer)!);
+        return NativeStreamPart.decode(readValue(buffer)!);
       case 134:
-        return NativePlayerSnapshot.decode(readValue(buffer)!);
+        return NativePlayerSettings.decode(readValue(buffer)!);
       case 135:
-        return NativeDecoderInfo.decode(readValue(buffer)!);
+        return NativePlayerSnapshot.decode(readValue(buffer)!);
       case 136:
-        return NativeDeviceProbe.decode(readValue(buffer)!);
+        return NativeDecoderInfo.decode(readValue(buffer)!);
       case 137:
-        return NativeStillRequest.decode(readValue(buffer)!);
+        return NativeDeviceProbe.decode(readValue(buffer)!);
       case 138:
+        return NativeStillRequest.decode(readValue(buffer)!);
+      case 139:
         return NativeStill.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -1048,7 +1057,7 @@ class PlayerHostApi {
     );
   }
 
-  Future<void> requestAudioFocus() async {
+  Future<void> requestAudioFocus(NativeAudioFocusMode mode) async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.mpx_player.PlayerHostApi.requestAudioFocus$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -1056,7 +1065,9 @@ class PlayerHostApi {
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[mode],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(

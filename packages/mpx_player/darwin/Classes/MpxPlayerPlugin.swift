@@ -109,7 +109,7 @@ public class MpxPlayerPlugin: NSObject, FlutterPlugin, PlayerHostApi {
 
   // --- Audio session ---------------------------------------------------------
 
-  func requestAudioFocus() throws { audioSession.request() }
+  func requestAudioFocus(mode: NativeAudioFocusMode) throws { audioSession.request(mode) }
 
   func abandonAudioFocus() throws { audioSession.abandon() }
 

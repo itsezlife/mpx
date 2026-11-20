@@ -101,7 +101,8 @@ final class SimulatedHost implements PlayerHostApi {
   }
 
   @override
-  Future<void> requestAudioFocus() async => calls.add('requestAudioFocus');
+  Future<void> requestAudioFocus(NativeAudioFocusMode mode) async =>
+      calls.add('requestAudioFocus ${mode.name}');
 
   @override
   Future<void> abandonAudioFocus() async => calls.add('abandonAudioFocus');

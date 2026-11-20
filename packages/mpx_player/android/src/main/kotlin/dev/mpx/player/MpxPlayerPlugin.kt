@@ -140,7 +140,7 @@ class MpxPlayerPlugin : FlutterPlugin, ActivityAware, PlayerHostApi {
 
     // --- Audio focus --------------------------------------------------------
 
-    override fun requestAudioFocus() = focus.request()
+    override fun requestAudioFocus(mode: NativeAudioFocusMode) = focus.request(mode)
 
     override fun abandonAudioFocus() = focus.abandon()
 

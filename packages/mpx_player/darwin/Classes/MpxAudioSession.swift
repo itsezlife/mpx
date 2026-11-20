@@ -33,12 +33,20 @@ final class MpxAudioSession {
     observers.forEach(NotificationCenter.default.removeObserver)
   }
 
-  func request() {
+  func request(_ mode: NativeAudioFocusMode) {
     held = true
     #if os(iOS)
       let session = AVAudioSession.sharedInstance()
+      // Exclusive interrupts other apps' audio; duck lowers it; mix plays
+      // over it.
+      let options: AVAudioSession.CategoryOptions =
+        switch mode {
+        case .exclusive: []
+        case .duck: [.duckOthers]
+        case .mix: [.mixWithOthers]
+        }
       do {
-        try session.setCategory(.playback, mode: .moviePlayback)
+        try session.setCategory(.playback, mode: .moviePlayback, options: options)
         try session.setActive(true)
       } catch {
         // Another app holds a session that cannot be interrupted (a call):

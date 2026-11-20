@@ -210,6 +210,19 @@ enum class NativePlayerPhase(val raw: Int) {
   }
 }
 
+/** How a request takes the platform's sound; see `PlayerAudioFocus`. */
+enum class NativeAudioFocusMode(val raw: Int) {
+  EXCLUSIVE(0),
+  DUCK(1),
+  MIX(2);
+
+  companion object {
+    fun ofRaw(raw: Int): NativeAudioFocusMode? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
 /** What the platform's audio session says; see `AudioFocusChange`. */
 enum class NativeAudioFocusChange(val raw: Int) {
   GAINED(0),
@@ -801,45 +814,50 @@ private open class PlayerMessagesPigeonCodec : StandardMessageCodec() {
       }
       130.toByte() -> {
         return (readValue(buffer) as Long?)?.let {
-          NativeAudioFocusChange.ofRaw(it.toInt())
+          NativeAudioFocusMode.ofRaw(it.toInt())
         }
       }
       131.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          NativePlayerSource.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          NativeAudioFocusChange.ofRaw(it.toInt())
         }
       }
       132.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          NativeStreamPart.fromList(it)
+          NativePlayerSource.fromList(it)
         }
       }
       133.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          NativePlayerSettings.fromList(it)
+          NativeStreamPart.fromList(it)
         }
       }
       134.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          NativePlayerSnapshot.fromList(it)
+          NativePlayerSettings.fromList(it)
         }
       }
       135.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          NativeDecoderInfo.fromList(it)
+          NativePlayerSnapshot.fromList(it)
         }
       }
       136.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          NativeDeviceProbe.fromList(it)
+          NativeDecoderInfo.fromList(it)
         }
       }
       137.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          NativeStillRequest.fromList(it)
+          NativeDeviceProbe.fromList(it)
         }
       }
       138.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          NativeStillRequest.fromList(it)
+        }
+      }
+      139.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           NativeStill.fromList(it)
         }
@@ -853,40 +871,44 @@ private open class PlayerMessagesPigeonCodec : StandardMessageCodec() {
         stream.write(129)
         writeValue(stream, value.raw.toLong())
       }
-      is NativeAudioFocusChange -> {
+      is NativeAudioFocusMode -> {
         stream.write(130)
         writeValue(stream, value.raw.toLong())
       }
-      is NativePlayerSource -> {
+      is NativeAudioFocusChange -> {
         stream.write(131)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is NativeStreamPart -> {
+      is NativePlayerSource -> {
         stream.write(132)
         writeValue(stream, value.toList())
       }
-      is NativePlayerSettings -> {
+      is NativeStreamPart -> {
         stream.write(133)
         writeValue(stream, value.toList())
       }
-      is NativePlayerSnapshot -> {
+      is NativePlayerSettings -> {
         stream.write(134)
         writeValue(stream, value.toList())
       }
-      is NativeDecoderInfo -> {
+      is NativePlayerSnapshot -> {
         stream.write(135)
         writeValue(stream, value.toList())
       }
-      is NativeDeviceProbe -> {
+      is NativeDecoderInfo -> {
         stream.write(136)
         writeValue(stream, value.toList())
       }
-      is NativeStillRequest -> {
+      is NativeDeviceProbe -> {
         stream.write(137)
         writeValue(stream, value.toList())
       }
-      is NativeStill -> {
+      is NativeStillRequest -> {
         stream.write(138)
+        writeValue(stream, value.toList())
+      }
+      is NativeStill -> {
+        stream.write(139)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -908,7 +930,7 @@ interface PlayerHostApi {
   fun setLooping(playerId: Long, looping: Boolean)
   fun setVolume(playerId: Long, volume: Double)
   fun dispose(playerId: Long)
-  fun requestAudioFocus()
+  fun requestAudioFocus(mode: NativeAudioFocusMode)
   fun abandonAudioFocus()
   fun probe(): NativeDeviceProbe
   fun isPictureInPictureSupported(): Boolean
@@ -1101,9 +1123,11 @@ interface PlayerHostApi {
       run {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.mpx_player.PlayerHostApi.requestAudioFocus$separatedMessageChannelSuffix", codec)
         if (api != null) {
-          channel.setMessageHandler { _, reply ->
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val modeArg = args[0] as NativeAudioFocusMode
             val wrapped: List<Any?> = try {
-              api.requestAudioFocus()
+              api.requestAudioFocus(modeArg)
               listOf(null)
             } catch (exception: Throwable) {
               PlayerMessagesPigeonUtils.wrapError(exception)

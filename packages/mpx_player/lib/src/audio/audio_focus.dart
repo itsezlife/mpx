@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// What the system says about the app's right to play sound.
 enum AudioFocusChange {
   /// The app may play sound again after an [interrupted].
@@ -54,4 +56,26 @@ final class NoAudioFocus implements AudioFocus {
 
   @override
   Stream<AudioFocusChange> get changes => const Stream.empty();
+}
+
+/// How an audible player takes the platform's sound from other apps.
+enum PlayerAudioFocus {
+  /// Takes it: other apps' sound pauses while the player is audible, and
+  /// calls, alarms and other apps pause the player.
+  exclusive,
+
+  /// Asks other apps to lower their sound while the player is audible.
+  duck,
+
+  /// Plays over other apps' sound, which goes on as it was; only an output
+  /// going away (headphones out) is still reported.
+  mix;
+
+  /// The reference behaviour of [platform]: Android plays a video over the
+  /// music that plays; Apple platforms take the sound.
+  static PlayerAudioFocus forPlatform(TargetPlatform platform) =>
+      switch (platform) {
+        TargetPlatform.android => PlayerAudioFocus.mix,
+        _ => PlayerAudioFocus.exclusive,
+      };
 }

@@ -64,7 +64,7 @@ typedef PlayerPlaylistLoader = Future<Uint8List> Function(BytesRequest request);
 ///
 /// Also brings the platform's audio session ([audioFocus]: Android audio
 /// focus and the noisy-output broadcast, Apple's audio session; macOS has
-/// none), its picture in picture ([pictureInPicture]) and the hardware
+/// none), taken as [audioFocusMode] says, its picture in picture ([pictureInPicture]) and the hardware
 /// probe ([device]). Without [backgroundAudio] every player pauses when the
 /// app goes to the background, unless it is in picture in picture.
 ///
@@ -91,6 +91,7 @@ final class NativePlayerBackend implements PlayerBackend {
     bool backgroundAudio = false,
     PreparedBuffer preparedBuffer = PreparedBuffer.standard,
     PlayerSourceWatch? watchSource,
+    PlayerAudioFocus? audioFocus,
   }) : this.over(
          host: PlayerHostApi(),
          publish: (request) async {
@@ -118,6 +119,7 @@ final class NativePlayerBackend implements PlayerBackend {
          loadPlaylist: (playlists ?? BytesResolver.shared()).resolve,
          backgroundAudio: backgroundAudio,
          preparedBuffer: preparedBuffer,
+         audioFocus: audioFocus,
        );
 
   /// Creates the backend over [host], a stand-in for the platform side in
@@ -135,7 +137,10 @@ final class NativePlayerBackend implements PlayerBackend {
     bool receive = true,
     Stopwatch? clock,
     Timer Function(void Function() check)? startWatchdog,
-  }) : _clock = clock ?? (Stopwatch()..start()),
+    PlayerAudioFocus? audioFocus,
+  }) : audioFocusMode =
+           audioFocus ?? PlayerAudioFocus.forPlatform(defaultTargetPlatform),
+       _clock = clock ?? (Stopwatch()..start()),
        _startWatchdog =
            startWatchdog ??
            ((check) => Timer.periodic(_watchdogPeriod, (_) => check())),
@@ -198,6 +203,10 @@ final class NativePlayerBackend implements PlayerBackend {
   final PlayerSourcesOf _sourcesOf;
   final PlayerPlaylistLoader _loadPlaylist;
   final bool _backgroundAudio;
+
+  /// How an audible player takes the platform's sound; by default the
+  /// platform's reference behaviour ([PlayerAudioFocus.forPlatform]).
+  final PlayerAudioFocus audioFocusMode;
 
   /// How far a player that has not played yet buffers ahead.
   final PreparedBuffer preparedBuffer;
@@ -442,7 +451,15 @@ final class _NativeAudioFocus implements AudioFocus {
   @override
   void request() {
     if (!_backend._disposed) {
-      unawaited(_backend._send(_backend._host.requestAudioFocus()));
+      unawaited(
+        _backend._send(
+          _backend._host.requestAudioFocus(switch (_backend.audioFocusMode) {
+            PlayerAudioFocus.exclusive => NativeAudioFocusMode.exclusive,
+            PlayerAudioFocus.duck => NativeAudioFocusMode.duck,
+            PlayerAudioFocus.mix => NativeAudioFocusMode.mix,
+          }),
+        ),
+      );
     }
   }
 

@@ -158,6 +158,9 @@ class NativePlayerSnapshot {
   String? failedCodec;
 }
 
+/// How a request takes the platform's sound; see `PlayerAudioFocus`.
+enum NativeAudioFocusMode { exclusive, duck, mix }
+
 /// What the platform's audio session says; see `AudioFocusChange`.
 enum NativeAudioFocusChange { gained, lost, interrupted, outputRemoved }
 
@@ -227,7 +230,7 @@ abstract class PlayerHostApi {
   void setVolume(int playerId, double volume);
   void dispose(int playerId);
 
-  void requestAudioFocus();
+  void requestAudioFocus(NativeAudioFocusMode mode);
   void abandonAudioFocus();
 
   NativeDeviceProbe probe();

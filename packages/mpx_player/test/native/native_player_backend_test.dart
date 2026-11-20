@@ -1006,7 +1006,37 @@ void main() {
 
       expect(
         host.calls,
-        containsAllInOrder(['requestAudioFocus', 'abandonAudioFocus']),
+        containsAllInOrder([
+          startsWith('requestAudioFocus'),
+          'abandonAudioFocus',
+        ]),
+      );
+    });
+
+    test('the focus mode reaches the platform with each request', () async {
+      backend.dispose();
+      backend = NativePlayerBackend.over(
+        host: host = SimulatedHost(),
+        publish: (request) async => () async {},
+        readerApi: 0x1000,
+        sourcesOf: (key) => const [],
+        receive: false,
+        audioFocus: PlayerAudioFocus.duck,
+      );
+      backend.audioFocus.request();
+      await settle();
+      expect(host.calls, contains('requestAudioFocus duck'));
+    });
+
+    test('by default Android mixes with the sound that plays, Apple takes '
+        'it', () {
+      expect(
+        PlayerAudioFocus.forPlatform(TargetPlatform.android),
+        PlayerAudioFocus.mix,
+      );
+      expect(
+        PlayerAudioFocus.forPlatform(TargetPlatform.iOS),
+        PlayerAudioFocus.exclusive,
       );
     });
 

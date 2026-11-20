@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `PlayerAudioFocus` (`exclusive`, `duck`, `mix`) on `NativePlayerBackend`:
+  how an audible video takes the sound from other apps. By default Android
+  plays over the music that plays (`mix`) and Apple platforms take the
+  sound (`exclusive`).
 - `PlayerSource.local` (`PlayerSourceKind.local`): a file on the device (a
   `file:` URL, an Android `content:` URI) the platform player opens in place,
   past the bytes cache. `PlayerSourcesOf` may answer with a future, for a
