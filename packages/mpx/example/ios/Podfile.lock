@@ -11,6 +11,9 @@ PODS:
   - mpx (0.0.1):
     - Flutter
     - FlutterMacOS
+  - mpx_capture (0.0.1):
+    - Flutter
+    - FlutterMacOS
   - mpx_core (0.0.1):
     - Flutter
     - FlutterMacOS
@@ -31,6 +34,7 @@ DEPENDENCIES:
   - integration_test (from `.symlinks/plugins/integration_test/ios`)
   - irondash_engine_context (from `.symlinks/plugins/irondash_engine_context/ios`)
   - mpx (from `.symlinks/plugins/mpx/darwin`)
+  - mpx_capture (from `.symlinks/plugins/mpx_capture/darwin`)
   - mpx_core (from `.symlinks/plugins/mpx_core/darwin`)
   - mpx_library (from `.symlinks/plugins/mpx_library/darwin`)
   - mpx_player (from `.symlinks/plugins/mpx_player/darwin`)
@@ -50,6 +54,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/irondash_engine_context/ios"
   mpx:
     :path: ".symlinks/plugins/mpx/darwin"
+  mpx_capture:
+    :path: ".symlinks/plugins/mpx_capture/darwin"
   mpx_core:
     :path: ".symlinks/plugins/mpx_core/darwin"
   mpx_library:
@@ -68,6 +74,7 @@ SPEC CHECKSUMS:
   integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
   irondash_engine_context: 8e58ca8e0212ee9d1c7dc6a42121849986c88486
   mpx: ee4afd6125f6ec5d05f9bf3da39c91adde91c282
+  mpx_capture: 94cc85d1c7410a320e2ade3781a33651e3e15246
   mpx_core: 9ae8d0a68d78b47367b4bb8dd47d555532abb832
   mpx_library: 1cef2375b2808f3cecdcac4777d2b8f3b3661e7c
   mpx_player: ac175bf85c8d8d97bcfdff9479c3056f8a06184a

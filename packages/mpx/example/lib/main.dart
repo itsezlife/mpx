@@ -18,6 +18,7 @@ import 'package:mpx_example/lab/lab_coverage.dart';
 import 'package:mpx_example/lab/lab_viewer.dart';
 import 'package:mpx_example/lab/stress_feed.dart';
 import 'package:mpx_example/loading_demo.dart';
+import 'package:mpx_example/picker_page.dart';
 import 'package:mpx_lottie/mpx_lottie.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_player/native.dart';
@@ -499,6 +500,22 @@ class _MediaAppState extends State<MediaApp> {
                       ),
                     ),
                   ),
+                  // The device library is on Android and iOS only.
+                  if (Platform.isAndroid || Platform.isIOS)
+                    ListTile(
+                      title: const Text('Media picker'),
+                      subtitle: const Text('Library, camera, selection'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          settings: const RouteSettings(name: 'picker'),
+                          builder: (_) => PickerPage(
+                            store: widget.stack.store,
+                            clock: widget.stack.scope.clock,
+                          ),
+                        ),
+                      ),
+                    ),
                   const SizedBox(height: 8),
                   _SignalTile(label: 'Network', listenable: signals.network),
                   _SignalTile(

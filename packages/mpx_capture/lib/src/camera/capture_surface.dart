@@ -102,7 +102,9 @@ class CameraCaptureSurface extends StatefulWidget {
   });
 
   /// Shows the surface over the app as a route; completes when it closes.
-  /// [onCaptured] runs for each shot; the route pops on close.
+  /// [onCaptured] runs for each shot; the route pops on close. With [from]
+  /// (the camera slot's rectangle, global) it expands from there over
+  /// [transition] (350 ms), else it fades in.
   static Future<void> show(
     BuildContext context, {
     required CameraSession session,
@@ -111,8 +113,12 @@ class CameraCaptureSurface extends StatefulWidget {
     required ValueChanged<CameraShot> onCaptured,
     CaptureKinds kinds = CaptureKinds.photoAndVideo,
     CaptureCache? cache,
+    Rect? from,
+    Duration transition = const Duration(milliseconds: 350),
   }) => Navigator.of(context).push<void>(
     PageRouteBuilder<void>(
+      transitionDuration: transition,
+      reverseTransitionDuration: transition,
       pageBuilder: (context, _, _) => CameraCaptureSurface(
         session: session,
         labels: labels,
@@ -122,8 +128,32 @@ class CameraCaptureSurface extends StatefulWidget {
         kinds: kinds,
         cache: cache,
       ),
-      transitionsBuilder: (context, animation, _, child) =>
-          FadeTransition(opacity: animation, child: child),
+      transitionsBuilder: (context, animation, _, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        if (from == null) return FadeTransition(opacity: curved, child: child);
+        // Expands from the slot's rectangle (global) to the whole screen,
+        // the running preview inside all the way.
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final screen = Offset.zero & constraints.biggest;
+            return Stack(
+              children: [
+                PositionedTransition(
+                  rect: RelativeRectTween(
+                    begin: RelativeRect.fromRect(from, screen),
+                    end: RelativeRect.fill,
+                  ).animate(curved),
+                  child: ClipRect(child: child),
+                ),
+              ],
+            );
+          },
+        );
+      },
     ),
   );
 

@@ -19,6 +19,9 @@ dependencies:
     path: ../../http_bytes_cache
   mpx:
     path: ..
+  # The media picker page: the camera session and the capture surface.
+  mpx_capture:
+    path: ../../mpx_capture
   mpx_core:
     path: ../../mpx_core
   # The device library: its plugin's native side, and the fake library the

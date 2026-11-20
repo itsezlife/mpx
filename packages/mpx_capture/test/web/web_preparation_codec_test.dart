@@ -44,15 +44,18 @@ void main() {
 
   test('the web policy keeps a small PNG, end to end', () async {
     final url = await _pngUrl(800, 600);
-    final prepared = await MediaPreparer(
-      codec: codec,
-      transcoder: FakeTranscoder(),
-      outputDirectory: 'memory',
-    ).prepare(
-      PreparationInput(url, mimeType: 'image/png'),
-      const PreparationIntent.photo(),
-      PreparationPolicy.$Web,
-    ).result;
+    final prepared =
+        await MediaPreparer(
+              codec: codec,
+              transcoder: FakeTranscoder(),
+              outputDirectory: 'memory',
+            )
+            .prepare(
+              PreparationInput(url, mimeType: 'image/png'),
+              const PreparationIntent.photo(),
+              PreparationPolicy.$Web,
+            )
+            .result;
     expect(prepared.isOriginal, isTrue);
     expect(prepared.thumbnail, isNotEmpty);
   });
