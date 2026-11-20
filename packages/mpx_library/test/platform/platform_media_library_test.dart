@@ -95,6 +95,10 @@ void main() {
             throw PlatformException(code: 'unavailable');
           }
           return Uint8List.fromList([1, 2, 3]);
+        case 'present':
+          final args = call.arguments as Map<Object?, Object?>;
+          final ids = (args['ids']! as List).cast<String>();
+          return ids.where((id) => id != 'gone').toList();
         case 'playable':
           final args = call.arguments as Map<Object?, Object?>;
           if (args['id'] == 'gone') {
@@ -263,6 +267,16 @@ void main() {
     await expectLater(
       lib.original(const LibraryAssetId('offline')),
       throwsA(isA<LibraryDownloadFailed>()),
+    );
+  });
+
+  test('missing asks the platform which assets it still holds', () async {
+    final media = library();
+    addTearDown(media.dispose);
+    await pumpEventQueue();
+    expect(
+      await media.missing(const [LibraryAssetId('a'), LibraryAssetId('gone')]),
+      {const LibraryAssetId('gone')},
     );
   });
 

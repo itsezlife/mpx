@@ -78,6 +78,7 @@ final class PickerHarness {
     bool reorder = false,
     double keyboard = 0,
     String? viewerTitle,
+    void Function(List<MediaKey> keys)? onRemoved,
     ScrollController? controller,
     LibraryGridLookup? lookup,
     Widget Function(BuildContext context, Widget grid)? gridBuilder,
@@ -132,6 +133,7 @@ final class PickerHarness {
                         : null,
                     onReorder: reorder ? selection.move : null,
                     viewerTitle: viewerTitle,
+                    onRemoved: onRemoved,
                     viewerBottomBuilder: viewerSlot
                         ? (context, item) {
                             slotItems.add(item);
@@ -467,5 +469,67 @@ void main() {
       expect(cell(0), findsOneWidget);
     }
     expect(grid.pages, same(pages));
+  });
+
+  group('library changes', () {
+    testWidgets('a selected item deleted from the device leaves the '
+        'selection, and the rest renumber', (tester) async {
+      final h = PickerHarness();
+      await h.pump(tester);
+      for (final i in [0, 1, 2]) {
+        h.selection.toggle(key(i));
+      }
+      h.library.remove({FakeMediaLibrary.assetAt(1).id});
+      await PickerHarness.settle(tester);
+      expect(h.selection.keys, [key(0), key(2)]);
+      expect(h.selection.orderOf(key(2)), 2);
+    });
+
+    testWidgets('a host that takes the removals itself is told them', (
+      tester,
+    ) async {
+      final h = PickerHarness();
+      final told = <List<MediaKey>>[];
+      await h.pump(tester, onRemoved: told.add);
+      h.selection
+        ..toggle(key(0))
+        ..toggle(key(1));
+      h.library.remove({FakeMediaLibrary.assetAt(0).id});
+      await PickerHarness.settle(tester);
+      expect(told, [
+        [key(0)],
+      ]);
+      expect(h.selection.keys, [key(0), key(1)], reason: 'the host decides');
+    });
+
+    testWidgets('an album whose cover went shows its next item and count', (
+      tester,
+    ) async {
+      final h = PickerHarness();
+      final first = FakeMediaLibrary.assetAt(5);
+      final next = FakeMediaLibrary.assetAt(6);
+      h.library.addAlbum(
+        const LibraryAlbumId('camera'),
+        kind: LibraryAlbumKind.camera,
+        title: '',
+        assets: [first.id, next.id],
+      );
+      await h.pump(tester);
+      h.library.remove({first.id});
+      await PickerHarness.settle(tester);
+      await tester.tap(find.byKey(const ValueKey('mpx-album-switcher')));
+      await PickerHarness.settle(tester);
+      final row = find.byKey(const ValueKey('mpx-album-camera'));
+      final covers = tester
+          .widgetList<ContentView>(
+            find.descendant(of: row, matching: find.byType(ContentView)),
+          )
+          .map((v) => v.content);
+      expect(covers, [LibraryKeys.thumbnailKeyOf(next, 40)]);
+      expect(
+        find.descendant(of: row, matching: find.text('1')),
+        findsOneWidget,
+      );
+    });
   });
 }

@@ -275,6 +275,16 @@ import Foundation
       lock.unlock()
     }
 
+    /// The ones of `ids` the library still holds.
+    func present(ids: [String]) -> [String] {
+      guard !ids.isEmpty else { return [] }
+      var found: [String] = []
+      PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil).enumerateObjects { asset, _, _ in
+        found.append(asset.localIdentifier)
+      }
+      return found
+    }
+
     /// The file URL of video `id`'s original, which a player reads in
     /// place (a cloud-held one downloads first); nil for a photo, or a
     /// video PhotoKit hands over as a composition and not as a file.

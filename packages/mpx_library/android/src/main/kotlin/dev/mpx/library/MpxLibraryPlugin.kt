@@ -173,6 +173,10 @@ class MpxLibraryPlugin :
             }
             // A video's content URI, which a player reads in place; null
             // for a photo.
+            // The ids of the given ones the library still holds.
+            "present" -> background(result) {
+                library.present(call.argument<List<String>>("ids") ?: emptyList())
+            }
             "playable" -> background(result) {
                 library.playable(call.argument<String>("id") ?: "")
             }

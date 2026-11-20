@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `LibraryPicker` reads the albums again on a library change (covers and
+  counts follow) and drops selected items the library no longer holds
+  (`onRemoved` lets a host take them instead). The picker-mode viewer has a
+  top bar: back, the host's title (`viewerTitle`), a video's info line on
+  `$Android` (`viewerSubtitleOf`, `PickerViewer.videoInfo`), the count and
+  the check.
 - Picker-mode viewer: the check and the count as a numbered circle and an
   outlined pill on one line; the selected strip shows an item on a tap,
   deselects on its check, reorders on a long press drag (`onReorder` on

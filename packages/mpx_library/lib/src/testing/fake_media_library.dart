@@ -279,6 +279,15 @@ final class FakeMediaLibrary implements MediaLibrary {
     return _FakeLease(file.path, _assets[asset]?.mimeType, () => openLeases--);
   }
 
+  @override
+  Future<Set<LibraryAssetId>> missing(Iterable<LibraryAssetId> assets) async {
+    final readable = _access.value.canRead;
+    return {
+      for (final id in assets)
+        if (!readable || !_assets.containsKey(id)) id,
+    };
+  }
+
   /// A video's URI is `fake-library:<id>`; nothing plays it.
   @override
   Future<Uri?> playable(LibraryAssetId asset) async {

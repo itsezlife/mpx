@@ -191,6 +191,16 @@ abstract final class MediaLibraryContract {
         expect(await library().playable(missing), isNull);
       });
 
+      test('missing names the assets the library no longer holds', () async {
+        final album = await allMedia();
+        if (album == null || album.count == 0) return;
+        final page = await library().page(album.id, offset: 0, limit: 2);
+        const gone = LibraryAssetId('mpx-contract-missing-asset');
+        final asked = [...page.assets.map((a) => a.id), gone];
+        expect(await library().missing(asked), {gone});
+        expect(await library().missing(const []), isEmpty);
+      });
+
       test('a video plays in place from its URI; a photo has none', () async {
         final album = await allMedia();
         if (album == null || album.count == 0) return;

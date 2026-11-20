@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `MediaLibrary.missing`: which of some assets the library no longer
+  holds, for a host checking its selection after a change.
+  `LibraryAsset.byteSize` (Android). A host that implements `MediaLibrary`
+  adds `missing`.
 - `MediaLibrary.playable`: the URI a player reads a library video from in
   place (Android's content URI, the iOS original's file URL). A host that
   implements `MediaLibrary` adds it.

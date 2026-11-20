@@ -131,6 +131,13 @@ abstract interface class MediaLibrary {
     CancellationToken? cancellation,
   });
 
+  /// Which of [assets] the library no longer holds (deleted on the device,
+  /// or out of the items the user allowed). A host checks its selection
+  /// against it after a change, since a platform's change event may not say
+  /// what went. Empty when every one is there; nothing is read without
+  /// read access, and then every one counts as missing.
+  Future<Set<LibraryAssetId>> missing(Iterable<LibraryAssetId> assets);
+
   /// A URI a platform player reads [asset]'s video from in place, without
   /// a copy: on Android its MediaStore content URI, on iOS the file URL of
   /// its original (a cloud-held one downloads first). Null for a photo, an

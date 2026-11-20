@@ -53,6 +53,7 @@ class LibraryPicker extends StatefulWidget {
     this.onReorder,
     this.viewerTitle,
     this.viewerSubtitleOf,
+    this.onRemoved,
     this.onOpen,
     this.viewerBottomBuilder,
     this.players,
@@ -122,6 +123,12 @@ class LibraryPicker extends StatefulWidget {
   /// nothing for a photo.
   final String? Function(LibraryAsset asset)? viewerSubtitleOf;
 
+  /// Told the selected library items a library change took away (deleted
+  /// on the device, or no longer allowed). When null the picker deselects
+  /// them itself (`PickerSelection.toggleRange` to false), so the rest
+  /// renumber; a host that keeps its own record of picks takes them here.
+  final void Function(List<MediaKey> keys)? onRemoved;
+
   /// Called by a tap on a picture instead of the picker-mode viewer.
   final void Function(LibraryAsset asset, int index)? onOpen;
 
@@ -180,7 +187,49 @@ class LibraryPickerState extends State<LibraryPicker> {
     super.initState();
     widget.library.access.addListener(_onAccess);
     _lifecycle = AppLifecycleListener(onResume: reload);
+    _changes = widget.library.changes.listen(_onChange);
     _onAccess();
+  }
+
+  StreamSubscription<LibraryChange>? _changes;
+  bool _changePending = false;
+  bool _changeHeld = false;
+
+  // A change (one per album it touched, arriving together) reads the
+  // albums again, so covers and counts follow, and checks the selection's
+  // library items are still there: a platform's change may not say what
+  // went.
+  void _onChange(LibraryChange _) {
+    // A policy that holds changes while the viewer is open (the viewer
+    // pages the same pages) takes them when it closes.
+    if (_viewerOpen && widget.policy.defersChangesWhileViewerOpen) {
+      _changeHeld = true;
+      return;
+    }
+    if (_changePending) return;
+    _changePending = true;
+    scheduleMicrotask(() async {
+      _changePending = false;
+      if (!mounted) return;
+      await reload();
+      await _dropMissing();
+    });
+  }
+
+  Future<void> _dropMissing() async {
+    final selected = <LibraryAssetId, MediaKey>{
+      for (final key in widget.selection.keys)
+        if (LibraryKeys.read(key) case final target? when !target.isThumbnail)
+          target.asset: key,
+    };
+    if (selected.isEmpty) return;
+    final gone = await widget.library.missing(selected.keys);
+    if (!mounted || gone.isEmpty) return;
+    final keys = [for (final id in gone) selected[id]!];
+    if (widget.onRemoved case final told?) return told(keys);
+    for (final (key, reason) in widget.selection.toggleRange(keys, to: false)) {
+      widget.onRefused?.call(key, reason);
+    }
   }
 
   @override
@@ -189,6 +238,8 @@ class LibraryPickerState extends State<LibraryPicker> {
     if (!identical(oldWidget.library, widget.library)) {
       oldWidget.library.access.removeListener(_onAccess);
       widget.library.access.addListener(_onAccess);
+      unawaited(_changes?.cancel());
+      _changes = widget.library.changes.listen(_onChange);
       _bind(null);
       _albums = null;
       _onAccess();
@@ -198,6 +249,7 @@ class LibraryPickerState extends State<LibraryPicker> {
   @override
   void dispose() {
     widget.library.access.removeListener(_onAccess);
+    unawaited(_changes?.cancel());
     _lifecycle?.dispose();
     _gallery?.dispose();
     _pages?.dispose();
@@ -218,7 +270,7 @@ class LibraryPickerState extends State<LibraryPicker> {
   }
 
   /// Reads the albums again and rebinds the grid's pages (the app resumed,
-  /// or access changed).
+  /// access changed, or the library changed).
   Future<void> reload() async {
     final albums = await widget.library.albums();
     if (!mounted) return;
@@ -272,6 +324,10 @@ class LibraryPickerState extends State<LibraryPicker> {
       bridge: _origins.currentState?.bridgeFor(gallery),
     );
     if (mounted) setState(() => _viewerOpen = false);
+    if (_changeHeld && mounted) {
+      _changeHeld = false;
+      _onChange(const LibraryChange.reload());
+    }
   }
 
   // The text root: the grid and its states draw text of their own, and a

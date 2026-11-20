@@ -270,6 +270,26 @@ class MediaStoreLibrary(private val context: Context) {
         )
     }
 
+    /** The ones of [ids] that are still rows of the library. */
+    fun present(ids: List<String>): List<String> {
+        val rows = ids.mapNotNull { it.toLongOrNull() }
+        if (rows.isEmpty()) return emptyList()
+        val found = mutableListOf<String>()
+        for (chunk in rows.chunked(500)) {
+            val marks = chunk.joinToString(",") { "?" }
+            resolver.query(
+                files,
+                arrayOf(MediaStore.MediaColumns._ID),
+                "${MediaStore.MediaColumns._ID} IN ($marks)",
+                chunk.map { it.toString() }.toTypedArray(),
+                null,
+            )?.use { cursor ->
+                while (cursor.moveToNext()) found.add(cursor.getLong(0).toString())
+            }
+        }
+        return found
+    }
+
     /**
      * The content URI of video [id], which a player opens in place (no copy,
      * unlike [original]); null for a photo or a row that is gone.

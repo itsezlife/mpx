@@ -215,6 +215,27 @@ final class PlatformMediaLibrary implements MediaLibrary {
   }
 
   @override
+  Future<Set<LibraryAssetId>> missing(Iterable<LibraryAssetId> assets) async {
+    final ids = [for (final id in assets) id.value];
+    if (ids.isEmpty) return const {};
+    if (!_access.value.canRead) return {...assets};
+    try {
+      final present = await _methods.invokeListMethod<String>('present', {
+        'ids': ids,
+      });
+      final held = {...?present};
+      return {
+        for (final id in assets)
+          if (!held.contains(id.value)) id,
+      };
+    } on PlatformException {
+      return const {};
+    } on MissingPluginException {
+      return const {};
+    }
+  }
+
+  @override
   Future<Uri?> playable(LibraryAssetId asset) async {
     try {
       final url = await _read<String>(asset, 'playable', {'id': asset.value});
