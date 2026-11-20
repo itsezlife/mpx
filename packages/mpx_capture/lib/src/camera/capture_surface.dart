@@ -98,8 +98,15 @@ class CameraCaptureSurface extends StatefulWidget {
     required this.onClose,
     this.kinds = CaptureKinds.photoAndVideo,
     this.cache,
+    this.expandFrom,
+    this.expansion,
+    this.controlsReveal,
     super.key,
   });
+
+  /// The share of [show]'s transition the controls take to fade, after the
+  /// preview has expanded (and before it collapses).
+  static const Duration controlsFade = Duration(milliseconds: 150);
 
   /// Shows the surface over the app as a route; completes when it closes.
   /// [onCaptured] runs for each shot; the route pops on close. With [from]
@@ -115,47 +122,52 @@ class CameraCaptureSurface extends StatefulWidget {
     CaptureCache? cache,
     Rect? from,
     Duration transition = const Duration(milliseconds: 350),
-  }) => Navigator.of(context).push<void>(
-    PageRouteBuilder<void>(
-      transitionDuration: transition,
-      reverseTransitionDuration: transition,
-      pageBuilder: (context, _, _) => CameraCaptureSurface(
-        session: session,
-        labels: labels,
-        outputDirectory: outputDirectory,
-        onCaptured: onCaptured,
-        onClose: () => Navigator.of(context).pop(),
-        kinds: kinds,
-        cache: cache,
-      ),
-      transitionsBuilder: (context, animation, _, child) {
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-          reverseCurve: Curves.easeInCubic,
-        );
-        if (from == null) return FadeTransition(opacity: curved, child: child);
-        // Expands from the slot's rectangle (global) to the whole screen,
-        // the running preview inside all the way.
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final screen = Offset.zero & constraints.biggest;
-            return Stack(
-              children: [
-                PositionedTransition(
-                  rect: RelativeRectTween(
-                    begin: RelativeRect.fromRect(from, screen),
-                    end: RelativeRect.fill,
-                  ).animate(curved),
-                  child: ClipRect(child: child),
-                ),
-              ],
-            );
+  }) {
+    // Expanding, only the preview morphs: the controls are laid out at the
+    // whole screen throughout, and fade in once the preview has expanded
+    // (out before it collapses), on a route that runs both in turn.
+    final total = from == null ? transition : transition + controlsFade;
+    final split = transition.inMicroseconds / total.inMicroseconds;
+    return Navigator.of(context).push<void>(
+      PageRouteBuilder<void>(
+        transitionDuration: total,
+        reverseTransitionDuration: total,
+        pageBuilder: (context, animation, _) => CameraCaptureSurface(
+          session: session,
+          labels: labels,
+          outputDirectory: outputDirectory,
+          onCaptured: onCaptured,
+          onClose: () => Navigator.of(context).pop(),
+          kinds: kinds,
+          cache: cache,
+          expandFrom: from,
+          expansion: switch (from) {
+            null => null,
+            _ => CurvedAnimation(
+              parent: animation,
+              curve: Interval(0, split, curve: Curves.easeOutCubic),
+              reverseCurve: Interval(0, split, curve: Curves.easeInCubic),
+            ),
           },
-        );
-      },
-    ),
-  );
+          controlsReveal: switch (from) {
+            null => null,
+            _ => CurvedAnimation(parent: animation, curve: Interval(split, 1)),
+          },
+        ),
+        transitionsBuilder: (context, animation, _, child) {
+          if (from != null) return child;
+          return FadeTransition(
+            opacity: CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+              reverseCurve: Curves.easeInCubic,
+            ),
+            child: child,
+          );
+        },
+      ),
+    );
+  }
 
   /// The running session.
   final CameraSession session;
@@ -177,6 +189,20 @@ class CameraCaptureSurface extends StatefulWidget {
 
   /// Where captures move to, under a local key; null to leave them as files.
   final CaptureCache? cache;
+
+  /// The rectangle (global) the preview expands from as [expansion] runs;
+  /// null for a surface that is simply there.
+  final Rect? expandFrom;
+
+  /// The preview's expansion, 0 at [expandFrom] and 1 at the whole screen.
+  /// Only the preview moves: the controls are laid out at the whole screen
+  /// throughout. Null without [expandFrom].
+  final Animation<double>? expansion;
+
+  /// The controls' opacity, which [show] runs after the [expansion] (and,
+  /// backwards, before it); they take no touches until it is 1. Null for
+  /// controls that are simply there.
+  final Animation<double>? controlsReveal;
 
   @override
   State<CameraCaptureSurface> createState() => _CameraCaptureSurfaceState();
@@ -304,72 +330,118 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface> {
 
   @override
   Widget build(BuildContext context) {
-    final labels = widget.labels;
-    return ColoredBox(
+    final preview = ColoredBox(
       color: const Color(0xFF000000),
-      child: ValueListenableBuilder<CameraSessionValue>(
-        valueListenable: _session.value,
-        builder: (context, value, _) => Stack(
+      child: CameraPreview(session: _session),
+    );
+    final controls = ValueListenableBuilder<CameraSessionValue>(
+      valueListenable: _session.value,
+      builder: (context, value, _) => _controls(value),
+    );
+    final from = widget.expandFrom;
+    final expand = widget.expansion;
+    final fade = widget.controlsReveal;
+    final shown = switch (fade) {
+      // Laid out at the whole screen at every step; shown, and touchable,
+      // only once the preview fills it.
+      final fade? => AnimatedBuilder(
+        animation: fade,
+        child: controls,
+        builder: (context, controls) => IgnorePointer(
+          ignoring: fade.value < 1,
+          child: Opacity(
+            key: const ValueKey('mpx-capture-controls-fade'),
+            opacity: fade.value.clamp(0.0, 1.0),
+            child: controls,
+          ),
+        ),
+      ),
+      null => controls,
+    };
+    if (from == null || expand == null) {
+      return Stack(fit: StackFit.expand, children: [preview, shown]);
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // The route covers the screen: [from], global, is in its space.
+        final screen = Offset.zero & constraints.biggest;
+        return Stack(
           fit: StackFit.expand,
           children: [
-            CameraPreview(session: _session),
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        _GlyphButton(
-                          key: const ValueKey('mpx-capture-close'),
-                          glyph: _Glyph.close,
-                          label: labels.close,
-                          onTap: widget.onClose,
-                        ),
-                        const Spacer(),
-                        if (value.hasFlash)
-                          _GlyphButton(
-                            key: const ValueKey('mpx-capture-flash'),
-                            glyph: switch (value.flash) {
-                              CameraFlash.off => _Glyph.flashOff,
-                              CameraFlash.auto => _Glyph.flashAuto,
-                              CameraFlash.on => _Glyph.flashOn,
-                            },
-                            label: labels.flash,
-                            value: value.flash.name,
-                            onTap: _cycleFlash,
-                          ),
-                      ],
-                    ),
-                    const Spacer(),
-                    Row(
-                      children: [
-                        const SizedBox(width: 48),
-                        const Spacer(),
-                        _Shutter(
-                          label: labels.shutter,
-                          recording: value.isRecording,
-                          enabled: value.isAvailable && !value.isPaused,
-                          onTap: _tap,
-                          onHoldStart: _holdStart,
-                          onHoldEnd: _holdEnd,
-                        ),
-                        const Spacer(),
-                        if (value.canSwitchCamera && !value.isRecording)
-                          _GlyphButton(
-                            key: const ValueKey('mpx-capture-switch'),
-                            glyph: _Glyph.switchCamera,
-                            label: labels.switchCamera,
-                            onTap: () =>
-                                unawaited(_quietly(_session.switchCamera)),
-                          )
-                        else
-                          const SizedBox(width: 48),
-                      ],
-                    ),
-                  ],
-                ),
+            AnimatedBuilder(
+              animation: expand,
+              child: preview,
+              builder: (context, preview) => Stack(
+                children: [
+                  Positioned.fromRect(
+                    rect: Rect.lerp(from, screen, expand.value)!,
+                    child: ClipRect(child: preview),
+                  ),
+                ],
               ),
+            ),
+            shown,
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _controls(CameraSessionValue value) {
+    final labels = widget.labels;
+    return SafeArea(
+      key: const ValueKey('mpx-capture-controls'),
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                _GlyphButton(
+                  key: const ValueKey('mpx-capture-close'),
+                  glyph: _Glyph.close,
+                  label: labels.close,
+                  onTap: widget.onClose,
+                ),
+                const Spacer(),
+                if (value.hasFlash)
+                  _GlyphButton(
+                    key: const ValueKey('mpx-capture-flash'),
+                    glyph: switch (value.flash) {
+                      CameraFlash.off => _Glyph.flashOff,
+                      CameraFlash.auto => _Glyph.flashAuto,
+                      CameraFlash.on => _Glyph.flashOn,
+                    },
+                    label: labels.flash,
+                    value: value.flash.name,
+                    onTap: _cycleFlash,
+                  ),
+              ],
+            ),
+            const Spacer(),
+            Row(
+              children: [
+                const SizedBox(width: 48),
+                const Spacer(),
+                _Shutter(
+                  label: labels.shutter,
+                  recording: value.isRecording,
+                  enabled: value.isAvailable && !value.isPaused,
+                  onTap: _tap,
+                  onHoldStart: _holdStart,
+                  onHoldEnd: _holdEnd,
+                ),
+                const Spacer(),
+                if (value.canSwitchCamera && !value.isRecording)
+                  _GlyphButton(
+                    key: const ValueKey('mpx-capture-switch'),
+                    glyph: _Glyph.switchCamera,
+                    label: labels.switchCamera,
+                    onTap: () => unawaited(_quietly(_session.switchCamera)),
+                  )
+                else
+                  const SizedBox(width: 48),
+              ],
             ),
           ],
         ),

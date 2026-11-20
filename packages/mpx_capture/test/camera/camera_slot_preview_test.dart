@@ -116,6 +116,8 @@ void main() {
     await settle(tester);
     expect(session.value.value.frameRateCap, isNull, reason: 'lifted');
     await tester.tap(find.byKey(const ValueKey('mpx-capture-close')));
+    // The controls fade out, then the preview collapses.
+    await settle(tester);
     await settle(tester);
     expect(find.byType(CameraCaptureSurface), findsNothing);
     expect(sessions.openCount, 1);

@@ -221,4 +221,90 @@ void main() {
     expect(session.value.value.frameRateCap, 30, reason: 'cap restored');
     expect(find.byType(Texture), findsOneWidget);
   });
+
+  testWidgets('expanding from the slot, only the preview morphs: the '
+      'controls are laid out at the whole screen at every step, fade in '
+      'after the expand and out before the collapse, and never overflow', (
+    tester,
+  ) async {
+    tester.view
+      ..physicalSize = const Size(400, 800)
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final session = await tester.runAsync(
+      () => sessions.open(frameRateCap: 30),
+    );
+    late BuildContext home;
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Navigator(
+          onGenerateRoute: (_) => PageRouteBuilder<void>(
+            pageBuilder: (context, _, _) {
+              home = context;
+              return const SizedBox.expand();
+            },
+          ),
+        ),
+      ),
+    );
+    const slot = Rect.fromLTWH(10, 300, 90, 90);
+    const screen = Size(400, 800);
+    final controls = find.byKey(const ValueKey('mpx-capture-controls'));
+    final preview = find.byType(CameraPreview);
+    double opacity() => tester
+        .widget<Opacity>(
+          find.byKey(const ValueKey('mpx-capture-controls-fade')),
+        )
+        .opacity;
+
+    CameraCaptureSurface.show(
+      home,
+      session: session!,
+      labels: _labels,
+      outputDirectory: directory.path,
+      onCaptured: shots.add,
+      from: slot,
+    ).ignore();
+    // 350 ms of expansion, then 150 ms of fade, sampled every 25 ms.
+    final opacities = <double>[];
+    for (var t = 0; t <= 500; t += 25) {
+      await tester.pump(
+        t == 0 ? Duration.zero : const Duration(milliseconds: 25),
+      );
+      expect(tester.takeException(), isNull, reason: 'no overflow at $t ms');
+      expect(tester.getSize(controls), screen, reason: 'controls at $t ms');
+      expect(
+        tester.getSize(find.byKey(const ValueKey('mpx-capture-shutter'))),
+        const Size(76, 76),
+      );
+      opacities.add(opacity());
+      if (t < 350) {
+        expect(opacity(), 0, reason: 'hidden while expanding ($t ms)');
+      }
+    }
+    expect(tester.getRect(preview), Offset.zero & screen);
+    expect(opacities.last, 1);
+    expect(opacities.first, 0);
+    await settle(tester);
+
+    await tester.tap(find.byKey(const ValueKey('mpx-capture-close')));
+    var collapsing = false;
+    for (var t = 0; t <= 500; t += 25) {
+      await tester.pump(
+        t == 0 ? Duration.zero : const Duration(milliseconds: 25),
+      );
+      expect(tester.takeException(), isNull, reason: 'no overflow at $t ms');
+      if (controls.evaluate().isEmpty) break;
+      expect(tester.getSize(controls), screen, reason: 'controls at $t ms');
+      final rect = tester.getRect(preview);
+      if (rect.size != screen) {
+        collapsing = true;
+        expect(opacity(), 0, reason: 'faded out before the collapse');
+      }
+    }
+    expect(collapsing, isTrue);
+    await tester.pumpAndSettle();
+    expect(find.byType(CameraCaptureSurface), findsNothing);
+  });
 }
