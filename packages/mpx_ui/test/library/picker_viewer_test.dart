@@ -4,6 +4,7 @@ import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_library/testing.dart';
 import 'package:mpx_ui/mpx_ui.dart';
+import 'package:mpx_ui/testing.dart';
 
 import 'library_picker_test.dart';
 
@@ -19,6 +20,7 @@ Future<void> _open(WidgetTester tester, int index) async {
   for (var i = 0; i < 20; i++) {
     await tester.pump(const Duration(milliseconds: 50));
   }
+  expectThemedText(tester);
 }
 
 Future<void> _close(WidgetTester tester) async {

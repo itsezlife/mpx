@@ -9,6 +9,7 @@ import 'package:mpx_ui/src/library/library_grid_policy.dart';
 import 'package:mpx_ui/src/library/library_grid_tokens.dart';
 import 'package:mpx_ui/src/library/library_pages.dart';
 import 'package:mpx_ui/src/library/picker_selection.dart';
+import 'package:mpx_ui/src/text/mpx_text_root.dart';
 import 'package:mpx_ui/src/viewer/gallery_source.dart';
 import 'package:mpx_ui/src/viewer/media_viewer.dart';
 import 'package:mpx_ui/src/viewer/origin_bridge.dart';
@@ -145,43 +146,47 @@ abstract final class PickerViewer {
     final rules = ViewerPolicyScope.resolve(context, policy: policy);
     final index = ValueNotifier(initialIndex);
     final controller = ViewerController();
+    final text = MpxTextRoot.styleOf(context);
     return Navigator.of(context)
         .push<void>(
           PageRouteBuilder<void>(
             opaque: false,
             transitionDuration: Duration.zero,
             reverseTransitionDuration: Duration.zero,
-            pageBuilder: (routeContext, _, _) => Stack(
-              fit: StackFit.expand,
-              children: [
-                MediaViewer(
-                  source: source,
-                  initialIndex: initialIndex,
-                  bridge: origins,
-                  policy: rules,
-                  tokens: viewerTokens,
-                  scope: scope,
-                  players: players,
-                  controller: controller,
-                  onIndexChanged: (value) {
-                    index.value = value;
-                    onIndexChanged?.call(value);
-                  },
-                  onClosed: () => Navigator.of(routeContext).pop(),
-                ),
-                PickerViewerChrome(
-                  source: source,
-                  index: index,
-                  selection: selection,
-                  labels: labels,
-                  policy: gridPolicy,
-                  tokens: tokens,
-                  bottomBuilder: bottomBuilder,
-                  onRefused: onRefused,
-                  onShow: controller.jumpTo,
-                  viewer: controller,
-                ),
-              ],
+            pageBuilder: (routeContext, _, _) => MpxTextRoot.over(
+              text,
+              Stack(
+                fit: StackFit.expand,
+                children: [
+                  MediaViewer(
+                    source: source,
+                    initialIndex: initialIndex,
+                    bridge: origins,
+                    policy: rules,
+                    tokens: viewerTokens,
+                    scope: scope,
+                    players: players,
+                    controller: controller,
+                    onIndexChanged: (value) {
+                      index.value = value;
+                      onIndexChanged?.call(value);
+                    },
+                    onClosed: () => Navigator.of(routeContext).pop(),
+                  ),
+                  PickerViewerChrome(
+                    source: source,
+                    index: index,
+                    selection: selection,
+                    labels: labels,
+                    policy: gridPolicy,
+                    tokens: tokens,
+                    bottomBuilder: bottomBuilder,
+                    onRefused: onRefused,
+                    onShow: controller.jumpTo,
+                    viewer: controller,
+                  ),
+                ],
+              ),
             ),
           ),
         )

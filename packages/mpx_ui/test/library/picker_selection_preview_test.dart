@@ -6,6 +6,7 @@ import 'package:mpx_core/testing.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_library/testing.dart';
 import 'package:mpx_ui/mpx_ui.dart';
+import 'package:mpx_ui/testing.dart';
 
 const _labels = LibraryGridLabels(
   photo: 'Photo',
@@ -51,16 +52,19 @@ void main() {
         textDirection: TextDirection.ltr,
         child: AssetCacheProvider(
           scope: scope,
-          child: PickerSelectionPreview(
-            selection: selection,
-            labels: _labels,
-            onOpen: (key, index) => opened.add((key, index)),
-            onReorder: reorder ? selection.move : null,
+          child: unthemedHost(
+            PickerSelectionPreview(
+              selection: selection,
+              labels: _labels,
+              onOpen: (key, index) => opened.add((key, index)),
+              onReorder: reorder ? selection.move : null,
+            ),
           ),
         ),
       ),
     );
     await tester.pump();
+    expectThemedText(tester);
   }
 
   Finder cell(int index) => find.byKey(ValueKey(_key(index)));

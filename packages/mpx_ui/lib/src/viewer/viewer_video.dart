@@ -8,6 +8,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_player/mpx_player.dart';
+import 'package:mpx_ui/src/text/mpx_text_root.dart';
 import 'package:mpx_ui/src/viewer/viewer_policy.dart';
 import 'package:mpx_ui/src/viewer/viewer_tokens.dart';
 
@@ -447,9 +448,12 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
     final state = widget.lease.state.value;
     final tokens = widget.tokens;
     final bottom = MediaQuery.paddingOf(context).bottom;
-    return DefaultTextStyle(
-      style: tokens.subtitle,
-      child: _controls(state, bottom),
+    return MpxTextRoot.wrap(
+      context,
+      DefaultTextStyle.merge(
+        style: tokens.subtitle,
+        child: _controls(state, bottom),
+      ),
     );
   }
 

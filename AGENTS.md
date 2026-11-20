@@ -61,6 +61,11 @@ There are no workspace lints; review holds these:
   new seam gets a fake, and a contract suite when it has more than one
   implementer.
 - Media is keyed by `MediaKey`, never by URL.
+- Text in `mpx_ui` sits under a text root: every route, overlay and popup it
+  pushes, and its own surfaces, start from `MpxTextRoot` (the pusher's
+  `DefaultTextStyle`, or the theme's body style when that is a fallback);
+  token styles merge over it (`DefaultTextStyle.merge`), never replace it.
+  Surface tests run under `unthemedHost` and call `expectThemedText`.
 - Native names start with `mpx_` / `dev.mpx.` / `MPX_` plus the owning
   component; the bytes cache's native reader uses `http_bytes_cache_*` /
   `hbc_*` (ADR 0009).

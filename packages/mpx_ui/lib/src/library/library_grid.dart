@@ -15,6 +15,7 @@ import 'package:mpx_ui/src/library/library_grid_policy.dart';
 import 'package:mpx_ui/src/library/library_grid_tokens.dart';
 import 'package:mpx_ui/src/library/library_pages.dart';
 import 'package:mpx_ui/src/library/picker_selection.dart';
+import 'package:mpx_ui/src/text/mpx_text_root.dart';
 
 /// What the camera slot's host builder is told: whether the preview in the
 /// slot should pause.
@@ -615,8 +616,13 @@ class LibraryGridState extends State<LibraryGrid>
 
   // --- Build ---
 
+  // The text root: the grid and its states draw text of their own, and a
+  // host that pushed them without one would draw it in the fallback style.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      MpxTextRoot.wrap(context, _content(context));
+
+  Widget _content(BuildContext context) {
     final policy = widget.policy;
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
     final screen = MediaQuery.maybeSizeOf(context);

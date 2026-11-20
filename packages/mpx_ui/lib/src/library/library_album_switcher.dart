@@ -5,6 +5,7 @@ import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_ui/src/library/library_grid_policy.dart';
 import 'package:mpx_ui/src/library/library_grid_tokens.dart';
+import 'package:mpx_ui/src/text/mpx_text_root.dart';
 
 /// The library album switcher: an anchor that shows the current album's
 /// name and opens the list of albums under it.
@@ -82,6 +83,7 @@ class LibraryAlbumSwitcher extends StatelessWidget {
     final box = context.findRenderObject() as RenderBox?;
     if (box == null) return;
     final anchor = box.localToGlobal(Offset.zero) & box.size;
+    final text = MpxTextRoot.styleOf(context);
     final chosen = await Navigator.of(context).push<LibraryAlbum>(
       PageRouteBuilder<LibraryAlbum>(
         opaque: false,
@@ -89,13 +91,16 @@ class LibraryAlbumSwitcher extends StatelessWidget {
         barrierColor: const Color(0x33000000),
         transitionDuration: const Duration(milliseconds: 150),
         reverseTransitionDuration: const Duration(milliseconds: 100),
-        pageBuilder: (context, _, _) => _AlbumMenu(
-          anchor: anchor,
-          albums: albums,
-          selected: selected,
-          labels: labels,
-          tokens: tokens,
-          ios: _ios,
+        pageBuilder: (context, _, _) => MpxTextRoot.over(
+          text,
+          _AlbumMenu(
+            anchor: anchor,
+            albums: albums,
+            selected: selected,
+            labels: labels,
+            tokens: tokens,
+            ios: _ios,
+          ),
         ),
         transitionsBuilder: (context, animation, _, child) =>
             FadeTransition(opacity: animation, child: child),

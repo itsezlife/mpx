@@ -9,6 +9,7 @@ import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_ui/src/library/library_grid_policy.dart';
 import 'package:mpx_ui/src/library/library_grid_tokens.dart';
 import 'package:mpx_ui/src/library/picker_selection.dart';
+import 'package:mpx_ui/src/text/mpx_text_root.dart';
 
 /// The selected-items preview: the items of a [PickerSelection] in their
 /// order, each with its order number, in the grid's columns and gaps.
@@ -169,8 +170,13 @@ class PickerSelectionPreviewState extends State<PickerSelectionPreview> {
     }
   }
 
+  // The text root: the grid and its states draw text of their own, and a
+  // host that pushed them without one would draw it in the fallback style.
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
+  Widget build(BuildContext context) =>
+      MpxTextRoot.wrap(context, _content(context));
+
+  Widget _content(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final policy = widget.policy;
       final size = constraints.biggest;

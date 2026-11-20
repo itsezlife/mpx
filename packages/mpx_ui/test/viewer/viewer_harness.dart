@@ -107,7 +107,8 @@ final class ViewerHarness {
       Directionality(
         textDirection: TextDirection.ltr,
         child: _hostStyle(
-          hostTextStyle,
+          // Without a host style: a host that gives no text root.
+          hostTextStyle ?? unthemedTextStyle,
           MediaViewer(
             source: source,
             initialIndex: 0,
@@ -132,6 +133,7 @@ final class ViewerHarness {
     await tester.pump();
     if (open)
       await tester.pump(policy.openDuration + const Duration(milliseconds: 1));
+    expectThemedText(tester);
   }
 
   static Widget _hostStyle(TextStyle? style, Widget child) =>

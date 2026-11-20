@@ -13,6 +13,7 @@ import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_ui/src/gallery/gallery_keep_alive.dart';
 import 'package:mpx_ui/src/gallery/gallery_pager.dart';
 import 'package:mpx_ui/src/known_descriptors.dart';
+import 'package:mpx_ui/src/text/mpx_text_root.dart';
 import 'package:mpx_ui/src/viewer/gallery_source.dart';
 import 'package:mpx_ui/src/viewer/origin_bridge.dart';
 import 'package:mpx_ui/src/viewer/viewer_actions.dart';
@@ -301,29 +302,33 @@ class MediaViewer extends StatefulWidget {
     final origins =
         bridge ?? ViewerOriginScope.maybeOf(context)?.bridgeFor(source);
     final rules = ViewerPolicyScope.resolve(context, policy: policy);
+    final text = MpxTextRoot.styleOf(context);
     return Navigator.of(context).push<void>(
       PageRouteBuilder<void>(
         opaque: false,
         transitionDuration: Duration.zero,
         reverseTransitionDuration: Duration.zero,
-        pageBuilder: (routeContext, _, _) => MediaViewer(
-          source: source,
-          initialIndex: initialIndex,
-          bridge: origins,
-          policy: rules,
-          controller: controller,
-          tokens: tokens,
-          scope: cache,
-          onBackdropScale: onBackdropScale,
-          chrome: chrome,
-          players: players,
-          speeds: speeds,
-          qualitiesOf: qualitiesOf,
-          previewFrame: previewFrame,
-          onFullscreenChanged: onFullscreenChanged,
-          videoStartOf: videoStartOf,
-          onVideoLeft: onVideoLeft,
-          onClosed: () => Navigator.of(routeContext).pop(),
+        pageBuilder: (routeContext, _, _) => MpxTextRoot.over(
+          text,
+          MediaViewer(
+            source: source,
+            initialIndex: initialIndex,
+            bridge: origins,
+            policy: rules,
+            controller: controller,
+            tokens: tokens,
+            scope: cache,
+            onBackdropScale: onBackdropScale,
+            chrome: chrome,
+            players: players,
+            speeds: speeds,
+            qualitiesOf: qualitiesOf,
+            previewFrame: previewFrame,
+            onFullscreenChanged: onFullscreenChanged,
+            videoStartOf: videoStartOf,
+            onVideoLeft: onVideoLeft,
+            onClosed: () => Navigator.of(routeContext).pop(),
+          ),
         ),
       ),
     );
@@ -1293,8 +1298,13 @@ class MediaViewerState extends State<MediaViewer>
   // a route with no text style of its own shows the framework's warning
   // underline.
   @override
-  Widget build(BuildContext context) =>
-      DefaultTextStyle(style: widget.tokens.subtitle, child: _build(context));
+  Widget build(BuildContext context) => MpxTextRoot.wrap(
+    context,
+    DefaultTextStyle.merge(
+      style: widget.tokens.subtitle,
+      child: _build(context),
+    ),
+  );
 
   Widget _build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {

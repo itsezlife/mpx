@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_ui/src/text/mpx_text_root.dart';
 import 'package:mpx_ui/src/viewer/gallery_source.dart';
 import 'package:mpx_ui/src/viewer/viewer_actions.dart';
 import 'package:mpx_ui/src/viewer/viewer_policy.dart';
@@ -102,8 +103,13 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
       widget.chrome.actions?.call(widget.index, item) ?? const [];
 
   @override
-  Widget build(BuildContext context) =>
-      DefaultTextStyle(style: widget.tokens.subtitle, child: _build(context));
+  Widget build(BuildContext context) => MpxTextRoot.wrap(
+    context,
+    DefaultTextStyle.merge(
+      style: widget.tokens.subtitle,
+      child: _build(context),
+    ),
+  );
 
   Widget _build(BuildContext context) {
     final item = widget.source.itemAt(widget.index);
@@ -209,14 +215,14 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (title != null)
-                      DefaultTextStyle(
+                      DefaultTextStyle.merge(
                         style: tokens.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         child: title,
                       ),
                     if (subtitle != null)
-                      DefaultTextStyle(
+                      DefaultTextStyle.merge(
                         style: tokens.subtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -321,7 +327,7 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
         ),
         child: SingleChildScrollView(
           padding: metrics.captionPadding,
-          child: DefaultTextStyle(style: style, child: caption),
+          child: DefaultTextStyle.merge(style: style, child: caption),
         ),
       ),
     );

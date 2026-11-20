@@ -12,6 +12,7 @@ import 'package:mpx_ui/src/library/library_grid_tokens.dart';
 import 'package:mpx_ui/src/library/library_pages.dart';
 import 'package:mpx_ui/src/library/picker_selection.dart';
 import 'package:mpx_ui/src/library/picker_viewer.dart';
+import 'package:mpx_ui/src/text/mpx_text_root.dart';
 import 'package:mpx_ui/src/viewer/viewer_origin.dart';
 
 /// The library picker: the album switcher, the library grid and the
@@ -253,8 +254,13 @@ class LibraryPickerState extends State<LibraryPicker> {
     if (mounted) setState(() => _viewerOpen = false);
   }
 
+  // The text root: the grid and its states draw text of their own, and a
+  // host that pushed them without one would draw it in the fallback style.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      MpxTextRoot.wrap(context, _content(context));
+
+  Widget _content(BuildContext context) {
     final tokens = widget.tokens;
     final labels = widget.stateLabels;
     final ios = identical(widget.policy, LibraryGridPolicy.$IOS);
@@ -377,13 +383,16 @@ class LibraryPickerState extends State<LibraryPicker> {
 
   Future<void> _manage(BuildContext context) async {
     final labels = widget.stateLabels;
+    final text = MpxTextRoot.styleOf(context);
     final choice = await Navigator.of(context).push<int>(
       PageRouteBuilder<int>(
         opaque: false,
         barrierDismissible: true,
         barrierColor: const Color(0x55000000),
-        pageBuilder: (context, _, _) =>
-            _ManageMenu(labels: labels, tokens: widget.tokens),
+        pageBuilder: (context, _, _) => MpxTextRoot.over(
+          text,
+          _ManageMenu(labels: labels, tokens: widget.tokens),
+        ),
       ),
     );
     switch (choice) {

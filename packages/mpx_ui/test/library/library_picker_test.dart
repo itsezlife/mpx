@@ -5,6 +5,7 @@ import 'package:mpx_core/testing.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_library/testing.dart';
 import 'package:mpx_ui/mpx_ui.dart';
+import 'package:mpx_ui/testing.dart';
 
 const gridLabels = LibraryGridLabels(
   photo: 'Photo',
@@ -94,40 +95,45 @@ final class PickerHarness {
           data: const MediaQueryData(size: Size(390, 800)),
           child: AssetCacheProvider(
             scope: scope,
-            child: Navigator(
-              onGenerateRoute: (_) => PageRouteBuilder<void>(
-                pageBuilder: (context, _, _) => LibraryPicker(
-                  library: library,
-                  selection: picker ?? selection,
-                  labels: gridLabels,
-                  stateLabels: stateLabels,
-                  policy: policy,
-                  mediaAllowed: mediaAllowed,
-                  notAllowedText: 'Media is not allowed here',
-                  cameraDenied: cameraDenied,
-                  onCamera: () => cameras++,
-                  onCameraTap: () => cameraTaps++,
-                  onCameraLongPress: () => cameraLongPresses++,
-                  onRefused: (key, reason) => refusals.add((key, reason)),
-                  controller: controller,
-                  lookup: lookup,
-                  gridBuilder: gridBuilder,
-                  cameraSlotBuilder: cameraSlot
-                      ? (context, value) {
-                          signals.add(value.value);
-                          value.addListener(() => signals.add(value.value));
-                          return const SizedBox.expand(key: ValueKey('camera'));
-                        }
-                      : null,
-                  viewerBottomBuilder: viewerSlot
-                      ? (context, item) {
-                          slotItems.add(item);
-                          return const SizedBox(
-                            key: ValueKey('slot'),
-                            height: 60,
-                          );
-                        }
-                      : null,
+            // A host that gives no text root: every surface sets its own.
+            child: unthemedHost(
+              Navigator(
+                onGenerateRoute: (_) => PageRouteBuilder<void>(
+                  pageBuilder: (context, _, _) => LibraryPicker(
+                    library: library,
+                    selection: picker ?? selection,
+                    labels: gridLabels,
+                    stateLabels: stateLabels,
+                    policy: policy,
+                    mediaAllowed: mediaAllowed,
+                    notAllowedText: 'Media is not allowed here',
+                    cameraDenied: cameraDenied,
+                    onCamera: () => cameras++,
+                    onCameraTap: () => cameraTaps++,
+                    onCameraLongPress: () => cameraLongPresses++,
+                    onRefused: (key, reason) => refusals.add((key, reason)),
+                    controller: controller,
+                    lookup: lookup,
+                    gridBuilder: gridBuilder,
+                    cameraSlotBuilder: cameraSlot
+                        ? (context, value) {
+                            signals.add(value.value);
+                            value.addListener(() => signals.add(value.value));
+                            return const SizedBox.expand(
+                              key: ValueKey('camera'),
+                            );
+                          }
+                        : null,
+                    viewerBottomBuilder: viewerSlot
+                        ? (context, item) {
+                            slotItems.add(item);
+                            return const SizedBox(
+                              key: ValueKey('slot'),
+                              height: 60,
+                            );
+                          }
+                        : null,
+                  ),
                 ),
               ),
             ),
@@ -138,10 +144,13 @@ final class PickerHarness {
     await settle(tester);
   }
 
+  /// Pumps four 50 ms frames, then checks no text on screen is drawn in a
+  /// fallback style.
   static Future<void> settle(WidgetTester tester) async {
     for (var i = 0; i < 4; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
+    expectThemedText(tester);
   }
 }
 

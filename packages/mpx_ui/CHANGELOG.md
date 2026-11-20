@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Every route, overlay and popup the picker and the viewer push, and the
+  grid, the picker and the selected-items preview themselves, draw their
+  text from the host's text style or the theme, never the fallback
+  (underlined, monospace). `testing.dart`: `expectThemedText`,
+  `unthemedHost`. Every close of the viewer fades its chrome.
 - `LibraryGridLookup`: the asset of the grid's row at a scroll offset (the
   nearest one held while its page loads, `LibraryPages.nearestAt`), for a
   host that labels places in the grid, a date beside a scroll thumb say.
