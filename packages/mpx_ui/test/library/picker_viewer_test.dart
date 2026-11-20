@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -176,6 +177,82 @@ void main() {
       find.descendant(of: check, matching: find.text('2')),
       findsOneWidget,
     );
+  });
+
+  group('the selected strip', () {
+    Finder thumb(int index) =>
+        find.byKey(ValueKey(('mpx-picker-viewer-strip', key(index))));
+
+    Future<PickerHarness> openStrip(
+      WidgetTester tester, {
+      bool reorder = true,
+    }) async {
+      final h = PickerHarness();
+      await h.pump(tester, viewerSlot: true, reorder: reorder);
+      // Selected in the grid: the viewer has not shown them yet.
+      for (final i in [5, 1, 7]) {
+        h.selection.toggle(key(i));
+      }
+      await _open(tester, 1);
+      await tester.tap(find.byKey(const ValueKey('mpx-picker-viewer-counter')));
+      await PickerHarness.settle(tester);
+      return h;
+    }
+
+    int shown(WidgetTester tester) =>
+        tester.state<MediaViewerState>(find.byType(MediaViewer)).index;
+
+    testWidgets('a tap shows that item, even one the viewer never showed', (
+      tester,
+    ) async {
+      await openStrip(tester);
+      expect(shown(tester), 1);
+      await tester.tap(thumb(7));
+      await PickerHarness.settle(tester);
+      expect(shown(tester), 7);
+    });
+
+    testWidgets('the item shown is outlined', (tester) async {
+      await openStrip(tester);
+      BoxBorder? border(int index) =>
+          (tester
+                      .widget<DecoratedBox>(
+                        find
+                            .descendant(
+                              of: thumb(index),
+                              matching: find.byKey(
+                                const ValueKey('mpx-picker-viewer-strip-frame'),
+                              ),
+                            )
+                            .first,
+                      )
+                      .decoration
+                  as BoxDecoration)
+              .border;
+      expect(border(1), isNotNull);
+      expect(border(5), isNull);
+    });
+
+    testWidgets('a tap on its check deselects it', (tester) async {
+      final h = await openStrip(tester);
+      await tester.tapAt(tester.getTopRight(thumb(5)) + const Offset(-10, 10));
+      await PickerHarness.settle(tester);
+      expect(h.selection.keys, [key(1), key(7)]);
+      expect(thumb(5), findsNothing);
+    });
+
+    testWidgets('a long press lifts an item and a drag moves it', (
+      tester,
+    ) async {
+      final h = await openStrip(tester);
+      final gesture = await tester.startGesture(tester.getCenter(thumb(5)));
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await gesture.moveTo(tester.getCenter(thumb(7)));
+      await tester.pump();
+      await gesture.up();
+      await PickerHarness.settle(tester);
+      expect(h.selection.keys, [key(1), key(7), key(5)]);
+    });
   });
 
   testWidgets('the check goes through the gate', (tester) async {

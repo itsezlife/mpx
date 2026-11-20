@@ -50,6 +50,7 @@ class LibraryPicker extends StatefulWidget {
     this.onCameraLongPress,
     this.onCamera,
     this.onRefused,
+    this.onReorder,
     this.onOpen,
     this.viewerBottomBuilder,
     this.players,
@@ -104,6 +105,11 @@ class LibraryPicker extends StatefulWidget {
 
   /// Called when the selection refused a key.
   final void Function(MediaKey key, PickerRefusal reason)? onRefused;
+
+  /// A selected item the picker-mode viewer's strip lifted was dragged to
+  /// the place [to] (0-based) of the selection: `OrderedPickerSelection.move`
+  /// for the default selection; no reorder when null.
+  final void Function(MediaKey key, int to)? onReorder;
 
   /// Called by a tap on a picture instead of the picker-mode viewer.
   final void Function(LibraryAsset asset, int index)? onOpen;
@@ -249,6 +255,7 @@ class LibraryPickerState extends State<LibraryPicker> {
       players: widget.players,
       bottomBuilder: widget.viewerBottomBuilder,
       onRefused: widget.onRefused,
+      onReorder: widget.onReorder,
       bridge: _origins.currentState?.bridgeFor(gallery),
     );
     if (mounted) setState(() => _viewerOpen = false);

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/mpx_library.dart';
@@ -42,6 +43,12 @@ final class LibraryGallerySource extends ChangeNotifier
 
   /// The asset at [index], or null while its page loads.
   LibraryAsset? assetAt(int index) => pages.assetAt(index);
+
+  /// The index of the library item [key] among the pages read, or null.
+  int? indexOf(MediaKey key) => switch (LibraryKeys.read(key)) {
+    final target? when !target.isThumbnail => pages.indexOf(target.asset),
+    _ => null,
+  };
 
   @override
   GalleryItem? itemAt(int index) {
@@ -137,6 +144,7 @@ abstract final class PickerViewer {
     PlayerPool? players,
     Widget Function(BuildContext context, PickerViewerItem item)? bottomBuilder,
     void Function(MediaKey key, PickerRefusal reason)? onRefused,
+    void Function(MediaKey key, int to)? onReorder,
     ValueChanged<int>? onIndexChanged,
     OriginBridge? bridge,
   }) {
@@ -183,6 +191,7 @@ abstract final class PickerViewer {
                     bottomBuilder: bottomBuilder,
                     onRefused: onRefused,
                     onShow: controller.jumpTo,
+                    onReorder: onReorder,
                     viewer: controller,
                   ),
                 ],
@@ -209,6 +218,7 @@ class PickerViewerChrome extends StatefulWidget {
     this.bottomBuilder,
     this.onRefused,
     this.onShow,
+    this.onReorder,
     this.viewer,
     super.key,
   });
@@ -241,6 +251,10 @@ class PickerViewerChrome extends StatefulWidget {
   /// Moves the viewer to an index (a tap in the strip).
   final ValueChanged<int>? onShow;
 
+  /// A strip item lifted by a long press was dragged to the place [to]
+  /// (0-based) of the selection; the strip does not reorder when null.
+  final void Function(MediaKey key, int to)? onReorder;
+
   /// The viewer under the chrome: the chrome shows while its controls do,
   /// so it fades out as a dismiss drag starts and with a tap that hides
   /// them. Always shown when null.
@@ -261,6 +275,7 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
   static const double _checkEnd = 11;
   static const double _checkSlop = 6;
   static const double _counterEnd = 64;
+  static const double _barHeight = 56;
 
   bool _strip = false;
   late final AnimationController _fade = AnimationController(
@@ -403,20 +418,35 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
             },
           ),
         ),
+        // The selected strip, under the top bar, sliding and fading in.
         if (_strip && count > 0)
           PositionedDirectional(
-            top: policy.viewerCheckSize + 24,
+            top: _barHeight + 5,
             start: 0,
             end: 0,
             height: policy.selectedStripHeight,
-            child: _SelectedStrip(
-              keys: widget.selection.keys,
-              height: policy.selectedStripHeight,
-              tokens: tokens,
-              onTap: (key) {
-                final at = _indexOf[key];
-                if (at != null) widget.onShow?.call(at);
-              },
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: 1),
+              duration: const Duration(milliseconds: 200),
+              builder: (context, t, child) => Opacity(
+                opacity: t,
+                child: Transform.translate(
+                  offset: Offset(0, -10 * (1 - t)),
+                  child: child,
+                ),
+              ),
+              child: _SelectedStrip(
+                keys: widget.selection.keys,
+                current: key,
+                height: policy.selectedStripHeight,
+                tokens: tokens,
+                onTap: (tapped) {
+                  final at = _indexOf[tapped] ?? widget.source.indexOf(tapped);
+                  if (at != null) widget.onShow?.call(at);
+                },
+                onDeselect: _toggle,
+                onReorder: widget.onReorder,
+              ),
             ),
           ),
         if (widget.bottomBuilder case final builder?)
@@ -466,28 +496,87 @@ class _ViewerCheck extends StatelessWidget {
   );
 }
 
-class _SelectedStrip extends StatelessWidget {
+/// The selected items in a row: a tap shows one, the check at its top end
+/// deselects it, a long press lifts it so a drag moves it among the others,
+/// and the one the viewer shows is outlined.
+class _SelectedStrip extends StatefulWidget {
   const _SelectedStrip({
     required this.keys,
+    required this.current,
     required this.height,
     required this.tokens,
     required this.onTap,
+    required this.onDeselect,
+    required this.onReorder,
   });
 
+  // The reference's row: 85 px items 6 apart, inset 12 at the sides and the
+  // top and 6 at the bottom, on a rounded shade.
+  static const double item = 85;
+  static const double gap = 6;
+  static const EdgeInsets inset = EdgeInsets.fromLTRB(12, 12, 12, 6);
+
   final List<MediaKey> keys;
+  final MediaKey? current;
   final double height;
   final LibraryGridTokens tokens;
   final ValueChanged<MediaKey> onTap;
+  final ValueChanged<MediaKey> onDeselect;
+  final void Function(MediaKey key, int to)? onReorder;
+
+  @override
+  State<_SelectedStrip> createState() => _SelectedStripState();
+}
+
+class _SelectedStripState extends State<_SelectedStrip> {
+  final ScrollController _scroll = ScrollController();
+  final GlobalKey _list = GlobalKey();
+  MediaKey? _lifted;
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _lift(MediaKey key) {
+    if (widget.onReorder == null) return;
+    unawaited(HapticFeedback.mediumImpact());
+    setState(() => _lifted = key);
+  }
+
+  void _drag(Offset global) {
+    final key = _lifted;
+    final box = _list.currentContext?.findRenderObject() as RenderBox?;
+    if (key == null || box == null) return;
+    final local = box.globalToLocal(global);
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+    final along =
+        (rtl ? box.size.width - local.dx : local.dx) +
+        (_scroll.hasClients ? _scroll.offset : 0) -
+        _SelectedStrip.inset.left;
+    const stride = _SelectedStrip.item + _SelectedStrip.gap;
+    final keys = widget.keys;
+    final to = (along / stride).floor().clamp(0, keys.length - 1);
+    if (keys.indexOf(key) != to) widget.onReorder?.call(key, to);
+  }
+
+  void _drop() {
+    if (_lifted == null) return;
+    unawaited(HapticFeedback.selectionClick());
+    setState(() => _lifted = null);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final side = height - 16;
+    const side = _SelectedStrip.item;
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
     final pixels = (side * dpr).ceil();
+    final tokens = widget.tokens;
     // A library key resolves only through its descriptor; the strip holds
     // keys alone, and a library thumbnail is a still.
     final scope = AssetCacheProvider.maybeOf(context);
-    for (final key in keys) {
+    for (final key in widget.keys) {
       if (LibraryKeys.read(key) case final target?) {
         scope?.know(
           MediaDescriptor(
@@ -497,38 +586,139 @@ class _SelectedStrip extends StatelessWidget {
         );
       }
     }
-    return ColoredBox(
-      color: tokens.shade,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.all(8),
-        children: [
-          for (final key in keys)
-            if (LibraryKeys.read(key) case final target?)
+    return Align(
+      alignment: AlignmentDirectional.topStart,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 6),
+        decoration: BoxDecoration(
+          color: tokens.shade,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        height: widget.height,
+        child: ListView(
+          key: _list,
+          controller: _scroll,
+          shrinkWrap: true,
+          scrollDirection: Axis.horizontal,
+          padding: _SelectedStrip.inset.copyWith(
+            left: _SelectedStrip.inset.left - 6,
+            right: _SelectedStrip.inset.right - 6,
+          ),
+          children: [
+            for (final (i, key) in widget.keys.indexed)
               Padding(
-                padding: const EdgeInsetsDirectional.only(end: 6),
+                key: ValueKey(('mpx-picker-viewer-strip', key)),
+                padding: EdgeInsetsDirectional.only(
+                  start: i == 0 ? 0 : _SelectedStrip.gap,
+                ),
+                child: _item(key, side, dpr, pixels),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _item(MediaKey key, double side, double dpr, int pixels) {
+    final tokens = widget.tokens;
+    final thumbnail = switch (LibraryKeys.read(key)) {
+      final target? => LibraryKeys.thumbnailKeyFor(target.asset, pixels),
+      null => key,
+    };
+    final current = key == widget.current;
+    return Transform.scale(
+      scale: key == _lifted ? 1.05 : 1,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => widget.onTap(key),
+        onLongPressStart: (_) => _lift(key),
+        onLongPressMoveUpdate: (d) => _drag(d.globalPosition),
+        onLongPressEnd: (_) => _drop(),
+        onLongPressCancel: _drop,
+        child: SizedBox.square(
+          dimension: side,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: ContentView(
+                  content: thumbnail,
+                  preset: AssetPresets.square(
+                    extent: side,
+                    devicePixelRatio: dpr,
+                    profile: const AssetProfile(fit: AssetFit.cover),
+                  ),
+                ),
+              ),
+              DecoratedBox(
+                key: const ValueKey('mpx-picker-viewer-strip-frame'),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(4),
+                  border: current
+                      ? Border.all(color: tokens.accent, width: 2)
+                      : null,
+                ),
+              ),
+              PositionedDirectional(
+                top: 0,
+                end: 0,
+                width: 36,
+                height: 36,
                 child: GestureDetector(
-                  onTap: () => onTap(key),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: ContentView(
-                      content: LibraryKeys.thumbnailKeyFor(
-                        target.asset,
-                        pixels,
-                      ),
-                      preset: AssetPresets.square(
-                        extent: side,
-                        devicePixelRatio: dpr,
-                        profile: const AssetProfile(fit: AssetFit.cover),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => widget.onDeselect(key),
+                  child: Align(
+                    alignment: AlignmentDirectional.topEnd,
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: tokens.checkFill,
+                          border: Border.all(color: tokens.checkRing, width: 2),
+                        ),
+                        child: CustomPaint(painter: _Tick(tokens.checkRing)),
                       ),
                     ),
                   ),
                 ),
               ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
+}
+
+class _Tick extends CustomPainter {
+  const _Tick(this.colour);
+
+  final Color colour;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = colour
+      ..strokeWidth = 1.6
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final w = size.width;
+    canvas.drawPath(
+      Path()
+        ..moveTo(w * 0.28, w * 0.5)
+        ..lineTo(w * 0.44, w * 0.66)
+        ..lineTo(w * 0.72, w * 0.36),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_Tick oldDelegate) => oldDelegate.colour != colour;
 }
 
 /// The selection count: an outlined pill with the number in bold, which

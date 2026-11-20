@@ -84,6 +84,17 @@ final class LibraryPages extends ChangeNotifier {
     return nearest;
   }
 
+  /// The album index of [asset] among the pages read so far, or null when
+  /// none of them holds it.
+  int? indexOf(LibraryAssetId asset) {
+    for (final MapEntry(key: page, value: assets) in _pages.entries) {
+      for (var i = 0; i < assets.length; i++) {
+        if (assets[i].id == asset) return page * pageSize + i;
+      }
+    }
+    return null;
+  }
+
   /// Marks every page stale; each is read again when next asked for and
   /// answers what it held until then.
   void reload() {

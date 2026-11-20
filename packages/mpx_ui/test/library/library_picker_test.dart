@@ -75,6 +75,7 @@ final class PickerHarness {
     bool cameraSlot = false,
     PickerSelection? picker,
     bool viewerSlot = false,
+    bool reorder = false,
     ScrollController? controller,
     LibraryGridLookup? lookup,
     Widget Function(BuildContext context, Widget grid)? gridBuilder,
@@ -124,6 +125,7 @@ final class PickerHarness {
                             );
                           }
                         : null,
+                    onReorder: reorder ? selection.move : null,
                     viewerBottomBuilder: viewerSlot
                         ? (context, item) {
                             slotItems.add(item);
