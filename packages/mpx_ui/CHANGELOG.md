@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The picker-mode viewer's bottom slot hears the chrome:
+  `PickerViewerItem.chromeShown` (where the chrome heads), `chrome` (its
+  fade) and `dismissing` (a dismiss drag under way), also
+  `ViewerController.dismissing`.
 - `LibraryPicker.viewerBottomSlotHoldsKeyboard` (`PickerViewer.show` and
   `PickerViewerChrome.bottomSlotHoldsKeyboard`): a host dock that holds the
   keyboard's and the safe area's place sits on the screen's bottom edge,

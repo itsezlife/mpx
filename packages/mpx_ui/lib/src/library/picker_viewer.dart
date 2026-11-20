@@ -97,6 +97,9 @@ final class PickerViewerItem {
     required this.index,
     required this.asset,
     required this.selection,
+    this.chromeShown = const _Constant(value: true),
+    this.chrome = kAlwaysCompleteAnimation,
+    this.dismissing = const _Constant(value: false),
   });
 
   /// The item's index in the album.
@@ -108,6 +111,20 @@ final class PickerViewerItem {
   /// The selection the check changes.
   final PickerSelection selection;
 
+  /// Whether the chrome shows or is coming: false from the moment it starts
+  /// to go (a dismiss drag starts, the viewer closes, a policy hides it),
+  /// true from the moment it starts to come back. A slot lets go of its
+  /// field's focus when it turns false.
+  final ValueListenable<bool> chromeShown;
+
+  /// How much the chrome shows, 0 to 1, as it fades: the slot fades with it
+  /// when it draws something the chrome's fade does not cover.
+  final Animation<double> chrome;
+
+  /// True from the start of a dismiss drag until it closes the viewer or
+  /// springs back.
+  final ValueListenable<bool> dismissing;
+
   /// The asset's key, or null while it loads.
   MediaKey? get key => asset == null ? null : LibraryKeys.libraryKeyOf(asset!);
 
@@ -118,6 +135,20 @@ final class PickerViewerItem {
     if (selected.isNotEmpty) return selected;
     return [?key];
   }
+}
+
+// A listenable that never changes, for an item made without a viewer.
+final class _Constant implements ValueListenable<bool> {
+  const _Constant({required this.value});
+
+  @override
+  final bool value;
+
+  @override
+  void addListener(VoidCallback listener) {}
+
+  @override
+  void removeListener(VoidCallback listener) {}
 }
 
 /// The picker-mode viewer: the fullscreen viewer of ADR 0006 over a
@@ -403,6 +434,7 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
 
   @override
   void dispose() {
+    _chromeShown.dispose();
     widget.viewer?.removeListener(_onViewer);
     _fade.dispose();
     super.dispose();
@@ -412,10 +444,14 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
   // a lease), and restarting the fade on each would hold it in place.
   bool? _heading;
 
+  // Where the chrome heads, for the host's slot.
+  final ValueNotifier<bool> _chromeShown = ValueNotifier(true);
+
   void _onViewer() {
     final shown = _shown;
     if (shown == _heading) return;
     _heading = shown;
+    _chromeShown.value = shown;
     if (shown) {
       unawaited(_fade.forward());
     } else {
@@ -444,6 +480,9 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
         index: index,
         asset: asset,
         selection: widget.selection,
+        chromeShown: _chromeShown,
+        chrome: _fade,
+        dismissing: widget.viewer?.dismissing ?? const _Constant(value: false),
       );
       final policy = widget.policy;
       final tokens = widget.tokens;

@@ -520,6 +520,38 @@ void main() {
     expectThemedText(tester);
   });
 
+  testWidgets('the slot hears the chrome: shown, its fade, and a dismiss '
+      'drag from start to spring back', (tester) async {
+    final h = PickerHarness();
+    await h.pump(tester, viewerSlot: true);
+    await _open(tester, 2);
+    final item = h.slotItems.last;
+    expect(item.chromeShown.value, isTrue);
+    expect(item.chrome.value, 1);
+    expect(item.dismissing.value, isFalse);
+    final heard = <bool>[];
+    item.dismissing.addListener(() => heard.add(item.dismissing.value));
+
+    final gesture = await tester.startGesture(const Offset(195, 400));
+    await gesture.moveBy(const Offset(0, 40));
+    await tester.pump();
+    await gesture.moveBy(const Offset(0, 40));
+    await tester.pump();
+    expect(item.dismissing.value, isTrue);
+    expect(item.chromeShown.value, isFalse);
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(item.chrome.value, 0);
+
+    await gesture.up();
+    await tester.pump();
+    expect(item.dismissing.value, isFalse);
+    expect(item.chromeShown.value, isTrue);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(item.chrome.value, 1);
+    expect(heard, [true, false]);
+    expectThemedText(tester);
+  });
+
   testWidgets('the check goes through the gate', (tester) async {
     final h = PickerHarness();
     final gated = OrderedPickerSelection(

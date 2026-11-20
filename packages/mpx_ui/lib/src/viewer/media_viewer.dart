@@ -56,6 +56,11 @@ final class ViewerController extends ChangeNotifier {
   /// The lease of the video on screen, or null.
   PlayerLease? get videoLease => _viewer?.videoLease;
 
+  /// True from the start of a dismiss drag until it closes the viewer or
+  /// springs back.
+  ValueListenable<bool> get dismissing => _dismissing;
+  final ValueNotifier<bool> _dismissing = ValueNotifier(false);
+
   /// Pages to [index] with the policy's controls timing.
   Future<void> animateTo(int index) async => _viewer?._pageTo(index);
 
@@ -74,6 +79,7 @@ final class ViewerController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _dismissing.dispose();
     super.dispose();
   }
 
@@ -1192,6 +1198,7 @@ class MediaViewerState extends State<MediaViewer>
     onStart: () {
       _springBack.stop();
       _controls.value = false;
+      widget.controller?._dismissing.value = true;
     },
     onUpdate: (offset) {
       if (_phase != _Phase.open) return;
@@ -1202,6 +1209,7 @@ class MediaViewerState extends State<MediaViewer>
       _reportBackdrop();
     },
     onEnd: (offset, velocity) {
+      widget.controller?._dismissing.value = false;
       if (_phase != _Phase.open) return;
       _drag = offset;
       if (_policy.dismisses(offset, _size.height, velocity: velocity)) {
