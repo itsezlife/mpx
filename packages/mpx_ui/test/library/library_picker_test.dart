@@ -51,10 +51,11 @@ final class PickerHarness {
          grantOnRequest: grantOnRequest,
        ) {
     clock = PlaybackClock(ticks: ManualPlaybackTickSource());
-    scope = AssetCacheScope(producer: FakeAssetProducer(), clock: clock);
+    scope = AssetCacheScope(producer: producer, clock: clock);
   }
 
   final FakeMediaLibrary library;
+  final FakeAssetProducer producer = FakeAssetProducer();
   late final PlaybackClock clock;
   late final AssetCacheScope scope;
   final OrderedPickerSelection selection = OrderedPickerSelection();
@@ -331,6 +332,36 @@ void main() {
         },
       );
     }
+
+    testWidgets('each row shows its cover: the newest item of the album, '
+        'its thumbnail told to the cache so the library key resolves', (
+      tester,
+    ) async {
+      final h = PickerHarness();
+      final newest = FakeMediaLibrary.assetAt(5);
+      h.library.addAlbum(
+        const LibraryAlbumId('camera'),
+        kind: LibraryAlbumKind.camera,
+        title: '',
+        assets: [newest.id, FakeMediaLibrary.assetAt(6).id],
+      );
+      await h.pump(tester);
+      await tester.tap(find.byKey(const ValueKey('mpx-album-switcher')));
+      await PickerHarness.settle(tester);
+
+      // Android rows: a 40 px cover at a device pixel ratio of 1.
+      final key = LibraryKeys.thumbnailKeyOf(newest, 40);
+      final row = find.byKey(const ValueKey('mpx-album-camera'));
+      final cover = find.descendant(
+        of: row,
+        matching: find.byWidgetPredicate(
+          (widget) => widget is ContentView && widget.content == key,
+        ),
+      );
+      expect(cover, findsOneWidget);
+      expect(h.producer.known.map((d) => d.key), contains(key));
+      expect(h.producer.attempts.map((a) => a.request.key), contains(key));
+    });
 
     testWidgets('an album that starts at the end opens scrolled to it', (
       tester,

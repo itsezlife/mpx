@@ -131,8 +131,16 @@ class _AlbumMenu extends StatelessWidget {
     final left = anchor.left.clamp(8.0, screen.width - width - 8);
     final maxHeight = screen.height - anchor.bottom - 16;
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
+    final scope = AssetCacheProvider.maybeOf(context);
+    final pixels = (cover * dpr).ceil();
     Widget coverOf(LibraryAlbum album) {
       final asset = album.cover;
+      // A library key resolves only through its descriptor: tell the cache
+      // the cover's thumbnail, as the grid tells its cells', or the cover
+      // stays a placeholder.
+      if (asset != null) {
+        scope?.know(LibraryKeys.thumbnailDescriptorOf(asset, pixels));
+      }
       return SizedBox.square(
         dimension: cover,
         child: ClipRRect(
@@ -140,10 +148,7 @@ class _AlbumMenu extends StatelessWidget {
           child: asset == null
               ? ColoredBox(color: tokens.cellPlaceholder)
               : ContentView(
-                  content: LibraryKeys.thumbnailKeyOf(
-                    asset,
-                    (cover * dpr).ceil(),
-                  ),
+                  content: LibraryKeys.thumbnailKeyOf(asset, pixels),
                   preset: AssetPresets.square(
                     extent: cover,
                     devicePixelRatio: dpr,
