@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:mpx_core/mpx_core.dart';
 
@@ -160,6 +162,23 @@ final class OrderedPickerSelection extends ChangeNotifier
     }
     if (changed) notifyListeners();
     return refusals;
+  }
+
+  /// Moves [key] to [to] (0-based) in the order, the keys between shifting
+  /// by one; nothing when [key] is not selected or already there. What a
+  /// selected-items preview's drag to reorder calls.
+  void move(MediaKey key, int to) {
+    final from = _index[key];
+    if (from == null) return;
+    final target = to.clamp(0, _keys.length - 1);
+    if (target == from) return;
+    _keys
+      ..removeAt(from)
+      ..insert(target, key);
+    for (var i = math.min(from, target); i <= math.max(from, target); i++) {
+      _index[_keys[i]] = i;
+    }
+    notifyListeners();
   }
 
   /// Deselects everything.

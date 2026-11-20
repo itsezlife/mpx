@@ -18,6 +18,8 @@ import 'library/library_grid_test.dart' as library_grid_test;
 import 'library/library_pages_test.dart' as library_pages_test;
 import 'library/library_picker_golden_test.dart' as library_picker_golden_test;
 import 'library/library_picker_test.dart' as library_picker_test;
+import 'library/picker_selection_preview_test.dart'
+    as picker_selection_preview_test;
 import 'library/picker_selection_test.dart' as picker_selection_test;
 import 'library/picker_viewer_test.dart' as picker_viewer_test;
 import 'viewer/media_viewer_test.dart' as media_viewer_test;
@@ -45,6 +47,7 @@ void main() {
   group('library_pages_test', library_pages_test.main);
   group('library_picker_golden_test', library_picker_golden_test.main);
   group('library_picker_test', library_picker_test.main);
+  group('picker_selection_preview_test', picker_selection_preview_test.main);
   group('picker_selection_test', picker_selection_test.main);
   group('picker_viewer_test', picker_viewer_test.main);
   group('media_viewer_test', media_viewer_test.main);

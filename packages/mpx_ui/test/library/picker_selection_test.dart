@@ -76,4 +76,26 @@ void main() {
     selection.toggleRange([_k(2), _k(6)], to: true);
     expect(selection.keys, [_k(2), _k(6)]);
   });
+
+  test('a move puts a key at a new place and re-numbers the rest', () {
+    final selection = OrderedPickerSelection()
+      ..toggle(_k(1))
+      ..toggle(_k(2))
+      ..toggle(_k(3))
+      ..toggle(_k(4));
+    var notified = 0;
+    selection.addListener(() => notified++);
+    selection.move(_k(1), 2);
+    expect(selection.keys, [_k(2), _k(3), _k(1), _k(4)]);
+    expect(selection.orderOf(_k(1)), 3);
+    expect(selection.orderOf(_k(3)), 2);
+    selection.move(_k(4), 0);
+    expect(selection.keys, [_k(4), _k(2), _k(3), _k(1)]);
+    expect(notified, 2);
+    // A key not selected, or one already in place, changes nothing.
+    selection
+      ..move(_k(9), 0)
+      ..move(_k(4), 0);
+    expect(notified, 2);
+  });
 }
