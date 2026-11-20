@@ -12,17 +12,18 @@ import 'package:mpx_ui/src/viewer/origin_bridge.dart';
 /// Collects the [ViewerOrigin]s below it and answers for them as the
 /// viewer's [OriginBridge]: where each thumbnail sits (its rectangle,
 /// corners and the clip of the scrollables around it), its current frame,
-/// hiding it while the viewer covers it, scrolling it into view before the
-/// viewer closes on it, and handing a video's position back.
+/// hiding it while the viewer covers it, and handing a video's position
+/// back. Closing never scrolls the surface to a built origin: the viewer
+/// flies to it as far as it shows, or fades when it shows nothing.
 ///
 /// Origins register by gallery index or by `MediaKey`; a key resolves
 /// through the gallery the viewer pages ([bridgeFor]), or [source] when the
 /// scope serves one gallery. `MediaViewer.show` finds the closest scope when
 /// the host passes no bridge.
 ///
-/// An item whose origin is not built (a lazy list scrolled far away) is
-/// brought into view by [onReveal], when the host gives one; without an
-/// origin on screen the viewer closes without the morph.
+/// An item whose origin is not built (a lazy list scrolled far away) goes
+/// to [onReveal], when the host gives one; without it, or without an origin
+/// on screen, the viewer closes without the morph.
 class ViewerOriginScope extends StatefulWidget {
   /// Collects the origins in [child].
   const ViewerOriginScope({
@@ -145,23 +146,14 @@ class ViewerOriginScopeState extends State<ViewerOriginScope>
     return null;
   }
 
+  // A built origin is left where it is: the close flies to it as far as
+  // it shows, or fades when it shows nothing, and the list never moves
+  // under the viewer. Only an origin that is not built goes to the host.
   Future<void> _reveal(int index, GallerySource? source) async {
-    final origins = _of(index, source).toList();
-    if (origins.isEmpty) {
-      final reveal = widget.onReveal;
-      if (reveal == null) return;
-      await reveal(index);
-    } else {
-      final origin = origins.first;
-      if (!origin.mounted || origin._showsWhole()) return;
-      unawaited(
-        Scrollable.ensureVisible(
-          origin.context,
-          alignment: 0.5,
-          duration: Duration.zero,
-        ),
-      );
-    }
+    if (_of(index, source).isNotEmpty) return;
+    final reveal = widget.onReveal;
+    if (reveal == null) return;
+    await reveal(index);
     // The origin is read after the frame that lays it out.
     await SchedulerBinding.instance.endOfFrame;
   }
@@ -353,11 +345,6 @@ class _ViewerOriginState extends State<ViewerOrigin> {
     if (box is! RenderBox) return null;
     final seen = ViewportVisibility.of(box);
     return seen.shows ? (rect: seen.rect, clip: seen.clip) : null;
-  }
-
-  bool _showsWhole() {
-    final box = _outer.currentContext?.findRenderObject();
-    return box is RenderBox && ViewportVisibility.of(box).showsWhole;
   }
 
   ui.Image? _captureFrame() {

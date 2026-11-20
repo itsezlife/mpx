@@ -252,53 +252,63 @@ void main() {
     expect(find.byType(MediaViewer), findsNothing);
   });
 
-  testWidgets('closing on another item scrolls its thumbnail into view', (
-    tester,
-  ) async {
-    final list = ScrollController();
-    addTearDown(list.dispose);
-    final controller = ViewerController();
-    addTearDown(controller.dispose);
-    await pumpHost(
-      tester,
-      ListView.builder(
-        controller: list,
-        cacheExtent: 3000,
-        itemCount: 20,
-        itemBuilder: (context, index) => Builder(
-          builder: (context) => GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => MediaViewer.show(
-              context,
-              source: source,
-              initialIndex: index,
-              policy: _policy,
-              scope: scope,
-              controller: controller,
-            ),
-            child: ViewerOrigin(
-              index: index,
-              child: const SizedBox(height: 300),
+  for (final (name, target, morphs) in [
+    ('off screen fades', 5, false),
+    ('cut by the edge flies to it', 2, true),
+  ]) {
+    testWidgets('closing on another item leaves the list where it is: '
+        '$name', (tester) async {
+      final list = ScrollController();
+      addTearDown(list.dispose);
+      final controller = ViewerController();
+      addTearDown(controller.dispose);
+      await pumpHost(
+        tester,
+        ListView.builder(
+          controller: list,
+          cacheExtent: 3000,
+          itemCount: 20,
+          itemBuilder: (context, index) => Builder(
+            builder: (context) => GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => MediaViewer.show(
+                context,
+                source: source,
+                initialIndex: index,
+                policy: _policy,
+                scope: scope,
+                controller: controller,
+              ),
+              child: ViewerOrigin(
+                index: index,
+                child: const SizedBox(height: 300),
+              ),
             ),
           ),
         ),
-      ),
-    );
-    await openedFrom(tester, 0);
-    await settleOpen(tester);
+      );
+      await openedFrom(tester, 0);
+      await settleOpen(tester);
 
-    controller.jumpTo(5);
-    await tester.pump();
-    expect(controller.index, 5);
-    controller.close().ignore();
-    await tester.pump();
-    await tester.pump();
-
-    // Item 5 (1500..1800) is centred: the list scrolled to 1250.
-    expect(list.offset, 1250);
-    await tester.pump(_policy.closeDuration - const Duration(milliseconds: 1));
-    expectRect(morphRect(tester), const Rect.fromLTWH(0, 250, 400, 300));
-  });
+      controller.jumpTo(target);
+      await tester.pump();
+      controller.close().ignore();
+      await tester.pump();
+      await tester.pump();
+      expect(list.offset, 0);
+      await tester.pump(
+        _policy.closeDuration - const Duration(milliseconds: 1),
+      );
+      if (morphs) {
+        // Item 2 (600..900) shows 600..800 in the 800 px list.
+        expectRect(morphRect(tester), const Rect.fromLTWH(0, 600, 400, 300));
+      } else {
+        expect(morphOpacity(tester), lessThan(1));
+      }
+      await tester.pumpAndSettle();
+      expect(list.offset, 0);
+    });
+  }
 
   testWidgets('a key-registered origin is found through the gallery', (
     tester,
