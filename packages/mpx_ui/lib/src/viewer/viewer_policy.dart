@@ -684,6 +684,7 @@ final class ViewerVideoRules {
     required this.autoHide,
     required this.speed,
     required this.loops,
+    this.autoHides = true,
     this.doubleTapSeek,
     this.doubleTapFullscreen = false,
     this.doubleTapZooms = true,
@@ -717,6 +718,11 @@ final class ViewerVideoRules {
 
   /// How long the controls stay over a playing video before they hide.
   final Duration autoHide;
+
+  /// Whether the controls hide by themselves over a playing video
+  /// ([autoHide]); a picker-mode viewer's never do, they go only on a tap
+  /// or with the close.
+  final bool autoHides;
 
   /// The speeds offered and where a choice applies.
   final ViewerSpeedRule speed;
@@ -767,6 +773,7 @@ final class ViewerVideoRules {
     ViewerLoopOpen? loopOpen,
     bool? controlsVisibleOnOpen,
     Duration? autoHide,
+    bool? autoHides,
     ViewerSpeedRule? speed,
     bool Function(Duration? duration, {required bool hasAudio})? loops,
     ViewerDoubleTapSeek? doubleTapSeek,
@@ -782,6 +789,7 @@ final class ViewerVideoRules {
     loopOpen: loopOpen ?? this.loopOpen,
     controlsVisibleOnOpen: controlsVisibleOnOpen ?? this.controlsVisibleOnOpen,
     autoHide: autoHide ?? this.autoHide,
+    autoHides: autoHides ?? this.autoHides,
     speed: speed ?? this.speed,
     loops: loops ?? this.loops,
     doubleTapSeek: doubleTapSeek ?? this.doubleTapSeek,

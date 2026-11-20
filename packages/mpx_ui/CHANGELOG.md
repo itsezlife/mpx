@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `ViewerVideoRules.autoHides`: whether a video's controls hide by
+  themselves. The picker-mode viewer's chrome never does: it fades in with
+  the open, out with the close and on a tap, and stands on top and bottom
+  scrims that run under the status bar, with no band behind its bar.
 - `LibraryPicker` reads the albums again on a library change (covers and
   counts follow) and drops selected items the library no longer holds
   (`onRemoved` lets a host take them instead). The picker-mode viewer has a

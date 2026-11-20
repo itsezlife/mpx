@@ -184,7 +184,12 @@ abstract final class PickerViewer {
     final scope = AssetCacheProvider.of(context);
     final origins =
         bridge ?? ViewerOriginScope.maybeOf(context)?.bridgeFor(source);
-    final rules = ViewerPolicyScope.resolve(context, policy: policy);
+    final resolved = ViewerPolicyScope.resolve(context, policy: policy);
+    // The picker's chrome never hides by itself: only a tap or the close
+    // takes it away.
+    final rules = resolved.copyWith(
+      video: resolved.video.copyWith(autoHides: false),
+    );
     final index = ValueNotifier(initialIndex);
     final controller = ViewerController();
     final text = MpxTextRoot.styleOf(context);
@@ -340,7 +345,6 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
   late final AnimationController _fade = AnimationController(
     vsync: this,
     duration: PickerViewerChrome.fadeDuration,
-    value: _shown ? 1 : 0,
   );
 
   bool get _shown {
@@ -352,6 +356,8 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
   void initState() {
     super.initState();
     widget.viewer?.addListener(_onViewer);
+    // In with the viewer's open: from nothing, over the same 200 ms.
+    _onViewer();
   }
 
   @override
@@ -431,158 +437,231 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
     PickerViewerItem item,
     LibraryGridPolicy policy,
     LibraryGridTokens tokens,
-  ) => SafeArea(
-    child: Stack(
-      children: [
-        // The top bar: back, the host's title with the item's info line,
-        // the count and the check at the end.
-        PositionedDirectional(
-          top: 0,
-          start: 0,
-          end: 0,
-          height: _barHeight,
-          child: ColoredBox(
-            key: const ValueKey('mpx-picker-viewer-bar'),
-            color: const Color(0x7F000000),
-            child: Stack(
-              children: [
-                PositionedDirectional(
-                  start: 0,
-                  top: 0,
-                  width: _barHeight,
-                  height: _barHeight,
-                  child: Semantics(
-                    button: true,
-                    label: widget.labels.back,
-                    child: GestureDetector(
-                      key: const ValueKey('mpx-picker-viewer-back'),
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => widget.viewer?.close(),
-                      child: Center(
-                        child: Transform.flip(
-                          flipX:
-                              Directionality.of(context) == TextDirection.rtl,
-                          child: CustomPaint(
-                            size: const Size.square(24),
-                            painter: _BackArrow(
-                              tokens.checkNumber.color ??
-                                  const Color(0xFFFFFFFF),
+  ) => Stack(
+    children: [
+      ..._scrims(context),
+      SafeArea(
+        child: Stack(
+          children: [
+            // The top bar: back, the host's title with the item's info line,
+            // the count and the check at the end.
+            PositionedDirectional(
+              top: 0,
+              start: 0,
+              end: 0,
+              height: _barHeight,
+              child: KeyedSubtree(
+                key: const ValueKey('mpx-picker-viewer-bar'),
+                child: Stack(
+                  children: [
+                    PositionedDirectional(
+                      start: 0,
+                      top: 0,
+                      width: _barHeight,
+                      height: _barHeight,
+                      child: Semantics(
+                        button: true,
+                        label: widget.labels.back,
+                        child: GestureDetector(
+                          key: const ValueKey('mpx-picker-viewer-back'),
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => widget.viewer?.close(),
+                          child: Center(
+                            child: Transform.flip(
+                              flipX:
+                                  Directionality.of(context) ==
+                                  TextDirection.rtl,
+                              child: CustomPaint(
+                                size: const Size.square(24),
+                                painter: _BackArrow(
+                                  tokens.checkNumber.color ??
+                                      const Color(0xFFFFFFFF),
+                                ),
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-                PositionedDirectional(
-                  start: 72,
-                  end: _counterEnd + 40,
-                  top: 0,
-                  bottom: 0,
-                  child: _BarTitle(
-                    title: widget.title,
-                    subtitle: switch (item.asset) {
-                      final asset? when policy.viewerInfoLine =>
-                        (widget.subtitleOf ?? PickerViewer.videoInfo)(asset),
-                      _ => null,
-                    },
-                    tokens: tokens,
-                  ),
-                ),
-                PositionedDirectional(
-                  top: (_barHeight - _CounterPill.height) / 2,
-                  end: _counterEnd,
-                  child: _CounterPill(
-                    key: const ValueKey('mpx-picker-viewer-counter'),
-                    count: count,
-                    open: _strip && count > 0,
-                    tokens: tokens,
-                    onTap: () {
-                      if (count > 0) setState(() => _strip = !_strip);
-                    },
-                  ),
-                ),
-                // The check: a circle of the policy's size, its order number
-                // in it; the touch area reaches past it.
-                PositionedDirectional(
-                  top: (_barHeight - policy.viewerCheckSize) / 2 - _checkSlop,
-                  end: _checkEnd - _checkSlop,
-                  child: Semantics(
-                    key: const ValueKey('mpx-picker-viewer-check'),
-                    button: true,
-                    checked: order != null,
-                    label: widget.labels.select,
-                    value: order?.toString(),
-                    onTap: () => _toggle(key),
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => _toggle(key),
-                      child: Padding(
-                        padding: const EdgeInsets.all(_checkSlop),
-                        child: _ViewerCheck(
-                          key: const ValueKey('mpx-picker-viewer-check-mark'),
-                          size: policy.viewerCheckSize,
-                          order: order,
-                          tokens: tokens,
+                    PositionedDirectional(
+                      start: 72,
+                      end: _counterEnd + 40,
+                      top: 0,
+                      bottom: 0,
+                      child: _BarTitle(
+                        title: widget.title,
+                        subtitle: switch (item.asset) {
+                          final asset? when policy.viewerInfoLine =>
+                            (widget.subtitleOf ?? PickerViewer.videoInfo)(
+                              asset,
+                            ),
+                          _ => null,
+                        },
+                        tokens: tokens,
+                      ),
+                    ),
+                    PositionedDirectional(
+                      top: (_barHeight - _CounterPill.height) / 2,
+                      end: _counterEnd,
+                      child: _CounterPill(
+                        key: const ValueKey('mpx-picker-viewer-counter'),
+                        count: count,
+                        open: _strip && count > 0,
+                        tokens: tokens,
+                        onTap: () {
+                          if (count > 0) setState(() => _strip = !_strip);
+                        },
+                      ),
+                    ),
+                    // The check: a circle of the policy's size, its order number
+                    // in it; the touch area reaches past it.
+                    PositionedDirectional(
+                      top:
+                          (_barHeight - policy.viewerCheckSize) / 2 -
+                          _checkSlop,
+                      end: _checkEnd - _checkSlop,
+                      child: Semantics(
+                        key: const ValueKey('mpx-picker-viewer-check'),
+                        button: true,
+                        checked: order != null,
+                        label: widget.labels.select,
+                        value: order?.toString(),
+                        onTap: () => _toggle(key),
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => _toggle(key),
+                          child: Padding(
+                            padding: const EdgeInsets.all(_checkSlop),
+                            child: _ViewerCheck(
+                              key: const ValueKey(
+                                'mpx-picker-viewer-check-mark',
+                              ),
+                              size: policy.viewerCheckSize,
+                              order: order,
+                              tokens: tokens,
+                            ),
+                          ),
                         ),
                       ),
                     ),
+                  ],
+                ),
+              ),
+            ),
+            // The selected strip, under the top bar, sliding and fading in.
+            if (_strip && count > 0)
+              PositionedDirectional(
+                top: _barHeight + 5,
+                start: 0,
+                end: 0,
+                height: policy.selectedStripHeight,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: 1),
+                  duration: const Duration(milliseconds: 200),
+                  builder: (context, t, child) => Opacity(
+                    opacity: t,
+                    child: Transform.translate(
+                      offset: Offset(0, -10 * (1 - t)),
+                      child: child,
+                    ),
+                  ),
+                  child: _SelectedStrip(
+                    keys: widget.selection.keys,
+                    current: key,
+                    height: policy.selectedStripHeight,
+                    tokens: tokens,
+                    onTap: (tapped) {
+                      final at =
+                          _indexOf[tapped] ?? widget.source.indexOf(tapped);
+                      if (at != null) widget.onShow?.call(at);
+                    },
+                    onDeselect: _toggle,
+                    onReorder: widget.onReorder,
                   ),
                 ),
-              ],
+              ),
+            // The host's bottom bar (a caption field and a send button): at the
+            // bottom of the safe area, lifted by the keyboard.
+            if (widget.bottomBuilder case final builder?)
+              PositionedDirectional(
+                start: 0,
+                end: 0,
+                bottom: MediaQuery.viewInsetsOf(context).bottom,
+                child: _SizeReport(
+                  onHeight: _bottomHeight,
+                  child: builder(context, item),
+                ),
+              ),
+          ],
+        ),
+      ),
+    ],
+  );
+
+  // The host bar's height, which the bottom scrim and the viewer's bottom
+  // controls follow.
+  double _bottomBar = 0;
+
+  void _bottomHeight(double height) {
+    if (height != _bottomBar && mounted) setState(() => _bottomBar = height);
+    final media = MediaQuery.of(context);
+    widget.onBottomHeight?.call(
+      height + media.viewInsets.bottom + media.padding.bottom,
+    );
+  }
+
+  // The scrims the chrome stands on, from the screen's edges, under the
+  // status bar: black fading to clear, 0xD0 from the top over one and a
+  // half status bars and the bar, 0xBB from the bottom over the safe area,
+  // half the host's bar and 20 px. No band of colour behind the bar.
+  List<Widget> _scrims(BuildContext context) {
+    final padding = MediaQuery.paddingOf(context);
+    final top = padding.top * 1.5 + _barHeight;
+    final bottom =
+        padding.bottom +
+        MediaQuery.viewInsetsOf(context).bottom +
+        _bottomBar / 2 +
+        20;
+    return [
+      Positioned(
+        top: 0,
+        left: 0,
+        right: 0,
+        height: top,
+        child: const IgnorePointer(
+          child: DecoratedBox(
+            key: ValueKey('mpx-picker-viewer-top-scrim'),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xD0000000), Color(0x00000000)],
+              ),
             ),
           ),
         ),
-        // The selected strip, under the top bar, sliding and fading in.
-        if (_strip && count > 0)
-          PositionedDirectional(
-            top: _barHeight + 5,
-            start: 0,
-            end: 0,
-            height: policy.selectedStripHeight,
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: 1),
-              duration: const Duration(milliseconds: 200),
-              builder: (context, t, child) => Opacity(
-                opacity: t,
-                child: Transform.translate(
-                  offset: Offset(0, -10 * (1 - t)),
-                  child: child,
+      ),
+      if (widget.bottomBuilder != null)
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: bottom,
+          child: const IgnorePointer(
+            child: DecoratedBox(
+              key: ValueKey('mpx-picker-viewer-bottom-scrim'),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [Color(0xBB000000), Color(0x00000000)],
                 ),
               ),
-              child: _SelectedStrip(
-                keys: widget.selection.keys,
-                current: key,
-                height: policy.selectedStripHeight,
-                tokens: tokens,
-                onTap: (tapped) {
-                  final at = _indexOf[tapped] ?? widget.source.indexOf(tapped);
-                  if (at != null) widget.onShow?.call(at);
-                },
-                onDeselect: _toggle,
-                onReorder: widget.onReorder,
-              ),
             ),
           ),
-        // The host's bottom bar (a caption field and a send button): at the
-        // bottom of the safe area, lifted by the keyboard.
-        if (widget.bottomBuilder case final builder?)
-          PositionedDirectional(
-            start: 0,
-            end: 0,
-            bottom: MediaQuery.viewInsetsOf(context).bottom,
-            child: _SizeReport(
-              onHeight: (height) => widget.onBottomHeight?.call(
-                height +
-                    MediaQuery.viewInsetsOf(context).bottom +
-                    MediaQuery.paddingOf(context).bottom,
-              ),
-              child: builder(context, item),
-            ),
-          ),
-      ],
-    ),
-  );
+        ),
+    ];
+  }
 
   void _toggle(MediaKey? key) {
     if (key == null) return;

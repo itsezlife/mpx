@@ -77,6 +77,7 @@ final class PickerHarness {
     bool viewerSlot = false,
     bool reorder = false,
     double keyboard = 0,
+    double top = 0,
     String? viewerTitle,
     void Function(List<MediaKey> keys)? onRemoved,
     ScrollController? controller,
@@ -99,6 +100,8 @@ final class PickerHarness {
           data: MediaQueryData(
             size: const Size(390, 800),
             viewInsets: EdgeInsets.only(bottom: keyboard),
+            padding: EdgeInsets.only(top: top),
+            viewPadding: EdgeInsets.only(top: top),
           ),
           child: AssetCacheProvider(
             scope: scope,

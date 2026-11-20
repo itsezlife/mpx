@@ -563,6 +563,23 @@ void main() {
       expect(harness.state(tester).controlsVisible, isFalse);
     });
 
+    testWidgets('a policy whose controls never hide by themselves keeps them '
+        'over a playing video', (tester) async {
+      harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+      );
+      await harness.pump(
+        tester,
+        policy: ViewerPolicy.$Android.copyWith(
+          video: ViewerPolicy.$Android.video.copyWith(autoHides: false),
+        ),
+      );
+      await tester.pump(const Duration(seconds: 5));
+      expect(harness.lease(tester).state.value.playing, isTrue);
+      expect(harness.state(tester).controlsVisible, isTrue);
+    });
+
     testWidgets('stay while paused', (tester) async {
       await open(tester);
       await tester.tap(find.byKey(const ValueKey('mpx-viewer-play')));

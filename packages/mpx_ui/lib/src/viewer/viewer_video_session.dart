@@ -126,6 +126,7 @@ final class ViewerVideoSession extends ChangeNotifier {
     _hideTimer = null;
     if (_disposed ||
         !_autoHide ||
+        !rules.autoHides ||
         !controls.value ||
         !_lease.state.value.playing) {
       return;

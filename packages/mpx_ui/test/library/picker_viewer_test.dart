@@ -305,6 +305,75 @@ void main() {
     });
   });
 
+  group('chrome lifecycle', () {
+    final check = find.byKey(const ValueKey('mpx-picker-viewer-check'));
+    double opacity(WidgetTester tester) => tester
+        .widgetList<FadeTransition>(
+          find.ancestor(of: check, matching: find.byType(FadeTransition)),
+        )
+        .map((f) => f.opacity.value)
+        .reduce((a, b) => a * b);
+
+    testWidgets('fades in with the open animation', (tester) async {
+      final h = PickerHarness();
+      await h.pump(tester, viewerSlot: true);
+      await tester.tap(cell(2));
+      await tester.pump();
+      await tester.pump();
+      expect(opacity(tester), lessThan(1));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(opacity(tester), inExclusiveRange(0, 1));
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(opacity(tester), 1);
+      expectThemedText(tester);
+    });
+
+    testWidgets('a tap fades it out and in; it never hides by itself', (
+      tester,
+    ) async {
+      final h = PickerHarness();
+      await h.pump(tester, viewerSlot: true);
+      await _open(tester, 2);
+      final viewer = tester.widget<MediaViewer>(find.byType(MediaViewer));
+      expect(viewer.policy!.video.autoHides, isFalse);
+      await tester.pump(const Duration(seconds: 5));
+      expect(opacity(tester), 1);
+
+      await tester.tapAt(const Offset(195, 400));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(opacity(tester), 0);
+      await tester.tapAt(const Offset(195, 400));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(opacity(tester), 1);
+    });
+  });
+
+  testWidgets('the top bar has no band: a scrim from the top of the screen '
+      'under the status bar fades to clear', (tester) async {
+    final h = PickerHarness();
+    await h.pump(tester, viewerSlot: true, top: 24);
+    await _open(tester, 2);
+    final bar = find.byKey(const ValueKey('mpx-picker-viewer-bar'));
+    expect(tester.getRect(bar).top, 24);
+    expect(
+      find.descendant(of: bar, matching: find.byType(ColoredBox)),
+      findsNothing,
+    );
+    final scrim = find.byKey(const ValueKey('mpx-picker-viewer-top-scrim'));
+    // 1.5 status bars and the bar.
+    expect(tester.getRect(scrim), const Rect.fromLTWH(0, 0, 390, 92));
+    final gradient =
+        (tester.widget<DecoratedBox>(scrim).decoration as BoxDecoration)
+                .gradient!
+            as LinearGradient;
+    expect(gradient.colors.first, const Color(0xD0000000));
+    expect(gradient.colors.last.a, 0);
+  });
+
   testWidgets("the host's bottom bar sits at the bottom, the viewer's "
       'controls above it, and the keyboard lifts both', (tester) async {
     final h = PickerHarness();
