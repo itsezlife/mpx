@@ -285,8 +285,15 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
     super.dispose();
   }
 
+  // Where the fade heads; the controller tells of every change (an index,
+  // a lease), and restarting the fade on each would hold it in place.
+  bool? _heading;
+
   void _onViewer() {
-    if (_shown) {
+    final shown = _shown;
+    if (shown == _heading) return;
+    _heading = shown;
+    if (shown) {
       unawaited(_fade.forward());
     } else {
       unawaited(_fade.reverse());

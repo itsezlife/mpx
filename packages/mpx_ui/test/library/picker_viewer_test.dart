@@ -113,6 +113,32 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
   });
 
+  testWidgets('a back press fades the picker chrome as the close starts', (
+    tester,
+  ) async {
+    final h = PickerHarness();
+    await h.pump(tester, viewerSlot: true);
+    await _open(tester, 2);
+    final check = find.byKey(const ValueKey('mpx-picker-viewer-check'));
+    double opacity() => tester
+        .widgetList<FadeTransition>(
+          find.ancestor(of: check, matching: find.byType(FadeTransition)),
+        )
+        .map((f) => f.opacity.value)
+        .reduce((a, b) => a * b);
+    expect(opacity(), 1);
+    Navigator.of(tester.element(check)).maybePop().ignore();
+    await tester.pump();
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(opacity(), lessThan(1));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.byType(MediaViewer), findsNothing);
+  });
+
   testWidgets('the check goes through the gate', (tester) async {
     final h = PickerHarness();
     final gated = OrderedPickerSelection(

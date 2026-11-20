@@ -504,5 +504,17 @@ void main() {
       await _release(tester, gesture);
       expect(harness.state(tester).controlsVisible, isFalse);
     });
+
+    testWidgets('a close the host calls hides the chrome as it starts', (
+      tester,
+    ) async {
+      final harness = ViewerHarness();
+      await harness.pump(tester);
+      expect(harness.state(tester).controlsVisible, isTrue);
+      harness.state(tester).close().ignore();
+      await tester.pump();
+      expect(harness.state(tester).controlsVisible, isFalse);
+      await tester.pump(const Duration(milliseconds: 400));
+    });
   });
 }
