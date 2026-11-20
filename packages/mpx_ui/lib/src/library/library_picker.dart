@@ -51,6 +51,8 @@ class LibraryPicker extends StatefulWidget {
     this.onCamera,
     this.onRefused,
     this.onReorder,
+    this.viewerTitle,
+    this.viewerSubtitleOf,
     this.onOpen,
     this.viewerBottomBuilder,
     this.players,
@@ -110,6 +112,15 @@ class LibraryPicker extends StatefulWidget {
   /// the place [to] (0-based) of the selection: `OrderedPickerSelection.move`
   /// for the default selection; no reorder when null.
   final void Function(MediaKey key, int to)? onReorder;
+
+  /// The picker-mode viewer's title: where the media goes (a chat's name);
+  /// none when null.
+  final String? viewerTitle;
+
+  /// The picker-mode viewer's info line for an item; by default a video's
+  /// size, duration and approximate bytes (`PickerViewer.videoInfo`), and
+  /// nothing for a photo.
+  final String? Function(LibraryAsset asset)? viewerSubtitleOf;
 
   /// Called by a tap on a picture instead of the picker-mode viewer.
   final void Function(LibraryAsset asset, int index)? onOpen;
@@ -256,6 +267,8 @@ class LibraryPickerState extends State<LibraryPicker> {
       bottomBuilder: widget.viewerBottomBuilder,
       onRefused: widget.onRefused,
       onReorder: widget.onReorder,
+      title: widget.viewerTitle,
+      subtitleOf: widget.viewerSubtitleOf,
       bridge: _origins.currentState?.bridgeFor(gallery),
     );
     if (mounted) setState(() => _viewerOpen = false);

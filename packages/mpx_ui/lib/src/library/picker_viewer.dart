@@ -131,6 +131,34 @@ final class PickerViewerItem {
 /// `ViewerOrigin`s of a `ViewerOriginScope` above the grid, which hides the
 /// cell while the viewer covers it.
 abstract final class PickerViewer {
+  /// The info line of [asset] under the title: for a video its pixel size,
+  /// duration and approximate bytes (`1920x1080, 0:08, ~2.3 MB`), each part
+  /// when known; nothing for a photo. A host that knows the size it will
+  /// send (after compression) passes its own line.
+  static String? videoInfo(LibraryAsset asset) {
+    if (asset.kind != LibraryAssetKind.video) return null;
+    final parts = [
+      if (asset.dimensions case final size?) '${size.width}x${size.height}',
+      if (asset.duration case final duration?)
+        LibraryGridLabels.formatDuration(duration),
+      if (asset.byteSize case final bytes?) '~${formatBytes(bytes)}',
+    ];
+    return parts.isEmpty ? null : parts.join(', ');
+  }
+
+  /// [bytes] as B, KB, MB or GB with one decimal, in 1024 steps.
+  static String formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    const units = ['KB', 'MB', 'GB'];
+    var value = bytes / 1024;
+    var unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+      value /= 1024;
+      unit++;
+    }
+    return '${value.toStringAsFixed(1)} ${units[unit]}';
+  }
+
   /// Shows the viewer over [source] at [initialIndex]; completes when it
   /// closed. [bridge] is the grid's origins; by default the closest
   /// `ViewerOriginScope` above [context].
@@ -148,6 +176,8 @@ abstract final class PickerViewer {
     Widget Function(BuildContext context, PickerViewerItem item)? bottomBuilder,
     void Function(MediaKey key, PickerRefusal reason)? onRefused,
     void Function(MediaKey key, int to)? onReorder,
+    String? title,
+    String? Function(LibraryAsset asset)? subtitleOf,
     ValueChanged<int>? onIndexChanged,
     OriginBridge? bridge,
   }) {
@@ -201,6 +231,8 @@ abstract final class PickerViewer {
                     onRefused: onRefused,
                     onShow: controller.jumpTo,
                     onReorder: onReorder,
+                    title: title,
+                    subtitleOf: subtitleOf,
                     onBottomHeight: (height) => bar.value = height,
                     viewer: controller,
                   ),
@@ -234,6 +266,8 @@ class PickerViewerChrome extends StatefulWidget {
     this.onReorder,
     this.viewer,
     this.onBottomHeight,
+    this.title,
+    this.subtitleOf,
     super.key,
   });
 
@@ -274,6 +308,13 @@ class PickerViewerChrome extends StatefulWidget {
   /// viewer's own bottom controls stand above it.
   final ValueChanged<double>? onBottomHeight;
 
+  /// The top bar's title: where the media goes (a chat's name).
+  final String? title;
+
+  /// The top bar's info line for an item; [PickerViewer.videoInfo] when
+  /// null.
+  final String? Function(LibraryAsset asset)? subtitleOf;
+
   /// The viewer under the chrome: the chrome shows while its controls do,
   /// so it fades out as a dismiss drag starts and with a tap that hides
   /// them. Always shown when null.
@@ -288,13 +329,12 @@ class PickerViewerChrome extends StatefulWidget {
 
 class _PickerViewerChromeState extends State<PickerViewerChrome>
     with SingleTickerProviderStateMixin {
-  // Where the check and the count stand, from the top end of the safe
-  // area: under the viewer's 56 px top bar, as the reference lays them.
-  static const double _checkTop = 71;
+  // The top bar: 56 px under the safe area, the check 11 px and the count
+  // 64 px from its end, both centred on its line.
+  static const double _barHeight = 56;
   static const double _checkEnd = 11;
   static const double _checkSlop = 6;
   static const double _counterEnd = 64;
-  static const double _barHeight = 56;
 
   bool _strip = false;
   late final AnimationController _fade = AnimationController(
@@ -394,47 +434,103 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
   ) => SafeArea(
     child: Stack(
       children: [
-        // The check: a circle of the policy's size, its order number in it,
-        // under the viewer's top bar at the end; the touch area reaches
-        // past it.
+        // The top bar: back, the host's title with the item's info line,
+        // the count and the check at the end.
         PositionedDirectional(
-          top: _checkTop - _checkSlop,
-          end: _checkEnd - _checkSlop,
-          child: Semantics(
-            key: const ValueKey('mpx-picker-viewer-check'),
-            button: true,
-            checked: order != null,
-            label: widget.labels.select,
-            value: order?.toString(),
-            onTap: () => _toggle(key),
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _toggle(key),
-              child: Padding(
-                padding: const EdgeInsets.all(_checkSlop),
-                child: _ViewerCheck(
-                  key: const ValueKey('mpx-picker-viewer-check-mark'),
-                  size: policy.viewerCheckSize,
-                  order: order,
-                  tokens: tokens,
+          top: 0,
+          start: 0,
+          end: 0,
+          height: _barHeight,
+          child: ColoredBox(
+            key: const ValueKey('mpx-picker-viewer-bar'),
+            color: const Color(0x7F000000),
+            child: Stack(
+              children: [
+                PositionedDirectional(
+                  start: 0,
+                  top: 0,
+                  width: _barHeight,
+                  height: _barHeight,
+                  child: Semantics(
+                    button: true,
+                    label: widget.labels.back,
+                    child: GestureDetector(
+                      key: const ValueKey('mpx-picker-viewer-back'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => widget.viewer?.close(),
+                      child: Center(
+                        child: Transform.flip(
+                          flipX:
+                              Directionality.of(context) == TextDirection.rtl,
+                          child: CustomPaint(
+                            size: const Size.square(24),
+                            painter: _BackArrow(
+                              tokens.checkNumber.color ??
+                                  const Color(0xFFFFFFFF),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+                PositionedDirectional(
+                  start: 72,
+                  end: _counterEnd + 40,
+                  top: 0,
+                  bottom: 0,
+                  child: _BarTitle(
+                    title: widget.title,
+                    subtitle: switch (item.asset) {
+                      final asset? when policy.viewerInfoLine =>
+                        (widget.subtitleOf ?? PickerViewer.videoInfo)(asset),
+                      _ => null,
+                    },
+                    tokens: tokens,
+                  ),
+                ),
+                PositionedDirectional(
+                  top: (_barHeight - _CounterPill.height) / 2,
+                  end: _counterEnd,
+                  child: _CounterPill(
+                    key: const ValueKey('mpx-picker-viewer-counter'),
+                    count: count,
+                    open: _strip && count > 0,
+                    tokens: tokens,
+                    onTap: () {
+                      if (count > 0) setState(() => _strip = !_strip);
+                    },
+                  ),
+                ),
+                // The check: a circle of the policy's size, its order number
+                // in it; the touch area reaches past it.
+                PositionedDirectional(
+                  top: (_barHeight - policy.viewerCheckSize) / 2 - _checkSlop,
+                  end: _checkEnd - _checkSlop,
+                  child: Semantics(
+                    key: const ValueKey('mpx-picker-viewer-check'),
+                    button: true,
+                    checked: order != null,
+                    label: widget.labels.select,
+                    value: order?.toString(),
+                    onTap: () => _toggle(key),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _toggle(key),
+                      child: Padding(
+                        padding: const EdgeInsets.all(_checkSlop),
+                        child: _ViewerCheck(
+                          key: const ValueKey('mpx-picker-viewer-check-mark'),
+                          size: policy.viewerCheckSize,
+                          order: order,
+                          tokens: tokens,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ),
-        // The count: an outlined pill on the check's line, which shows or
-        // hides the selected strip (a cross while it shows).
-        PositionedDirectional(
-          top: _checkTop + policy.viewerCheckSize / 2 - _CounterPill.height / 2,
-          end: _counterEnd,
-          child: _CounterPill(
-            key: const ValueKey('mpx-picker-viewer-counter'),
-            count: count,
-            open: _strip && count > 0,
-            tokens: tokens,
-            onTap: () {
-              if (count > 0) setState(() => _strip = !_strip);
-            },
           ),
         ),
         // The selected strip, under the top bar, sliding and fading in.
@@ -958,5 +1054,192 @@ class _RenderSizeReport extends RenderProxyBox {
       if (!attached) return;
       onHeight(height);
     });
+  }
+}
+
+class _BackArrow extends CustomPainter {
+  const _BackArrow(this.colour);
+
+  final Color colour;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = colour
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final w = size.width;
+    canvas.drawPath(
+      Path()
+        ..moveTo(w * 0.8, w / 2)
+        ..lineTo(w * 0.2, w / 2)
+        ..moveTo(w * 0.45, w * 0.25)
+        ..lineTo(w * 0.2, w / 2)
+        ..lineTo(w * 0.45, w * 0.75),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_BackArrow oldDelegate) => oldDelegate.colour != colour;
+}
+
+/// The bar's title, and the info line under it when there is one: as the
+/// line comes, it fades in from 3 px lower while the title rises 12 px and
+/// shrinks to 0.87; as it goes, the reverse; a new line replaces the old
+/// one, the old going up and out as the new comes up and in.
+class _BarTitle extends StatefulWidget {
+  const _BarTitle({
+    required this.title,
+    required this.subtitle,
+    required this.tokens,
+  });
+
+  final String? title;
+  final String? subtitle;
+  final LibraryGridTokens tokens;
+
+  @override
+  State<_BarTitle> createState() => _BarTitleState();
+}
+
+class _BarTitleState extends State<_BarTitle> with TickerProviderStateMixin {
+  // The reference's ease-out quint.
+  static const Curve _curve = Cubic(0.23, 1, 0.32, 1);
+
+  late final AnimationController _presence;
+  late final AnimationController _swap;
+  String? _old;
+  String? _now;
+
+  @override
+  void initState() {
+    super.initState();
+    _now = _line(widget.subtitle);
+    _presence = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+      value: _now == null ? 0 : 1,
+    );
+    _swap = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+      value: 1,
+    );
+  }
+
+  static String? _line(String? text) =>
+      text == null || text.isEmpty ? null : text;
+
+  @override
+  void didUpdateWidget(_BarTitle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final next = _line(widget.subtitle);
+    if (next == _now) return;
+    if (next == null) {
+      _presence.reverse().ignore();
+      return;
+    }
+    if (_now == null) {
+      // Coming: the line fades in where it stands, no swap.
+      _old = null;
+      _now = next;
+      _swap.value = 1;
+      _presence.forward().ignore();
+      return;
+    }
+    _old = _now;
+    _now = next;
+    _swap.forward(from: 0).ignore();
+  }
+
+  @override
+  void dispose() {
+    _presence.dispose();
+    _swap.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = widget.tokens;
+    final colour = tokens.checkNumber.color ?? const Color(0xFFFFFFFF);
+    final titleStyle = TextStyle(
+      color: colour,
+      fontSize: 20,
+      fontWeight: FontWeight.bold,
+    );
+    final lineStyle = TextStyle(color: colour, fontSize: 14);
+    return AnimatedBuilder(
+      animation: Listenable.merge([_presence, _swap]),
+      builder: (context, _) {
+        final p = _curve.transform(_presence.value);
+        final s = _curve.transform(_swap.value);
+        Widget line(String text, double opacity, double dy) => Positioned(
+          left: 0,
+          right: 0,
+          top: 0,
+          height: 20,
+          child: Opacity(
+            opacity: opacity.clamp(0, 1),
+            child: Transform.translate(
+              offset: Offset(0, dy),
+              child: Text(
+                text,
+                style: lineStyle,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.fade,
+              ),
+            ),
+          ),
+        );
+        // The line's place: 30 px down with it, 33 without.
+        final top = 33 - 3 * p;
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            if (widget.title case final title?)
+              Positioned.fill(
+                child: Transform.translate(
+                  offset: Offset(0, -12 * p),
+                  child: Transform.scale(
+                    scale: 1 - 0.13 * p,
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: Text(
+                        title,
+                        style: titleStyle,
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.fade,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            if (_now case final now?)
+              Positioned(
+                left: 0,
+                right: 0,
+                top: top,
+                height: 20,
+                child: Stack(
+                  key: const ValueKey('mpx-picker-viewer-subtitle'),
+                  clipBehavior: Clip.none,
+                  children: [
+                    if (_old case final old? when s < 1)
+                      line(old, p * (1 - s), -8 * s),
+                    line(now, p * (_old == null ? 1 : s), 8 * (1 - s)),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
+    );
   }
 }

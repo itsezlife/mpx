@@ -1,4 +1,3 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -142,25 +141,39 @@ void main() {
     expect(find.byType(MediaViewer), findsNothing);
   });
 
-  testWidgets('the check and the count stand at the top end on one line: '
-      'a filled numbered circle, and an outlined pill', (tester) async {
+  testWidgets('the top bar: back, the host title, and the count and the '
+      'check on its line at the end', (tester) async {
     final h = PickerHarness();
-    await h.pump(tester, viewerSlot: true);
+    await h.pump(tester, viewerSlot: true, viewerTitle: 'Saved Messages');
     h.selection
       ..toggle(key(0))
       ..toggle(key(2));
     await _open(tester, 2);
+    final bar = find.byKey(const ValueKey('mpx-picker-viewer-bar'));
     final check = find.byKey(const ValueKey('mpx-picker-viewer-check-mark'));
     final counter = find.byKey(const ValueKey('mpx-picker-viewer-counter'));
     const width = 390.0;
-    // Android: a 34 dp check 11 dp from the end, 71 dp down; the count's
-    // pill ends 64 dp from the end, centred on the check's line.
+    expect(tester.getRect(bar), const Rect.fromLTWH(0, 0, width, 56));
+    expect(
+      find.descendant(of: bar, matching: find.text('Saved Messages')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('mpx-picker-viewer-back')),
+      findsOneWidget,
+    );
+    // A photo has no info line.
+    expect(
+      find.byKey(const ValueKey('mpx-picker-viewer-subtitle')),
+      findsNothing,
+    );
     expect(tester.getSize(check), const Size.square(34));
-    expect(tester.getTopRight(check), const Offset(width - 11, 71));
+    expect(tester.getCenter(check).dy, 28);
+    expect(tester.getRect(check).right, width - 11);
     final pill = tester.getRect(counter);
     expect(pill.right, width - 64);
     expect(pill.height, 28);
-    expect(pill.center.dy, tester.getCenter(check).dy);
+    expect(pill.center.dy, 28);
     final box = tester.widget<DecoratedBox>(
       find.descendant(of: counter, matching: find.byType(DecoratedBox)),
     );
@@ -173,85 +186,122 @@ void main() {
     expect(count.text.toPlainText(), '2');
     expect(count.text.style!.fontSize, 15);
     expect(count.text.style!.fontWeight, FontWeight.bold);
+
+    // The strip opens below the bar.
+    await tester.tap(counter);
+    await PickerHarness.settle(tester);
     expect(
-      find.descendant(of: check, matching: find.text('2')),
-      findsOneWidget,
+      tester.getTopLeft(find.byType(ListView).last).dy,
+      greaterThanOrEqualTo(56),
     );
+
+    // Back closes the viewer.
+    await tester.tap(find.byKey(const ValueKey('mpx-picker-viewer-back')));
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.byType(MediaViewer), findsNothing);
   });
 
-  group('the selected strip', () {
-    Finder thumb(int index) =>
-        find.byKey(ValueKey(('mpx-picker-viewer-strip', key(index))));
+  testWidgets('a video has its info line: size, duration and ~bytes', (
+    tester,
+  ) async {
+    final h = PickerHarness();
+    await h.pump(tester, viewerSlot: true);
+    // The fourth fake asset is a 1920x1080 video of 8 s, 2 400 003 bytes.
+    await _open(tester, 3);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('mpx-picker-viewer-subtitle')),
+        matching: find.text('1920x1080, 0:08, ~2.3 MB'),
+      ),
+      findsOneWidget,
+    );
+    expect(h.selection.keys, isEmpty);
+  });
 
-    Future<PickerHarness> openStrip(
-      WidgetTester tester, {
-      bool reorder = true,
-    }) async {
+  group('the info line', () {
+    Finder subtitle() =>
+        find.byKey(const ValueKey('mpx-picker-viewer-subtitle'));
+    final title = find.text('Chat');
+
+    double lineOpacity(WidgetTester tester, String text) => tester
+        .widgetList<Opacity>(
+          find.ancestor(
+            of: find.descendant(of: subtitle(), matching: find.text(text)),
+            matching: find.byType(Opacity),
+          ),
+        )
+        .map((o) => o.opacity)
+        .reduce((a, b) => a * b);
+
+    double titleScale(WidgetTester tester) => tester
+        .widgetList<Transform>(
+          find.ancestor(of: title, matching: find.byType(Transform)),
+        )
+        .map((t) => t.transform.storage[0])
+        .reduce((a, b) => a * b);
+
+    testWidgets('Android: paging to a video, the line fades in as the title '
+        'rises and shrinks', (tester) async {
       final h = PickerHarness();
-      await h.pump(tester, viewerSlot: true, reorder: reorder);
-      // Selected in the grid: the viewer has not shown them yet.
-      for (final i in [5, 1, 7]) {
-        h.selection.toggle(key(i));
+      await h.pump(tester, viewerSlot: true, viewerTitle: 'Chat');
+      await _open(tester, 2);
+      expect(subtitle(), findsNothing);
+      expect(titleScale(tester), 1);
+
+      await tester.fling(find.byType(MediaViewer), const Offset(-300, 0), 2000);
+      for (var i = 0; i < 60 && subtitle().evaluate().isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
       }
-      await _open(tester, 1);
+      const text = '1920x1080, 0:08, ~2.3 MB';
+      await tester.pump(const Duration(milliseconds: 60));
+      expect(lineOpacity(tester, text), inExclusiveRange(0, 1));
+      expect(titleScale(tester), inExclusiveRange(0.87, 1));
+      expectThemedText(tester);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(lineOpacity(tester, text), 1);
+      expect(titleScale(tester), closeTo(0.87, 1e-6));
+    });
+
+    testWidgets('Android: a new line replaces the old one, the old going out '
+        'as the new comes in', (tester) async {
+      final h = PickerHarness();
+      await h.pump(tester, viewerSlot: true, viewerTitle: 'Chat');
+      h.selection.toggle(key(7));
+      await _open(tester, 3);
+      const before = '1920x1080, 0:08, ~2.3 MB';
+      const after = '1920x1080, 0:12, ~2.3 MB';
+      expect(lineOpacity(tester, before), 1);
       await tester.tap(find.byKey(const ValueKey('mpx-picker-viewer-counter')));
       await PickerHarness.settle(tester);
-      return h;
-    }
-
-    int shown(WidgetTester tester) =>
-        tester.state<MediaViewerState>(find.byType(MediaViewer)).index;
-
-    testWidgets('a tap shows that item, even one the viewer never showed', (
-      tester,
-    ) async {
-      await openStrip(tester);
-      expect(shown(tester), 1);
-      await tester.tap(thumb(7));
-      await PickerHarness.settle(tester);
-      expect(shown(tester), 7);
-    });
-
-    testWidgets('the item shown is outlined', (tester) async {
-      await openStrip(tester);
-      BoxBorder? border(int index) =>
-          (tester
-                      .widget<DecoratedBox>(
-                        find
-                            .descendant(
-                              of: thumb(index),
-                              matching: find.byKey(
-                                const ValueKey('mpx-picker-viewer-strip-frame'),
-                              ),
-                            )
-                            .first,
-                      )
-                      .decoration
-                  as BoxDecoration)
-              .border;
-      expect(border(1), isNotNull);
-      expect(border(5), isNull);
-    });
-
-    testWidgets('a tap on its check deselects it', (tester) async {
-      final h = await openStrip(tester);
-      await tester.tapAt(tester.getTopRight(thumb(5)) + const Offset(-10, 10));
-      await PickerHarness.settle(tester);
-      expect(h.selection.keys, [key(1), key(7)]);
-      expect(thumb(5), findsNothing);
-    });
-
-    testWidgets('a long press lifts an item and a drag moves it', (
-      tester,
-    ) async {
-      final h = await openStrip(tester);
-      final gesture = await tester.startGesture(tester.getCenter(thumb(5)));
-      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
-      await gesture.moveTo(tester.getCenter(thumb(7)));
+      await tester.tap(
+        find.byKey(ValueKey(('mpx-picker-viewer-strip', key(7)))),
+      );
       await tester.pump();
-      await gesture.up();
-      await PickerHarness.settle(tester);
-      expect(h.selection.keys, [key(1), key(7), key(5)]);
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(lineOpacity(tester, before), inExclusiveRange(0, 1));
+      expect(lineOpacity(tester, after), inExclusiveRange(0, 1));
+      expectThemedText(tester);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(
+        find.descendant(of: subtitle(), matching: find.text(before)),
+        findsNothing,
+      );
+      expect(lineOpacity(tester, after), 1);
+    });
+
+    testWidgets('iOS: no info line', (tester) async {
+      final h = PickerHarness();
+      await h.pump(
+        tester,
+        viewerSlot: true,
+        viewerTitle: 'Chat',
+        policy: LibraryGridPolicy.$IOS,
+      );
+      await _open(tester, 3);
+      expect(subtitle(), findsNothing);
+      expect(title, findsOneWidget);
     });
   });
 

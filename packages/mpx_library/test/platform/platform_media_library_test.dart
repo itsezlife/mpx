@@ -38,6 +38,7 @@ Map<String, Object?> _asset(
   'createdMs': 1700000000000,
   'modifiedMs': 1700000001000,
   'mime': kind == 'video' ? 'video/mp4' : 'image/jpeg',
+  'size': 2400000,
   'cloud': cloud,
 };
 
@@ -227,6 +228,7 @@ void main() {
     final video = page.assets.first;
     expect(video.kind, LibraryAssetKind.video);
     expect(video.duration, const Duration(milliseconds: 7500));
+    expect(video.byteSize, 2400000);
     expect(video.subtypes, {LibraryAssetSubtype.favourite});
     expect(video.created, DateTime.utc(2023, 11, 14, 22, 13, 20));
     expect(lib.isCloudHeld(video.id), isTrue);

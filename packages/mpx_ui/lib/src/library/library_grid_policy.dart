@@ -67,6 +67,7 @@ final class LibraryGridPolicy {
     required this.keepsDeniedCameraSlot,
     required this.viewerCheckSize,
     this.selectedStripHeight = 103,
+    this.viewerInfoLine = true,
     this.disabledOpacity = 0.3,
     this.swipeStartInset = 44,
     this.swipeVerticalSlop = 5,
@@ -127,6 +128,7 @@ final class LibraryGridPolicy {
     errorHaptic: true,
     keepsDeniedCameraSlot: false,
     viewerCheckSize: 29,
+    viewerInfoLine: false,
   );
 
   /// [$IOS] on iOS and macOS, [$Android] elsewhere.
@@ -205,6 +207,11 @@ final class LibraryGridPolicy {
 
   /// The height of the picker-mode viewer's strip of selected items.
   final double selectedStripHeight;
+
+  /// Whether the picker-mode viewer's top bar shows an info line under its
+  /// title (a video's size, duration and bytes): `$Android` does, `$IOS`
+  /// shows no such line.
+  final bool viewerInfoLine;
 
   /// Whether the camera slot stays when camera access is denied (its
   /// builder is told); otherwise it goes and a banner says why.

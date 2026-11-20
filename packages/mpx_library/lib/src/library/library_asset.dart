@@ -55,6 +55,7 @@ final class LibraryAsset {
     this.created,
     this.modified,
     this.mimeType,
+    this.byteSize,
   });
 
   /// The platform's id.
@@ -81,6 +82,10 @@ final class LibraryAsset {
   /// The MIME type of the original, when known.
   final String? mimeType;
 
+  /// The original's size in bytes, when the platform tells it without
+  /// reading the file (Android); null otherwise.
+  final int? byteSize;
+
   /// Whether the platform reports [subtype].
   bool has(LibraryAssetSubtype subtype) => subtypes.contains(subtype);
 
@@ -94,7 +99,8 @@ final class LibraryAsset {
       other.duration == duration &&
       other.created == created &&
       other.modified == modified &&
-      other.mimeType == mimeType;
+      other.mimeType == mimeType &&
+      other.byteSize == byteSize;
 
   @override
   int get hashCode => Object.hash(
@@ -106,6 +112,7 @@ final class LibraryAsset {
     created,
     modified,
     mimeType,
+    byteSize,
   );
 
   @override

@@ -10,7 +10,7 @@ import 'package:mpx_library/src/library/library_asset.dart';
 /// | Map | Fields |
 /// | --- | --- |
 /// | access | `platform` (`android` / `apple`); Android: `sdk`, `images`, `video`, `selected`, `legacy`, `asked`; Apple: `status` |
-/// | asset | `id`, `kind` (`photo` / `video`), `subtypes`, `width`, `height`, `durationMs`, `createdMs`, `modifiedMs`, `mime`, `cloud` |
+/// | asset | `id`, `kind` (`photo` / `video`), `subtypes`, `width`, `height`, `durationMs`, `createdMs`, `modifiedMs`, `mime`, `size` (bytes), `cloud` |
 /// | album | `id`, `kind`, `title`, `count`, `cover` (an asset), `startsAtEnd` |
 abstract final class LibraryWire {
   /// The access an access map reports.
@@ -76,6 +76,10 @@ abstract final class LibraryWire {
           ? null
           : DateTime.fromMillisecondsSinceEpoch(modified, isUtc: true),
       mimeType: map['mime'] as String?,
+      byteSize: switch (map['size']) {
+        final int size when size > 0 => size,
+        _ => null,
+      },
     );
   }
 

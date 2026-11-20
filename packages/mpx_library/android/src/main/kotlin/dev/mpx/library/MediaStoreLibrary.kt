@@ -78,6 +78,7 @@ class MediaStoreLibrary(private val context: Context) {
         MediaStore.MediaColumns._ID,
         MediaStore.Files.FileColumns.MEDIA_TYPE,
         MediaStore.MediaColumns.MIME_TYPE,
+        MediaStore.MediaColumns.SIZE,
         MediaStore.MediaColumns.WIDTH,
         MediaStore.MediaColumns.HEIGHT,
         "duration",
@@ -204,6 +205,7 @@ class MediaStoreLibrary(private val context: Context) {
             "createdMs" to cursor.long("datetaken").takeIf { it > 0 },
             "modifiedMs" to cursor.long(MediaStore.MediaColumns.DATE_MODIFIED) * 1000,
             "mime" to mime,
+            "size" to cursor.long(MediaStore.MediaColumns.SIZE),
             "cloud" to false,
         )
     }

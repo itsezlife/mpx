@@ -96,6 +96,7 @@ final class LibraryGridLabels {
     required this.open,
     required this.select,
     required this.gif,
+    this.back,
     this.camera,
     this.dateOf,
   });
@@ -111,6 +112,9 @@ final class LibraryGridLabels {
 
   /// The check's action.
   final String select;
+
+  /// The picker-mode viewer's back button; no label when null.
+  final String? back;
 
   /// The badge of an animated picture.
   final String gif;

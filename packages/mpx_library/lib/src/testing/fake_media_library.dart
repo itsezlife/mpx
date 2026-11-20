@@ -59,6 +59,7 @@ final class FakeMediaLibrary implements MediaLibrary {
       created: created,
       modified: created,
       mimeType: video ? 'video/mp4' : 'image/jpeg',
+      byteSize: video ? 2400000 + index : 1500000 + index,
     );
   }
 
