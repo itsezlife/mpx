@@ -600,22 +600,32 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
                   ),
                 ),
               ),
-            // The host's bottom bar (a caption field and a send button): at the
-            // bottom of the safe area, lifted by the keyboard.
-            if (widget.bottomBuilder case final builder?)
-              PositionedDirectional(
-                start: 0,
-                end: 0,
-                bottom: MediaQuery.viewInsetsOf(context).bottom,
-                child: _SizeReport(
-                  onHeight: _bottomHeight,
-                  child: builder(context, item),
-                ),
-              ),
           ],
         ),
       ),
+      // The host's bottom bar (a caption field and a send button), from the
+      // screen's bottom: on the keyboard while it is up, at the safe area
+      // when it is down, whichever is higher on every frame of the
+      // keyboard's animation. Placed by the raw insets, not inside a safe
+      // area: an inset added to a padding the host may have stripped would
+      // let the bar drop below its rest place as the keyboard goes.
+      if (widget.bottomBuilder case final builder?)
+        Positioned(
+          left: MediaQuery.viewPaddingOf(context).left,
+          right: MediaQuery.viewPaddingOf(context).right,
+          bottom: _barLift(context),
+          child: _SizeReport(
+            onHeight: _bottomHeight,
+            child: builder(context, item),
+          ),
+        ),
     ],
+  );
+
+  // How high the host's bottom bar stands over the screen's bottom.
+  static double _barLift(BuildContext context) => math.max(
+    MediaQuery.viewInsetsOf(context).bottom,
+    MediaQuery.viewPaddingOf(context).bottom,
   );
 
   // The host bar's height, which the bottom scrim and the viewer's bottom
@@ -624,10 +634,7 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
 
   void _bottomHeight(double height) {
     if (height != _bottomBar && mounted) setState(() => _bottomBar = height);
-    final media = MediaQuery.of(context);
-    widget.onBottomHeight?.call(
-      height + media.viewInsets.bottom + media.padding.bottom,
-    );
+    widget.onBottomHeight?.call(height + _barLift(context));
   }
 
   // The scrims the chrome stands on, from the screen's edges, under the
@@ -637,11 +644,7 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
   List<Widget> _scrims(BuildContext context) {
     final padding = MediaQuery.paddingOf(context);
     final top = padding.top * 1.5 + _barHeight;
-    final bottom =
-        padding.bottom +
-        MediaQuery.viewInsetsOf(context).bottom +
-        _bottomBar / 2 +
-        20;
+    final bottom = _barLift(context) + _bottomBar / 2 + 20;
     return [
       Positioned(
         top: 0,

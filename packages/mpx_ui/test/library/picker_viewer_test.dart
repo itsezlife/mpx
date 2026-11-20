@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -454,6 +456,39 @@ void main() {
     expect(tester.getRect(slot).bottom, 500);
     expect(viewerBottom(), 360);
   });
+
+  for (final (name, stripped) in [
+    ('the padding the inset leaves', false),
+    ('a host that stripped the padding', true),
+  ]) {
+    testWidgets('as the keyboard hides frame by frame, the bottom bar never '
+        'goes below its rest place: $name', (tester) async {
+      final h = PickerHarness();
+      await h.pump(tester, viewerSlot: true);
+      await _open(tester, 2);
+      final slot = find.byKey(const ValueKey('slot'));
+      const safe = 48.0;
+      MediaQueryData frame(double inset) => MediaQueryData(
+        size: const Size(390, 800),
+        viewInsets: EdgeInsets.only(bottom: inset),
+        viewPadding: const EdgeInsets.only(bottom: safe),
+        padding: EdgeInsets.only(
+          bottom: stripped ? 0 : math.max(0, safe - inset),
+        ),
+      );
+      for (var inset = 358.0; inset >= 0; inset -= 2) {
+        h.media.value = frame(inset);
+        await tester.pump(const Duration(milliseconds: 16));
+        final bottom = tester.getRect(slot).bottom;
+        expect(
+          bottom,
+          closeTo(800 - math.max(inset, safe), 1e-6),
+          reason: 'at an inset of $inset',
+        );
+      }
+      expectThemedText(tester);
+    });
+  }
 
   testWidgets('the check goes through the gate', (tester) async {
     final h = PickerHarness();

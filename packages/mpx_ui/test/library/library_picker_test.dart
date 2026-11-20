@@ -56,6 +56,10 @@ final class PickerHarness {
   }
 
   final FakeMediaLibrary library;
+
+  /// What the surfaces see of the screen, when a test drives it frame by
+  /// frame (a keyboard animating); the pump's values when null.
+  final ValueNotifier<MediaQueryData?> media = ValueNotifier(null);
   final FakeAssetProducer producer = FakeAssetProducer();
   late final PlaybackClock clock;
   late final AssetCacheScope scope;
@@ -96,12 +100,18 @@ final class PickerHarness {
     await tester.pumpWidget(
       Directionality(
         textDirection: TextDirection.ltr,
-        child: MediaQuery(
-          data: MediaQueryData(
-            size: const Size(390, 800),
-            viewInsets: EdgeInsets.only(bottom: keyboard),
-            padding: EdgeInsets.only(top: top),
-            viewPadding: EdgeInsets.only(top: top),
+        child: ValueListenableBuilder<MediaQueryData?>(
+          valueListenable: media,
+          builder: (context, override, child) => MediaQuery(
+            data:
+                override ??
+                MediaQueryData(
+                  size: const Size(390, 800),
+                  viewInsets: EdgeInsets.only(bottom: keyboard),
+                  padding: EdgeInsets.only(top: top),
+                  viewPadding: EdgeInsets.only(top: top),
+                ),
+            child: child!,
           ),
           child: AssetCacheProvider(
             scope: scope,
