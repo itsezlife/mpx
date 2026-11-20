@@ -169,6 +169,46 @@ void main() {
     expect(selection.keys, [_key(0), _key(4)]);
   });
 
+  testWidgets(r'$Android swipe: dragging back gives the cells left behind '
+      'their state from before the drag', (tester) async {
+    await pumpGrid(tester);
+    await tapCheck(tester, 3);
+    final gesture = await tester.startGesture(tester.getCenter(cell(0)));
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 20));
+    await gesture.moveTo(tester.getCenter(cell(5)));
+    await tester.pump();
+    expect(selection.keys.toSet(), {for (var i = 0; i <= 5; i++) _key(i)});
+
+    await gesture.moveTo(tester.getCenter(cell(2)));
+    await tester.pump();
+    expect(selection.keys, [_key(3), _key(0), _key(1), _key(2)]);
+
+    // Back over the start: only the pressed cell keeps its new state.
+    await gesture.moveTo(tester.getCenter(cell(0)));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+    expect(selection.keys, [_key(3), _key(0)]);
+  });
+
+  testWidgets(r'$Android swipe: a deselecting drag dragged back selects '
+      'again what it had deselected', (tester) async {
+    await pumpGrid(tester);
+    for (var i = 0; i <= 4; i++) {
+      await tapCheck(tester, i);
+    }
+    final gesture = await tester.startGesture(tester.getCenter(cell(1)));
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 20));
+    await gesture.moveTo(tester.getCenter(cell(4)));
+    await tester.pump();
+    expect(selection.keys, [_key(0)]);
+    await gesture.moveTo(tester.getCenter(cell(2)));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+    expect(selection.keys, [_key(0), _key(3), _key(4)]);
+  });
+
   testWidgets(r'$IOS swipe: a horizontal pan selects', (tester) async {
     await pumpGrid(tester, policy: LibraryGridPolicy.$IOS);
     final start = tester.getCenter(cell(1));

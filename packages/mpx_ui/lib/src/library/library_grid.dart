@@ -200,7 +200,10 @@ class LibraryGridState extends State<LibraryGrid>
   // Swipe select.
   int? _anchor;
   bool _selecting = true;
-  final Set<int> _crossed = {};
+  // The cells the swipe has taken (by album index, the pressed one aside)
+  // and whether each was selected before: a cell the swipe leaves behind as
+  // it comes back toward its start goes back to that state.
+  final Map<int, bool> _before = {};
   Offset? _pointer;
   Ticker? _ticker;
   Ticker get _autoScroll => _ticker ??= createTicker(_onAutoScroll);
@@ -391,9 +394,7 @@ class LibraryGridState extends State<LibraryGrid>
     setState(() {
       _anchor = index;
       _swiping = true;
-      _crossed
-        ..clear()
-        ..add(index);
+      _before.clear();
       _pointer = local;
     });
     unawaited(HapticFeedback.selectionClick());
@@ -405,26 +406,42 @@ class LibraryGridState extends State<LibraryGrid>
     _updateAutoScroll(local);
   }
 
+  // The cells between the start and the pointer take the swipe's state;
+  // the ones taken earlier and now outside that range get their own back.
   void _extendTo(Offset local) {
     final anchor = _anchor;
     final index = _indexAt(local);
     if (anchor == null || index == null) return;
     final from = math.min(anchor, index);
     final to = math.max(anchor, index);
-    final keys = <MediaKey>[];
-    for (var i = from; i <= to; i++) {
-      if (_crossed.contains(i)) continue;
+    final take = <MediaKey>[];
+    final reselect = <MediaKey>[];
+    final deselect = <MediaKey>[];
+    for (final MapEntry(key: i, value: was) in _before.entries.toList()) {
+      if (i >= from && i <= to) continue;
+      _before.remove(i);
       final asset = _pages.assetAt(i);
       if (asset == null) continue;
-      _crossed.add(i);
-      keys.add(LibraryKeys.libraryKeyOf(asset));
+      (was ? reselect : deselect).add(LibraryKeys.libraryKeyOf(asset));
     }
-    if (keys.isEmpty) return;
-    for (final (key, reason) in widget.selection.toggleRange(
-      keys,
-      to: _selecting,
-    )) {
-      _report(key, reason);
+    for (var i = from; i <= to; i++) {
+      if (i == anchor || _before.containsKey(i)) continue;
+      final asset = _pages.assetAt(i);
+      if (asset == null) continue;
+      final key = LibraryKeys.libraryKeyOf(asset);
+      _before[i] = widget.selection.orderOf(key) != null;
+      take.add(key);
+    }
+    final selection = widget.selection;
+    for (final (keys, state) in [
+      (deselect, false),
+      (reselect, true),
+      (take, _selecting),
+    ]) {
+      if (keys.isEmpty) continue;
+      for (final (key, reason) in selection.toggleRange(keys, to: state)) {
+        _report(key, reason);
+      }
     }
   }
 
@@ -434,7 +451,7 @@ class LibraryGridState extends State<LibraryGrid>
       _anchor = null;
       _swiping = false;
       _pointer = null;
-      _crossed.clear();
+      _before.clear();
     });
   }
 
