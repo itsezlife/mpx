@@ -673,7 +673,13 @@ class LibraryGridState extends State<LibraryGrid>
               cacheExtent: size.height.isFinite ? size.height : 500,
               slivers: [
                 SliverPadding(
-                  padding: EdgeInsets.all(policy.padding),
+                  // The host's bars over the grid's bottom (a caption bar,
+                  // tabs, the safe area) come as the bottom padding: the
+                  // last row scrolls clear of them.
+                  padding: EdgeInsets.all(policy.padding).copyWith(
+                    bottom:
+                        policy.padding + MediaQuery.paddingOf(context).bottom,
+                  ),
                   sliver: SliverGrid(
                     gridDelegate: delegate,
                     delegate: SliverChildBuilderDelegate(

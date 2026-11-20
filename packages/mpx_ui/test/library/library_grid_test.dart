@@ -54,6 +54,7 @@ void main() {
     TextDirection direction = TextDirection.ltr,
     ScrollController? controller,
     LibraryGridLookup? lookup,
+    double bottomInset = 0,
   }) async {
     tester.view
       ..physicalSize = const Size(390, 800)
@@ -65,17 +66,24 @@ void main() {
         child: AssetCacheProvider(
           scope: scope,
           child: unthemedHost(
-            LibraryGrid(
-              library: library,
-              album: album,
-              selection: picker ?? selection,
-              labels: _labels,
-              policy: policy,
-              cameraSlotBuilder: camera,
-              controller: controller,
-              lookup: lookup,
-              onRefused: (key, reason) => refusals.add((key, reason)),
-              onOpen: (asset, index) => opened.add(index),
+            Builder(
+              builder: (context) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(padding: EdgeInsets.only(bottom: bottomInset)),
+                child: LibraryGrid(
+                  library: library,
+                  album: album,
+                  selection: picker ?? selection,
+                  labels: _labels,
+                  policy: policy,
+                  cameraSlotBuilder: camera,
+                  controller: controller,
+                  lookup: lookup,
+                  onRefused: (key, reason) => refusals.add((key, reason)),
+                  onOpen: (asset, index) => opened.add(index),
+                ),
+              ),
             ),
           ),
         ),
@@ -109,6 +117,21 @@ void main() {
     expect(reads, inInclusiveRange(1, 2));
     expect(cell(400), findsNothing);
     expect(state(tester).pages.total, 10000);
+  });
+
+  testWidgets('the bottom padding of the host bars keeps the last row clear '
+      'of them', (tester) async {
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    await pumpGrid(tester, controller: controller, bottomInset: 120);
+    controller.jumpTo(controller.position.maxScrollExtent);
+    await tester.pump();
+    await tester.pump();
+    final last = tester.getRect(cell(9999));
+    expect(
+      last.bottom,
+      closeTo(800 - 120 - LibraryGridPolicy.$Android.padding, 0.5),
+    );
   });
 
   testWidgets('a check tap toggles and shows the order number', (tester) async {
