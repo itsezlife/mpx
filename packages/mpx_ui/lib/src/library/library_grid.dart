@@ -88,6 +88,10 @@ final class LibraryGridLookup extends ChangeNotifier {
   LibraryAsset? assetAt(double scrollOffset) =>
       _grid?._assetAtScrollOffset(scrollOffset);
 
+  /// The assets in the attached grid's album as last read; 0 with none
+  /// attached.
+  int get count => _grid?._pages.total ?? 0;
+
   void _detach(LibraryGridState grid) {
     if (identical(_grid, grid)) _grid = null;
   }

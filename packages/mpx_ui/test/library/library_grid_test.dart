@@ -334,7 +334,9 @@ void main() {
       addTearDown(controller.dispose);
       addTearDown(lookup.dispose);
       expect(lookup.assetAt(0), isNull);
+      expect(lookup.count, 0);
       await pumpGrid(tester, controller: controller, lookup: lookup);
+      expect(lookup.count, 10000);
       expect(lookup.assetAt(0)?.id, FakeMediaLibrary.assetAt(0).id);
       final row = policy.padding + 3 * stride + 1;
       expect(lookup.assetAt(row)?.id, FakeMediaLibrary.assetAt(3 * columns).id);
