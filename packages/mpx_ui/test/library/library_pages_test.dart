@@ -61,4 +61,19 @@ void main() {
     await pumpEventQueue();
     expect(notified, 1);
   });
+
+  test('nearestAt answers the asset when its page is in, else the nearest '
+      'asset held, and asks for the page', () async {
+    expect(pages.nearestAt(5), isNull);
+    await load(0);
+    expect(pages.nearestAt(5)?.id, FakeMediaLibrary.assetAt(5).id);
+    // Page 5 (assets 50-59) is not in: the last asset of page 0 stands in.
+    expect(pages.nearestAt(55)?.id, FakeMediaLibrary.assetAt(9).id);
+    await pumpEventQueue();
+    expect(pages.nearestAt(55)?.id, FakeMediaLibrary.assetAt(55).id);
+    // Below page 5 now, the first held asset after it stands in.
+    expect(pages.nearestAt(30)?.id, FakeMediaLibrary.assetAt(50).id);
+    expect(pages.nearestAt(-1), isNull);
+    expect(pages.nearestAt(100), isNull);
+  });
 }

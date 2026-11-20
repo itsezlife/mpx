@@ -55,6 +55,9 @@ class LibraryPicker extends StatefulWidget {
     this.headerBuilder,
     this.decorationBuilder,
     this.physics,
+    this.controller,
+    this.lookup,
+    this.gridBuilder,
     this.active = true,
     super.key,
   });
@@ -121,6 +124,17 @@ class LibraryPicker extends StatefulWidget {
 
   /// The grid's scroll physics.
   final ScrollPhysics? physics;
+
+  /// The grid's scroll controller, or null for the grid's own (or the
+  /// ambient primary one).
+  final ScrollController? controller;
+
+  /// Answers what the grid holds at a scroll offset ([LibraryGrid.lookup]).
+  final LibraryGridLookup? lookup;
+
+  /// Wraps the grid in the host's widgets over its area only (a scroll
+  /// thumb, say), below the header and banners; null shows the grid as is.
+  final Widget Function(BuildContext context, Widget grid)? gridBuilder;
 
   /// Whether the host's page holding the picker is active and uncovered.
   final bool active;
@@ -319,6 +333,28 @@ class LibraryPickerState extends State<LibraryPicker> {
     final header =
         widget.headerBuilder?.call(context, switcher) ??
         Align(alignment: AlignmentDirectional.centerStart, child: switcher);
+    final grid = LibraryGrid(
+      key: ValueKey('mpx-grid-${album.id.value}'),
+      library: widget.library,
+      album: album,
+      pages: pages,
+      selection: widget.selection,
+      labels: widget.labels,
+      policy: widget.policy,
+      tokens: tokens,
+      onOpen: (asset, index) => unawaited(_open(asset, index)),
+      onRefused: widget.onRefused,
+      cameraSlotBuilder: widget.cameraSlotBuilder,
+      cameraDenied: widget.cameraDenied,
+      onCameraTap: widget.onCameraTap,
+      onCameraLongPress: widget.onCameraLongPress,
+      decorationBuilder: widget.decorationBuilder,
+      physics: widget.physics,
+      controller: widget.controller,
+      lookup: widget.lookup,
+      viewerOpen: _viewerOpen,
+      active: widget.active,
+    );
     return ColoredBox(
       color: tokens.background,
       child: Column(
@@ -331,26 +367,7 @@ class LibraryPickerState extends State<LibraryPicker> {
                 : ViewerOriginScope(
                     key: _origins,
                     source: _gallery,
-                    child: LibraryGrid(
-                      key: ValueKey('mpx-grid-${album.id.value}'),
-                      library: widget.library,
-                      album: album,
-                      pages: pages,
-                      selection: widget.selection,
-                      labels: widget.labels,
-                      policy: widget.policy,
-                      tokens: tokens,
-                      onOpen: (asset, index) => unawaited(_open(asset, index)),
-                      onRefused: widget.onRefused,
-                      cameraSlotBuilder: widget.cameraSlotBuilder,
-                      cameraDenied: widget.cameraDenied,
-                      onCameraTap: widget.onCameraTap,
-                      onCameraLongPress: widget.onCameraLongPress,
-                      decorationBuilder: widget.decorationBuilder,
-                      physics: widget.physics,
-                      viewerOpen: _viewerOpen,
-                      active: widget.active,
-                    ),
+                    child: widget.gridBuilder?.call(context, grid) ?? grid,
                   ),
           ),
         ],

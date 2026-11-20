@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `LibraryGridLookup`: the asset of the grid's row at a scroll offset (the
+  nearest one held while its page loads, `LibraryPages.nearestAt`), for a
+  host that labels places in the grid, a date beside a scroll thumb say.
+  `LibraryPicker` passes it, a `controller` and a `gridBuilder` that wraps
+  the grid alone, below the header, through to its grid.
 - `PickerSelectionPreview`: the selected items in their order, a tap on
   the number deselects, a tap opens, a long press drags to reorder
   (`OrderedPickerSelection.move`).

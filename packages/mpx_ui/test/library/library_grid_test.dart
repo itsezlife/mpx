@@ -52,6 +52,7 @@ void main() {
     CameraSlotBuilder? camera,
     TextDirection direction = TextDirection.ltr,
     ScrollController? controller,
+    LibraryGridLookup? lookup,
   }) async {
     tester.view
       ..physicalSize = const Size(390, 800)
@@ -70,6 +71,7 @@ void main() {
             policy: policy,
             cameraSlotBuilder: camera,
             controller: controller,
+            lookup: lookup,
             onRefused: (key, reason) => refusals.add((key, reason)),
             onOpen: (asset, index) => opened.add(index),
           ),
@@ -316,5 +318,79 @@ void main() {
     expect(check.flagsCollection.isChecked, CheckedState.isTrue);
     expect(check.value, '1');
     handle.dispose();
+  });
+
+  group('lookup', () {
+    const policy = LibraryGridPolicy.$Android;
+    const size = Size(390, 800);
+    final columns = policy.columnsFor(size);
+    final stride = policy.cellExtent(size.width, columns) + policy.gap;
+
+    testWidgets('answers the first asset of the row at a scroll offset', (
+      tester,
+    ) async {
+      final controller = ScrollController();
+      final lookup = LibraryGridLookup();
+      addTearDown(controller.dispose);
+      addTearDown(lookup.dispose);
+      expect(lookup.assetAt(0), isNull);
+      await pumpGrid(tester, controller: controller, lookup: lookup);
+      expect(lookup.assetAt(0)?.id, FakeMediaLibrary.assetAt(0).id);
+      final row = policy.padding + 3 * stride + 1;
+      expect(lookup.assetAt(row)?.id, FakeMediaLibrary.assetAt(3 * columns).id);
+    });
+
+    testWidgets('counts the camera slot in the first two rows', (tester) async {
+      final lookup = LibraryGridLookup();
+      addTearDown(lookup.dispose);
+      await pumpGrid(
+        tester,
+        lookup: lookup,
+        camera: (context, value) => const SizedBox.expand(),
+      );
+      final second = policy.padding + stride + 1;
+      final third = policy.padding + 2 * stride + 1;
+      expect(
+        lookup.assetAt(second)?.id,
+        FakeMediaLibrary.assetAt(columns - 1).id,
+      );
+      expect(
+        lookup.assetAt(third)?.id,
+        FakeMediaLibrary.assetAt(2 * (columns - 1)).id,
+      );
+    });
+
+    testWidgets('stands in the nearest asset held while a far page loads, '
+        'and tells when the answer may change', (tester) async {
+      final controller = ScrollController();
+      final lookup = LibraryGridLookup();
+      addTearDown(controller.dispose);
+      addTearDown(lookup.dispose);
+      var told = 0;
+      lookup.addListener(() => told++);
+      await pumpGrid(tester, controller: controller, lookup: lookup);
+      final far = policy.padding + 2000 * stride;
+      final asked = lookup.assetAt(far);
+      expect(asked, isNotNull);
+      expect(asked!.id, isNot(FakeMediaLibrary.assetAt(2000 * columns).id));
+      final before = told;
+      controller.jumpTo(far);
+      await tester.pump();
+      await tester.pump();
+      expect(told, greaterThan(before));
+      expect(
+        lookup.assetAt(far)?.id,
+        FakeMediaLibrary.assetAt(2000 * columns).id,
+      );
+    });
+
+    testWidgets('detaches when the grid goes', (tester) async {
+      final lookup = LibraryGridLookup();
+      addTearDown(lookup.dispose);
+      await pumpGrid(tester, lookup: lookup);
+      expect(lookup.assetAt(0), isNotNull);
+      await tester.pumpWidget(const SizedBox());
+      expect(lookup.assetAt(0), isNull);
+    });
   });
 }

@@ -74,6 +74,9 @@ final class PickerHarness {
     bool cameraSlot = false,
     PickerSelection? picker,
     bool viewerSlot = false,
+    ScrollController? controller,
+    LibraryGridLookup? lookup,
+    Widget Function(BuildContext context, Widget grid)? gridBuilder,
   }) async {
     tester.view
       ..physicalSize = const Size(390, 800)
@@ -106,6 +109,9 @@ final class PickerHarness {
                   onCameraTap: () => cameraTaps++,
                   onCameraLongPress: () => cameraLongPresses++,
                   onRefused: (key, reason) => refusals.add((key, reason)),
+                  controller: controller,
+                  lookup: lookup,
+                  gridBuilder: gridBuilder,
                   cameraSlotBuilder: cameraSlot
                       ? (context, value) {
                           signals.add(value.value);
@@ -238,6 +244,33 @@ void main() {
       expect(find.byType(LibraryGrid), findsOneWidget);
       expect(cell(0), findsOneWidget);
     });
+  });
+
+  testWidgets('the host wraps the grid alone and reaches it through its '
+      'controller and lookup', (tester) async {
+    final h = PickerHarness(assets: 300);
+    final controller = ScrollController();
+    final lookup = LibraryGridLookup();
+    addTearDown(controller.dispose);
+    addTearDown(lookup.dispose);
+    await h.pump(
+      tester,
+      controller: controller,
+      lookup: lookup,
+      gridBuilder: (context, grid) =>
+          KeyedSubtree(key: const ValueKey('wrap'), child: grid),
+    );
+    final wrap = find.byKey(const ValueKey('wrap'));
+    expect(
+      find.descendant(of: wrap, matching: find.byType(LibraryGrid)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: wrap, matching: find.byType(LibraryAlbumSwitcher)),
+      findsNothing,
+    );
+    expect(controller.hasClients, isTrue);
+    expect(lookup.assetAt(0)?.id, FakeMediaLibrary.assetAt(0).id);
   });
 
   group('camera denied', () {

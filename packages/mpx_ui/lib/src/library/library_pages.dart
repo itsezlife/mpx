@@ -56,6 +56,34 @@ final class LibraryPages extends ChangeNotifier {
     return offset < assets.length ? assets[offset] : null;
   }
 
+  /// The asset at [index] when its page is in; while it loads (asked for, as
+  /// [assetAt] does), the held asset nearest to [index]: the last of a page
+  /// before it or the first of a page after it. Null outside the album or
+  /// with nothing held.
+  ///
+  /// For what stands for a place in the album (a date for a scroll
+  /// position) while a far jump's page loads: the asset just left behind
+  /// answers until the page lands, where a null would blink the answer out
+  /// and back.
+  LibraryAsset? nearestAt(int index) {
+    if (index < 0 || index >= _total) return null;
+    if (assetAt(index) case final asset?) return asset;
+    final target = index ~/ pageSize;
+    LibraryAsset? nearest;
+    var distance = _total;
+    for (final MapEntry(key: page, value: assets) in _pages.entries) {
+      if (assets.isEmpty) continue;
+      final (at, asset) = page < target
+          ? (page * pageSize + assets.length - 1, assets.last)
+          : (page * pageSize, assets.first);
+      if ((at - index).abs() < distance) {
+        distance = (at - index).abs();
+        nearest = asset;
+      }
+    }
+    return nearest;
+  }
+
   /// Marks every page stale; each is read again when next asked for and
   /// answers what it held until then.
   void reload() {

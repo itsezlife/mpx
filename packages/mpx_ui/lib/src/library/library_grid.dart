@@ -70,6 +70,31 @@ typedef CameraSlotBuilder =
       ValueListenable<CameraSlotSignals> signals,
     );
 
+/// What a [LibraryGrid] holds at a scroll offset: the asset of the row
+/// there, for a host that labels places in the grid (a date beside a
+/// scroll thumb, say).
+///
+/// The host makes one, hands it to the grid ([LibraryGrid.lookup]) and
+/// disposes it. It answers for the grid it is attached to, and nothing
+/// with none. It tells its listeners when an answer may have changed: a
+/// page landed, the album or the layout changed.
+final class LibraryGridLookup extends ChangeNotifier {
+  LibraryGridState? _grid;
+
+  /// The asset of the row at [scrollOffset] (the grid's scroll position),
+  /// the first of the row in reading order; while its page loads, the held
+  /// asset nearest to it (`LibraryPages.nearestAt`). Null with no grid
+  /// attached or an empty album.
+  LibraryAsset? assetAt(double scrollOffset) =>
+      _grid?._assetAtScrollOffset(scrollOffset);
+
+  void _detach(LibraryGridState grid) {
+    if (identical(_grid, grid)) _grid = null;
+  }
+
+  void _tell() => notifyListeners();
+}
+
 /// A grid over a library album's pages: fixed square cells, thumbnails
 /// through the asset cache, an ordered selection with numbered checks and
 /// swipe select, and the host's camera slot at the leading top of the
@@ -109,6 +134,7 @@ class LibraryGrid extends StatefulWidget {
     this.active = true,
     this.pageSize = 60,
     this.pages,
+    this.lookup,
     super.key,
   });
 
@@ -181,6 +207,10 @@ class LibraryGrid extends StatefulWidget {
   /// See the constructor.
   final LibraryPages? pages;
 
+  /// Answers what the grid holds at a scroll offset, for the host; null for
+  /// none. The host owns it.
+  final LibraryGridLookup? lookup;
+
   @override
   State<LibraryGrid> createState() => LibraryGridState();
 }
@@ -227,10 +257,14 @@ class LibraryGridState extends State<LibraryGrid>
               album: widget.album,
               pageSize: widget.pageSize,
             ))
-        ..addListener(_rebuild);
+        ..addListener(_onPages);
+
+  // Layout of the last build that the lookup answered from, to tell it when
+  // a new one moves its answers.
+  (int, double, bool)? _toldLayout;
 
   void _dropPages() {
-    _pages.removeListener(_rebuild);
+    _pages.removeListener(_onPages);
     if (!identical(_pages, widget.pages)) _pages.dispose();
   }
 
@@ -239,6 +273,7 @@ class LibraryGridState extends State<LibraryGrid>
     super.initState();
     widget.selection.addListener(_rebuild);
     _controller.addListener(_onScroll);
+    widget.lookup?._grid = this;
     _subscribe();
     _updateSignals();
     if (widget.album.startsAtEnd) _jumpToStart();
@@ -276,14 +311,20 @@ class LibraryGridState extends State<LibraryGrid>
         old.album.id != widget.album.id ||
         old.pageSize != widget.pageSize ||
         !identical(old.pages, widget.pages)) {
-      _pages.removeListener(_rebuild);
+      _pages.removeListener(_onPages);
       if (old.pages == null) _pages.dispose();
       _pages = _makePages();
+      widget.lookup?._tell();
       if (old.album.id != widget.album.id) _jumpToStart();
     }
     if (!identical(old.library, widget.library)) {
       unawaited(_changes?.cancel());
       _subscribe();
+    }
+    if (!identical(old.lookup, widget.lookup)) {
+      old.lookup?._detach(this);
+      widget.lookup?._grid = this;
+      _toldLayout = null;
     }
     if (!identical(old.controller, widget.controller)) {
       (old.controller ?? _ownController)?.removeListener(_onScroll);
@@ -300,6 +341,7 @@ class LibraryGridState extends State<LibraryGrid>
   void dispose() {
     widget.selection.removeListener(_rebuild);
     _controller.removeListener(_onScroll);
+    widget.lookup?._detach(this);
     unawaited(_changes?.cancel());
     _ticker?.dispose();
     _dropPages();
@@ -310,6 +352,48 @@ class LibraryGridState extends State<LibraryGrid>
 
   void _rebuild() {
     if (mounted) setState(() {});
+  }
+
+  // The pages notify as they land (and on swap); the lookup's answers move
+  // with them.
+  void _onPages() {
+    _rebuild();
+    widget.lookup?._tell();
+  }
+
+  // After a build whose layout differs from the one the lookup last told
+  // of (a first layout, a rotation, the camera slot coming or going): told
+  // after the frame, as listeners may rebuild.
+  void _tellLayout() {
+    final layout = _layout;
+    final lookup = widget.lookup;
+    if (layout == null || lookup == null) return;
+    final now = (layout.columns, layout.extent, layout.cameraSlot);
+    if (now == _toldLayout) return;
+    _toldLayout = now;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.lookup?._tell();
+    });
+  }
+
+  // The first asset of the row at [scrollOffset] (the camera slot takes the
+  // first column of the first two rows), or null before a layout or with no
+  // assets.
+  LibraryAsset? _assetAtScrollOffset(double scrollOffset) {
+    final layout = _layout;
+    final total = _pages.total;
+    if (layout == null || total == 0) return null;
+    final stride = layout.extent + layout.gap;
+    if (stride <= 0) return null;
+    final y = math.max(0, scrollOffset - _padding);
+    final row = y ~/ stride;
+    final n = layout.columns;
+    final index = !_hasCamera
+        ? row * n
+        : row < 2
+        ? row * (n - 1)
+        : 2 * (n - 1) + (row - 2) * n;
+    return _pages.nearestAt(math.min(index, total - 1));
   }
 
   void _subscribe() {
@@ -564,6 +648,7 @@ class LibraryGridState extends State<LibraryGrid>
             reverseCrossAxis: rtl,
             crossAxisExtent: size.width - 2 * policy.padding,
           );
+          _tellLayout();
           final pixels = (extent * dpr).ceil();
           final scope = AssetCacheProvider.maybeOf(context);
           final count = _pages.total + (camera ? 1 : 0);
