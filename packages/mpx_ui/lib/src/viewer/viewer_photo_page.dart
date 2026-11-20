@@ -164,10 +164,10 @@ class ViewerPhotoPageState extends State<ViewerPhotoPage>
   @override
   void initState() {
     super.initState();
-    _settle = AnimationController(
-      vsync: this,
-      duration: widget.policy.settleDuration,
-    )..addListener(_onSettle);
+    _settle =
+        AnimationController(vsync: this, duration: widget.policy.settleDuration)
+          ..addListener(_onSettle)
+          ..addStatusListener(_onSettleStatus);
     _fling = AnimationController(vsync: this, duration: _flingSpan)
       ..addListener(_onFling);
   }
@@ -244,6 +244,18 @@ class ViewerPhotoPageState extends State<ViewerPhotoPage>
     );
   }
 
+  // The curve and the lerp may end a hair off the target (a spring curve
+  // normalised at 1, `a + (b - a) * 1` in floating point): the settle lands
+  // on the target exactly, or a picture back at rest would still count as
+  // zoomed and a drag would pan it instead of dismissing.
+  void _onSettleStatus(AnimationStatus status) {
+    if (status.isCompleted) _set(_settleToZoom, _settleToPan);
+  }
+
+  // Whether the settle running now takes the picture back to rest.
+  bool get _settlingToRest =>
+      _settle.isAnimating && _settleToZoom == 1 && _settleToPan == Offset.zero;
+
   // The pan that keeps the point [focal] (from the page's centre) under the
   // finger while the zoom goes from [fromZoom] at [fromPan] to [toZoom].
   static Offset _panAround(
@@ -288,8 +300,10 @@ class ViewerPhotoPageState extends State<ViewerPhotoPage>
 
   // --- Gestures --------------------------------------------------------------
 
+  // A picture on its way back to rest already counts as at rest: the drag
+  // that starts meanwhile dismisses or pages while the settle lands.
   @override
-  bool get isZoomed => _zoomed;
+  bool get isZoomed => !_settlingToRest && _zoomed;
 
   @override
   bool get canZoom => true;
@@ -305,9 +319,13 @@ class ViewerPhotoPageState extends State<ViewerPhotoPage>
           widget.doubleTapZoom != null ||
           _zoom != widget.policy.minZoom);
 
+  // A settle back to rest is left to land: the touch that comes down
+  // meanwhile is not a hold on the picture, and stopping there would leave
+  // it a hair zoomed. A settle anywhere else stops where it is, so the
+  // touch takes the picture over.
   @override
   void stop() {
-    _settle.stop();
+    if (!_settlingToRest) _settle.stop();
     _fling.stop();
   }
 
@@ -423,7 +441,8 @@ class ViewerPhotoPageState extends State<ViewerPhotoPage>
 
   @override
   void pinchStart(Offset focal) {
-    stop();
+    _settle.stop();
+    _fling.stop();
     _startZoom = _zoom;
     _startPan = _pan;
     _startFocal = _fromCentre(focal);
@@ -498,7 +517,8 @@ class ViewerPhotoPageState extends State<ViewerPhotoPage>
 
   @override
   void reset() {
-    stop();
+    _settle.stop();
+    _fling.stop();
     if (_zoomed) _set(1, Offset.zero);
   }
 

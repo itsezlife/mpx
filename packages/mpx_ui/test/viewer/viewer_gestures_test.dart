@@ -249,6 +249,43 @@ void main() {
       expect(harness.state(tester).index, 0);
     });
 
+    for (final (name, policy) in [('Android', _android), ('iOS', _ios)]) {
+      testWidgets('$name: a double tap back lands exactly at rest', (
+        tester,
+      ) async {
+        final harness = ViewerHarness();
+        await harness.pump(tester, policy: policy);
+        await _doubleTap(tester, const Offset(130, 370));
+        await _doubleTap(tester, const Offset(130, 370));
+        await tester.pump(const Duration(milliseconds: 100));
+
+        final page = harness.page(tester);
+        expect(page.zoom, 1);
+        expect(page.pan, Offset.zero);
+        expect(page.isZoomed, isFalse);
+      });
+    }
+
+    testWidgets('a vertical drag that starts while the zoom goes back to rest '
+        'dismisses, and the zoom still lands', (tester) async {
+      final harness = ViewerHarness();
+      await harness.pump(tester);
+      await _doubleTap(tester, const Offset(130, 370));
+      // The second double tap, then a touch 100 ms into the settle.
+      await tester.tapAt(_centre);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(_centre);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final gesture = await _drag(tester, const Offset(0, 100));
+      expect(harness.state(tester).dragOffset, greaterThan(0));
+      await _release(tester, gesture);
+      final page = harness.page(tester);
+      expect(page.zoom, 1);
+      expect(page.pan, Offset.zero);
+    });
+
     testWidgets('a vertical pan of a zoomed picture never dismisses', (
       tester,
     ) async {
