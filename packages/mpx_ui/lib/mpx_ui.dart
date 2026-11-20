@@ -42,6 +42,7 @@ export 'src/gallery/gallery_tap_recognizer.dart' show GalleryTapRules;
 export 'src/library/library_album_switcher.dart';
 export 'src/library/library_grid.dart';
 export 'src/library/library_grid_cell.dart';
+export 'src/library/library_grid_diagnostics.dart';
 export 'src/library/library_grid_layout.dart';
 export 'src/library/library_grid_policy.dart';
 export 'src/library/library_grid_tokens.dart';

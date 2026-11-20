@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/mpx_library.dart';
+import 'package:mpx_ui/src/library/library_grid_diagnostics.dart';
 import 'package:mpx_ui/src/library/library_grid_policy.dart';
 import 'package:mpx_ui/src/library/library_grid_tokens.dart';
 import 'package:mpx_ui/src/viewer/viewer_origin.dart';
@@ -91,14 +92,21 @@ class LibraryGridCell extends StatelessWidget {
       );
     }
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
-    Widget picture = ContentView(
-      content: LibraryKeys.thumbnailKeyOf(asset, thumbnailPixels),
-      preset: AssetPresets.square(
-        extent: extent,
-        devicePixelRatio: dpr,
-        profile: const AssetProfile(fit: AssetFit.cover),
-      ),
+    final thumbnail = LibraryKeys.thumbnailKeyOf(asset, thumbnailPixels);
+    final preset = AssetPresets.square(
+      extent: extent,
+      devicePixelRatio: dpr,
+      profile: const AssetProfile(fit: AssetFit.cover),
     );
+    Widget picture = ContentView(content: thumbnail, preset: preset);
+    if (LibraryGridDiagnostics.enabled) {
+      picture = LibraryThumbnailProbe(
+        content: thumbnail,
+        preset: preset,
+        video: asset.kind == LibraryAssetKind.video,
+        child: picture,
+      );
+    }
     if (originIndex case final index?) {
       picture = ViewerOrigin(
         index: index,

@@ -435,6 +435,24 @@ void main() {
     });
   });
 
+  testWidgets('with diagnostics on, each cell tells how its thumbnail went', (
+    tester,
+  ) async {
+    final lines = <String>[];
+    LibraryGridDiagnostics.enabled = true;
+    LibraryGridDiagnostics.log = lines.add;
+    addTearDown(() {
+      LibraryGridDiagnostics.enabled = false;
+      LibraryGridDiagnostics.log = debugPrint;
+    });
+    await pumpGrid(tester);
+    // The fake producer never delivers: every cell leaves still waiting.
+    await tester.pumpWidget(const SizedBox());
+    expect(lines, isNotEmpty);
+    expect(lines, everyElement(matches(r'^LABthumb gone (photo|video) \d+$')));
+    expect(lines.where((l) => l.contains(' video ')), isNotEmpty);
+  });
+
   testWidgets('cells say kind, duration and selection', (tester) async {
     final handle = tester.ensureSemantics();
     await pumpGrid(tester);
