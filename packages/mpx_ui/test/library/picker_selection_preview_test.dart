@@ -91,6 +91,56 @@ void main() {
     expectThemedText(tester);
   });
 
+  testWidgets('a removed item fades out as the rest close the gap', (
+    tester,
+  ) async {
+    await pumpPreview(tester);
+    final firstSlot = tester.getTopLeft(cell(4));
+    final secondSlot = tester.getTopLeft(cell(1));
+    await tester.tapAt(tester.getTopRight(cell(4)) + const Offset(-12, 12));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    // Half way: the item fades, the next one is between the two slots.
+    expect(cell(4), findsOneWidget);
+    final fading = tester
+        .widgetList<Opacity>(
+          find.ancestor(of: cell(4), matching: find.byType(Opacity)),
+        )
+        .map((o) => o.opacity)
+        .reduce((a, b) => a * b);
+    expect(fading, inExclusiveRange(0, 1));
+    final moving = tester.getTopLeft(cell(1)).dx;
+    expect(moving, inExclusiveRange(firstSlot.dx, secondSlot.dx));
+    expectThemedText(tester);
+
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(cell(4), findsNothing);
+    expect(tester.getTopLeft(cell(1)), firstSlot);
+  });
+
+  testWidgets('a lifted item held near the bottom edge scrolls the list', (
+    tester,
+  ) async {
+    for (var i = 20; i < 80; i++) {
+      selection.toggle(_key(i));
+    }
+    await pumpPreview(tester);
+    final list = tester.state<PickerSelectionPreviewState>(
+      find.byType(PickerSelectionPreview),
+    );
+    expect(list.scrollOffset, 0);
+    final gesture = await tester.startGesture(tester.getCenter(cell(4)));
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+    await gesture.moveTo(const Offset(195, 795));
+    await tester.pump();
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 15));
+    }
+    expect(list.scrollOffset, greaterThan(40));
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('shows the selected items in their order', (tester) async {
     await pumpPreview(tester);
     expect(orderIn(4, '1'), findsOneWidget);
@@ -125,6 +175,7 @@ void main() {
     await tester.tapAt(tester.getTopRight(cell(4)) + const Offset(-12, 12));
     await tester.pump();
     expect(selection.keys, [_key(1), _key(7)]);
+    await tester.pump(const Duration(milliseconds: 250));
     expect(cell(4), findsNothing);
     expect(orderIn(1, '1'), findsOneWidget);
   });

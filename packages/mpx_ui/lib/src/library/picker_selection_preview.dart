@@ -91,6 +91,22 @@ class PickerSelectionPreviewState extends State<PickerSelectionPreview> {
   /// The item lifted for a reorder, or null.
   MediaKey? get lifted => _lifted;
 
+  /// How far the items are scrolled.
+  double get scrollOffset => _controller.hasClients ? _controller.offset : 0;
+
+  // How the items move to their new places and a removed one leaves.
+  static const Duration _move = Duration(milliseconds: 200);
+  static const Curve _moveCurve = Curves.easeInOut;
+
+  // The keys shown last, and the ones leaving with the place they left.
+  List<MediaKey> _shown = const [];
+  final Map<MediaKey, int> _leaving = {};
+  final Map<MediaKey, Timer> _leaveTimers = {};
+
+  // While a lifted item is held near an edge: the list scrolls under it.
+  Timer? _edgeScroll;
+  Offset? _pointerGlobal;
+
   @override
   void initState() {
     super.initState();
@@ -109,12 +125,33 @@ class PickerSelectionPreviewState extends State<PickerSelectionPreview> {
   @override
   void dispose() {
     widget.selection.removeListener(_rebuild);
+    for (final timer in _leaveTimers.values) {
+      timer.cancel();
+    }
+    _edgeScroll?.cancel();
     _ownController?.dispose();
     super.dispose();
   }
 
   void _rebuild() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    final now = widget.selection.keys;
+    for (final (i, key) in _shown.indexed) {
+      if (now.contains(key) || _leaving.containsKey(key)) continue;
+      _leaving[key] = i;
+      _leaveTimers[key] = Timer(_move, () {
+        if (!mounted) return;
+        setState(() {
+          _leaving.remove(key);
+          _leaveTimers.remove(key);
+        });
+      });
+    }
+    for (final key in now) {
+      _leaving.remove(key);
+      _leaveTimers.remove(key)?.cancel();
+    }
+    setState(() {});
   }
 
   Offset _local(Offset global) {
@@ -152,13 +189,51 @@ class PickerSelectionPreviewState extends State<PickerSelectionPreview> {
   void _drag(Offset global) {
     final key = _lifted;
     if (key == null) return;
+    _pointerGlobal = global;
+    _edgeScroll ??= Timer.periodic(
+      const Duration(milliseconds: 15),
+      (_) => _scrollAtEdge(),
+    );
     final keys = widget.selection.keys;
     setState(() => _pointer = _local(global));
     final to = _indexAt(_pointer, keys.length);
     if (keys.indexOf(key) != to) widget.onReorder?.call(key, to);
   }
 
+  // Held within 32 px of the top or the bottom, the list scrolls toward
+  // that edge by up to 6 px a step, the faster the closer.
+  void _scrollAtEdge() {
+    final global = _pointerGlobal;
+    final box = context.findRenderObject() as RenderBox?;
+    if (_lifted == null || global == null || box == null) return;
+    if (!_controller.hasClients) return;
+    final y = box.globalToLocal(global).dy;
+    const reach = 32.0;
+    const step = 6.0;
+    final top = y;
+    final bottom = box.size.height - y;
+    final double dy;
+    if (top < reach) {
+      dy = -(1 - top / reach) * step;
+    } else if (bottom < reach) {
+      dy = (1 - bottom / reach) * step;
+    } else {
+      return;
+    }
+    final position = _controller.position;
+    final to = (position.pixels + dy).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if (to == position.pixels) return;
+    _controller.jumpTo(to);
+    _drag(global);
+  }
+
   void _drop() {
+    _edgeScroll?.cancel();
+    _edgeScroll = null;
+    _pointerGlobal = null;
     if (_lifted == null) return;
     unawaited(HapticFeedback.selectionClick());
     setState(() => _lifted = null);
@@ -208,19 +283,60 @@ class PickerSelectionPreviewState extends State<PickerSelectionPreview> {
         onDrag: _drag,
         onDrop: _drop,
       );
+      _shown = keys;
+      final stride = _extent + policy.gap;
+      final slots = math.max(
+        keys.length,
+        _leaving.isEmpty ? 0 : _leaving.values.reduce(math.max) + 1,
+      );
+      final rows = (slots / _columns).ceil();
+      final rtl = Directionality.of(context) == TextDirection.rtl;
+      final inner = size.width - _padding.horizontal;
+      // Each item at its slot, moving there when its place changes; a
+      // removed one stays at its old slot as it fades and shrinks away.
+      Widget place(MediaKey key, int at, {bool leaving = false}) {
+        final column = at % _columns;
+        final x = column * stride;
+        return AnimatedPositioned(
+          key: ValueKey(('mpx-preview-slot', key)),
+          duration: _move,
+          curve: _moveCurve,
+          left: rtl ? inner - x - _extent : x,
+          top: (at ~/ _columns) * stride,
+          width: _extent,
+          height: _extent,
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 1, end: leaving ? 0 : 1),
+            duration: _move,
+            curve: _moveCurve,
+            builder: (context, t, child) => Opacity(
+              opacity: t,
+              child: Transform.scale(scale: 0.8 + 0.2 * t, child: child),
+            ),
+            child: IgnorePointer(
+              ignoring: leaving,
+              child: item(key, lifted: false),
+            ),
+          ),
+        );
+      }
+
       final lifted = _lifted;
       return Stack(
         children: [
-          GridView.builder(
+          SingleChildScrollView(
             controller: _controller,
             padding: _padding,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: _columns,
-              mainAxisSpacing: policy.gap,
-              crossAxisSpacing: policy.gap,
+            child: SizedBox(
+              height: rows * stride - (rows > 0 ? policy.gap : 0),
+              child: Stack(
+                children: [
+                  for (final MapEntry(key: key, value: at) in _leaving.entries)
+                    place(key, at, leaving: true),
+                  for (final (i, key) in keys.indexed) place(key, i),
+                ],
+              ),
             ),
-            itemCount: keys.length,
-            itemBuilder: (context, index) => item(keys[index], lifted: false),
           ),
           if (lifted != null && keys.contains(lifted))
             Positioned(
