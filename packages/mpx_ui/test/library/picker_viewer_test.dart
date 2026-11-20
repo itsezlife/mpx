@@ -141,6 +141,43 @@ void main() {
     expect(find.byType(MediaViewer), findsNothing);
   });
 
+  testWidgets('the check and the count stand at the top end on one line: '
+      'a filled numbered circle, and an outlined pill', (tester) async {
+    final h = PickerHarness();
+    await h.pump(tester, viewerSlot: true);
+    h.selection
+      ..toggle(key(0))
+      ..toggle(key(2));
+    await _open(tester, 2);
+    final check = find.byKey(const ValueKey('mpx-picker-viewer-check-mark'));
+    final counter = find.byKey(const ValueKey('mpx-picker-viewer-counter'));
+    const width = 390.0;
+    // Android: a 34 dp check 11 dp from the end, 71 dp down; the count's
+    // pill ends 64 dp from the end, centred on the check's line.
+    expect(tester.getSize(check), const Size.square(34));
+    expect(tester.getTopRight(check), const Offset(width - 11, 71));
+    final pill = tester.getRect(counter);
+    expect(pill.right, width - 64);
+    expect(pill.height, 28);
+    expect(pill.center.dy, tester.getCenter(check).dy);
+    final box = tester.widget<DecoratedBox>(
+      find.descendant(of: counter, matching: find.byType(DecoratedBox)),
+    );
+    final decoration = box.decoration as BoxDecoration;
+    expect(decoration.color, isNull, reason: 'outlined, not filled');
+    expect((decoration.border! as Border).top.width, 2);
+    final count = tester.widget<RichText>(
+      find.descendant(of: counter, matching: find.byType(RichText)),
+    );
+    expect(count.text.toPlainText(), '2');
+    expect(count.text.style!.fontSize, 15);
+    expect(count.text.style!.fontWeight, FontWeight.bold);
+    expect(
+      find.descendant(of: check, matching: find.text('2')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('the check goes through the gate', (tester) async {
     final h = PickerHarness();
     final gated = OrderedPickerSelection(

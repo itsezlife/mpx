@@ -255,6 +255,13 @@ class PickerViewerChrome extends StatefulWidget {
 
 class _PickerViewerChromeState extends State<PickerViewerChrome>
     with SingleTickerProviderStateMixin {
+  // Where the check and the count stand, from the top end of the safe
+  // area: under the viewer's 56 px top bar, as the reference lays them.
+  static const double _checkTop = 71;
+  static const double _checkEnd = 11;
+  static const double _checkSlop = 6;
+  static const double _counterEnd = 64;
+
   bool _strip = false;
   late final AnimationController _fade = AnimationController(
     vsync: this,
@@ -353,9 +360,12 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
   ) => SafeArea(
     child: Stack(
       children: [
+        // The check: a circle of the policy's size, its order number in it,
+        // under the viewer's top bar at the end; the touch area reaches
+        // past it.
         PositionedDirectional(
-          top: 8,
-          end: 8,
+          top: _checkTop - _checkSlop,
+          end: _checkEnd - _checkSlop,
           child: Semantics(
             key: const ValueKey('mpx-picker-viewer-check'),
             button: true,
@@ -366,39 +376,33 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => _toggle(key),
-              child: SizedBox.square(
-                dimension: policy.viewerCheckSize + 12,
-                child: Center(
-                  child: _ViewerCheck(
-                    size: policy.viewerCheckSize,
-                    order: order,
-                    tokens: tokens,
-                  ),
+              child: Padding(
+                padding: const EdgeInsets.all(_checkSlop),
+                child: _ViewerCheck(
+                  key: const ValueKey('mpx-picker-viewer-check-mark'),
+                  size: policy.viewerCheckSize,
+                  order: order,
+                  tokens: tokens,
                 ),
               ),
             ),
           ),
         ),
-        if (count > 0)
-          PositionedDirectional(
-            top: 14,
-            end: policy.viewerCheckSize + 28,
-            child: GestureDetector(
-              key: const ValueKey('mpx-picker-viewer-counter'),
-              onTap: () => setState(() => _strip = !_strip),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: tokens.checkFill,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text('$count', style: tokens.checkNumber),
-              ),
-            ),
+        // The count: an outlined pill on the check's line, which shows or
+        // hides the selected strip (a cross while it shows).
+        PositionedDirectional(
+          top: _checkTop + policy.viewerCheckSize / 2 - _CounterPill.height / 2,
+          end: _counterEnd,
+          child: _CounterPill(
+            key: const ValueKey('mpx-picker-viewer-counter'),
+            count: count,
+            open: _strip && count > 0,
+            tokens: tokens,
+            onTap: () {
+              if (count > 0) setState(() => _strip = !_strip);
+            },
           ),
+        ),
         if (_strip && count > 0)
           PositionedDirectional(
             top: policy.viewerCheckSize + 24,
@@ -435,7 +439,12 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
 }
 
 class _ViewerCheck extends StatelessWidget {
-  const _ViewerCheck({required this.size, required this.tokens, this.order});
+  const _ViewerCheck({
+    required this.size,
+    required this.tokens,
+    this.order,
+    super.key,
+  });
 
   final double size;
   final LibraryGridTokens tokens;
@@ -520,4 +529,146 @@ class _SelectedStrip extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The selection count: an outlined pill with the number in bold, which
+/// springs as the count changes, grows from nothing at the first item and
+/// shrinks away at none; a cross while the selected strip shows.
+class _CounterPill extends StatefulWidget {
+  const _CounterPill({
+    required this.count,
+    required this.open,
+    required this.tokens,
+    required this.onTap,
+    super.key,
+  });
+
+  static const double height = 28;
+
+  final int count;
+  final bool open;
+  final LibraryGridTokens tokens;
+  final VoidCallback onTap;
+
+  @override
+  State<_CounterPill> createState() => _CounterPillState();
+}
+
+class _CounterPillState extends State<_CounterPill>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _spring;
+  double _from = 1;
+  double _to = 1;
+  Curve _curve = Curves.easeOutBack;
+  late int _shown;
+
+  @override
+  void initState() {
+    super.initState();
+    _shown = widget.count;
+    _from = _to = widget.count == 0 ? 0 : 1;
+    _spring = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+      value: 1,
+    );
+  }
+
+  @override
+  void didUpdateWidget(_CounterPill oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final before = oldWidget.count;
+    final now = widget.count;
+    if (now == before) return;
+    final (from, to, curve) = switch (now) {
+      0 => (1.0, 0.0, Curves.decelerate),
+      _ when before == 0 => (0.0, 1.0, Curves.decelerate),
+      _ when now < before => (1.1, 1.0, Curves.easeOutBack),
+      _ => (0.9, 1.0, Curves.easeOutBack),
+    };
+    _from = from;
+    _to = to;
+    _curve = curve;
+    if (now > 0) _shown = now;
+    _spring.forward(from: 0).ignore();
+  }
+
+  @override
+  void dispose() {
+    _spring.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = widget.tokens.checkNumber.copyWith(
+      fontSize: 15,
+      fontWeight: FontWeight.bold,
+    );
+    final colour = style.color ?? const Color(0xFFFFFFFF);
+    return AnimatedBuilder(
+      animation: _spring,
+      builder: (context, child) {
+        final t = _curve.transform(_spring.value);
+        final scale = _from + (_to - _from) * t;
+        return Transform.scale(
+          scale: scale,
+          child: IgnorePointer(ignoring: scale == 0, child: child),
+        );
+      },
+      child: Semantics(
+        button: true,
+        value: '$_shown',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              minWidth: 30,
+              minHeight: _CounterPill.height,
+              maxHeight: _CounterPill.height,
+            ),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(color: colour, width: 2),
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Center(
+                  widthFactor: 1,
+                  child: widget.open
+                      ? CustomPaint(
+                          size: const Size.square(10),
+                          painter: _Cross(colour),
+                        )
+                      : Text('$_shown', style: style, maxLines: 1),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Cross extends CustomPainter {
+  const _Cross(this.colour);
+
+  final Color colour;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = colour
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+    canvas
+      ..drawLine(Offset.zero, Offset(size.width, size.height), paint)
+      ..drawLine(Offset(size.width, 0), Offset(0, size.height), paint);
+  }
+
+  @override
+  bool shouldRepaint(_Cross oldDelegate) => oldDelegate.colour != colour;
 }
