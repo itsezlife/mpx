@@ -66,30 +66,57 @@ void main() {
 
   testWidgets('the drop region takes files under the ceiling', (tester) async {
     final source = FakeDropSource();
-    final dropped = <IntakeFile>[];
+    final drops = <IntakeDrop>[];
     final refused = <DropRefusal>[];
-    DropOffer? shown;
+    DropHover? shown;
     await tester.pumpWidget(
-      IntakeDropRegion(
-        source: source,
-        maxFileBytes: 100,
-        onDrop: dropped.addAll,
-        onRefused: (reason, _) => refused.add(reason),
-        builder: (context, offer) {
-          shown = offer;
-          return const SizedBox();
-        },
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 100, top: 50),
+            child: SizedBox(
+              width: 200,
+              height: 200,
+              child: IntakeDropRegion(
+                source: source,
+                maxFileBytes: 100,
+                onDrop: drops.add,
+                onRefused: (reason, _) => refused.add(reason),
+                builder: (context, hover) {
+                  shown = hover;
+                  return const SizedBox.expand();
+                },
+              ),
+            ),
+          ),
+        ),
       ),
     );
-    source.add(const DropEnter(DropOffer(types: ['Files'])));
-    await tester.pump();
-    expect(shown, isNotNull);
     source.add(
-      DropDone([_file('a.png', 10), _file('big.mov', 1000)], refused: 1),
+      const DropEnter(DropOffer(types: ['Files']), position: Offset(110, 60)),
+    );
+    await tester.pump();
+    expect(shown?.position, const Offset(10, 10), reason: 'local');
+    source.add(const DropOver(position: Offset(250, 200)));
+    await tester.pump();
+    expect(shown?.position, const Offset(150, 150), reason: 'follows over');
+    source.add(
+      DropDone(
+        [_file('a.png', 10), _file('big.mov', 1000)],
+        refused: 1,
+        position: const Offset(260, 210),
+      ),
     );
     await tester.pump();
     expect(shown, isNull);
-    expect(dropped.map((f) => f.name), ['a.png']);
+    expect(drops.single.files.map((f) => f.name), ['a.png']);
+    expect(
+      drops.single.position,
+      const Offset(160, 160),
+      reason: 'which zone took it',
+    );
     expect(refused, [DropRefusal.notAFile, DropRefusal.tooLarge]);
     await tester.pump(const Duration(seconds: 1));
   });

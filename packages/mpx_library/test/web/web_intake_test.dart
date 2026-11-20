@@ -32,7 +32,10 @@ void main() {
       ),
     );
     void fire(String type) => web.document.dispatchEvent(
-      web.DragEvent(type, web.DragEventInit(dataTransfer: transfer)),
+      web.DragEvent(
+        type,
+        web.DragEventInit(dataTransfer: transfer, clientX: 30, clientY: 40),
+      ),
     );
     fire('dragenter');
     fire('dragover');
@@ -47,6 +50,8 @@ void main() {
     expect(done.files.single.name, 'a.png');
     expect(done.files.single.size, 3);
     expect(done.files.single.source, isA<IntakeSource$Blob>());
+    expect(done.position, const Offset(30, 40));
+    expect((events[1] as DropOver).position, const Offset(30, 40));
   });
 
   test('a pick ends empty when the window returns from the dialog with '

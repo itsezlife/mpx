@@ -14,7 +14,8 @@ void main() {
     return DropSourceHarness(
       source: source,
       files: const {'a.png': 3, 'b.mov': 7},
-      dropFiles: () async => source.drop(const [
+      at: const Offset(40, 50),
+      dropFiles: () async => source.drop(at: const Offset(40, 50), const [
         IntakeFile(source: IntakeSource.path('/a.png'), name: 'a.png', size: 3),
         IntakeFile(source: IntakeSource.path('/b.mov'), name: 'b.mov', size: 7),
       ]),

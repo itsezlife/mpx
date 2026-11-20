@@ -59,7 +59,9 @@ final fetcher = LibraryFetcher(library);
   the system camera (`captureWithSystemCamera(kind)`), answering
   `IntakeFile`s with a de-duplication key.
 - `IntakeDropRegion` over a `DropSource` (enter / over / leave / drop,
-  nested enters counted, a 500 ms watchdog, files only, a size ceiling),
+  nested enters counted, a 500 ms watchdog, files only, a size ceiling;
+  the pointer's position local to the region while hovering and at the
+  drop, so a host can split the region into zones),
   `ClipboardReader`, `IntakeFiles.fromPath` / `fromBytes` for a host field
   that already reads pasted media, and `IntakeKind.classify` (photo, video,
   animation, audio, file).

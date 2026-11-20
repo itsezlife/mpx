@@ -20,7 +20,9 @@
   `IntakeKind`; `testing.dart`: `FakeDropSource`, `FakeClipboardReader`.
 - Native drag and drop and paste through `super_drag_and_drop` and
   `super_clipboard` (`DropSource.wrap` puts the drop region around the
-  host's widget); `DropSourceContract`, `ClipboardReaderContract`.
+  host's widget); drop events carry the pointer position, which
+  `IntakeDropRegion` hands over local to the region (`DropHover`,
+  `IntakeDrop`); `DropSourceContract`, `ClipboardReaderContract`.
 - The plugin declares no permission; its manifest holds only the system
   camera's file provider.
 

@@ -14,6 +14,7 @@ final class DropSourceHarness {
     required this.dropFiles,
     required this.dropLink,
     required this.files,
+    this.at,
   });
 
   /// The source under test.
@@ -27,6 +28,9 @@ final class DropSourceHarness {
 
   /// The names and sizes of the files [dropFiles] drops.
   final Map<String, int> files;
+
+  /// Where (global) [dropFiles] drops them, when the harness knows.
+  final Offset? at;
 }
 
 /// The contract every [DropSource] meets.
@@ -56,6 +60,14 @@ abstract final class DropSourceContract {
           for (final file in done.files) file.name: file.size,
         }, harness.files);
         expect(done.refused, 0);
+        final overs = events.whereType<DropOver>();
+        expect(overs, isNotEmpty);
+        expect(overs.last.position, isNotNull, reason: 'over tells where');
+        expect(done.position, isNotNull, reason: 'the drop tells where');
+        if (harness.at case final at?) {
+          expect(done.position, at);
+          expect(overs.last.position, at);
+        }
       });
 
       test('a drop of a link refuses it', () async {

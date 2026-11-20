@@ -128,12 +128,14 @@ final class WebDropSource implements DropSource {
     _handlers
       ..['dragenter'] = ((web.DragEvent event) {
         event.preventDefault();
-        _events.add(DropEnter(_offerOf(event.dataTransfer)));
+        _events.add(
+          DropEnter(_offerOf(event.dataTransfer), position: _positionOf(event)),
+        );
       }).toJS
       ..['dragover'] = ((web.DragEvent event) {
         // Without it the browser opens the file instead of dropping it.
         event.preventDefault();
-        _events.add(const DropOver());
+        _events.add(DropOver(position: _positionOf(event)));
       }).toJS
       ..['dragleave'] = ((web.DragEvent _) {
         _events.add(const DropLeave());
@@ -146,7 +148,9 @@ final class WebDropSource implements DropSource {
         final links =
             files.isEmpty &&
             (types.contains('text/uri-list') || types.contains('text/plain'));
-        _events.add(DropDone(files, refused: links ? 1 : 0));
+        _events.add(
+          DropDone(files, refused: links ? 1 : 0, position: _positionOf(event)),
+        );
       }).toJS;
     // A closure: interop members cannot be torn off.
     // ignore: unnecessary_lambdas
@@ -163,6 +167,11 @@ final class WebDropSource implements DropSource {
     );
     _handlers.clear();
   }
+
+  // The page's CSS pixels are the Flutter view's logical pixels when the
+  // view fills the window, as it does for a Flutter web app.
+  static Offset _positionOf(web.DragEvent event) =>
+      Offset(event.clientX.toDouble(), event.clientY.toDouble());
 
   static List<String> _typesOf(web.DataTransfer? transfer) => [
     if (transfer != null)

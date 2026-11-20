@@ -21,15 +21,25 @@ final class DropOffer {
 }
 
 /// One step of a drag over the window, as a drop source reports it.
+///
+/// [position] is the pointer in global logical coordinates when the
+/// platform tells it (on over and drop everywhere; on enter where the
+/// platform gives one); `IntakeDropRegion` turns it local to the region, so
+/// a host with zones in the region (a "send as files" and a "send as media"
+/// half) knows which one the drag is over and which one took the drop.
 @immutable
 sealed class DropEvent {
-  const DropEvent();
+  const DropEvent({this.position});
+
+  /// The pointer, global logical coordinates; null when the platform did
+  /// not tell.
+  final Offset? position;
 }
 
 /// A drag entered the window, or a nested element of it.
 final class DropEnter extends DropEvent {
   /// Creates the event.
-  const DropEnter(this.offer);
+  const DropEnter(this.offer, {super.position});
 
   /// What the drag brings.
   final DropOffer offer;
@@ -38,7 +48,7 @@ final class DropEnter extends DropEvent {
 /// A drag moved over the window.
 final class DropOver extends DropEvent {
   /// Creates the event.
-  const DropOver();
+  const DropOver({super.position});
 }
 
 /// A drag left the window, or a nested element of it.
@@ -51,7 +61,7 @@ final class DropLeave extends DropEvent {
 /// were not local files (links, remote URLs), refused.
 final class DropDone extends DropEvent {
   /// Creates the event.
-  const DropDone(this.files, {this.refused = 0});
+  const DropDone(this.files, {this.refused = 0, super.position});
 
   /// The local files dropped.
   final List<IntakeFile> files;
@@ -89,6 +99,7 @@ final class DropTracker extends ChangeNotifier {
 
   int _depth = 0;
   DropOffer? _offer;
+  Offset? _position;
   Timer? _timer;
 
   /// Whether a drag is over the window.
@@ -97,18 +108,32 @@ final class DropTracker extends ChangeNotifier {
   /// What the active drag brings; null when none is.
   DropOffer? get offer => _offer;
 
+  /// Where the active drag's pointer is (global), when known.
+  Offset? get position => _position;
+
   /// Feeds one event.
   void add(DropEvent event) {
+    final moved =
+        event.position != null &&
+        event.position != _position &&
+        event is! DropDone &&
+        event is! DropLeave;
+    if (moved) _position = event.position;
     switch (event) {
       case DropEnter(:final offer):
         _depth++;
         if (_offer == null) {
           _offer = offer;
           notifyListeners();
+        } else if (moved) {
+          notifyListeners();
         }
         _arm();
       case DropOver():
-        if (_offer != null) _arm();
+        if (_offer != null) {
+          _arm();
+          if (moved) notifyListeners();
+        }
       case DropLeave():
         if (_depth > 0) _depth--;
         if (_depth == 0) _end();
@@ -126,6 +151,7 @@ final class DropTracker extends ChangeNotifier {
     _timer?.cancel();
     _timer = null;
     _depth = 0;
+    _position = null;
     if (_offer == null) return;
     _offer = null;
     notifyListeners();
@@ -136,6 +162,41 @@ final class DropTracker extends ChangeNotifier {
     _timer?.cancel();
     super.dispose();
   }
+}
+
+/// A drag over a drop region: what it brings, and where the pointer is in
+/// the region (local logical coordinates; null when the platform did not
+/// tell yet).
+@immutable
+final class DropHover {
+  /// Describes the drag.
+  const DropHover(this.offer, this.position);
+
+  /// What the drag brings.
+  final DropOffer offer;
+
+  /// The pointer, local to the region.
+  final Offset? position;
+
+  @override
+  String toString() => 'DropHover($offer, $position)';
+}
+
+/// Files dropped on a drop region, and where (local to the region).
+@immutable
+final class IntakeDrop {
+  /// Describes a drop.
+  const IntakeDrop(this.files, this.position);
+
+  /// The local files taken.
+  final List<IntakeFile> files;
+
+  /// Where the drop landed, local to the region; null when the platform
+  /// did not tell.
+  final Offset? position;
+
+  @override
+  String toString() => 'IntakeDrop(${files.length} files at $position)';
 }
 
 /// Why a dropped item was not taken.
@@ -171,11 +232,11 @@ class IntakeDropRegion extends StatefulWidget {
   final DropSource source;
 
   /// Called with the dropped files that passed.
-  final ValueChanged<List<IntakeFile>> onDrop;
+  final ValueChanged<IntakeDrop> onDrop;
 
-  /// Builds the region, with the offer of the drag over it (null when none
-  /// is).
-  final Widget Function(BuildContext context, DropOffer? offer) builder;
+  /// Builds the region, with the drag over it (null when none is): what it
+  /// brings and where its pointer is in the region.
+  final Widget Function(BuildContext context, DropHover? hover) builder;
 
   /// The largest file taken, in bytes; null for no ceiling.
   final int? maxFileBytes;
@@ -233,7 +294,14 @@ class _IntakeDropRegionState extends State<IntakeDropRegion> {
         taken.add(file);
       }
     }
-    if (taken.isNotEmpty) widget.onDrop(taken);
+    if (taken.isNotEmpty)
+      widget.onDrop(IntakeDrop(taken, _local(drop.position)));
+  }
+
+  Offset? _local(Offset? global) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (global == null || box == null || !box.hasSize) return null;
+    return box.globalToLocal(global);
   }
 
   @override
@@ -246,8 +314,15 @@ class _IntakeDropRegionState extends State<IntakeDropRegion> {
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: _tracker,
-    builder: (context, _) =>
-        widget.source.wrap(widget.builder(context, _tracker.offer)),
+    builder: (context, _) {
+      final offer = _tracker.offer;
+      return widget.source.wrap(
+        widget.builder(
+          context,
+          offer == null ? null : DropHover(offer, _local(_tracker.position)),
+        ),
+      );
+    },
   );
 }
 

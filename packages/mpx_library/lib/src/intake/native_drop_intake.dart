@@ -24,7 +24,7 @@ final class NativeDropSource implements DropSource {
     hitTestBehavior: HitTestBehavior.opaque,
     onDropEnter: (event) => _events.add(DropEnter(_offerOf(event.session))),
     onDropOver: (event) {
-      _events.add(const DropOver());
+      _events.add(DropOver(position: event.position.global));
       return event.session.allowedOperations.contains(dnd.DropOperation.copy)
           ? dnd.DropOperation.copy
           : dnd.DropOperation.none;
@@ -41,7 +41,9 @@ final class NativeDropSource implements DropSource {
           files.add(file);
         }
       }
-      _events.add(DropDone(files, refused: refused));
+      _events.add(
+        DropDone(files, refused: refused, position: event.position.global),
+      );
     },
     child: child,
   );

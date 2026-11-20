@@ -19,11 +19,15 @@ final class FakeDropSource implements DropSource {
   /// Reports [event].
   void add(DropEvent event) => _events.add(event);
 
-  /// Reports a whole drag of [files]: enter, over, drop.
-  void drop(List<IntakeFile> files, {int refused = 0}) {
-    add(const DropEnter(DropOffer(types: ['Files'])));
-    add(const DropOver());
-    add(DropDone(files, refused: refused));
+  /// Reports a whole drag of [files] at [at] (global): enter, over, drop.
+  void drop(
+    List<IntakeFile> files, {
+    int refused = 0,
+    Offset at = Offset.zero,
+  }) {
+    add(DropEnter(const DropOffer(types: ['Files']), position: at));
+    add(DropOver(position: at));
+    add(DropDone(files, refused: refused, position: at));
   }
 
   /// Ends the source.
