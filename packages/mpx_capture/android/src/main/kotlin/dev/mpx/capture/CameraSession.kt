@@ -4,14 +4,17 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.TotalCaptureResult
 import android.media.MediaMetadataRetriever
 import android.os.Handler
 import android.os.Looper
 import android.util.Range
 import androidx.camera.camera2.interop.Camera2CameraControl
 import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.camera2.interop.CaptureRequestOptions
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -71,6 +74,10 @@ class CameraSession(
     private var recordingDone: ((Result<Map<String, Any?>>) -> Unit)? = null
     private var flash = "off"
     private var quarterTurns = 0
+
+    // Set by a switch until the new camera's first frame, which Dart hears
+    // as `firstFrame`: until then the texture holds the old camera's frames.
+    @Volatile private var awaitingFirstFrame = false
     private var previewWidth = 0
     private var previewHeight = 0
     private var opened: ((Map<String, Any?>) -> Unit)? = null
@@ -118,6 +125,7 @@ class CameraSession(
         val next = if (facing == "front") "back" else "front"
         if (!provider.hasCamera(selector(next))) return facing
         facing = next
+        awaitingFirstFrame = true
         bind()
         return facing
     }
@@ -217,7 +225,7 @@ class CameraSession(
             if (!provider.hasCamera(selector(facing))) return failOpen()
         }
         provider.unbind(*listOfNotNull<UseCase>(preview, imageCapture, videoCapture).toTypedArray())
-        val preview = Preview.Builder().build().also { this.preview = it }
+        val preview = previewBuilder().build().also { this.preview = it }
         val imageCapture = ImageCapture.Builder()
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
             .build()
@@ -248,6 +256,33 @@ class CameraSession(
         setFlash(flash)
         applyFrameRate()
         emitState()
+    }
+
+    // A preview whose first completed capture after a switch tells Dart the
+    // new camera's frames have started.
+    @SuppressLint("UnsafeOptInUsageError")
+    private fun previewBuilder(): Preview.Builder {
+        val builder = Preview.Builder()
+        Camera2Interop.Extender(builder).setSessionCaptureCallback(
+            object : CameraCaptureSession.CaptureCallback() {
+                override fun onCaptureCompleted(
+                    session: CameraCaptureSession,
+                    request: CaptureRequest,
+                    result: TotalCaptureResult,
+                ) {
+                    if (!awaitingFirstFrame) return
+                    awaitingFirstFrame = false
+                    main.post {
+                        if (closed || opened != null || previewWidth == 0) return@post
+                        emit(
+                            state("available") +
+                                mapOf("job" to id, "type" to "camera", "firstFrame" to true),
+                        )
+                    }
+                }
+            },
+        )
+        return builder
     }
 
     private fun provideSurface(request: androidx.camera.core.SurfaceRequest) {

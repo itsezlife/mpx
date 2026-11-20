@@ -7,6 +7,7 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'cache/capture_cache_test.dart' as capture_cache_test;
+import 'camera/camera_preview_test.dart' as camera_preview_test;
 import 'camera/camera_slot_preview_test.dart' as camera_slot_preview_test;
 import 'camera/capture_surface_test.dart' as capture_surface_test;
 import 'camera/fake_camera_ownership_contract_test.dart'
@@ -26,6 +27,7 @@ import 'transcode/fake_transcoder_contract_test.dart'
 
 void main() {
   group('capture_cache_test', capture_cache_test.main);
+  group('camera_preview_test', camera_preview_test.main);
   group('camera_slot_preview_test', camera_slot_preview_test.main);
   group('capture_surface_test', capture_surface_test.main);
   group(

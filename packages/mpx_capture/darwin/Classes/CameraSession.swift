@@ -40,6 +40,9 @@ final class CameraSession: NSObject, FlutterTexture,
   private let frameLock = NSLock()
   private var latestFrame: CVPixelBuffer?
   private var previewWidth = 0
+  // Set by a switch until the new camera's first frame, which Dart hears as
+  // `firstFrame`: until then the texture holds the old camera's frames.
+  private var awaitingFirstFrame = false
   private var previewHeight = 0
   private var opened: (([String: Any]) -> Void)?
   private var closed = false
@@ -151,6 +154,7 @@ final class CameraSession: NSObject, FlutterTexture,
       self.session.commitConfiguration()
       self.applyFrameRate()
       self.previewWidth = 0  // re-read from the next frame
+      self.awaitingFirstFrame = true
       done(self.facing)
     }
   }
@@ -460,10 +464,17 @@ final class CameraSession: NSObject, FlutterTexture,
     DispatchQueue.main.async { [textures] in textures.textureFrameAvailable(id) }
     let width = CVPixelBufferGetWidth(pixels)
     let height = CVPixelBufferGetHeight(pixels)
-    if width != previewWidth || height != previewHeight {
+    let first = awaitingFirstFrame
+    awaitingFirstFrame = false
+    if first || width != previewWidth || height != previewHeight {
       previewWidth = width
       previewHeight = height
-      if opened == nil { emit(state("available").merging(["job": self.id, "type": "camera"]) { $1 }) }
+      if opened == nil {
+        emit(
+          state("available").merging(["job": self.id, "type": "camera", "firstFrame": first]) {
+            $1
+          })
+      }
     }
     if let opened {
       self.opened = nil

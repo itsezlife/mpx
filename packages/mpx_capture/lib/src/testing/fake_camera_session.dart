@@ -21,6 +21,7 @@ final class FakeCameraSessions implements CameraSessions {
     this.cameras = 2,
     this.hasFlash = true,
     this.textureId,
+    this.holdsSwitchFrames = false,
     FakeCamera? camera,
   }) : camera = camera ?? FakeCamera();
 
@@ -38,6 +39,11 @@ final class FakeCameraSessions implements CameraSessions {
 
   /// The texture every session reports, or null.
   final int? textureId;
+
+  /// Whether a switch waits for [FakeCameraSession.deliverSwitchFrames]
+  /// before the new camera's first frame (`isSwitching` true until then);
+  /// otherwise the first frame comes with the switch.
+  final bool holdsSwitchFrames;
 
   /// How many sessions were opened.
   int openCount = 0;
@@ -111,8 +117,18 @@ final class FakeCameraSession implements CameraSession {
     final next = _now.facing == CameraFacing.front
         ? CameraFacing.back
         : CameraFacing.front;
-    _value.value = _now.copyWith(facing: next);
+    _value.value = _now.copyWith(
+      facing: next,
+      isSwitching: _owner.holdsSwitchFrames,
+    );
     return next;
+  }
+
+  /// The new camera's first frame after a switch, for an opener that
+  /// [FakeCameraSessions.holdsSwitchFrames].
+  void deliverSwitchFrames() {
+    if (_disposed || !_now.isSwitching) return;
+    _value.value = _now.copyWith(isSwitching: false);
   }
 
   @override

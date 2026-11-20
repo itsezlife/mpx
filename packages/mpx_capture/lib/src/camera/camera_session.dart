@@ -50,6 +50,7 @@ final class CameraSessionValue {
     this.hasFlash = false,
     this.canSwitchCamera = false,
     this.frameRateCap,
+    this.isSwitching = false,
   });
 
   /// Where the session stands.
@@ -87,6 +88,12 @@ final class CameraSessionValue {
   /// camera's own rate.
   final int? frameRateCap;
 
+  /// Whether the camera is changing: from a switch until the new camera's
+  /// first frame. Meanwhile the texture still holds the old camera's last
+  /// frames, while [facing] and [quarterTurns] already name the new one, so
+  /// a preview draws the frames as it drew them before the switch.
+  final bool isSwitching;
+
   /// Whether the preview is drawn mirrored, as a front camera's is. The
   /// frames and the captures are not mirrored; only the preview is.
   bool get mirrored => facing == CameraFacing.front;
@@ -109,6 +116,7 @@ final class CameraSessionValue {
     bool? canSwitchCamera,
     int? frameRateCap,
     bool replaceFrameRateCap = false,
+    bool? isSwitching,
   }) => CameraSessionValue(
     state: state ?? this.state,
     facing: facing ?? this.facing,
@@ -121,6 +129,7 @@ final class CameraSessionValue {
     hasFlash: hasFlash ?? this.hasFlash,
     canSwitchCamera: canSwitchCamera ?? this.canSwitchCamera,
     frameRateCap: replaceFrameRateCap ? frameRateCap : this.frameRateCap,
+    isSwitching: isSwitching ?? this.isSwitching,
   );
 
   @override
@@ -136,7 +145,8 @@ final class CameraSessionValue {
       other.quarterTurns == quarterTurns &&
       other.hasFlash == hasFlash &&
       other.canSwitchCamera == canSwitchCamera &&
-      other.frameRateCap == frameRateCap;
+      other.frameRateCap == frameRateCap &&
+      other.isSwitching == isSwitching;
 
   @override
   int get hashCode => Object.hash(
@@ -151,13 +161,15 @@ final class CameraSessionValue {
     hasFlash,
     canSwitchCamera,
     frameRateCap,
+    isSwitching,
   );
 
   @override
   String toString() =>
       'CameraSessionValue(${state.name}, ${facing.name}, flash ${flash.name}'
       '${isPaused ? ', paused' : ''}${isRecording ? ', recording' : ''}'
-      '${frameRateCap == null ? '' : ', cap $frameRateCap fps'})';
+      '${frameRateCap == null ? '' : ', cap $frameRateCap fps'}'
+      '${isSwitching ? ', switching' : ''})';
 }
 
 /// A live camera: a preview texture, photos and videos, a camera switch, a

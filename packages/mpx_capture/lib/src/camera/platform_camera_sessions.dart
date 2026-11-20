@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:mpx_capture/src/camera/camera_claim.dart';
 import 'package:mpx_capture/src/camera/camera_session.dart';
@@ -79,14 +81,44 @@ final class _PlatformCameraSession implements CameraSession {
     _value.value = _now.copyWith(frameRateCap: fps, replaceFrameRateCap: true);
   }
 
+  // How long a switch waits for the platform to report the new camera's
+  // first frame before it stops waiting, so a preview never stays blurred.
+  static const Duration _switchWait = Duration(seconds: 2);
+  Timer? _switchTimer;
+
+  // The texture holds the old camera's frames until the new camera's
+  // first frame, which the platform reports with `firstFrame`; until then
+  // the value says it is switching.
   @override
   Future<CameraFacing> switchCamera() async {
     _open();
-    final facing = await _channel.invoke<String>('cameraSwitch', _args());
-    if (facing != null) {
-      _value.value = _now.copyWith(facing: CameraFacing.values.byName(facing));
+    final before = _now.facing;
+    _value.value = _now.copyWith(isSwitching: true);
+    _switchTimer?.cancel();
+    _switchTimer = Timer(_switchWait, _switched);
+    try {
+      final facing = await _channel.invoke<String>('cameraSwitch', _args());
+      if (_now.state == CameraSessionState.closed) return _now.facing;
+      if (facing != null) {
+        _value.value = _now.copyWith(
+          facing: CameraFacing.values.byName(facing),
+        );
+      }
+    } on Object {
+      _switched();
+      rethrow;
     }
+    // No other camera: nothing changes on screen.
+    if (_now.facing == before) _switched();
     return _now.facing;
+  }
+
+  void _switched() {
+    _switchTimer?.cancel();
+    _switchTimer = null;
+    if (_now.isSwitching && _now.state != CameraSessionState.closed) {
+      _value.value = _now.copyWith(isSwitching: false);
+    }
   }
 
   @override
@@ -162,6 +194,7 @@ final class _PlatformCameraSession implements CameraSession {
   // --- Platform events ---
 
   void _closedHere() {
+    _switchTimer?.cancel();
     _channel.unlisten(_id);
     if (_now.state != CameraSessionState.closed) {
       _value.value = const CameraSessionValue(state: CameraSessionState.closed);
@@ -196,6 +229,7 @@ final class _PlatformCameraSession implements CameraSession {
       canSwitchCamera: map['canSwitch'] as bool?,
       isRecording: state == CameraSessionState.available ? null : false,
     );
+    if (map['firstFrame'] == true) _switched();
   }
 
   // --- Guards ---

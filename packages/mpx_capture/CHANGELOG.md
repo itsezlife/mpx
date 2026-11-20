@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A camera switch no longer shows the old camera's frames mirrored or
+  turned as the new camera's: `CameraSessionValue.isSwitching` holds from
+  the switch until the platform reports the new camera's first frame, and
+  `CameraPreview` draws the frames as before, blurred and turning over,
+  until then.
 - `CameraSlotPreview`: the small preview of a camera session for a grid's
   camera slot (30 fps cap, pauses on the slot's signal, an allow-access
   state, unavailable sessions reported); `CameraCaptureSurface.show(from:)`

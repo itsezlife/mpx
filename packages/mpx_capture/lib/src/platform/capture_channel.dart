@@ -21,7 +21,7 @@ import 'package:mpx_core/mpx_core.dart';
 ///
 /// | type | fields |
 /// | --- | --- |
-/// | `camera` | `state`, `textureId`, `previewWidth`, `previewHeight`, `quarterTurns`, `facing`, `hasFlash`, `canSwitch` |
+/// | `camera` | `state`, `textureId`, `previewWidth`, `previewHeight`, `quarterTurns`, `facing`, `hasFlash`, `canSwitch`; `firstFrame` true on the new camera's first frame after a switch |
 ///
 /// The stream is listened to only while a job or a session is registered.
 final class CaptureChannel {
