@@ -122,6 +122,52 @@ void main() {
       expect(withdrawn, ['clip']);
     });
 
+    test('a local source plays its file in place: nothing is published and '
+        'the platform gets its URL', () async {
+      final file = Uri.parse('content://media/external/video/media/7');
+      backend.dispose();
+      backend = backendOver(
+        SimulatedHost(),
+        sources: {
+          clip: [PlayerSource.local(file, mimeType: 'video/mp4')],
+        },
+      );
+      final engine = await ready(backend.create(clip)..prepare());
+
+      expect(published, isEmpty);
+      final player = host.live.single;
+      expect(player.source.fileUrl, file.toString());
+      expect(PlayerSource.local(file).kind, PlayerSourceKind.local);
+
+      engine.dispose();
+      await settle();
+      await settle();
+      expect(withdrawn, isEmpty);
+    });
+
+    test(
+      'sources may arrive later: a host that must look a file up first',
+      () async {
+        backend.dispose();
+        backend = NativePlayerBackend.over(
+          host: host = SimulatedHost(),
+          publish: (request) async {
+            published.add(request.cacheKey.value);
+            return () async {};
+          },
+          readerApi: 0x1000,
+          sourcesOf: (key) async {
+            await settle();
+            return [PlayerSource.local(Uri.file('/media/clip.mp4'))];
+          },
+          receive: false,
+        );
+        host.receiver = backend.receiver;
+        await ready(backend.create(clip)..prepare());
+        expect(host.live.single.source.fileUrl, 'file:///media/clip.mp4');
+      },
+    );
+
     test('a player is created with the prepared buffer: about 2 s and '
         '2 MiB ahead until it first plays', () async {
       await ready(backend.create(clip)..prepare());

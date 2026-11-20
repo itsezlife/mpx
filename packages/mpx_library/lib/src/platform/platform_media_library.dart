@@ -215,6 +215,16 @@ final class PlatformMediaLibrary implements MediaLibrary {
   }
 
   @override
+  Future<Uri?> playable(LibraryAssetId asset) async {
+    try {
+      final url = await _read<String>(asset, 'playable', {'id': asset.value});
+      return url == null ? null : Uri.tryParse(url);
+    } on LibraryAssetUnavailable {
+      return null;
+    }
+  }
+
+  @override
   bool isCloudHeld(LibraryAssetId asset) => _cloud.contains(asset);
 
   @override

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `PlayerSource.local` (`PlayerSourceKind.local`): a file on the device (a
+  `file:` URL, an Android `content:` URI) the platform player opens in place,
+  past the bytes cache. `PlayerSourcesOf` may answer with a future, for a
+  host that looks a source up first.
 - `PlayerPool`, `PlayerLease`, `PlayerState`, `PlayerBudget`, `PlayerView`
   over the `PlayerBackend` / `PlayerEngine` seam (`FakePlayerBackend`,
   `PlayerEngineContract` in `testing.dart`). One sound owner:

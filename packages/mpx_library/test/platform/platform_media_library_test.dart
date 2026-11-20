@@ -94,6 +94,14 @@ void main() {
             throw PlatformException(code: 'unavailable');
           }
           return Uint8List.fromList([1, 2, 3]);
+        case 'playable':
+          final args = call.arguments as Map<Object?, Object?>;
+          if (args['id'] == 'gone') {
+            throw PlatformException(code: 'unavailable');
+          }
+          return args['id'] == 'b'
+              ? 'content://media/external/video/media/b'
+              : null;
         case 'original':
           final args = call.arguments as Map<Object?, Object?>;
           if (args['id'] == 'offline')
@@ -254,6 +262,18 @@ void main() {
       lib.original(const LibraryAssetId('offline')),
       throwsA(isA<LibraryDownloadFailed>()),
     );
+  });
+
+  test('a video plays from the URI the platform gives; a gone asset has '
+      'none', () async {
+    final media = library();
+    addTearDown(media.dispose);
+    expect(
+      await media.playable(const LibraryAssetId('b')),
+      Uri.parse('content://media/external/video/media/b'),
+    );
+    expect(await media.playable(const LibraryAssetId('a')), isNull);
+    expect(await media.playable(const LibraryAssetId('gone')), isNull);
   });
 
   test('an original reports its download and is released once', () async {

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `MediaLibrary.playable`: the URI a player reads a library video from in
+  place (Android's content URI, the iOS original's file URL). A host that
+  implements `MediaLibrary` adds it.
 - `MediaLibrary`: access with its transitions, albums, pages by offset,
   change events, thumbnails, originals as file leases.
 - `LibraryKeys` and `LibraryFetcher`: library assets and their thumbnail

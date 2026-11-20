@@ -6,6 +6,7 @@ import Foundation
 #endif
 
 #if MPX_LIBRARY_PHOTOS && os(iOS)
+  import AVFoundation
   import Photos
   import PhotosUI
   import UniformTypeIdentifiers
@@ -272,6 +273,19 @@ import Foundation
       lock.lock()
       downloads[request] = requestId
       lock.unlock()
+    }
+
+    /// The file URL of video `id`'s original, which a player reads in
+    /// place (a cloud-held one downloads first); nil for a photo, or a
+    /// video PhotoKit hands over as a composition and not as a file.
+    func playable(id: String, _ done: @escaping (String?) -> Void) {
+      guard let asset = asset(id), asset.mediaType == .video else { return done(nil) }
+      let options = PHVideoRequestOptions()
+      options.isNetworkAccessAllowed = true
+      options.version = .original
+      PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { video, _, _ in
+        done((video as? AVURLAsset)?.url.absoluteString)
+      }
     }
 
     func cancelOriginal(request: Int) {

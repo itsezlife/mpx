@@ -171,6 +171,11 @@ class MpxLibraryPlugin :
                     CancellationSignal(),
                 )
             }
+            // A video's content URI, which a player reads in place; null
+            // for a photo.
+            "playable" -> background(result) {
+                library.playable(call.argument<String>("id") ?: "")
+            }
             "original" -> {
                 val request = call.argument<Int>("request") ?: 0
                 val cancel = CancellationSignal().also { cancels[request] = it }

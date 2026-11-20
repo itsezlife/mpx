@@ -188,6 +188,21 @@ abstract final class MediaLibraryContract {
           throwsA(isA<LibraryAssetUnavailable>()),
         );
         expect(library().isCloudHeld(missing), isFalse);
+        expect(await library().playable(missing), isNull);
+      });
+
+      test('a video plays in place from its URI; a photo has none', () async {
+        final album = await allMedia();
+        if (album == null || album.count == 0) return;
+        final page = await library().page(album.id, offset: 0, limit: 60);
+        for (final asset in page.assets) {
+          final uri = await library().playable(asset.id);
+          if (asset.kind == LibraryAssetKind.video) {
+            expect(uri, isNotNull, reason: '${asset.id} is a video');
+          } else {
+            expect(uri, isNull, reason: '${asset.id} is a photo');
+          }
+        }
       });
     });
   }

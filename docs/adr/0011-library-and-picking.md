@@ -279,6 +279,17 @@ preset.
   the viewer covers it. No piece of 0006 needed a new slot. The origin
   comes back at once on close (the morph lands on it), not with a 0.3 s
   fade.
+- **Library videos play in place**: `MediaLibrary.playable` hands the
+  platform's URI of a video (Android's MediaStore content URI, the iOS
+  original's file URL from PhotoKit), and `PlayerSource.local` has the
+  native player open it directly: no copy of the original, nothing through
+  the bytes cache. `LibraryPlayerSources.of` answers a host's players for
+  library keys; without players the picker-mode viewer shows stills.
+- **Selected-items preview**: `PickerSelectionPreview` shows the selection
+  in order, deselects on its number, opens on a tap and reorders on a long
+  press drag through a host callback (`OrderedPickerSelection.move`), so the
+  `PickerSelection` seam is unchanged. The host swaps it in for the grid
+  when the selection's counter is tapped.
 - **Library picker**: `LibraryPicker` composes the album switcher, the
   access states and banners, the grid and the picker-mode viewer; the host
   places the switcher through `headerBuilder`.

@@ -207,9 +207,10 @@ enum NativeAudioFocusChange: Int, CaseIterable {
 
 /// What a native player reads: a ranged resource published to the bytes
 /// cache's native reader under [cacheKey], read through the function table at
-/// [readerApi] (the address of `hbc_api`); or, with [playlistUrl], an HLS
+/// [readerApi] (the address of `hbc_api`); with [playlistUrl], an HLS
 /// stream whose parts the player asks for one by one ([PlayerFlutterApi]
-/// `openStreamPart`).
+/// `openStreamPart`); or, with [fileUrl], a file on the device the player
+/// opens in place.
 ///
 /// Generated class from Pigeon that represents data sent in messages.
 struct NativePlayerSource: Hashable, CustomStringConvertible {
@@ -223,6 +224,10 @@ struct NativePlayerSource: Hashable, CustomStringConvertible {
   var playlistUrl: String? = nil
   /// The stream this player's part requests name; set with [playlistUrl].
   var streamId: Int64? = nil
+  /// A file on the device (a `file:` URL, or an Android `content:` URI) the
+  /// player reads directly, past the bytes cache; null for the cache's
+  /// sources.
+  var fileUrl: String? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -232,13 +237,15 @@ struct NativePlayerSource: Hashable, CustomStringConvertible {
     let mimeType = pigeonVar_list[2] as! String
     let playlistUrl: String? = nilOrValue(pigeonVar_list[3])
     let streamId: Int64? = nilOrValue(pigeonVar_list[4])
+    let fileUrl: String? = nilOrValue(pigeonVar_list[5])
 
     return NativePlayerSource(
       cacheKey: cacheKey,
       readerApi: readerApi,
       mimeType: mimeType,
       playlistUrl: playlistUrl,
-      streamId: streamId
+      streamId: streamId,
+      fileUrl: fileUrl
     )
   }
   func toList() -> [Any?] {
@@ -248,13 +255,14 @@ struct NativePlayerSource: Hashable, CustomStringConvertible {
       mimeType,
       playlistUrl,
       streamId,
+      fileUrl,
     ]
   }
   static func == (lhs: NativePlayerSource, rhs: NativePlayerSource) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return PlayerMessagesPigeonInternal.deepEquals(lhs.cacheKey, rhs.cacheKey) && PlayerMessagesPigeonInternal.deepEquals(lhs.readerApi, rhs.readerApi) && PlayerMessagesPigeonInternal.deepEquals(lhs.mimeType, rhs.mimeType) && PlayerMessagesPigeonInternal.deepEquals(lhs.playlistUrl, rhs.playlistUrl) && PlayerMessagesPigeonInternal.deepEquals(lhs.streamId, rhs.streamId)
+    return PlayerMessagesPigeonInternal.deepEquals(lhs.cacheKey, rhs.cacheKey) && PlayerMessagesPigeonInternal.deepEquals(lhs.readerApi, rhs.readerApi) && PlayerMessagesPigeonInternal.deepEquals(lhs.mimeType, rhs.mimeType) && PlayerMessagesPigeonInternal.deepEquals(lhs.playlistUrl, rhs.playlistUrl) && PlayerMessagesPigeonInternal.deepEquals(lhs.streamId, rhs.streamId) && PlayerMessagesPigeonInternal.deepEquals(lhs.fileUrl, rhs.fileUrl)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -264,10 +272,11 @@ struct NativePlayerSource: Hashable, CustomStringConvertible {
     PlayerMessagesPigeonInternal.deepHash(value: mimeType, hasher: &hasher)
     PlayerMessagesPigeonInternal.deepHash(value: playlistUrl, hasher: &hasher)
     PlayerMessagesPigeonInternal.deepHash(value: streamId, hasher: &hasher)
+    PlayerMessagesPigeonInternal.deepHash(value: fileUrl, hasher: &hasher)
   }
 
   public var description: String {
-    return "NativePlayerSource(cacheKey: \(String(describing: cacheKey)), readerApi: \(String(describing: readerApi)), mimeType: \(String(describing: mimeType)), playlistUrl: \(String(describing: playlistUrl)), streamId: \(String(describing: streamId)))"
+    return "NativePlayerSource(cacheKey: \(String(describing: cacheKey)), readerApi: \(String(describing: readerApi)), mimeType: \(String(describing: mimeType)), playlistUrl: \(String(describing: playlistUrl)), streamId: \(String(describing: streamId)), fileUrl: \(String(describing: fileUrl)))"
   }
 }
 

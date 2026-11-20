@@ -6,6 +6,7 @@ import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:mpx_capture/mpx_capture.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/mpx_library.dart';
+import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_ui/mpx_ui.dart';
 
 /// The media picker of the set: the device library in a `LibraryPicker`, a
@@ -14,8 +15,21 @@ import 'package:mpx_ui/mpx_ui.dart';
 /// long press or when the session is unavailable, and captured items first
 /// in the selection.
 class PickerPage extends StatefulWidget {
-  /// Creates the page; captures land in [store] under local keys.
-  const PickerPage({required this.store, required this.clock, super.key});
+  /// Creates the page over [library]; captures land in [store] under local
+  /// keys; videos play on [players].
+  const PickerPage({
+    required this.library,
+    required this.store,
+    required this.clock,
+    this.players,
+    super.key,
+  });
+
+  /// The device library, which the app owns.
+  final MediaLibrary library;
+
+  /// The players the viewer plays library videos on; stills when null.
+  final PlayerPool? players;
 
   /// The bytes store captures move into.
   final IBytesStore store;
@@ -28,7 +42,7 @@ class PickerPage extends StatefulWidget {
 }
 
 class _PickerPageState extends State<PickerPage> {
-  final PlatformMediaLibrary _library = PlatformMediaLibrary();
+  MediaLibrary get _library => widget.library;
   final OrderedPickerSelection _selection = OrderedPickerSelection(cap: 10);
   late final CaptureCache _cache = CaptureCache(store: widget.store);
   late final AssetPipeline _pipeline = AssetPipeline(
@@ -96,7 +110,6 @@ class _PickerPageState extends State<PickerPage> {
     unawaited(_camera?.dispose());
     _scope.dispose();
     _pipeline.dispose();
-    unawaited(_library.dispose());
     _selection.dispose();
     super.dispose();
   }
@@ -150,6 +163,7 @@ class _PickerPageState extends State<PickerPage> {
       child: LibraryPicker(
         library: _library,
         selection: _selection,
+        players: widget.players,
         labels: _gridLabels,
         stateLabels: _stateLabels,
         policy: LibraryGridPolicy.forPlatform(Theme.of(context).platform),

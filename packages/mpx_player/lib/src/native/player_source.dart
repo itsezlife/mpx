@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -9,6 +11,9 @@ enum PlayerSourceKind {
 
   /// An HLS stream: playlists and segments, each its own resource.
   hls,
+
+  /// A file on the device the player opens in place, past the bytes cache.
+  local,
 }
 
 /// Where a native player reads one media's bytes: a ranged resource of the
@@ -19,7 +24,8 @@ final class PlayerSource {
   /// Creates a source of [request]'s bytes in a [mimeType] container. A
   /// [mimeType] of HLS ([hlsMimeType], or `application/x-mpegURL`) makes it
   /// an HLS source, as [PlayerSource.hls] does.
-  const PlayerSource(this.request, {this.mimeType = 'video/mp4', this.codec});
+  const PlayerSource(this.request, {this.mimeType = 'video/mp4', this.codec})
+    : _local = false;
 
   /// Creates an HLS source: [request]'s URL is the playlist (a multivariant
   /// or a media playlist) and its cache key the stream's.
@@ -29,7 +35,17 @@ final class PlayerSource {
   /// quota: playlists as whole resources revalidated by HTTP rules, segments
   /// as ranged resources read natively. Android plays it; Apple players open
   /// progressive files only and move to the next source.
-  const PlayerSource.hls(this.request, {this.codec}) : mimeType = hlsMimeType;
+  const PlayerSource.hls(this.request, {this.codec})
+    : mimeType = hlsMimeType,
+      _local = false;
+
+  /// Creates a source of a file on the device at [uri] (a `file:` URL, or an
+  /// Android `content:` URI such as a media library item's), which the
+  /// platform player opens in place: nothing goes through the bytes cache,
+  /// and its [request] only names it.
+  PlayerSource.local(Uri uri, {this.mimeType = 'video/mp4', this.codec})
+    : request = RangedRequest(url: uri, cacheKey: BytesCacheKey('local:$uri')),
+      _local = true;
 
   /// The MIME type of an HLS playlist.
   static const String hlsMimeType = 'application/vnd.apple.mpegurl';
@@ -48,12 +64,17 @@ final class PlayerSource {
   /// before is skipped for the next one.
   final String? codec;
 
-  /// How a player reads this source, from [mimeType].
-  PlayerSourceKind get kind => switch (mimeType.toLowerCase()) {
-    'application/vnd.apple.mpegurl' ||
-    'application/x-mpegurl' => PlayerSourceKind.hls,
-    _ => PlayerSourceKind.progressive,
-  };
+  final bool _local;
+
+  /// How a player reads this source: [PlayerSourceKind.local] for a
+  /// [PlayerSource.local], else from [mimeType].
+  PlayerSourceKind get kind => _local
+      ? PlayerSourceKind.local
+      : switch (mimeType.toLowerCase()) {
+          'application/vnd.apple.mpegurl' ||
+          'application/x-mpegurl' => PlayerSourceKind.hls,
+          _ => PlayerSourceKind.progressive,
+        };
 
   @override
   bool operator ==(Object other) =>
@@ -61,11 +82,12 @@ final class PlayerSource {
       other.request.cacheKey == request.cacheKey &&
       other.request.url == request.url &&
       other.mimeType == mimeType &&
+      other._local == _local &&
       other.codec == codec;
 
   @override
   int get hashCode =>
-      Object.hash(request.cacheKey, request.url, mimeType, codec);
+      Object.hash(request.cacheKey, request.url, mimeType, codec, _local);
 
   @override
   String toString() =>
@@ -75,5 +97,6 @@ final class PlayerSource {
 /// The sources of [key] in the order the host prefers them (the best
 /// quality first); empty when the key has no playable source. A native
 /// player plays the first whose codec has not failed on this device, and
-/// moves to the next when its decoder fails.
-typedef PlayerSourcesOf = List<PlayerSource> Function(MediaKey key);
+/// moves to the next when its decoder fails. A host that must look the
+/// source up first (a library item's file) answers with a future.
+typedef PlayerSourcesOf = FutureOr<List<PlayerSource>> Function(MediaKey key);

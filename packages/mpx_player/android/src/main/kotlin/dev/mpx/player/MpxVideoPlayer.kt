@@ -16,6 +16,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.RenderersFactory
@@ -104,7 +105,7 @@ internal class MpxVideoPlayer(
 
     init {
         Log.d(TAG, "player $id create")
-        val mediaSource = mediaSourceOf(source, parts)
+        val mediaSource = mediaSourceOf(context, source, parts)
         exo =
             MpxPlayerTrace.section("exo-build", id) {
                 ExoPlayer.Builder(context, renderers)
@@ -182,7 +183,17 @@ internal class MpxVideoPlayer(
             )
             .build()
 
-    private fun mediaSourceOf(source: NativePlayerSource, parts: StreamParts): MediaSource {
+    private fun mediaSourceOf(
+        context: Context,
+        source: NativePlayerSource,
+        parts: StreamParts,
+    ): MediaSource {
+        // A file on the device (a media library item's content URI) is read
+        // in place: Media3's default source opens file and content URIs.
+        source.fileUrl?.let { file ->
+            return ProgressiveMediaSource.Factory(DefaultDataSource.Factory(context))
+                .createMediaSource(MediaItem.fromUri(Uri.parse(file)))
+        }
         val playlist = source.playlistUrl
         val stream = source.streamId
         if (playlist != null && stream != null) {

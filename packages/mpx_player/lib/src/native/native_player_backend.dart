@@ -702,7 +702,8 @@ final class _NativePlayerEngine implements PlayerEngine {
     final backend = _backend;
     try {
       final device = await backend._device;
-      final source = backend._choose(backend._sourcesOf(key), device);
+      final sources = await backend._sourcesOf(key);
+      final source = backend._choose(sources, device);
       if (_disposed) return;
       if (source == null) {
         final failed = backend._failedCodecs;
@@ -713,9 +714,10 @@ final class _NativePlayerEngine implements PlayerEngine {
       }
       _codec = source.codec;
       final hls = source.kind == PlayerSourceKind.hls;
+      final local = source.kind == PlayerSourceKind.local;
       if (hls) {
         _stream = backend._openStream(source.request);
-      } else {
+      } else if (!local) {
         final unpublish = await backend._publish(source.request);
         if (_disposed) return unawaited(unpublish());
         _unpublish = unpublish;
@@ -740,6 +742,7 @@ final class _NativePlayerEngine implements PlayerEngine {
           mimeType: source.mimeType,
           playlistUrl: hls ? source.request.url.toString() : null,
           streamId: stream?.id,
+          fileUrl: local ? source.request.url.toString() : null,
         ),
         sent,
       );

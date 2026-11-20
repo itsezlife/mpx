@@ -119,9 +119,10 @@ enum NativeAudioFocusChange { gained, lost, interrupted, outputRemoved }
 
 /// What a native player reads: a ranged resource published to the bytes
 /// cache's native reader under [cacheKey], read through the function table at
-/// [readerApi] (the address of `hbc_api`); or, with [playlistUrl], an HLS
+/// [readerApi] (the address of `hbc_api`); with [playlistUrl], an HLS
 /// stream whose parts the player asks for one by one ([PlayerFlutterApi]
-/// `openStreamPart`).
+/// `openStreamPart`); or, with [fileUrl], a file on the device the player
+/// opens in place.
 class NativePlayerSource {
   NativePlayerSource({
     required this.cacheKey,
@@ -129,6 +130,7 @@ class NativePlayerSource {
     required this.mimeType,
     this.playlistUrl,
     this.streamId,
+    this.fileUrl,
   });
 
   String cacheKey;
@@ -146,8 +148,20 @@ class NativePlayerSource {
   /// The stream this player's part requests name; set with [playlistUrl].
   int? streamId;
 
+  /// A file on the device (a `file:` URL, or an Android `content:` URI) the
+  /// player reads directly, past the bytes cache; null for the cache's
+  /// sources.
+  String? fileUrl;
+
   List<Object?> _toList() {
-    return <Object?>[cacheKey, readerApi, mimeType, playlistUrl, streamId];
+    return <Object?>[
+      cacheKey,
+      readerApi,
+      mimeType,
+      playlistUrl,
+      streamId,
+      fileUrl,
+    ];
   }
 
   Object encode() {
@@ -162,6 +176,7 @@ class NativePlayerSource {
       mimeType: result[2]! as String,
       playlistUrl: result[3] as String?,
       streamId: result[4] as int?,
+      fileUrl: result[5] as String?,
     );
   }
 
@@ -178,7 +193,8 @@ class NativePlayerSource {
         _deepEquals(readerApi, other.readerApi) &&
         _deepEquals(mimeType, other.mimeType) &&
         _deepEquals(playlistUrl, other.playlistUrl) &&
-        _deepEquals(streamId, other.streamId);
+        _deepEquals(streamId, other.streamId) &&
+        _deepEquals(fileUrl, other.fileUrl);
   }
 
   @override
@@ -187,7 +203,7 @@ class NativePlayerSource {
 
   @override
   String toString() {
-    return 'NativePlayerSource(cacheKey: $cacheKey, readerApi: $readerApi, mimeType: $mimeType, playlistUrl: $playlistUrl, streamId: $streamId)';
+    return 'NativePlayerSource(cacheKey: $cacheKey, readerApi: $readerApi, mimeType: $mimeType, playlistUrl: $playlistUrl, streamId: $streamId, fileUrl: $fileUrl)';
   }
 }
 

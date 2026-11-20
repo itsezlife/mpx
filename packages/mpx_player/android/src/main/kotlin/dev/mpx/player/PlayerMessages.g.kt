@@ -227,9 +227,10 @@ enum class NativeAudioFocusChange(val raw: Int) {
 /**
  * What a native player reads: a ranged resource published to the bytes
  * cache's native reader under [cacheKey], read through the function table at
- * [readerApi] (the address of `hbc_api`); or, with [playlistUrl], an HLS
+ * [readerApi] (the address of `hbc_api`); with [playlistUrl], an HLS
  * stream whose parts the player asks for one by one ([PlayerFlutterApi]
- * `openStreamPart`).
+ * `openStreamPart`); or, with [fileUrl], a file on the device the player
+ * opens in place.
  *
  * Generated class from Pigeon that represents data sent in messages.
  */
@@ -247,7 +248,13 @@ data class NativePlayerSource (
    */
   val playlistUrl: String? = null,
   /** The stream this player's part requests name; set with [playlistUrl]. */
-  val streamId: Long? = null
+  val streamId: Long? = null,
+  /**
+   * A file on the device (a `file:` URL, or an Android `content:` URI) the
+   * player reads directly, past the bytes cache; null for the cache's
+   * sources.
+   */
+  val fileUrl: String? = null
 )
  {
   companion object {
@@ -257,7 +264,8 @@ data class NativePlayerSource (
       val mimeType = pigeonVar_list[2] as String
       val playlistUrl = pigeonVar_list[3] as String?
       val streamId = pigeonVar_list[4] as Long?
-      return NativePlayerSource(cacheKey, readerApi, mimeType, playlistUrl, streamId)
+      val fileUrl = pigeonVar_list[5] as String?
+      return NativePlayerSource(cacheKey, readerApi, mimeType, playlistUrl, streamId, fileUrl)
     }
   }
   fun toList(): List<Any?> {
@@ -267,6 +275,7 @@ data class NativePlayerSource (
       mimeType,
       playlistUrl,
       streamId,
+      fileUrl,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -277,7 +286,7 @@ data class NativePlayerSource (
       return true
     }
     val other = other as NativePlayerSource
-    return PlayerMessagesPigeonUtils.deepEquals(this.cacheKey, other.cacheKey) && PlayerMessagesPigeonUtils.deepEquals(this.readerApi, other.readerApi) && PlayerMessagesPigeonUtils.deepEquals(this.mimeType, other.mimeType) && PlayerMessagesPigeonUtils.deepEquals(this.playlistUrl, other.playlistUrl) && PlayerMessagesPigeonUtils.deepEquals(this.streamId, other.streamId)
+    return PlayerMessagesPigeonUtils.deepEquals(this.cacheKey, other.cacheKey) && PlayerMessagesPigeonUtils.deepEquals(this.readerApi, other.readerApi) && PlayerMessagesPigeonUtils.deepEquals(this.mimeType, other.mimeType) && PlayerMessagesPigeonUtils.deepEquals(this.playlistUrl, other.playlistUrl) && PlayerMessagesPigeonUtils.deepEquals(this.streamId, other.streamId) && PlayerMessagesPigeonUtils.deepEquals(this.fileUrl, other.fileUrl)
   }
 
   override fun hashCode(): Int {
@@ -287,10 +296,11 @@ data class NativePlayerSource (
     result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.mimeType)
     result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.playlistUrl)
     result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.streamId)
+    result = 31 * result + PlayerMessagesPigeonUtils.deepHash(this.fileUrl)
     return result
   }
   override fun toString(): String {
-    return "NativePlayerSource(cacheKey=$cacheKey, readerApi=$readerApi, mimeType=$mimeType, playlistUrl=$playlistUrl, streamId=$streamId)"
+    return "NativePlayerSource(cacheKey=$cacheKey, readerApi=$readerApi, mimeType=$mimeType, playlistUrl=$playlistUrl, streamId=$streamId, fileUrl=$fileUrl)"
   }
 }
 

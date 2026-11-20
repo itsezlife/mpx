@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `PickerSelectionPreview`: the selected items in their order, a tap on
+  the number deselects, a tap opens, a long press drags to reorder
+  (`OrderedPickerSelection.move`).
+- `LibraryPlayerSources.of`: a library video's player source, so the
+  picker-mode viewer plays library videos on the host's players.
+- A library reload or an app resume updates the grid in place, and closing
+  the viewer on another item never scrolls the list.
 - Library grid: `LibraryGrid` over a media library album, with
   `LibraryGridPolicy.$Android` / `$IOS` (columns, gaps, corners, check,
   selection motion, badges, swipe select, camera slot), the picker

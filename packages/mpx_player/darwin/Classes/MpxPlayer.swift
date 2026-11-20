@@ -39,7 +39,8 @@ final class MpxPlayer: NSObject, FlutterTexture {
 
   private let item: AVPlayerItem
   private let output: AVPlayerItemVideoOutput
-  private let loader: MpxResourceLoader
+  // Nil for a file on the device, which AVFoundation reads itself.
+  private let loader: MpxResourceLoader?
   private let registry: FlutterTextureRegistry
   private let report: (NativePlayerSnapshot) -> Void
   private var link: MpxDisplayLink!
@@ -74,9 +75,10 @@ final class MpxPlayer: NSObject, FlutterTexture {
     id: Int64, source: NativePlayerSource, settings: NativePlayerSettings,
     registry: FlutterTextureRegistry, report: @escaping (NativePlayerSnapshot) -> Void
   ) {
-    guard let api = HbcReaderApi(address: source.readerApi),
-      let url = MpxResourceLoader.url(forKey: source.cacheKey)
-    else { return nil }
+    let file = source.fileUrl.flatMap { URL(string: $0) }
+    let api = HbcReaderApi(address: source.readerApi)
+    let cached = MpxResourceLoader.url(forKey: source.cacheKey)
+    if file == nil && (api == nil || cached == nil) { return nil }
     self.id = id
     self.registry = registry
     self.report = report
@@ -86,10 +88,18 @@ final class MpxPlayer: NSObject, FlutterTexture {
     startAtUs = max(0, settings.startAtUs)
     seekId = settings.seekId
     MpxPlayerTrace.mark("create", id)
-    loader = MpxResourceLoader(
-      api: api, key: source.cacheKey, mimeType: source.mimeType, traceId: id)
-    let asset = AVURLAsset(url: url)
-    asset.resourceLoader.setDelegate(loader, queue: loader.queue)
+    let asset: AVURLAsset
+    if let file {
+      // A file on the device (a library item's) is read in place.
+      loader = nil
+      asset = AVURLAsset(url: file)
+    } else {
+      let loader = MpxResourceLoader(
+        api: api!, key: source.cacheKey, mimeType: source.mimeType, traceId: id)
+      self.loader = loader
+      asset = AVURLAsset(url: cached!)
+      asset.resourceLoader.setDelegate(loader, queue: loader.queue)
+    }
     item = AVPlayerItem(asset: asset)
     // A player that has not played yet buffers only enough for its first
     // frame and a short start; the cap is lifted at the first play
@@ -183,7 +193,7 @@ final class MpxPlayer: NSObject, FlutterTexture {
     if disposed { return }
     disposed = true
     link.stop()
-    loader.close()
+    loader?.close()
     observations.forEach { $0.invalidate() }
     observations = []
     if let timeObserver { player.removeTimeObserver(timeObserver) }

@@ -131,6 +131,12 @@ abstract interface class MediaLibrary {
     CancellationToken? cancellation,
   });
 
+  /// A URI a platform player reads [asset]'s video from in place, without
+  /// a copy: on Android its MediaStore content URI, on iOS the file URL of
+  /// its original (a cloud-held one downloads first). Null for a photo, an
+  /// asset that is gone, or where the platform has none.
+  Future<Uri?> playable(LibraryAssetId asset);
+
   /// Whether reading [asset]'s original downloads it, from what the adapter
   /// knows without waiting; false when it cannot tell.
   bool isCloudHeld(LibraryAssetId asset);

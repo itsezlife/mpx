@@ -97,7 +97,7 @@ public class MpxLibraryPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         result(["total": 0, "assets": [] as [Any]])
       case "thumbnail", "original":
         result(FlutterError(code: "unavailable", message: "photo library not built in", details: nil))
-      case "manageSelected", "cancelOriginal", "releaseOriginal":
+      case "manageSelected", "cancelOriginal", "releaseOriginal", "playable":
         result(nil)
       default:
         result(FlutterMethodNotImplemented)
@@ -170,6 +170,8 @@ public class MpxLibraryPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
           case .failure(let error): main(error.flutter)
           }
         }
+      case "playable":
+        photos.playable(id: args["id"] as? String ?? "") { url in main(url) }
       case "cancelOriginal":
         photos.cancelOriginal(request: args["request"] as? Int ?? 0)
         result(nil)

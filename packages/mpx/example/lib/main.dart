@@ -19,6 +19,7 @@ import 'package:mpx_example/lab/lab_viewer.dart';
 import 'package:mpx_example/lab/stress_feed.dart';
 import 'package:mpx_example/loading_demo.dart';
 import 'package:mpx_example/picker_page.dart';
+import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_lottie/mpx_lottie.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_player/native.dart';
@@ -157,6 +158,10 @@ Future<void> main() async {
   runApp(MediaApp(stack: stack, players: players));
 }
 
+/// The device's media library, one for the app: the picker shows it and
+/// the players read its videos. Made on first use.
+final PlatformMediaLibrary deviceLibrary = PlatformMediaLibrary();
+
 /// The size of a bundled media [file], or null when the bundle has none
 /// (a corpus file).
 Future<int?> _bundledSize(String file) async {
@@ -183,20 +188,23 @@ Future<PlayerPool?> _players(
   final contentOf = <BytesCacheKey, MediaKey>{};
   final backend = NativePlayerBackend(
     readers: readers,
-    sourcesOf: (key) => switch (_fileOf(key)) {
-      final file? => [
-        PlayerSource(
-          RangedRequest(
-            url: _urlOf(file),
-            // The content's own entry: the player and the software decoder
-            // read one sparse file, so a clip is downloaded once.
-            cacheKey: contentOf.keyOf(key),
-          ),
-          mimeType: _mimeOf(file),
-        ),
-      ],
-      null => const [],
-    },
+    // A library video (the picker's viewer) plays its file in place.
+    sourcesOf: (key) => LibraryFetcher.handles(key)
+        ? LibraryPlayerSources.of(deviceLibrary, key)
+        : switch (_fileOf(key)) {
+            final file? => [
+              PlayerSource(
+                RangedRequest(
+                  url: _urlOf(file),
+                  // The content's own entry: the player and the software decoder
+                  // read one sparse file, so a clip is downloaded once.
+                  cacheKey: contentOf.keyOf(key),
+                ),
+                mimeType: _mimeOf(file),
+              ),
+            ],
+            null => const <PlayerSource>[],
+          },
     watchSource: (source) => switch (contentOf[source.cacheKey]) {
       final key? => scope.openOutsideReader(key),
       null => null,
@@ -510,8 +518,10 @@ class _MediaAppState extends State<MediaApp> {
                         MaterialPageRoute<void>(
                           settings: const RouteSettings(name: 'picker'),
                           builder: (_) => PickerPage(
+                            library: deviceLibrary,
                             store: widget.stack.store,
                             clock: widget.stack.scope.clock,
+                            players: widget.players,
                           ),
                         ),
                       ),

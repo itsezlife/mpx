@@ -269,6 +269,16 @@ class MediaStoreLibrary(private val context: Context) {
     }
 
     /**
+     * The content URI of video [id], which a player opens in place (no copy,
+     * unlike [original]); null for a photo or a row that is gone.
+     */
+    fun playable(id: String): String? {
+        val uri = uriOf(id) ?: return null
+        val mime = resolver.getType(uri) ?: return null
+        return if (mime.startsWith("video/")) uri.toString() else null
+    }
+
+    /**
      * Copies asset [id]'s original into the plugin's cache folder (a content
      * URI is no path), reporting the bytes as they copy only when
      * [onProgress] is set; the lease is the copy, deleted on release.

@@ -29,9 +29,10 @@ enum NativePlayerPhase { preparing, ready, buffering, ended, failed }
 
 /// What a native player reads: a ranged resource published to the bytes
 /// cache's native reader under [cacheKey], read through the function table at
-/// [readerApi] (the address of `hbc_api`); or, with [playlistUrl], an HLS
+/// [readerApi] (the address of `hbc_api`); with [playlistUrl], an HLS
 /// stream whose parts the player asks for one by one ([PlayerFlutterApi]
-/// `openStreamPart`).
+/// `openStreamPart`); or, with [fileUrl], a file on the device the player
+/// opens in place.
 class NativePlayerSource {
   NativePlayerSource({
     required this.cacheKey,
@@ -39,6 +40,7 @@ class NativePlayerSource {
     required this.mimeType,
     this.playlistUrl,
     this.streamId,
+    this.fileUrl,
   });
 
   String cacheKey;
@@ -54,6 +56,11 @@ class NativePlayerSource {
 
   /// The stream this player's part requests name; set with [playlistUrl].
   int? streamId;
+
+  /// A file on the device (a `file:` URL, or an Android `content:` URI) the
+  /// player reads directly, past the bytes cache; null for the cache's
+  /// sources.
+  String? fileUrl;
 }
 
 /// One part of an HLS stream, as the cache serves it: a playlist's [bytes],
