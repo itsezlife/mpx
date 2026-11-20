@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/src/asset/asset_binding.dart';
@@ -138,8 +140,8 @@ class _MediaBadgeState extends State<MediaBadge>
   }
 
   void _listen() {
-    _listened?.removeListener(_refresh);
-    _listened = widget.binding?..addListener(_refresh);
+    _listened?.removeListener(_bindingChanged);
+    _listened = widget.binding?..addListener(_bindingChanged);
   }
 
   List<String> _read() {
@@ -164,11 +166,38 @@ class _MediaBadgeState extends State<MediaBadge>
         ? descriptor?.duration
         : null;
     final playing = binding.isPlaying && duration != null;
-    if (playing) {
-      final position = binding.paintable.playbackPosition;
-      if (position != null) duration -= position;
+    // The time left at the clip's position, held, paused or playing: a clip
+    // that stops (a viewer holds it, it scrolls away) keeps the time of its
+    // frame rather than going back to its whole length. Only a clip that
+    // never played reads its length.
+    final position = binding.paintable.playbackPosition;
+    if (duration != null && position != null) {
+      final left = duration - position;
+      duration = left.isNegative ? Duration.zero : left;
     }
-    _syncTicker(playing: playing && !gif);
+    // The clip may play on another surface of its entry (this badge's view
+    // only shows the controls), and nothing tells the badge when it moves:
+    // its position is read every frame while it moves, and, once it stood
+    // still for a while (held by a viewer, paused), a few times a second,
+    // which brings the per-frame reading back as soon as it moves again (a
+    // hold let go, a seek).
+    final follows =
+        !gif &&
+        duration != null &&
+        position != null &&
+        binding.paintable.isAnimated;
+    if (position != _lastPosition || playing) {
+      _still = 0;
+    } else if (_ticker?.isActive ?? false) {
+      _still++;
+    }
+    _lastPosition = position;
+    final everyFrame =
+        !gif &&
+        duration != null &&
+        (playing || (follows && _still < _stillFrames));
+    _syncTicker(playing: everyFrame);
+    _syncPoll(polls: follows && !everyFrame);
     return MediaBadge.rowsOf(
       style: style,
       strings: widget.strings,
@@ -177,6 +206,25 @@ class _MediaBadgeState extends State<MediaBadge>
       transfer: binding.transfer,
       width: widget.width,
     );
+  }
+
+  // How many frames a position that stands still is read before the badge
+  // stops reading it; a change of the binding reads it again.
+  static const int _stillFrames = 60;
+  Duration? _lastPosition;
+  int _still = 0;
+
+  // The slow reading of a clip that stands still.
+  static const Duration _pollEvery = Duration(milliseconds: 250);
+  Timer? _poll;
+
+  void _syncPoll({required bool polls}) {
+    if (polls) {
+      _poll ??= Timer.periodic(_pollEvery, (_) => _refresh());
+    } else {
+      _poll?.cancel();
+      _poll = null;
+    }
   }
 
   // A clip that plays counts down: its position is read every frame, and
@@ -188,6 +236,13 @@ class _MediaBadgeState extends State<MediaBadge>
     } else if (!playing && (ticker?.isActive ?? false)) {
       ticker!.stop();
     }
+  }
+
+  // The binding changed (a hold ended, it came into view): its position may
+  // move again.
+  void _bindingChanged() {
+    _still = 0;
+    _refresh();
   }
 
   void _refresh() {
@@ -210,7 +265,8 @@ class _MediaBadgeState extends State<MediaBadge>
 
   @override
   void dispose() {
-    _listened?.removeListener(_refresh);
+    _listened?.removeListener(_bindingChanged);
+    _poll?.cancel();
     _ticker?.dispose();
     super.dispose();
   }

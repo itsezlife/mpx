@@ -485,17 +485,44 @@ final class AssetCacheScope {
   /// Without such an entry there is no playback to hold, and the hold is
   /// released already.
   ///
+  /// [picture], the frame the playback showed as it was held (read off a
+  /// surface), is what every surface of the entry draws while the hold is on
+  /// ([AssetPaintable.holdPicture]), so the frame held is exactly that one;
+  /// the scope owns it from now on. A hold that is not the first disposes
+  /// its picture: the first one's stays.
+  ///
   /// Throws a [StateError] after [dispose], as [attach] does.
-  AssetPlaybackHold holdPlayback(MediaKey key, AssetSpec spec) {
+  AssetPlaybackHold holdPlayback(
+    MediaKey key,
+    AssetSpec spec, {
+    Image? picture,
+  }) {
     if (_disposed) {
+      picture?.dispose();
       throw StateError('AssetCacheScope.holdPlayback called after dispose.');
     }
     final entry = _entries[(key, spec)];
-    if (entry == null) return AssetPlaybackHold._(null);
-    if (entry.playbackHolds++ == 0) entry.setHeld(held: true);
+    if (entry == null) {
+      picture?.dispose();
+      return AssetPlaybackHold._(null);
+    }
+    if (entry.playbackHolds++ == 0) {
+      entry.setHeld(held: true);
+      final paintable = entry.paintable;
+      if (paintable == null) {
+        picture?.dispose();
+      } else {
+        paintable.holdPicture(picture);
+      }
+    } else {
+      picture?.dispose();
+    }
     return AssetPlaybackHold._(() {
       if (_disposed) return;
-      if (--entry.playbackHolds == 0) entry.setHeld(held: false);
+      if (--entry.playbackHolds == 0) {
+        entry.paintable?.holdPicture(null);
+        entry.setHeld(held: false);
+      }
     });
   }
 
@@ -1389,7 +1416,7 @@ final class _Content {
   // content when it changed; a change of bytes only is heard at most once
   // per frame.
   void refresh() {
-    final next = _withSize(_derive());
+    final next = _done(_withSize(_derive()));
     if (next == _transfer) return;
     final bytesOnly =
         next is AssetTransfer$Receiving && _transfer is AssetTransfer$Receiving;
@@ -1466,6 +1493,16 @@ final class _Content {
       _ => value,
     };
   }
+
+  // A download whose every byte is in is no download: the content is local
+  // and decodes. Without this a surface kept cancel and "x / x" over the
+  // content until its decode reached the final stage.
+  static AssetTransfer _done(AssetTransfer transfer) => switch (transfer) {
+    AssetTransfer$Receiving(:final received, total: final total?)
+        when received >= total =>
+      AssetTransfer.none,
+    _ => transfer,
+  };
 
   // The source did not say how large the content is; the host did.
   AssetTransfer _withSize(AssetTransfer transfer) {

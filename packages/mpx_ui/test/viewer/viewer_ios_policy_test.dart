@@ -23,11 +23,16 @@ Future<void> _settle(WidgetTester tester) async {
 
 void main() {
   group('values', () {
-    test('dismiss either way past a twelfth, or faster than 1 pt/ms', () {
-      expect(_ios.startsDismiss(0, -3), isTrue);
-      expect(_ios.dismisses(66, 800), isFalse);
-      expect(_ios.dismisses(67, 800), isTrue);
-      expect(_ios.dismisses(-67, 800), isTrue);
+    test('dismiss either way past a quarter, or faster than 1 pt/ms', () {
+      // The pan slop, the vertical axis winning.
+      expect(_ios.startsDismiss(0, -9), isFalse);
+      expect(_ios.startsDismiss(0, -10), isTrue);
+      expect(_ios.startsDismiss(10, 10), isFalse);
+      expect(_ios.startsDismiss(9, 10), isTrue);
+      // A twelfth of a content three heights tall.
+      expect(_ios.dismisses(200, 800), isFalse);
+      expect(_ios.dismisses(201, 800), isTrue);
+      expect(_ios.dismisses(-201, 800), isTrue);
       expect(_ios.dismisses(20, 800, velocity: -1100), isTrue);
       expect(_ios.dismisses(20, 800, velocity: 900), isFalse);
     });
@@ -98,13 +103,13 @@ void main() {
       expect(state.isOpen, isTrue);
     });
 
-    testWidgets('an upward drag past a twelfth closes', (tester) async {
+    testWidgets('an upward drag past a quarter closes', (tester) async {
       final harness = ViewerHarness();
       await harness.pump(tester, policy: _ios);
 
       final gesture = await tester.startGesture(const Offset(200, 400));
-      // The first 36 px are the gesture's slop; 80 more pass a twelfth.
-      for (var i = 0; i < 12; i++) {
+      // The first 10 pt are the slop; 210 more pass a quarter.
+      for (var i = 0; i < 22; i++) {
         await gesture.moveBy(const Offset(0, -10));
         await tester.pump(const Duration(milliseconds: 100));
       }

@@ -1,7 +1,11 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/src/asset/asset_binding.dart';
+import 'package:mpx_core/src/asset/asset_binding_base.dart';
 import 'package:mpx_core/src/asset/asset_cache_scope.dart';
 import 'package:mpx_core/src/asset/asset_fade.dart';
 import 'package:mpx_core/src/asset/asset_paintable.dart';
@@ -75,6 +79,10 @@ import 'package:mpx_core/src/widget/viewport_visibility.dart';
 /// a corner radius, and is not painted. The view advances an animated
 /// paintable before it reads the texture, which is what tells the paintable
 /// that a surface that composites shows it.
+///
+/// A corner radius clips everything the view paints to the picture's
+/// rounded area, in one clip: its fill, its placeholder, the stand-in a
+/// stage rises over and the stage, texture and fade included.
 ///
 /// ## Placeholder
 ///
@@ -255,6 +263,77 @@ class ContentView extends StatefulWidget {
     });
     return found;
   }
+
+  /// The picture the first [ContentView] under [root] shows, read for a
+  /// surface that takes it over (a viewer opening from it): the whole
+  /// picture at its own proportion, unclipped by the view's corners and
+  /// uncut by its fit, at [pixelRatio] times the size that covers the view.
+  /// A picture in a texture (a video's frames, a player) is the texture's
+  /// current frame rendered alone, without the clips around it.
+  ///
+  /// Only content is a frame of the view's own ([ContentFrame$Picture]): a
+  /// view that shows a preview, a thumbnail or nothing yet answers
+  /// [ContentFrame$StandIn], as the surface taking over has the same
+  /// stand-ins. Under a surface's own picture ([ContentPicture] over a
+  /// player) the frame is its topmost texture's. A view whose picture size
+  /// is unknown, a surface's picture with no texture, or no view at all
+  /// answers [ContentFrame$Surface]: read the surface as it shows.
+  static ContentFrame frameIn(RenderObject root, {required double pixelRatio}) {
+    var picture = pictureIn(root);
+    // A surface that marks a view as its picture (controls laid over it)
+    // wraps the view's own mark: the view is the picture, read as a view.
+    // Read as a surface it would be the view's texture whole, its margins
+    // around the frame included, and the frame a small part of it.
+    while (picture != null && picture.child is _RenderPictureBoundary) {
+      picture = picture.child! as _RenderPictureBoundary;
+    }
+    if (picture != null && picture.child is! _RenderContent) {
+      // A surface's own picture (a player over a view): the player's
+      // texture, whole, when it shows one.
+      return picture is _RenderPictureBoundary
+          ? picture._textureFrame(pixelRatio)
+          : const ContentFrame$Surface._();
+    }
+    final view = _contentIn(picture ?? root);
+    return view == null
+        ? const ContentFrame$Surface._()
+        : view._frame(pixelRatio);
+  }
+
+  static _RenderContent? _contentIn(RenderObject root) {
+    if (root is _RenderContent) return root;
+    _RenderContent? found;
+    root.visitChildren((child) {
+      found ??= _contentIn(child);
+    });
+    return found;
+  }
+}
+
+/// What [ContentView.frameIn] read of a view.
+@immutable
+sealed class ContentFrame {
+  const ContentFrame._();
+}
+
+/// The view's content, whole: [image] has the picture's proportion and
+/// belongs to the caller, who disposes it.
+final class ContentFrame$Picture extends ContentFrame {
+  const ContentFrame$Picture._(this.image) : super._();
+
+  /// The picture.
+  final ui.Image image;
+}
+
+/// The view shows a stand-in (a preview, a thumbnail) or nothing: no frame
+/// of its own.
+final class ContentFrame$StandIn extends ContentFrame {
+  const ContentFrame$StandIn._() : super._();
+}
+
+/// The picture is to be read from the surface as it shows.
+final class ContentFrame$Surface extends ContentFrame {
+  const ContentFrame$Surface._() : super._();
 }
 
 /// Marks [child] as a surface's picture, without the chrome laid over it:
@@ -269,7 +348,84 @@ class ContentPicture extends SingleChildRenderObjectWidget {
       _RenderPictureBoundary();
 }
 
-class _RenderPictureBoundary extends RenderRepaintBoundary {}
+class _RenderPictureBoundary extends RenderRepaintBoundary {
+  // The topmost texture the surface painted, whole at its size on screen
+  // (where the layers above it place and scale it, its clips aside), or the
+  // surface itself when it painted none.
+  //
+  // A player lays its texture out at the video's size and scales it to the
+  // view: read at the laid-out size the frame was the video's size times the
+  // pixel ratio, past what a GPU renders into one image, and the page drew
+  // it as a small picture.
+  ContentFrame _textureFrame(double pixelRatio) {
+    TextureLayer? top;
+    Matrix4? topTransform;
+    void visit(Layer layer, Matrix4 above) {
+      if (layer is TextureLayer) {
+        top = layer;
+        topTransform = above;
+      }
+      if (layer is ContainerLayer) {
+        final inner = switch (layer) {
+          TransformLayer(:final transform?, :final offset) =>
+            above.clone()
+              ..translateByDouble(offset.dx, offset.dy, 0, 1)
+              ..multiply(transform),
+          OffsetLayer(:final offset) =>
+            above.clone()..translateByDouble(offset.dx, offset.dy, 0, 1),
+          _ => above,
+        };
+        for (
+          var child = layer.firstChild;
+          child != null;
+          child = child.nextSibling
+        ) {
+          visit(child, inner);
+        }
+      }
+    }
+
+    final own = layer;
+    // The boundary's own layer is at its origin: its offset is where the
+    // boundary sits in its parent.
+    if (own != null) {
+      for (
+        var child = own.firstChild;
+        child != null;
+        child = child.nextSibling
+      ) {
+        visit(child, Matrix4.identity());
+      }
+    }
+    final texture = top;
+    final transform = topTransform;
+    if (texture == null || transform == null || texture.rect.isEmpty) {
+      return const ContentFrame$Surface._();
+    }
+    final shown = MatrixUtils.transformRect(transform, texture.rect);
+    if (shown.isEmpty) return const ContentFrame$Surface._();
+    final size = shown.size;
+    return ContentFrame$Picture._(
+      _textureImage(
+        texture.textureId,
+        Offset.zero & size,
+        Offset.zero & size,
+        pixelRatio,
+      ),
+    );
+  }
+}
+
+// Texture [id] drawn at [rect] alone, read in [bounds]: no clip or fade of
+// the surface that shows it.
+ui.Image _textureImage(int id, Rect rect, Rect bounds, double pixelRatio) {
+  final root = OffsetLayer()..append(TextureLayer(rect: rect, textureId: id));
+  try {
+    return root.toImageSync(bounds, pixelRatio: pixelRatio);
+  } finally {
+    root.dispose();
+  }
+}
 
 class _ContentViewState extends State<ContentView> {
   AssetBinding? _binding;
@@ -755,6 +911,13 @@ class _RenderContent extends RenderBox {
   }
 
   void _bindingChanged() {
+    // A stage that arrives while the binding's frame is held (a viewer
+    // plays the content meanwhile, its surface hidden) swaps in: the hold
+    // ends on a surface that shows the content, never on a fade from the
+    // stand-in it had before.
+    if (_binding case final AssetBindingBase held when held.holdsFrame) {
+      _fade.settle();
+    }
     markNeedsPaint();
     final playing = _binding.paintable.isAnimated;
     if (playing == _playing) return;
@@ -774,12 +937,103 @@ class _RenderContent extends RenderBox {
     size = computeDryLayout(constraints);
   }
 
+  // The rounded clip every stage is painted in: a layer while the view
+  // composites, so the texture and the opacity of a rise sit inside it too.
+  final LayerHandle<ClipRRectLayer> _clip = LayerHandle<ClipRRectLayer>();
+
+  @override
+  void dispose() {
+    _clip.layer = null;
+    super.dispose();
+  }
+
   @override
   void paint(PaintingContext context, Offset offset) {
     if (_armed) {
       _armed = false;
       _onPaintedUnseen!();
     }
+    if (_binding.profile.cornerRadius <= 0) {
+      _clip.layer = null;
+      _paintStages(context, offset);
+      return;
+    }
+    // Every stage inside the one rounded area, from its first frame: the
+    // fill, the placeholder, the stand-in a stage rises over and the stage
+    // itself. A stand-in, a fill or a placeholder draws its whole box; only
+    // the binding's own paint rounded itself.
+    final area = _roundedArea(Offset.zero & size);
+    _clip.layer = context.pushClipRRect(
+      needsCompositing,
+      offset,
+      area.outerRect,
+      area,
+      _paintStages,
+      oldLayer: _clip.layer,
+    );
+  }
+
+  // The content painted again, whole and unclipped, at its own proportion
+  // covering the box: see [ContentView.frameIn].
+  ContentFrame _frame(double pixelRatio) {
+    if (_binding.readiness.stage.index < AssetStage.firstFrame.index) {
+      return const ContentFrame$StandIn._();
+    }
+    final paintable = _binding.paintable;
+    final texture = paintable.texture;
+    final picture =
+        paintable.pictureSize ??
+        (texture == null
+            ? null
+            : Size(
+                texture.frameWidth.toDouble(),
+                texture.frameHeight.toDouble(),
+              ));
+    if (picture == null || picture.isEmpty || !hasSize || size.isEmpty) {
+      return const ContentFrame$Surface._();
+    }
+    final cover = math.max(
+      size.width / picture.width,
+      size.height / picture.height,
+    );
+    if (texture != null) {
+      // The frame, centred in its texture, fills the bounds; the rest of the
+      // texture falls outside them.
+      final frame = Offset.zero & picture * cover;
+      final scale = frame.width / texture.frameWidth;
+      return ContentFrame$Picture._(
+        _textureImage(
+          texture.id,
+          Rect.fromCenter(
+            center: frame.center,
+            width: texture.width * scale,
+            height: texture.height * scale,
+          ),
+          frame,
+          pixelRatio,
+        ),
+      );
+    }
+    final scale = cover * pixelRatio;
+    final width = math.max(1, (picture.width * scale).round());
+    final height = math.max(1, (picture.height * scale).round());
+    final recorder = ui.PictureRecorder();
+    // The paintable itself: the binding's paint rounds it to the profile's
+    // corners. Not animating: a paint that animates is a surface playing it,
+    // which would move a pull-driven playback (its clock time, a lease of
+    // its own) and make the view jump as the frame is read.
+    paintable.paint(
+      Canvas(recorder),
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      AssetPaintContext(tint: _tint, animate: false),
+    );
+    final drawn = recorder.endRecording();
+    final image = drawn.toImageSync(width, height);
+    drawn.dispose();
+    return ContentFrame$Picture._(image);
+  }
+
+  void _paintStages(PaintingContext context, Offset offset) {
     final box = offset & size;
     // While the binding would paint the scope's placeholder (nothing exists
     // yet, or a first frame the profile does not show yet) the view's own
@@ -863,11 +1117,23 @@ class _RenderContent extends RenderBox {
     ..scale(scale, scale)
     ..translate(-centre.dx, -centre.dy);
 
-  // The picture's rounded area: the circle of a round box.
+  // The picture's rounded area: the circle of a round box. A paintable that
+  // does not know its picture's size yet rounds its texture's frame, as
+  // the texture layer does.
   RRect _roundedArea(Rect box) {
     final profile = _binding.profile;
+    final paintable = _binding.paintable;
+    final texture = paintable.texture;
+    final picture =
+        paintable.pictureSize ??
+        (texture == null
+            ? null
+            : Size(
+                texture.frameWidth.toDouble(),
+                texture.frameHeight.toDouble(),
+              ));
     return RRect.fromRectAndRadius(
-      profile.roundedArea(box, _binding.paintable.pictureSize),
+      profile.roundedArea(box, picture),
       Radius.circular(profile.cornerRadius),
     );
   }

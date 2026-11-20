@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_ui/mpx_ui.dart';
@@ -86,6 +87,93 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
 
     expect(find.text('2/3'), findsOneWidget);
+  });
+
+  testWidgets('the counter is a pill as wide as its text, zoomed or not', (
+    tester,
+  ) async {
+    final harness = ViewerHarness();
+    await harness.pump(tester, chrome: chrome());
+    final metrics = ViewerPolicy.$Android.chrome;
+    final counter = find.byKey(const ValueKey('mpx-viewer-counter'));
+    final text = tester.getSize(find.text('1 of 3')).width;
+
+    void expectPill() {
+      final rect = tester.getRect(counter);
+      expect(rect.width, closeTo(text + 2 * metrics.counterPadding, 1));
+      expect(rect.height, metrics.counterHeight);
+      expect(rect.center.dx, closeTo(viewerSize.width / 2, 0.5));
+    }
+
+    expectPill();
+
+    // Double tap away from the chrome: the picture zooms under it.
+    await tester.tapAt(const Offset(200, 500));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tapAt(const Offset(200, 500));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(harness.page(tester).isZoomed, isTrue);
+    expectPill();
+  });
+
+  group('under the system bars', () {
+    const top = 24.0;
+    const bottom = 48.0;
+
+    Future<ViewerHarness> open(WidgetTester tester) async {
+      tester.view.padding = const FakeViewPadding(top: top, bottom: bottom);
+      final harness = ViewerHarness();
+      await harness.pump(tester, chrome: chrome());
+      return harness;
+    }
+
+    testWidgets('a zoomed picture takes the whole screen, bars and all', (
+      tester,
+    ) async {
+      final harness = await open(tester);
+      await tester.tapAt(const Offset(200, 500));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(const Offset(200, 500));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // The page is the screen: the picture pans to its edges, under the
+      // status and navigation bars.
+      expect(
+        tester.getRect(find.byType(ViewerPhotoPage)),
+        Offset.zero & viewerSize,
+      );
+      // At 3x the 300 px picture is 900 tall: 50 past each edge.
+      expect(harness.page(tester).zoom, 3);
+      await tester.drag(find.byType(ViewerPhotoPage), const Offset(0, -300));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(harness.page(tester).pan.dy, -50);
+    });
+
+    testWidgets('the system bars are clear with light icons; the viewer '
+        'draws its own scrim over the navigation bar', (tester) async {
+      await open(tester);
+      final style = SystemChrome.latestStyle!;
+      expect(style.statusBarColor, const Color(0x00000000));
+      expect(style.statusBarIconBrightness, Brightness.light);
+      expect(style.statusBarBrightness, Brightness.dark);
+      expect(style.systemNavigationBarColor, const Color(0x00000000));
+      expect(style.systemNavigationBarIconBrightness, Brightness.light);
+      expect(style.systemNavigationBarContrastEnforced, isFalse);
+      expect(style.systemStatusBarContrastEnforced, isFalse);
+
+      final scrim = find.byKey(const ValueKey('mpx-viewer-navigation-scrim'));
+      expect(
+        tester.getRect(scrim),
+        const Rect.fromLTWH(0, 800 - bottom, 400, bottom),
+      );
+      expect(
+        tester.widget<ColoredBox>(scrim).color,
+        const ViewerTokens().barFill,
+      );
+    });
   });
 
   testWidgets('a single item has no counter', (tester) async {

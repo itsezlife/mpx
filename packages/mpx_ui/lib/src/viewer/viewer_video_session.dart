@@ -220,13 +220,22 @@ final class ViewerVideoSession extends ChangeNotifier {
   /// A press held on the page plays faster, as the policy's hold rule says,
   /// when it lands at [atFraction] of the width inside the rule's zone (any
   /// point when null).
-  void holdStart({double? atFraction}) {
+  ///
+  /// True when the press plays faster; false when the rule leaves it (no
+  /// rule, paused, too short, outside the zone).
+  bool holdStart({double? atFraction}) {
     final hold = rules.hold;
-    if (hold == null || !_lease.state.value.playing) return;
-    if (atFraction != null && atFraction < hold.zoneFrom) return;
-    final current = _lease.state.value.speed;
+    final state = _lease.state.value;
+    if (hold == null || !state.playing) return false;
+    if (atFraction != null && atFraction < hold.zoneFrom) return false;
+    if (hold.minDuration > Duration.zero &&
+        (state.duration == null || state.duration! < hold.minDuration)) {
+      return false;
+    }
+    final current = state.speed;
     _heldFrom = current;
     _lease.setSpeed(hold.heldRate(current));
+    return true;
   }
 
   /// The held press ended: back to the speed before it.

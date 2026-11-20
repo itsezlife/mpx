@@ -48,6 +48,22 @@
   video shows `ViewerVideoFailure` with a retry.
 - Embeddable pages: `ViewerPhotoPage` and `ViewerVideoPage`, over
   `ViewerVideoSession`.
+- `GalleryPager` replaces the viewer's and the feed pager's `PageView`: one
+  gesture owner decides once, from the down point, between a pinch, a pan
+  of a zoomed picture, a dismiss drag (tested first) and a page drag, and
+  swallows the distance that decided it; a zoomed picture pinned at its
+  edge hands the rest of the pan on to the next page. Its values are
+  `GalleryPagerPhysics` (claim, release, settle, ends, side taps),
+  `GalleryPageTransition` (`stack`, `strip` with parallax, `instant`),
+  `GalleryTapRules` (the double-tap wait, fired at the second press) and
+  `GalleryKeepAlive`; pages attach `GalleryPageGestures` under a
+  `GalleryPageScope`. `ViewerPolicy` gains `pager`, `transition`, `taps`,
+  `dismissRatio`, `dismissClaim`, `zoomFocal`, `zoomFling`, `zoomBounce`
+  and `pictureClickCloses`; `ViewerVideoRules` gains `doubleTapZooms` and
+  `clickPlays`, `ViewerHoldSpeed` `minDuration`. `ViewerPhotoPage.onHoldStart`
+  returns whether it took the press. Existing code that expected
+  `ViewerPolicy.$Android` to dismiss downward only, or `$IOS` to close past
+  a twelfth of the height, now sees both ways and a quarter.
 - Viewer loading: `ViewerPolicy.loading` (`ViewerLoadingRules`). The page
   shown has a `ViewerPageStatus` (a spinner or arc for a photo, cancel and
   an arc for a video, download when it waits or failed), rebuilt after a
@@ -78,9 +94,11 @@
   or attaches.
 - Feed status: `FeedClip(status:, badge:)`, and `status` / `badge` on
   `FeedListView` and `FeedPagerView`, lay the status control and badge over
-  an item whatever draws it, over a `ContentPicture`. A `FeedPagerView` page
-  with a status control shows one centre control; otherwise it shows the
-  buffering spinner past the delay (`FeedClip.showsBuffering`).
+  an item whatever draws it, over a `ContentPicture`, at the corner of the
+  picture as it shows (a playing clip's cover fit fills the cell). A
+  `FeedPagerView` page with a status control shows one centre control;
+  otherwise it shows the buffering spinner past the delay
+  (`FeedClip.showsBuffering`).
 
 ## 0.0.1
 

@@ -384,6 +384,23 @@ void main() {
       expect(writer.inner.batches, hasLength(writes));
     });
 
+    test('told to hide what it queued while hidden (a seek with a picture '
+        'over it), shown again it takes its texture back but shows it only '
+        'once frames posted since pushed the kept one out', () async {
+      final lease = await hidden();
+
+      lease
+        ..seekTo(Duration.zero)
+        ..hideQueued();
+      scheduler.want(lease, const Duration(milliseconds: 100));
+
+      expect(lease.isPriming, isTrue);
+      expect(lease.texture, isNull);
+      await playThree(lease, from: const Duration(milliseconds: 100));
+      expect(lease.isPriming, isFalse);
+      expect(lease.texture, isNotNull);
+    });
+
     test('shown again after the pool forgot its frame, it does not take a '
         'texture that keeps none, and plays from a slot', () async {
       final lease = await hidden();

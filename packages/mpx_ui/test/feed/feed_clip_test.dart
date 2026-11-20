@@ -269,4 +269,48 @@ void main() {
     expect(find.text('far', skipOffstage: false), findsOneWidget);
     expect(feed.stateOf(1).value.released, isFalse);
   });
+  testWidgets('the badge over a playing clip sits at the corner of the '
+      'picture the clip shows, which its cover fit cuts to the cell', (
+    tester,
+  ) async {
+    final feed = FeedController(presetOf: preset);
+    addTearDown(feed.dispose);
+    await pump(
+      tester,
+      FeedScope(
+        controller: feed,
+        child: ListView(
+          children: [
+            SizedBox(
+              height: 200,
+              child: FeedSlot(
+                index: 0,
+                item: _item(0),
+                child: const FeedClip(badge: true),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    expect(feed.stateOf(0).value.playing, isTrue);
+    // A 400 x 200 cell over a 1:2 animation: a contain fit would show it
+    // 100 x 200 from x = 150; the clip fills the cell with it.
+    for (final attempt in producer.attempts) {
+      attempt.describe(
+        MediaDescriptor(
+          key: _key(0),
+          kind: MediaKind.animatedImage,
+          byteSize: 1024,
+          dimensions: const MediaDimensions(200, 400),
+        ),
+      );
+    }
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final box = tester.getTopLeft(find.byType(FeedClip));
+    final badge = tester.getTopLeft(find.byType(MediaBadge));
+    expect(badge - box, const Offset(4, 4));
+  });
 }

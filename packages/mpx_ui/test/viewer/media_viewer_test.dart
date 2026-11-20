@@ -19,7 +19,8 @@ void main() {
       expect(_android.closeDuration, const Duration(milliseconds: 200));
       expect(_android.backdropScale, 0.1);
       expect(_android.dismissFraction, 1 / 6);
-      expect(_android.dismissDownOnly, isTrue);
+      // Either way: the reference reads the drag's absolute offset.
+      expect(_android.dismissDownOnly, isFalse);
       expect(_android.backgroundOpacityFloor, 127 / 255);
       expect(_android.settleDuration, const Duration(milliseconds: 250));
       expect(_android.doubleTapZoom, 3);
@@ -32,14 +33,16 @@ void main() {
     test('a dismiss drag starts at 30 px, twice as vertical as wide', () {
       expect(_android.startsDismiss(0, 29), isFalse);
       expect(_android.startsDismiss(0, 30), isTrue);
-      expect(_android.startsDismiss(16, 30), isFalse);
-      expect(_android.startsDismiss(0, -40), isFalse);
+      expect(_android.startsDismiss(15, 30), isFalse);
+      expect(_android.startsDismiss(14, 30), isTrue);
+      expect(_android.startsDismiss(0, -30), isTrue);
     });
 
-    test('dismisses past a sixth of the height, downward only', () {
+    test('dismisses past a sixth of the height either way, no velocity', () {
       expect(_android.dismisses(133, 800), isFalse);
       expect(_android.dismisses(134, 800), isTrue);
-      expect(_android.dismisses(-400, 800), isFalse);
+      expect(_android.dismisses(-134, 800), isTrue);
+      expect(_android.dismisses(20, 800, velocity: 5000), isFalse);
     });
 
     test('the background fades over a quarter of the width to 127', () {
@@ -570,8 +573,9 @@ void main() {
       final harness = ViewerHarness();
       await harness.pump(tester);
 
+      // The 40 px that decided the dismiss are swallowed: 30 + 100 follow.
       final gesture = await dragDown(tester, 100);
-      expect(harness.state(tester).dragOffset, 100);
+      expect(harness.state(tester).dragOffset, 130);
       expect(harness.backdrop.last, lessThan(1.1));
 
       await gesture.up();
@@ -603,7 +607,7 @@ void main() {
       final gesture = await dragDown(tester, 140);
       await gesture.up();
       await tester.pump();
-      expect(harness.morphRect(tester).top, fittedRect.top + 140);
+      expect(harness.morphRect(tester).top, fittedRect.top + 170);
 
       await tester.pump(const Duration(milliseconds: 201));
 
@@ -611,17 +615,41 @@ void main() {
       expect(harness.bridge.hidden, isEmpty);
     });
 
-    testWidgets('an upward drag never dismisses', (tester) async {
+    testWidgets('an upward drag past a sixth closes too', (tester) async {
       final harness = ViewerHarness();
       await harness.pump(tester);
 
       final gesture = await tester.startGesture(const Offset(200, 600));
-      await gesture.moveBy(const Offset(0, -300));
+      await gesture.moveBy(const Offset(0, -40));
       await tester.pump();
+      await gesture.moveBy(const Offset(0, -140));
+      await tester.pump();
+      expect(harness.state(tester).dragOffset, -140);
+      await gesture.up();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(harness.closed, 1);
+    });
+
+    testWidgets('a policy that dismisses downward only holds an upward drag', (
+      tester,
+    ) async {
+      final harness = ViewerHarness();
+      await harness.pump(
+        tester,
+        policy: _android.copyWith(dismissDownOnly: true),
+      );
+
+      final gesture = await tester.startGesture(const Offset(200, 600));
+      await gesture.moveBy(const Offset(0, -40));
+      await tester.pump();
+      await gesture.moveBy(const Offset(0, -260));
+      await tester.pump();
+      expect(harness.state(tester).dragOffset, 0);
       await gesture.up();
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(harness.state(tester).dragOffset, 0);
       expect(harness.closed, 0);
     });
 

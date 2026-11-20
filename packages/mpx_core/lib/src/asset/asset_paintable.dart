@@ -172,6 +172,18 @@ abstract class AssetPaintable {
     if (position == Duration.zero) rewind();
   }
 
+  /// Shows [picture] in place of the playback's own frames while its entry is
+  /// held (`AssetCacheScope.holdPlayback`), or, with null, lets the frames
+  /// show again: the playback's own once it draws a frame, or a seek's
+  /// picture first.
+  ///
+  /// The frame a surface showed as the hold began, read off that surface:
+  /// a paintable whose frames live in a texture cannot promise the texture
+  /// keeps that frame while it is held (an offscreen texture may show frames
+  /// queued before), and every surface of the entry draws this one instead.
+  /// [picture] is the paintable's from now on. By default it is disposed.
+  void holdPicture(Image? picture) => picture?.dispose();
+
   /// Lets a paintable that plays advance before a surface reads [sprite], for
   /// a surface that draws the sprite itself and so never calls [paint].
   ///

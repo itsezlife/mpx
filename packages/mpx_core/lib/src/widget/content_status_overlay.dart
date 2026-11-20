@@ -71,8 +71,9 @@ class ContentStatusOverlay extends StatefulWidget {
 
 class _ContentStatusOverlayState extends State<ContentStatusOverlay> {
   bool _streaming = false;
-  // The size of the picture, as far as it is known: the badge sits in the
-  // picture a contain fit letterboxes, not at the corner of the box.
+  // The size of the picture, as far as it is known: the badge and the
+  // compact control sit in the picture a contain fit letterboxes, not at the
+  // corner of the box.
   Size? _picture;
 
   @override
@@ -143,10 +144,15 @@ class _ContentStatusOverlayState extends State<ContentStatusOverlay> {
     final binding = widget.binding;
     final corner = style.status.compactOffset;
     final centre = widget.round ? style.status.roundVideoDiameter : null;
-    Widget compact() => Positioned(
-      left: corner.dx,
-      top: corner.dy,
-      child: _control(MediaStatusControl.binding(binding, compact: true)),
+    Widget compact() => Positioned.fill(
+      child: CustomSingleChildLayout(
+        delegate: _InPicture(
+          profile: binding.profile,
+          picture: _picture,
+          offset: corner,
+        ),
+        child: _control(MediaStatusControl.binding(binding, compact: true)),
+      ),
     );
     final controls = <Widget>[
       ...switch (widget.status) {
@@ -221,7 +227,7 @@ class _ContentStatusOverlayState extends State<ContentStatusOverlay> {
         if (widget.badge)
           Positioned.fill(
             child: CustomSingleChildLayout(
-              delegate: _BadgePlace(
+              delegate: _InPicture(
                 profile: binding.profile,
                 picture: _picture,
                 // Beside the corner control while it shows, as one row.
@@ -243,10 +249,11 @@ class _ContentStatusOverlayState extends State<ContentStatusOverlay> {
   }
 }
 
-// The badge at [offset] from the top-left of the picture's rounded area: the
-// picture a contain fit letterboxes in the box, or the box.
-class _BadgePlace extends SingleChildLayoutDelegate {
-  const _BadgePlace({
+// A corner overlay (the badge, the compact control) at [offset] from the
+// top-left of the picture as it shows in the box: the picture a contain fit
+// letterboxes, or the box a cover fit fills (and cuts the picture to).
+class _InPicture extends SingleChildLayoutDelegate {
+  const _InPicture({
     required this.profile,
     required this.picture,
     required this.offset,
@@ -262,10 +269,14 @@ class _BadgePlace extends SingleChildLayoutDelegate {
 
   @override
   Offset getPositionForChild(Size size, Size childSize) =>
-      profile.roundedArea(Offset.zero & size, picture).topLeft + offset;
+      profile
+          .roundedArea(Offset.zero & size, picture)
+          .intersect(Offset.zero & size)
+          .topLeft +
+      offset;
 
   @override
-  bool shouldRelayout(_BadgePlace oldDelegate) =>
+  bool shouldRelayout(_InPicture oldDelegate) =>
       oldDelegate.profile != profile ||
       oldDelegate.picture != picture ||
       oldDelegate.offset != offset;

@@ -4,6 +4,9 @@ import 'package:flutter/animation.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_ui/src/gallery/gallery_page_transition.dart';
+import 'package:mpx_ui/src/gallery/gallery_pager_physics.dart';
+import 'package:mpx_ui/src/gallery/gallery_tap_recognizer.dart';
 
 /// The layout of the viewer's chrome in one reference: bars, the "N of M"
 /// counter, the caption and the thumbnail strip. Logical pixels.
@@ -218,6 +221,17 @@ enum ViewerZoomRule {
   steps,
 }
 
+/// Where a pinch zooms around.
+enum ViewerZoomFocal {
+  /// The point between the fingers when the pinch started; the fingers
+  /// moving together do not pan (the Android reference).
+  fixed,
+
+  /// The point between the fingers as they move: the picture stays under
+  /// them and two fingers pan it (the iOS reference).
+  follows,
+}
+
 /// Where a playback speed set in the viewer applies.
 enum ViewerSpeedMemory {
   /// To the item it was set on, when it opens again.
@@ -308,6 +322,7 @@ final class ViewerHoldSpeed {
     this.step = 1,
     this.maxRate = 4,
     this.zoneFrom = 0,
+    this.minDuration = Duration.zero,
   });
 
   /// How long the press is held before the speed changes.
@@ -326,6 +341,9 @@ final class ViewerHoldSpeed {
   /// the screen).
   final double zoneFrom;
 
+  /// Shorter videos do not speed up on a held press.
+  final Duration minDuration;
+
   /// The speed while held, from the [current] one.
   double heldRate(double current) => math.min(maxRate, rate ?? current + step);
 
@@ -339,12 +357,14 @@ final class ViewerHoldSpeed {
     double? step,
     double? maxRate,
     double? zoneFrom,
+    Duration? minDuration,
   }) => ViewerHoldSpeed(
     delay: delay ?? this.delay,
     rate: rate ?? this.rate,
     step: step ?? this.step,
     maxRate: maxRate ?? this.maxRate,
     zoneFrom: zoneFrom ?? this.zoneFrom,
+    minDuration: minDuration ?? this.minDuration,
   );
 }
 
@@ -531,7 +551,9 @@ final class ViewerLoadingRules {
       iconSize: 0.3,
       iconStroke: 3,
     ),
-    photoProgress: ViewerPhotoProgress.spinner,
+    // The photo's radial is the empty disc with an arc of the bytes, as the
+    // reference sets its progress from the file's while it loads.
+    photoProgress: ViewerPhotoProgress.arc,
     bufferingFade: Duration(milliseconds: 200),
     playerFadeIn: Duration(milliseconds: 200),
     playerFadeInHandedOver: Duration(milliseconds: 100),
@@ -664,6 +686,8 @@ final class ViewerVideoRules {
     required this.loops,
     this.doubleTapSeek,
     this.doubleTapFullscreen = false,
+    this.doubleTapZooms = true,
+    this.clickPlays = false,
     this.hold,
     this.seekPreviewBox,
     this.start = ViewerVideoStart.beginning,
@@ -707,6 +731,14 @@ final class ViewerVideoRules {
   /// Whether a double tap on a video toggles fullscreen.
   final bool doubleTapFullscreen;
 
+  /// Whether a double tap the seek and the fullscreen rules leave zooms the
+  /// video's picture like a photo's.
+  final bool doubleTapZooms;
+
+  /// Whether a click on the video plays or pauses it, rather than showing
+  /// or hiding the controls.
+  final bool clickPlays;
+
   /// The held-press speed-up; null for none.
   final ViewerHoldSpeed? hold;
 
@@ -739,6 +771,8 @@ final class ViewerVideoRules {
     bool Function(Duration? duration, {required bool hasAudio})? loops,
     ViewerDoubleTapSeek? doubleTapSeek,
     bool? doubleTapFullscreen,
+    bool? doubleTapZooms,
+    bool? clickPlays,
     ViewerHoldSpeed? hold,
     Size? seekPreviewBox,
     bool? prepareNeighbours,
@@ -752,6 +786,8 @@ final class ViewerVideoRules {
     loops: loops ?? this.loops,
     doubleTapSeek: doubleTapSeek ?? this.doubleTapSeek,
     doubleTapFullscreen: doubleTapFullscreen ?? this.doubleTapFullscreen,
+    doubleTapZooms: doubleTapZooms ?? this.doubleTapZooms,
+    clickPlays: clickPlays ?? this.clickPlays,
     hold: hold ?? this.hold,
     seekPreviewBox: seekPreviewBox ?? this.seekPreviewBox,
     prepareNeighbours: prepareNeighbours ?? this.prepareNeighbours,
@@ -814,11 +850,19 @@ final class ViewerPolicy {
     required this.controlsSlide,
     required this.video,
     required this.chrome,
+    required this.pager,
+    required this.transition,
+    required this.taps,
+    this.dismissRatio = 2,
+    this.zoomFocal = ViewerZoomFocal.fixed,
+    this.zoomFling = true,
+    this.zoomBounce = false,
     this.loading = ViewerLoadingRules.$Android,
     this.backgroundFadeDuration,
     this.dismissVelocity,
     this.backgroundFadeDistance,
     this.backgroundClickCloses = false,
+    this.pictureClickCloses = false,
     this.doubleTapEdgeInset = 0,
     this.desktopInput = false,
   });
@@ -835,12 +879,15 @@ final class ViewerPolicy {
       };
 
   /// The Android reference: the picture morphs from its origin in 200 ms
-  /// while the surface behind grows to 1.1; a drag down past a sixth of
-  /// the height closes it, with no velocity term; double tap zooms to 3x
-  /// around the tap, a pinch stays within 1x to 3x. Video: controls on
-  /// open, hidden after 3 s; double tap seeks 10 s in the outer thirds of
-  /// a video over 15 s; speed 0.2x to 3x, remembered per item; videos up to
-  /// 30 s loop; a 150 px seek preview.
+  /// while the surface behind grows to 1.1; a drag either way past a sixth
+  /// of the height closes it, with no velocity term; double tap zooms to 3x
+  /// around the tap, a pinch zooms around where it started and settles
+  /// within 1x to 3x on release. Pages lie stacked: the next one under the
+  /// picture, the previous one sliding over it. Video: controls on open,
+  /// hidden after 3 s; double tap seeks 10 s in the outer thirds of a video
+  /// over 15 s; a press held 300 ms on the right two thirds of a video of
+  /// 8 s or more plays it at 2x; speed 0.2x to 3x, remembered per item;
+  /// videos up to 30 s loop; a 150 px seek preview.
   static const ViewerPolicy $Android = ViewerPolicy(
     openStyle: ViewerOpenStyle.morph,
     openDuration: Duration(milliseconds: 200),
@@ -852,7 +899,7 @@ final class ViewerPolicy {
     dismissDrag: true,
     dismissSlop: 30,
     dismissFraction: 1 / 6,
-    dismissDownOnly: true,
+    dismissDownOnly: false,
     backgroundOpacityFloor: 127 / 255,
     backgroundFadeWidthFraction: 1 / 4,
     settleDuration: Duration(milliseconds: 250),
@@ -887,16 +934,27 @@ final class ViewerPolicy {
         minDuration: Duration(seconds: 15),
         forwardNeedsRoom: true,
       ),
+      hold: ViewerHoldSpeed(
+        delay: Duration(milliseconds: 300),
+        rate: 2,
+        zoneFrom: 1 / 3,
+        minDuration: Duration(seconds: 8),
+      ),
       seekPreviewBox: Size.square(150),
     ),
     chrome: ViewerChromeMetrics.android,
+    pager: GalleryPagerPhysics.$Android,
+    transition: GalleryPageTransition.stack(),
+    taps: GalleryTapRules.$Android,
   );
 
   /// The iOS reference: the picture is revealed from its origin's crop on a
   /// 0.25 s spring while the background fades in over 0.15 s; a drag either
-  /// way closes it past a twelfth of the height or faster than 1 pt/ms,
+  /// way closes it past a quarter of the height or faster than 1 pt/ms,
   /// with the background gone after 80 pt; zoom reaches 3x or the zoom that
-  /// fills the screen, double tap goes all the way. Video: controls hidden
+  /// fills the screen, double tap goes all the way, a pinch follows the
+  /// fingers and bounces past its limits. Pages lie side by side 40 pt
+  /// apart, their pictures lagging a little. Video: controls hidden
   /// on open and after 4 s; double tap seeks 15 s, back left of 0.3 of the
   /// width; speed 0.2x to 2.5x shared by the items; a held press on the
   /// right 60% plays 1x faster; videos up to 30 s loop; a 160 x 90 seek
@@ -910,9 +968,11 @@ final class ViewerPolicy {
     // The surface behind slides as a pushed screen there; it is not scaled.
     backdropScale: 0,
     dismissDrag: true,
-    // The pan locks once it moved 2 pt, twice as vertical as horizontal.
-    dismissSlop: 2,
-    dismissFraction: 1 / 12,
+    // The platform's pan slop, the vertical axis winning.
+    dismissSlop: 10,
+    dismissRatio: 1,
+    // A twelfth of a scroll content three heights tall.
+    dismissFraction: 1 / 4,
     dismissDownOnly: false,
     // 1 pt/ms.
     dismissVelocity: 1000,
@@ -962,14 +1022,21 @@ final class ViewerPolicy {
         maxRate: 4,
         zoneFrom: 0.4,
       ),
+      doubleTapZooms: false,
       seekPreviewBox: Size(160, 90),
     ),
     chrome: ViewerChromeMetrics.ios,
     loading: ViewerLoadingRules.$IOS,
+    pager: GalleryPagerPhysics.$IOS,
+    transition: GalleryPageTransition.strip(parallax: 0.16),
+    taps: GalleryTapRules.$IOS,
+    zoomFocal: ViewerZoomFocal.follows,
+    zoomBounce: true,
   );
 
   /// The desktop reference, as an overlay over the app window: no open
-  /// transition; a click on the background closes; zoom goes in steps of
+  /// transition; items switch at once (keys, the wheel, a press on a side
+  /// strip); a click anywhere off the controls closes; zoom goes in steps of
   /// the picture's own pixels up to 8x, with the fitted size between;
   /// keyboard and wheel work. Video: controls on open, hidden after 1.1 s
   /// of no movement and faded out over 0.6 s; double click toggles
@@ -988,6 +1055,7 @@ final class ViewerPolicy {
     backgroundOpacityFloor: 1,
     backgroundFadeWidthFraction: 1 / 4,
     backgroundClickCloses: true,
+    pictureClickCloses: true,
     // Zoom steps animate linearly over the toolkit's widget fade, whose
     // value the reference does not ship; 200 ms like its other fades.
     settleDuration: Duration(milliseconds: 200),
@@ -1018,10 +1086,17 @@ final class ViewerPolicy {
       loops: ViewerVideoRules.loopSilent,
 
       doubleTapFullscreen: true,
+      doubleTapZooms: false,
+      clickPlays: true,
       hold: ViewerHoldSpeed(delay: Duration(milliseconds: 200), rate: 2),
     ),
     chrome: ViewerChromeMetrics.desktop,
     loading: ViewerLoadingRules.$Desktop,
+    pager: GalleryPagerPhysics.$Desktop,
+    transition: GalleryPageTransition.instant(),
+    taps: GalleryTapRules.$Desktop,
+    // A mouse drag pans an oversized picture, clamped, with no inertia.
+    zoomFling: false,
   );
 
   /// How the picture gets from its origin to its place and back.
@@ -1050,8 +1125,12 @@ final class ViewerPolicy {
   final bool dismissDrag;
 
   /// How far a vertical drag travels before it becomes a dismiss drag; it
-  /// also has to be at least twice as vertical as horizontal.
+  /// also has to be more than [dismissRatio] times as vertical as
+  /// horizontal. Tested before the page drag.
   final double dismissSlop;
+
+  /// How many times as vertical as horizontal a drag is to dismiss.
+  final double dismissRatio;
 
   /// The fraction of the height a dismiss drag must pass on release to close
   /// the viewer.
@@ -1078,6 +1157,10 @@ final class ViewerPolicy {
   /// Whether a click on the background around the picture closes the
   /// viewer.
   final bool backgroundClickCloses;
+
+  /// Whether a click on a photo or an animation closes the viewer too,
+  /// rather than showing or hiding the chrome.
+  final bool pictureClickCloses;
 
   /// How long a picture takes to spring back from a drag, and to snap its
   /// zoom into range.
@@ -1109,6 +1192,25 @@ final class ViewerPolicy {
 
   /// How much of a pan past the picture's edge is followed.
   final double overPanDamping;
+
+  /// Where a pinch zooms around.
+  final ViewerZoomFocal zoomFocal;
+
+  /// Whether a pan of a zoomed picture flings on within its bounds.
+  final bool zoomFling;
+
+  /// Whether a pinch past the zoom limits follows the fingers, damped, and
+  /// bounces back; else it follows freely and snaps into range on release.
+  final bool zoomBounce;
+
+  /// The paging rules: when a drag pages, release, settle, ends, side taps.
+  final GalleryPagerPhysics pager;
+
+  /// How pages are drawn while the pager moves between them.
+  final GalleryPageTransition transition;
+
+  /// The tap timings: the double-tap wait and the slops.
+  final GalleryTapRules taps;
 
   /// A double tap this close to an edge does nothing.
   final double doubleTapEdgeInset;
@@ -1143,13 +1245,17 @@ final class ViewerPolicy {
   /// buffering spinner and the player's fade in.
   final ViewerLoadingRules loading;
 
+  /// When a drag becomes a dismiss drag, along the vertical axis; null when
+  /// no drag dismisses.
+  GalleryClaim? get dismissClaim => dismissDrag
+      ? GalleryClaim.dominant(slop: dismissSlop, ratio: dismissRatio)
+      : null;
+
   /// Whether a drag of [dx], [dy] from its start has become a dismiss drag.
   bool startsDismiss(double dx, double dy) {
-    if (!dismissDrag) return false;
-    if (dismissDownOnly ? dy < dismissSlop : dy.abs() < dismissSlop) {
-      return false;
-    }
-    return dy.abs() / 2 > dx.abs();
+    final claim = dismissClaim;
+    if (claim == null || (dismissDownOnly && dy < 0)) return false;
+    return claim.claims(dy, dx);
   }
 
   /// Whether a dismiss drag released at [offset] (positive down) with
@@ -1258,6 +1364,7 @@ final class ViewerPolicy {
     double? backdropScale,
     bool? dismissDrag,
     double? dismissSlop,
+    double? dismissRatio,
     double? dismissFraction,
     bool? dismissDownOnly,
     double? dismissVelocity,
@@ -1265,6 +1372,7 @@ final class ViewerPolicy {
     double? backgroundFadeWidthFraction,
     double? backgroundFadeDistance,
     bool? backgroundClickCloses,
+    bool? pictureClickCloses,
     Duration? settleDuration,
     Curve? settleCurve,
     Duration? slideOffDuration,
@@ -1274,6 +1382,12 @@ final class ViewerPolicy {
     double? minZoom,
     double? maxZoom,
     double? overPanDamping,
+    ViewerZoomFocal? zoomFocal,
+    bool? zoomFling,
+    bool? zoomBounce,
+    GalleryPagerPhysics? pager,
+    GalleryPageTransition? transition,
+    GalleryTapRules? taps,
     double? doubleTapEdgeInset,
     double? pageGap,
     bool? controlsVisibleOnOpen,
@@ -1294,6 +1408,7 @@ final class ViewerPolicy {
     backdropScale: backdropScale ?? this.backdropScale,
     dismissDrag: dismissDrag ?? this.dismissDrag,
     dismissSlop: dismissSlop ?? this.dismissSlop,
+    dismissRatio: dismissRatio ?? this.dismissRatio,
     dismissFraction: dismissFraction ?? this.dismissFraction,
     dismissDownOnly: dismissDownOnly ?? this.dismissDownOnly,
     dismissVelocity: dismissVelocity ?? this.dismissVelocity,
@@ -1304,6 +1419,7 @@ final class ViewerPolicy {
     backgroundFadeDistance:
         backgroundFadeDistance ?? this.backgroundFadeDistance,
     backgroundClickCloses: backgroundClickCloses ?? this.backgroundClickCloses,
+    pictureClickCloses: pictureClickCloses ?? this.pictureClickCloses,
     settleDuration: settleDuration ?? this.settleDuration,
     settleCurve: settleCurve ?? this.settleCurve,
     slideOffDuration: slideOffDuration ?? this.slideOffDuration,
@@ -1313,6 +1429,12 @@ final class ViewerPolicy {
     minZoom: minZoom ?? this.minZoom,
     maxZoom: maxZoom ?? this.maxZoom,
     overPanDamping: overPanDamping ?? this.overPanDamping,
+    zoomFocal: zoomFocal ?? this.zoomFocal,
+    zoomFling: zoomFling ?? this.zoomFling,
+    zoomBounce: zoomBounce ?? this.zoomBounce,
+    pager: pager ?? this.pager,
+    transition: transition ?? this.transition,
+    taps: taps ?? this.taps,
     doubleTapEdgeInset: doubleTapEdgeInset ?? this.doubleTapEdgeInset,
     pageGap: pageGap ?? this.pageGap,
     controlsVisibleOnOpen: controlsVisibleOnOpen ?? this.controlsVisibleOnOpen,

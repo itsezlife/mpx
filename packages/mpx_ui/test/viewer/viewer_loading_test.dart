@@ -13,7 +13,8 @@ import 'viewer_harness.dart';
 
 void main() {
   group('loading rules', () {
-    test('Android: a 64 dp control, a spinner for photos, the spinner after '
+    test('Android: a 64 dp control, an arc of the bytes for photos, the '
+        'spinner after '
         '500 ms fading in 200 ms, the player in 200 ms (100 handed over)', () {
       const rules = ViewerPolicy.$Android;
       expect(rules.loading, same(ViewerLoadingRules.$Android));
@@ -27,7 +28,7 @@ void main() {
         const Duration(milliseconds: 300),
       );
       expect(loading.status.morphDuration, const Duration(milliseconds: 200));
-      expect(loading.photoProgress, ViewerPhotoProgress.spinner);
+      expect(loading.photoProgress, ViewerPhotoProgress.arc);
       expect(loading.photoProgressDelay, Duration.zero);
       expect(loading.hideStatusUntilCentral, isTrue);
       expect(loading.bufferingDelay, const Duration(milliseconds: 500));
@@ -316,9 +317,8 @@ void main() {
       expect(status.progress, 0.25);
     });
 
-    testWidgets('Android: a photo that downloads shows a spinner', (
-      tester,
-    ) async {
+    testWidgets('Android: a photo that downloads shows an arc of its bytes '
+        'on an empty disc', (tester) async {
       final harness = ViewerHarness();
       await harness.pump(tester);
       final attempt = harness.producer.last;
@@ -328,7 +328,10 @@ void main() {
         ..transfer(50, 100);
       await tester.pump();
 
-      expect(statusOf(tester, photoKey(0)), const MediaStatus.spinner());
+      expect(
+        statusOf(tester, photoKey(0)),
+        const MediaStatus.progress(0.5, icon: MediaStatusIcon.none),
+      );
 
       attempt.advance(AssetStage.full);
       await tester.pump();

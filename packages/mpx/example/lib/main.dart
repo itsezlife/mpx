@@ -581,24 +581,34 @@ class _MediaTile extends StatelessWidget {
             profile: _profile,
           );
     LabViewer.card('home', index, content, preset.spec);
+    // The square takes what the grid cell leaves under the label, so a
+    // narrow cell (three columns on a large phone) never overflows.
     return Column(
-      mainAxisSize: MainAxisSize.min,
       children: [
-        ViewerOrigin(
-          index: index,
-          borderRadius: const BorderRadius.all(Radius.circular(_radius)),
-          // The tile shows the picture whole, letterboxed in its square.
-          fit: BoxFit.contain,
-          child: ContentView(
-            content: content,
-            preset: preset,
-            downloadContext: downloadContext,
-            status: const MediaStatusMode.control(),
-            badge: true,
+        Expanded(
+          child: AspectRatio(
+            aspectRatio: 1,
+            child: ViewerOrigin(
+              index: index,
+              borderRadius: const BorderRadius.all(Radius.circular(_radius)),
+              // The tile shows the picture whole, letterboxed in its square.
+              fit: BoxFit.contain,
+              child: ContentView(
+                content: content,
+                preset: preset,
+                downloadContext: downloadContext,
+                status: const MediaStatusMode.control(),
+                badge: true,
+              ),
+            ),
           ),
         ),
         const SizedBox(height: 8),
-        Text(downloadContext == null ? label : '$label (tap to load)'),
+        Text(
+          downloadContext == null ? label : '$label (tap to load)',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
       ],
     );
   }

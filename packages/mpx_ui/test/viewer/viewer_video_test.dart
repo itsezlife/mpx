@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart' show kMinInteractiveDimension;
 import 'package:flutter/widgets.dart';
@@ -33,6 +34,15 @@ bool _playerShows(WidgetTester tester) {
     find.ancestor(of: textures.first, matching: find.byType(Opacity)).first,
   );
   return opacity.opacity == 1;
+}
+
+ui.Image _solid(int argb) {
+  final recorder = ui.PictureRecorder();
+  Canvas(recorder).drawPaint(Paint()..color = Color(argb));
+  final picture = recorder.endRecording();
+  final image = picture.toImageSync(4, 3);
+  picture.dispose();
+  return image;
 }
 
 Future<void> _settle(WidgetTester tester) async {
@@ -369,6 +379,55 @@ void main() {
       picture!.dispose();
     });
 
+    for (final android in [true, false]) {
+      testWidgets(
+        '${android ? 'Android' : 'iOS'}: the loop stands on the frame the '
+        'origin showed at the tap, every surface drawing that frame, with no '
+        'seek; closing ${android ? 'moves it to the player with its last '
+                  'picture' : 'plays it again from its first frame'}',
+        (tester) async {
+          final harness = ViewerHarness(
+            items: ViewerHarness.videos(1),
+            videoDuration: const Duration(seconds: 60),
+          );
+          final loop = harness.cardLoop(videoKey(0), seconds)
+            ..seekPlayback(const Duration(seconds: 8));
+          final shown = _solid(0xFF0000FF);
+          addTearDown(shown.dispose);
+          harness.bridge.frames[0] = shown;
+
+          await harness.pump(
+            tester,
+            policy: android ? ViewerPolicy.$Android : ViewerPolicy.$IOS,
+          );
+
+          // Held on exactly the frame the tile showed: no seek, no advance.
+          expect(loop.heldPicture!.isCloneOf(shown), isTrue);
+          expect(loop.seeks, [const Duration(seconds: 8)]);
+          expect(loop.playbackPosition, const Duration(seconds: 8));
+          expect(harness.card.isPlaying, isFalse);
+
+          harness.engine(0).advance(const Duration(seconds: 3));
+          unawaited(harness.state(tester).close());
+          await _settle(tester);
+
+          // The held frame is let go once the seek has a picture of its own:
+          // nothing from the tile's old place is drawn after landing.
+          expect(loop.heldPicture, isNull);
+          if (android) {
+            expect(loop.seeks.last, const Duration(seconds: 3));
+            expect(loop.seekPictures.last, isNotNull);
+          } else {
+            expect(loop.seeks.last, Duration.zero);
+          }
+          expect(harness.card.isPlaying, isTrue);
+          for (final picture in [...loop.seekPictures, ...loop.heldPictures]) {
+            picture?.dispose();
+          }
+        },
+      );
+    }
+
     testWidgets('closing with a restart plays the loop from its first frame', (
       tester,
     ) async {
@@ -643,6 +702,41 @@ void main() {
         );
       });
     }
+
+    testWidgets(
+      'before the player knows the length, the time reads the item\'s own',
+      (tester) async {
+        harness = ViewerHarness(
+          items: [
+            GalleryItem(
+              videoKey(0),
+              kind: GalleryMediaKind.video,
+              size: const Size(1200, 900),
+              hasAudio: true,
+              descriptor: MediaDescriptor(
+                key: videoKey(0),
+                kind: MediaKind.video,
+                duration: const Duration(seconds: 52),
+              ),
+            ),
+          ],
+          videoDuration: const Duration(seconds: 60),
+          autoPrepare: false,
+        );
+        await harness.pump(tester);
+        expect(harness.lease(tester).state.value.duration, isNull);
+
+        String time() => tester
+            .widget<Text>(find.byKey(const ValueKey('mpx-viewer-time')))
+            .data!;
+        expect(time(), '0:00 / 0:52');
+
+        // The player's own length wins once it reports one.
+        harness.engine(0).completePrepare();
+        await tester.pump();
+        expect(time(), '0:00 / 1:00');
+      },
+    );
 
     testWidgets('its text is styled whatever the host puts above it', (
       tester,

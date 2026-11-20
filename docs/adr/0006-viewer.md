@@ -12,7 +12,7 @@ On macOS the viewer is an in-app overlay over the whole app window.
 **Status**: Accepted (decided with the maintainer 2026-11-10)
 **Relates to**: 0001, 0004, 0010
 **Amended**: 2026-11-14, composable pieces (ticket 50); 2026-11-17, loading
-stages (ADR 0010)
+stages (ADR 0010); 2026-11-18, the gallery pager and its gestures
 
 ## Context
 
@@ -42,7 +42,7 @@ Constants with file and line: research `04-viewer-anatomy`.
 | Behaviour | `$Android` | `$IOS` | `$Desktop` |
 | --- | --- | --- | --- |
 | Open from the bubble | Hero morph, 200 ms (clip and radius); chat behind scales to 1.1 | Two bubble snapshots + bounds reveal, 0.21-0.25 s spring; background fades in 0.15 s | None; the overlay shows |
-| Dismiss | Down only, past H/6, no velocity; background alpha floor 127 | Either way, past H/12 or \|v\| > 1 pt/ms; swipe up may start PiP | Background click |
+| Dismiss | Either way, past H/6, no velocity; background alpha floor 127 | Either way, past H/4 or \|v\| > 1 pt/ms; swipe up may start PiP | Click anywhere off the controls |
 | Zoom | Double tap 3x around the point; pinch 1-3 | Fit, max(fill, 3x min), 4x for tiled originals | Integer steps to 8x plus fit |
 | Double tap on video | ±10 s in the outer thirds (duration > 15 s) | ±15 s, split at 0.3·W | Fullscreen toggle |
 | Controls on open | Visible; video hides after 3 s | Hidden for video, shown for photo | Visible |
@@ -86,7 +86,8 @@ pages in its own screens. `MediaViewer` stays the assembled default.
 | `ViewerOrigin`, `ViewerOriginScope` | An origin wraps a thumbnail anywhere and registers by gallery index or `MediaKey`; the scope implements `OriginBridge` for them (`bridgeFor(source)` resolves keys through the viewer's gallery). Rect from the origin's own box in global coordinates; clip = the intersection of every enclosing `RenderAbstractViewport`; no place when fully clipped or not painted, so the viewer falls back to the fade; the frame is the origin's `RepaintBoundary` read synchronously when asked; the one read as the origin is hidden is kept, per gallery and index, until the origin shows again, since a hidden origin paints nothing to read; hidden = opacity 0 while laid out; `reveal` = `Scrollable.ensureVisible` (centred) for a built origin, else the host's `onReveal(index)`, then one frame; hand-back and start position are callbacks on the origin. A host may still pass its own bridge |
 | `ViewerController` | Attached while a viewer is mounted: `index`, `isOpen`, `controlsVisible` (settable), `videoLease`; `jumpTo`, `animateTo`, `resetZoom`, `close`. Notifies on item, open state, controls and lease changes |
 | `MediaViewer.show` | Pushes the transparent route; without a bridge it uses the closest `ViewerOriginScope`, without a policy `ViewerPolicy.forPlatform` |
-| `ViewerPhotoPage` | Embeddable: dismiss drag, max zoom, content size and the zoom callback are optional; a host pager stops paging while it reports a zoom |
+| `ViewerPhotoPage` | Embeddable: dismiss drag, max zoom, content size and the zoom callback are optional; a host pager stops paging while it reports a zoom. Under a `GalleryPageScope` it is that pager's `GalleryPageGestures`; alone it runs the gallery's gesture owner itself, paging off |
+| `GalleryPager` | The viewer's pager, public for any host (the feed pager uses it): count, page builder, axis, gap, physics, transition, tap rules, keep-alive, dismiss claim and callbacks, text direction; `GalleryPagerController` (`page` lands with the settle, continuous `position`, `animateTo`, `jumpTo`, `nextPage`, `previousPage`) |
 | `ViewerVideoSession`, `ViewerVideoPage` | The session is the video logic (lease, loop and end rules, auto-hide, seek, speed, quality, double-tap seek, held press) that `MediaViewer` and the page share; the page is a photo page over the player with the policy's controls, playing only while `active` |
 
 ### Configuration
@@ -207,6 +208,97 @@ outranks the content's preview and thumbnail until the first frame. Without
 it the page shows the preview, then the thumbnail, fitted to the media's
 proportion on the black page. A page never shows a box. Content with
 transparency fades its stand-in out as it rises (ADR 0010).
+
+### Gallery pager and gestures (amendment 2026-11-18)
+
+The viewer pages on `GalleryPager` (`mpx_ui/lib/src/gallery/`), not
+`PageView`: the stock pager's drag recognizer and each page's scale
+recognizer raced for the arena, so a vertical swipe could start the page and a
+zoomed picture could never hand on at its edge.
+
+**One gesture owner.** `GalleryGestureRecognizer` is the only drag and scale
+recognizer over the media. It decides once, on the straight line from the
+down point, and the first rule that holds locks for the gesture:
+
+1. a second finger, on a page that zooms, while no neighbour shows past 5 px:
+   pinch;
+2. one finger on a zoomed picture, past the tap slop: pan;
+3. else the dismiss claim (tested first), then the page claim.
+
+The distance that decided is swallowed: the picture does not jump. A touch
+that never decides is never claimed, so the gallery's one
+`GalleryTapRecognizer` beside it, and controls inside the pages, get it.
+Controls that must never page or dismiss (the seek bar, the bars, the speed
+panel) sit above the pager as siblings, outside its arena.
+
+**Hand-off.** A zoomed picture takes a pan until it is pinned at its edge
+toward a page that exists; the pager takes the rest, and the pan brings the
+pager back to rest before the picture moves again. The release then follows
+the pager's rule (by distance only where the policy says so). Toward a side
+with no page the picture follows past its edge, damped, and snaps back. A
+vertical pan of a zoomed picture never dismisses. The page left resets its
+zoom when the settle lands.
+
+**Taps.** One tap recognizer per pager: the single tap waits for a second
+press only where a double tap does something (a photo's zoom, a video's
+seek), and the double tap fires on the second press; side strips page at
+once; a held press the page takes (a video's speed-up) wins the arena, so
+its moves page and dismiss nothing.
+
+**Values** (`ViewerPolicy.pager`, `transition`, `taps`, the zoom and dismiss
+fields):
+
+| Value | `$Android` | `$IOS` | `$Desktop` |
+| --- | --- | --- | --- |
+| Page claim | `\|dx\| > \|dy\| + 12` | 10 pt slop, more across than down | none (instant) |
+| Dismiss claim | 30 px, twice as vertical | 10 pt slop, more down than across | none |
+| Transition | stack: next under, 0.7 to 1, fading; previous over | strip, 0.16 parallax | instant |
+| Gap | 15 | 40 | 0 |
+| Ends | a third of the drag | rubber band (0.55) | hard |
+| Release | a third, or 650 px/s; distance only while zoomed | half, or 300 pt/s (platform snap, approximated) | n/a |
+| Settle | 250 ms, decelerate | 400 ms critically damped spring (platform deceleration, approximated) | 0 |
+| Touch during a settle | ignored | catches it | n/a |
+| Side taps | `min(135 px, W/8)`, below the bars, on lift | none (off by default) | 90 px strips clear of 47 px bars, on press |
+| Single tap waits | 300 ms (40 ms minimum gap, 100 px slop) | 160 ms | 300 ms, where a double click acts |
+| Pinch | focal fixed at the start, no live limit, snap on release | focal follows, two-finger pan, bounce past the limits | trackpad: a step per 0.25 of scale |
+| Zoomed fling | yes, within the bounds | yes | none (a mouse drag pans, clamped) |
+| Video double tap | seek, middle zooms | seek, never zooms | fullscreen |
+| Held press | 300 ms, video of 8 s or more, right two thirds: 2x | 300 ms, right 60%: +1x | 200 ms: 2x |
+
+Desktop: the arrows and a wheel notch switch one item at once (Home and End
+do nothing, as on the reference); a trackpad's vertical pan pages every
+120 px, its horizontal swipe goes once past 17.5 px of a fifth of the pan;
+Ctrl with the wheel or a trackpad pinch zooms at the cursor; a click
+anywhere off the controls closes, on a video it plays or pauses; the cursor
+is a hand over a strip that pages, a move cursor while a zoomed picture pans,
+and hidden with a video's controls.
+
+Two values were wrong before and are fixed: `$Android.dismissDownOnly` is
+false (the reference reads the drag's absolute offset) and
+`$IOS.dismissFraction` is 1/4 (the reference divides a scroll content three
+heights tall by 12).
+
+Kept: the origin morph, the loading stages and the one centre control, the
+neighbours' preparation once a settle lands (`onPageChanged` fires then, as
+both mobile references switch their item after the settle), the chrome.
+
+RTL: the references never mirror the gallery, so the viewer pages left to
+right in any locale; `GalleryPager.textDirection` mirrors the order for a host
+that asks. Semantics: the pager exposes scroll actions for the next and
+previous page.
+
+Not covered yet: the desktop trackpad swipe's arrow bubble (the commit rule
+is there, the visual is not); the Android hold's back-seek on the left third
+and the hold-and-drag speed scrub; a long-press or right-click menu (no
+mobile reference has one; the desktop's right click is open); the desktop
+touchscreen swipe.
+
+Rejected: a scale recognizer per page beside a pager drag recognizer (the
+race above); nested scrollables imitating the iOS structure (three
+`Scrollable`s would race the same way, and the other platforms are not
+nested); a strip for every platform (the Android reference stacks its pages).
+Evidence, with file and line in the references: research
+`media-viewer-gestures/reference-gestures` (chat_scroll_view `.scratch`).
 
 ## Why
 

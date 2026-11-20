@@ -78,7 +78,23 @@ ViewerOriginScope(
 `PlayerPool`) for videos, `chrome` (bars, caption, host actions such as save
 and share) and a `policy` (`ViewerPolicy.$Android`, `$IOS`, `$Desktop`; the
 theme's platform's by default). `ViewerPhotoPage` and `ViewerVideoPage` work
-alone inside a host's own pager.
+alone inside a host's own pager, or as pages of a `GalleryPager`, the
+viewer's own pager, which any host can use:
+
+```dart
+GalleryPager(
+  count: items.length,
+  physics: GalleryPagerPhysics.$Android,
+  transition: const GalleryPageTransition.stack(),
+  gap: 15,
+  dismiss: ViewerPolicy.$Android.dismissClaim,
+  onDismissEnd: (offset, velocity) => close(),
+  pageBuilder: (context, index) => ViewerPhotoPage(
+    policy: ViewerPolicy.$Android,
+    child: MyPicture(items[index]),
+  ),
+)
+```
 
 ## Configuring the viewer
 
@@ -111,7 +127,13 @@ where the viewer left it.
 - `ViewerOrigin`: thumbnails in any list become the viewer's origins
 - `MediaViewer`: photos and videos open from and close to their origin;
   dismiss drag, zoom and paging per `ViewerPolicy.$Android`, `$IOS` or
-  `$Desktop` (an in-app overlay with keyboard, wheel and step zoom)
+  `$Desktop` (an in-app overlay with keyboard, wheel, trackpad, side strips
+  and step zoom)
+- `GalleryPager`: one gesture owner decides once, from the down point,
+  between a pinch, a pan of a zoomed picture (handed on to the next page at
+  its edge), a dismiss drag and a page drag; per-platform physics, tap
+  timings, stacked, strip or instant pages, keep-alive, RTL order and
+  semantics actions
 - Viewer video on the player pool: seek bar with preview, double-tap seek,
   auto-hide, speed (kept per item, per viewer or per session), quality,
   hold to play faster, the loop rule; GIFs loop muted without controls

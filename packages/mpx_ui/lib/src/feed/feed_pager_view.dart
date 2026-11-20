@@ -1,9 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_ui/src/feed/feed_clip.dart';
 import 'package:mpx_ui/src/feed/feed_items_known.dart';
+import 'package:mpx_ui/src/gallery/gallery_keep_alive.dart';
+import 'package:mpx_ui/src/gallery/gallery_page_transition.dart';
+import 'package:mpx_ui/src/gallery/gallery_pager.dart';
+import 'package:mpx_ui/src/gallery/gallery_pager_physics.dart';
 
 /// Builds the page of [index] around its [media]: the player's picture, or
 /// the poster while the page holds no player.
@@ -15,10 +21,12 @@ typedef FeedPagerCellBuilder =
 /// surface.
 ///
 /// The assembled default of the feed's pieces: a pager-mode
-/// [FeedController] over [pool] and a `PageView` whose pages are
-/// `FeedSlot`s showing a [FeedClip]. The page that plays is the most visible
-/// one, measured like any slot, so a host's own pager plays the same way
-/// with those pieces. A swipe takes over the neighbour's prepared player.
+/// [FeedController] over [pool] and a `GalleryPager` (the viewer's pager,
+/// along [scrollDirection], with [physics]) whose pages are `FeedSlot`s
+/// showing a [FeedClip]. The page that plays is the most visible one,
+/// measured like any slot against the pager's window, so a host's own pager
+/// plays the same way with those pieces. A swipe takes over the neighbour's
+/// prepared player.
 /// With [presetOf] the neighbours' bytes are preloaded to the policy's
 /// stages through the asset cache scope ([scope], or the closest
 /// `AssetCacheProvider`), and the poster is the item's first frame from the
@@ -43,7 +51,11 @@ class FeedPagerView extends StatefulWidget {
     this.onPageChanged,
     this.status = MediaStatusMode.none,
     this.badge = false,
+    this.physics = GalleryPagerPhysics.feed,
   });
+
+  /// The paging rules: when a drag pages, release and settle.
+  final GalleryPagerPhysics physics;
 
   /// The status control over each page's media ([FeedClip.status]).
   final MediaStatusMode status;
@@ -106,9 +118,9 @@ class FeedPagerView extends StatefulWidget {
 /// [pager] the pager that holds its leases.
 class FeedPagerViewState extends State<FeedPagerView>
     with FeedItemsKnown<FeedPagerView> {
-  late final PageController _pages = PageController(
+  late final GalleryPagerController _pages = GalleryPagerController(
     initialPage: widget.initialIndex,
-  );
+  )..position.addListener(_moved);
   // The host's callbacks are read through the widget, so a parent that
   // rebuilds with new closures is followed without a new controller.
   late final FeedController _feed = FeedController(
@@ -152,7 +164,9 @@ class FeedPagerViewState extends State<FeedPagerView>
     _feed
       ..inView.removeListener(_pageChanged)
       ..dispose();
-    _pages.dispose();
+    _pages
+      ..position.removeListener(_moved)
+      ..dispose();
     super.dispose();
   }
 
@@ -167,23 +181,37 @@ class FeedPagerViewState extends State<FeedPagerView>
     if (index != null) widget.onPageChanged?.call(index);
   }
 
+  // The pages move by transforms, which lay nothing out: the feed measures
+  // its slots again as the pager moves, as it does when a scrollable
+  // scrolls.
+  void _moved() => _feed.markNeedsMeasure();
+
+  // An advance asked while a slide runs (the page that took over mid-slide
+  // reporting its own state) is dropped: the slide lands first.
   void _advance(int next) {
-    if (!mounted || !_pages.hasClients) return;
-    _pages.animateToPage(
-      next,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
+    if (!mounted || _pages.isSettling) return;
+    unawaited(
+      _pages.animateTo(
+        next,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) => FeedScope(
     controller: _feed,
-    child: PageView.builder(
+    child: GalleryPager(
       controller: _pages,
-      scrollDirection: widget.scrollDirection,
-      itemCount: widget.itemCount,
-      itemBuilder: (context, index) {
+      axis: widget.scrollDirection,
+      count: widget.itemCount,
+      physics: widget.physics,
+      transition: const GalleryPageTransition.strip(),
+      // The feed keeps its neighbours' players itself; their pages are
+      // built while they show.
+      keepAlive: const GalleryKeepAlive.none(),
+      pageBuilder: (context, index) {
         final media = FeedClip(
           fit: widget.fit,
           poster: widget.posterBuilder?.call(context, index),

@@ -258,7 +258,13 @@ class ViewerVideoControls extends StatefulWidget {
     this.previewFrame,
     this.strings = const ViewerVideoStrings(),
     this.centreTaken,
+    this.knownDuration,
   });
+
+  /// The item's length as its descriptor gives it, which the time and the
+  /// seek bar read until the player reports one: a video still downloading
+  /// reads "0:00 / 0:52", not "0:00 / 0:00".
+  final Duration? knownDuration;
 
   /// How much of the centre another control takes, 0 to 1: the buffering
   /// spinner as it fades in ([ViewerBufferingSpinner.presence]). The play
@@ -389,8 +395,12 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
 
   // --- Seek -----------------------------------------------------------------
 
+  // The player's length, else the item's own, else none.
+  Duration _durationOf(PlayerState state) =>
+      state.duration ?? widget.knownDuration ?? Duration.zero;
+
   Duration _positionAt(double x, double width) {
-    final duration = widget.lease.state.value.duration ?? Duration.zero;
+    final duration = _durationOf(widget.lease.state.value);
     final fraction = width <= 0 ? 0.0 : (x / width).clamp(0.0, 1.0);
     return duration * fraction;
   }
@@ -524,7 +534,7 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
 
   Widget _bar(PlayerState state) {
     final tokens = widget.tokens;
-    final duration = state.duration ?? Duration.zero;
+    final duration = _durationOf(state);
     return ColoredBox(
       key: const ValueKey('mpx-viewer-video-bar'),
       color: tokens.barFill,

@@ -43,7 +43,17 @@ import 'package:mpx_video_decoder/src/playback/video_frame_scheduler.dart';
 /// lease, on the next one: a player that played the same clip hands its
 /// position back so the loop goes on from it. The picture it is handed with
 /// the position (the player's last frame) shows until the clip has drawn
-/// its frame there, so the seek shows no frame from before it.
+/// its frame there and, on a texture, until the frames posted since have
+/// pushed out any the texture queued before (`VideoFrameLease.hideQueued`),
+/// so the seek shows no frame from before it.
+///
+/// ## Held
+///
+/// A picture handed with a hold of its entry ([holdPicture]: the frame a
+/// surface showed as the hold began) is drawn in place of the clip's frames
+/// while the hold is on, on every surface, whatever its texture holds. Let
+/// go, it shows until the clip's own frames are on screen again, unless a
+/// seek's picture takes its place.
 ///
 /// ## Half frame rate
 ///
@@ -119,6 +129,10 @@ final class VideoAnimationPaintable extends AssetPaintable {
   // The picture a seek was handed, drawn until the clip has drawn its frame
   // there.
   ui.Image? _cover;
+  // The picture a hold was handed, drawn while the entry is held, and
+  // whether a seek moved the clip away from it since.
+  ui.Image? _held;
+  bool _heldLeft = false;
 
   @override
   Duration? get playbackPosition => _position;
@@ -132,36 +146,66 @@ final class VideoAnimationPaintable extends AssetPaintable {
     _position = position;
     _cover?.dispose();
     _cover = picture;
+    if (_held != null) _heldLeft = true;
     final lease = _lease;
     if (lease == null || lease.isReleased) {
       _seek = position;
     } else {
-      lease.seekTo(position);
+      lease
+        ..seekTo(position)
+        ..hideQueued();
     }
   }
 
-  // Whether the cover still shows: it goes once the seek's frame is drawn.
+  @override
+  void holdPicture(ui.Image? picture) {
+    final held = _held;
+    final left = _heldLeft;
+    _held = picture;
+    _heldLeft = false;
+    if (picture != null || held == null) {
+      held?.dispose();
+      return;
+    }
+    // Released: the held picture shows on until the clip's own frames are
+    // on the texture, unless a seek moved the clip away from it (its picture,
+    // if any, shows instead). A texture that was off screen may hold frames
+    // queued before the hold.
+    if (_cover != null || left) {
+      held.dispose();
+      return;
+    }
+    _cover = held;
+    _lease?.hideQueued();
+  }
+
+  // Whether the cover still shows: it goes once the seek's frame is drawn
+  // and the texture shows frames posted since.
   bool _keepsCover() {
     final cover = _cover;
     if (cover == null) return false;
     final lease = _lease;
+    final live = lease != null && !lease.isReleased;
     final waiting =
-        _seek != null ||
-        (lease != null && !lease.isReleased && lease.isSeeking);
+        _seek != null || (live && (lease.isSeeking || lease.isPriming));
     if (waiting) return true;
     cover.dispose();
     _cover = null;
     return false;
   }
 
+  // The picture drawn in place of the clip's frames: the hold's, else a
+  // seek's or a released hold's until the clip's frame is drawn.
+  ui.Image? _picture() => _held ?? (_keepsCover() ? _cover : null);
+
   @override
   Size get pictureSize => Size(_clip.width.toDouble(), _clip.height.toDouble());
 
   @override
-  AtlasSprite? get sprite => _keepsCover() ? null : _lease?.sprite;
+  AtlasSprite? get sprite => _picture() != null ? null : _lease?.sprite;
 
   @override
-  AssetTexture? get texture => _keepsCover() ? null : _lease?.texture;
+  AssetTexture? get texture => _picture() != null ? null : _lease?.texture;
 
   /// The first-frame still this paintable draws while it has no frame.
   @override
@@ -230,7 +274,7 @@ final class VideoAnimationPaintable extends AssetPaintable {
     if (_advancedAt != context.time && context.animate && !_failed) {
       _ask(context, onCanvas: true);
     }
-    if (_cover case final cover? when _keepsCover()) {
+    if (_picture() case final cover?) {
       final placed = context.fit.place(
         Size(cover.width.toDouble(), cover.height.toDouble()),
         rect,
@@ -282,7 +326,9 @@ final class VideoAnimationPaintable extends AssetPaintable {
       lease.kept = _keep;
       if (_seek case final seek?) {
         _seek = null;
-        lease.seekTo(seek);
+        lease
+          ..seekTo(seek)
+          ..hideQueued();
       }
     }
     _scheduler.want(
@@ -323,6 +369,8 @@ final class VideoAnimationPaintable extends AssetPaintable {
     _disposed = true;
     _cover?.dispose();
     _cover = null;
+    _held?.dispose();
+    _held = null;
     _lease?.release();
     _lease = null;
     // A frame kept for a return that will not come.

@@ -77,16 +77,27 @@ void main() {
       expect(harness.state(tester).backgroundOpacity, 1);
     });
 
-    testWidgets('a click on the background closes; on the picture not', (
+    testWidgets('a click on the background closes', (tester) async {
+      await open(tester);
+
+      await tester.tapAt(_background);
+      await _settle(tester);
+      expect(harness.closed, 1);
+    });
+
+    testWidgets('a click on the picture closes too, but not a drag', (
       tester,
     ) async {
       await open(tester);
 
-      await tester.tapAt(_picture);
+      final drag = await tester.startGesture(_picture);
+      await drag.moveBy(const Offset(15, 0));
+      await tester.pump();
+      await drag.up();
       await _settle(tester);
       expect(harness.closed, 0);
 
-      await tester.tapAt(_background);
+      await tester.tapAt(_picture);
       await _settle(tester);
       expect(harness.closed, 1);
     });

@@ -42,7 +42,7 @@ void main() {
       expect(binding.transfer, const AssetTransfer.receiving(1000, 4000));
     });
 
-    test('a finished transfer is all of it until the content decodes', () {
+    test('a finished transfer is no download while the content decodes', () {
       final item = sticker(1);
       final harness = PipelineHarness(
         known: [item],
@@ -58,7 +58,8 @@ void main() {
           ..complete();
         await harness.settle();
 
-        expect(binding.transfer, const AssetTransfer.receiving(400, 400));
+        // Every byte is in: the content is local, no cancel or "x / x".
+        expect(binding.transfer, AssetTransfer.none);
 
         harness.decoder.decodes.single.complete();
         await harness.settle();

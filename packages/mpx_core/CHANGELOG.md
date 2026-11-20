@@ -83,7 +83,8 @@
   `forPlatform`, `copyWith`) and `MediaLoadingStyleScope`, resolved from the
   theme's platform, with a host override and `MediaStatusBuilder`.
   `MediaStageStyle` sets how `ContentView` rises through the stages;
-  `ContentView.loadingStyle` overrides it. `ClearPlaceholder` is the
+  `ContentView.loadingStyle` overrides it. Content fades in at its size on
+  every platform (`contentScaleIn` 0); a host may set a scale-in. `ClearPlaceholder` is the
   scope's default placeholder; an untinted `RectPlaceholder` paints
   nothing.
 - Status control: `MediaStatusControl`, the round control over media
@@ -98,7 +99,9 @@
   plays), "GIF", or the size while it downloads ("1.2 / 4.5 MB", "NN%" when
   narrow) or waits for the user; `MediaBadge.binding` reads a binding.
   `MediaSizeFormat`, `MediaBadgeStrings` and `MediaBadgeStyle` per
-  platform. It sits inside the picture a contain fit letterboxes.
+  platform. It and the compact status control sit inside the picture as
+  the view's fit shows it: the picture a contain fit letterboxes, the box a
+  cover fit fills.
 - `ContentStatusOverlay` lays a binding's status control and badge over any
   child. `ContentView` uses it through `status` (`MediaStatusMode`: `none`,
   `arc(radius)`, `control(playAction:)`, `compact`), `badge`, `onPlay` and

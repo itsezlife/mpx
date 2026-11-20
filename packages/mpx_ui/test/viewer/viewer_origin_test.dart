@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -10,6 +13,16 @@ import 'package:mpx_ui/testing.dart';
 import 'viewer_harness.dart';
 
 const _policy = ViewerPolicy.$Android;
+const _blue = Color(0xFF0000FF);
+
+// The colours of [rgba] pixels, as ARGB.
+List<int> _pixelsOf(ByteData rgba) {
+  final bytes = rgba.buffer.asUint8List();
+  return [
+    for (var i = 0; i < bytes.length; i += 4)
+      bytes[i + 3] << 24 | bytes[i] << 16 | bytes[i + 1] << 8 | bytes[i + 2],
+  ];
+}
 
 void main() {
   late FakeAssetProducer producer;
@@ -327,8 +340,8 @@ void main() {
     frame.dispose();
   });
 
-  testWidgets('the frame of a thumbnail whose content has nothing to show '
-      'is clear: a page it stands in for shows no box', (tester) async {
+  testWidgets('a thumbnail whose content has nothing to show gives no '
+      'frame: a page it stands in for shows no box', (tester) async {
     await pumpHost(
       tester,
       Align(
@@ -351,14 +364,7 @@ void main() {
       tester.element(find.byType(ViewerOrigin)),
     ).bridgeFor(source);
 
-    final frame = bridge.frameOf(0)!;
-    addTearDown(frame.dispose);
-    final pixels = await tester.runAsync(frame.toByteData);
-
-    final bytes = pixels!.buffer.asUint8List();
-    expect([
-      for (var i = 3; i < bytes.length; i += 4) bytes[i],
-    ], everyElement(0));
+    expect(bridge.frameOf(0), isNull);
   });
 
   testWidgets('the frame of a thumbnail is its picture alone: the status '
@@ -404,6 +410,14 @@ void main() {
     // The chrome shows on the thumbnail.
     expect(find.text('0:13'), findsOneWidget);
     expect(find.byType(MediaStatusControl), findsOneWidget);
+    producer.last.advance(
+      AssetStage.full,
+      pictureSize: const Size(1200, 900),
+      fill: _blue,
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('0:13'), findsOneWidget);
 
     final bridge = ViewerOriginScope.of(
       tester.element(find.byType(ViewerOrigin)),
@@ -413,14 +427,11 @@ void main() {
     final pixels = await tester.runAsync(frame.toByteData);
 
     expect((frame.width, frame.height), (120, 90));
-    final bytes = pixels!.buffer.asUint8List();
-    expect([
-      for (var i = 3; i < bytes.length; i += 4) bytes[i],
-    ], everyElement(0));
+    expect(_pixelsOf(pixels!), everyElement(_blue.toARGB32()));
   });
 
-  testWidgets('a picture inset in its thumbnail keeps its place in a frame '
-      "of the thumbnail's size", (tester) async {
+  testWidgets('the frame of a picture inset in its thumbnail is the picture, '
+      'not the box around it', (tester) async {
     await pumpHost(
       tester,
       Align(
@@ -446,6 +457,13 @@ void main() {
         ),
       ),
     );
+    producer.last.advance(
+      AssetStage.full,
+      pictureSize: const Size(1200, 900),
+      fill: _blue,
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     final bridge = ViewerOriginScope.of(
       tester.element(find.byType(ViewerOrigin)),
     ).bridgeFor(source);
@@ -454,12 +472,434 @@ void main() {
     addTearDown(frame.dispose);
     final pixels = await tester.runAsync(frame.toByteData);
 
-    expect((frame.width, frame.height), (120, 90));
-    final bytes = pixels!.buffer.asUint8List();
-    // The host's box around the picture is not the picture.
-    expect([
-      for (var i = 3; i < bytes.length; i += 4) bytes[i],
-    ], everyElement(0));
+    // The 4:3 picture covering its 100 x 70 view; the host's red box around
+    // it is not the picture.
+    expect((frame.width, frame.height), (100, 75));
+    expect(_pixelsOf(pixels!), everyElement(_blue.toARGB32()));
+  });
+
+  testWidgets('a video tile whose content arrived while the viewer held it '
+      'shows that content on landing, never its stand-in again', (
+    tester,
+  ) async {
+    const sky = Color(0xFF80C0FF);
+    const hole = Color(0xFF306020);
+    final videos = FakeGallerySource([
+      GalleryItem(
+        videoKey(0),
+        kind: GalleryMediaKind.video,
+        size: const Size(1600, 900),
+        hasAudio: true,
+      ),
+    ]);
+    addTearDown(videos.dispose);
+    final pool = PlayerPool(
+      backend: FakePlayerBackend(duration: const Duration(seconds: 20)),
+    );
+    addTearDown(pool.dispose);
+    final tile = GlobalKey();
+    await pumpHost(
+      tester,
+      Align(
+        alignment: Alignment.topLeft,
+        child: Builder(
+          builder: (context) => GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => MediaViewer.show(
+              context,
+              source: videos,
+              initialIndex: 0,
+              policy: _policy,
+              scope: scope,
+              players: pool,
+            ),
+            child: ViewerOrigin(
+              index: 0,
+              child: RepaintBoundary(
+                key: tile,
+                child: ContentView(
+                  content: videoKey(0),
+                  scope: scope,
+                  preset: AssetPresets.animation(
+                    size: const Size(160, 90),
+                    profile: const AssetProfile(animate: true),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    // Not downloaded: the tile shows the thumbnail.
+    final attempt = producer.last
+      ..advance(
+        AssetStage.placeholder,
+        pictureSize: const Size(1600, 900),
+        fill: sky,
+      );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    await tester.tap(find.byType(ViewerOrigin));
+    await tester.pump();
+    await tester.pump();
+    await settleOpen(tester);
+    // The content arrives while the viewer plays the item.
+    attempt.advance(
+      AssetStage.full,
+      animated: true,
+      pictureSize: const Size(1600, 900),
+      frames: List.filled(20, const Duration(seconds: 1)),
+      fill: hole,
+    );
+    await tester.pump();
+
+    viewer(tester).close().ignore();
+    await tester.pump();
+    await tester.pump(_policy.closeDuration);
+    Future<int> centre() async {
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(tile),
+      );
+      final bytes = await tester.runAsync(() async {
+        final image = await boundary.toImage();
+        final data = await image.toByteData();
+        image.dispose();
+        return data!;
+      });
+      return _pixelsOf(bytes!)[(45 * 160) + 80];
+    }
+
+    // Every frame after landing shows the content, none the thumbnail.
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(await centre(), hole.toARGB32(), reason: 'frame $i');
+    }
+  });
+
+  group('a feed list item', () {
+    // A list as the stress feed builds it: 220 px slots, the clip in 10 px
+    // of padding, full width.
+    Future<void> pumpFeed(WidgetTester tester) => pumpHost(
+      tester,
+      FeedListView(
+        itemCount: 6,
+        itemExtent: 220,
+        scope: scope,
+        itemOf: (index) => FeedItem(photoKey(index)),
+        presetOf: (index, profile) => AssetPresets.animation(
+          size: const Size(360, 200),
+          profile: profile,
+        ),
+        status: const MediaStatusMode.control(),
+        badge: true,
+        cellBuilder: (context, index, clip) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Center(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => MediaViewer.show(
+                context,
+                source: source,
+                initialIndex: index,
+                policy: _policy,
+                scope: scope,
+              ),
+              child: ViewerOrigin(index: index, child: clip),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    Rect itemRect(WidgetTester tester, int index) => tester.getRect(
+      find.byWidgetPredicate(
+        (widget) => widget is ViewerOrigin && widget.index == index,
+      ),
+    );
+
+    testWidgets('opens from its picture rect and closes onto it, with nothing '
+        'painted in its slot meanwhile', (tester) async {
+      await pumpFeed(tester);
+      final item = itemRect(tester, 1);
+      expect(item, const Rect.fromLTWH(0, 230, 400, 200));
+
+      await openedFrom(tester, 1);
+      // The morph starts on the item's picture (the 4:3 picture covers it).
+      expectRect(morphRect(tester), item);
+      expect(originOpacity(tester, 1).opacity, 0);
+
+      await settleOpen(tester);
+      await nearlyClosed(tester);
+      expectRect(morphRect(tester), item);
+    });
+    for (final failsInList in [false, true]) {
+      testWidgets(
+        'of a video the viewer plays opens from its picture rect '
+        'and closes onto it${failsInList ? ', its list decode failed' : ''}',
+        (tester) async {
+          final videos = FakeGallerySource([
+            for (var i = 0; i < 6; i++)
+              GalleryItem(
+                videoKey(i),
+                kind: GalleryMediaKind.video,
+                size: const Size(1920, 1080),
+                hasAudio: true,
+              ),
+          ]);
+          addTearDown(videos.dispose);
+          final pool = PlayerPool(
+            backend: FakePlayerBackend(duration: const Duration(seconds: 20)),
+          );
+          addTearDown(pool.dispose);
+          await pumpHost(
+            tester,
+            FeedListView(
+              itemCount: 6,
+              itemExtent: 220,
+              scope: scope,
+              itemOf: (index) => FeedItem(videoKey(index), hasAudio: true),
+              presetOf: (index, profile) => AssetPresets.animation(
+                size: const Size(360, 200),
+                profile: profile,
+              ),
+              status: const MediaStatusMode.control(),
+              badge: true,
+              cellBuilder: (context, index, clip) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Center(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => MediaViewer.show(
+                      context,
+                      source: videos,
+                      initialIndex: index,
+                      policy: _policy,
+                      scope: scope,
+                      players: pool,
+                    ),
+                    child: ViewerOrigin(index: index, child: clip),
+                  ),
+                ),
+              ),
+            ),
+          );
+          for (final attempt in producer.attempts) {
+            attempt.advance(
+              AssetStage.placeholder,
+              pictureSize: const Size(1920, 1080),
+              fill: const Color(0xFF80C0FF),
+            );
+            // A list cannot decode it (AV1 on the software path): it stays on
+            // its stand-in.
+            if (failsInList) {
+              attempt.fail(
+                UnsupportedError('av1'),
+                kind: AssetFailureKind.permanent,
+              );
+            }
+          }
+          await tester.pump();
+          await tester.pump(const Duration(seconds: 1));
+          final item = itemRect(tester, 1);
+
+          await openedFrom(tester, 1);
+          final first = morphRect(tester);
+          // The 16:9 picture covering the 400 x 200 item.
+          expect(first.width, closeTo(400, 2), reason: '$first vs $item');
+          expect(first.center.dx, closeTo(item.center.dx, 2));
+          expect(first.center.dy, closeTo(item.center.dy, 2));
+          expect(originOpacity(tester, 1).opacity, 0);
+
+          await settleOpen(tester);
+          await nearlyClosed(tester);
+          final last = morphRect(tester);
+          expect(last.width, closeTo(400, 2), reason: '$last vs $item');
+          expect(last.center.dy, closeTo(item.center.dy, 2));
+        },
+      );
+    }
+  });
+
+  group('a rounded tile that shows its picture whole', () {
+    // [shows] is what the tile's view draws: the item's own content, or
+    // other content, so the page's own has nothing yet and the frame alone
+    // stands in.
+    Widget tile({MediaKey? shows}) => Builder(
+      builder: (context) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => MediaViewer.show(
+          context,
+          source: source,
+          initialIndex: 0,
+          policy: _policy,
+          scope: scope,
+        ),
+        child: ViewerOrigin(
+          index: 0,
+          borderRadius: const BorderRadius.all(Radius.circular(12)),
+          fit: BoxFit.contain,
+          child: ContentView(
+            content: shows ?? photoKey(0),
+            scope: scope,
+            preset: AssetPresets.square(
+              extent: 160,
+              devicePixelRatio: 1,
+              profile: const AssetProfile(cornerRadius: 12),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    ContentView page(WidgetTester tester) => tester.widget<ContentView>(
+      find.descendant(
+        of: find.byType(ViewerPhotoPage),
+        matching: find.byType(ContentView),
+      ),
+    );
+
+    testWidgets("showing a preview opens on the page's own stand-ins, no "
+        'second picture over them', (tester) async {
+      await pumpHost(
+        tester,
+        Align(alignment: Alignment.topLeft, child: tile()),
+      );
+      producer.last.advance(
+        AssetStage.preview,
+        pictureSize: const Size(40, 30),
+        fill: _blue,
+      );
+      await tester.pump();
+      await openedFrom(tester, 0);
+      await settleOpen(tester);
+      await tester.pump();
+
+      expect(page(tester).placeholder, isA<ClearPlaceholder>());
+    });
+
+    testWidgets('showing its content opens on that picture lying exactly on '
+        'the media, square-cornered', (tester) async {
+      await pumpHost(
+        tester,
+        Align(
+          alignment: Alignment.topLeft,
+          child: tile(shows: photoKey(19)),
+        ),
+      );
+      producer.last.advance(
+        AssetStage.full,
+        pictureSize: const Size(1200, 900),
+        fill: _blue,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await openedFrom(tester, 0);
+      await settleOpen(tester);
+      await tester.pump();
+
+      // The page's own content is not there yet: the frame alone stands in.
+      expect(page(tester).placeholder, isNot(isA<ClearPlaceholder>()));
+      final still = tester.renderObject<RenderRepaintBoundary>(
+        find
+            .descendant(
+              of: find.byType(ViewerPhotoPage),
+              matching: find.byType(RepaintBoundary),
+            )
+            .first,
+      );
+      expect(still.size, fittedRect.size);
+      final pixels = await tester.runAsync(() async {
+        final image = await still.toImage();
+        final bytes = await image.toByteData();
+        image.dispose();
+        return bytes!;
+      });
+      // Every pixel of the media's rectangle, its corners included, is the
+      // picture.
+      expect(_pixelsOf(pixels!), everyElement(_blue.toARGB32()));
+    });
+  });
+
+  testWidgets("the frame of a rounded tile a player draws is the player's "
+      'frame alone, at its own proportion', (tester) async {
+    await pumpHost(
+      tester,
+      Align(
+        alignment: Alignment.topLeft,
+        child: ViewerOrigin(
+          index: 0,
+          borderRadius: const BorderRadius.all(Radius.circular(12)),
+          fit: BoxFit.contain,
+          child: SizedBox.square(
+            dimension: 160,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              // A player's picture over its view, letterboxed 16:9.
+              child: const ContentPicture(
+                child: Center(
+                  child: SizedBox(
+                    width: 160,
+                    height: 90,
+                    child: Texture(textureId: 5),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final bridge = ViewerOriginScope.of(
+      tester.element(find.byType(ViewerOrigin)),
+    ).bridgeFor(source);
+
+    final frame = bridge.frameOf(0)!;
+    addTearDown(frame.dispose);
+    // The texture's own 160 x 90, not the tile's rounded square.
+    expect((frame.width, frame.height), (160, 90));
+  });
+
+  testWidgets('the frame of a rounded thumbnail that shows its picture whole '
+      'is the picture, square-cornered, at its own proportion', (tester) async {
+    await pumpHost(
+      tester,
+      Align(
+        alignment: Alignment.topLeft,
+        child: ViewerOrigin(
+          index: 0,
+          borderRadius: const BorderRadius.all(Radius.circular(12)),
+          fit: BoxFit.contain,
+          child: ContentView(
+            content: photoKey(0),
+            scope: scope,
+            preset: AssetPresets.square(
+              extent: 160,
+              devicePixelRatio: 1,
+              profile: const AssetProfile(cornerRadius: 12),
+            ),
+          ),
+        ),
+      ),
+    );
+    producer.last.advance(
+      AssetStage.full,
+      pictureSize: const Size(1200, 900),
+      fill: _blue,
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    final bridge = ViewerOriginScope.of(
+      tester.element(find.byType(ViewerOrigin)),
+    ).bridgeFor(source);
+
+    final frame = bridge.frameOf(0)!;
+    addTearDown(frame.dispose);
+    final pixels = await tester.runAsync(frame.toByteData);
+    // Covering the 160 square: 213 x 160, every corner drawn.
+    expect((frame.width, frame.height), (213, 160));
+    expect(_pixelsOf(pixels!), everyElement(_blue.toARGB32()));
   });
 
   // A tile of the home grid's kind (a view with its controls) and a feed

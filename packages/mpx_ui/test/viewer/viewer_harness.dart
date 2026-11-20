@@ -25,6 +25,7 @@ final class ViewerHarness {
     List<GalleryItem>? items,
     Duration? videoDuration,
     bool autoFirstFrame = true,
+    bool autoPrepare = true,
     Duration? originPosition,
     Set<int>? loaded,
   }) {
@@ -51,6 +52,7 @@ final class ViewerHarness {
       backend = FakePlayerBackend(
         duration: videoDuration,
         autoFirstFrame: autoFirstFrame,
+        autoPrepare: autoPrepare,
       );
       players = PlayerPool(backend: backend!);
     }
@@ -178,6 +180,19 @@ final class ViewerHarness {
 
   ViewerPhotoPageState page(WidgetTester tester) =>
       tester.state<ViewerPhotoPageState>(find.byType(ViewerPhotoPage));
+
+  /// The page of the item at [index], shown or kept offstage.
+  ViewerPhotoPageState pageAt(WidgetTester tester, int index) => tester
+      .stateList<ViewerPhotoPageState>(
+        find.byType(ViewerPhotoPage, skipOffstage: false),
+      )
+      .firstWhere(
+        (page) =>
+            page.context
+                .findAncestorWidgetOfExactType<GalleryPageScope>()
+                ?.index ==
+            index,
+      );
 
   PlayerLease lease(WidgetTester tester) => state(tester).videoLease!;
 
