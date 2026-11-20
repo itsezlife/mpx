@@ -255,6 +255,31 @@ void main() {
     });
   });
 
+  testWidgets("the host's bottom bar sits at the bottom, the viewer's "
+      'controls above it, and the keyboard lifts both', (tester) async {
+    final h = PickerHarness();
+    await h.pump(tester, viewerSlot: true);
+    await _open(tester, 2);
+    final slot = find.byKey(const ValueKey('slot'));
+    expect(tester.getRect(slot).bottom, 800);
+    double viewerBottom() =>
+        MediaQuery.paddingOf(tester.element(find.byType(MediaViewer))).bottom;
+    expect(viewerBottom(), 60);
+  });
+
+  testWidgets('the keyboard lifts the bottom bar and the controls above it', (
+    tester,
+  ) async {
+    final h = PickerHarness();
+    await h.pump(tester, viewerSlot: true, keyboard: 300);
+    await _open(tester, 2);
+    final slot = find.byKey(const ValueKey('slot'));
+    double viewerBottom() =>
+        MediaQuery.paddingOf(tester.element(find.byType(MediaViewer))).bottom;
+    expect(tester.getRect(slot).bottom, 500);
+    expect(viewerBottom(), 360);
+  });
+
   testWidgets('the check goes through the gate', (tester) async {
     final h = PickerHarness();
     final gated = OrderedPickerSelection(

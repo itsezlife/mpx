@@ -76,6 +76,7 @@ final class PickerHarness {
     PickerSelection? picker,
     bool viewerSlot = false,
     bool reorder = false,
+    double keyboard = 0,
     ScrollController? controller,
     LibraryGridLookup? lookup,
     Widget Function(BuildContext context, Widget grid)? gridBuilder,
@@ -93,7 +94,10 @@ final class PickerHarness {
       Directionality(
         textDirection: TextDirection.ltr,
         child: MediaQuery(
-          data: const MediaQueryData(size: Size(390, 800)),
+          data: MediaQueryData(
+            size: const Size(390, 800),
+            viewInsets: EdgeInsets.only(bottom: keyboard),
+          ),
           child: AssetCacheProvider(
             scope: scope,
             // A host that gives no text root: every surface sets its own.

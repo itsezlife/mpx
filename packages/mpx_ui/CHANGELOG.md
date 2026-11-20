@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Picker-mode viewer: the check and the count as a numbered circle and an
+  outlined pill on one line; the selected strip shows an item on a tap,
+  deselects on its check, reorders on a long press drag (`onReorder` on
+  `LibraryPicker` and `PickerViewer.show`) and outlines the item shown; the
+  host's bottom bar sits at the bottom, lifted by the keyboard, with the
+  viewer's video controls above it.
 - Every route, overlay and popup the picker and the viewer push, and the
   grid, the picker and the selected-items preview themselves, draw their
   text from the host's text style or the theme, never the fallback

@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -155,6 +158,9 @@ abstract final class PickerViewer {
     final index = ValueNotifier(initialIndex);
     final controller = ViewerController();
     final text = MpxTextRoot.styleOf(context);
+    // The height of the host's bottom bar: the viewer's own bottom controls
+    // (a video's seek bar) stand above it.
+    final bar = ValueNotifier<double>(0);
     return Navigator.of(context)
         .push<void>(
           PageRouteBuilder<void>(
@@ -166,20 +172,23 @@ abstract final class PickerViewer {
               Stack(
                 fit: StackFit.expand,
                 children: [
-                  MediaViewer(
-                    source: source,
-                    initialIndex: initialIndex,
-                    bridge: origins,
-                    policy: rules,
-                    tokens: viewerTokens,
-                    scope: scope,
-                    players: players,
-                    controller: controller,
-                    onIndexChanged: (value) {
-                      index.value = value;
-                      onIndexChanged?.call(value);
-                    },
-                    onClosed: () => Navigator.of(routeContext).pop(),
+                  _AboveBar(
+                    bar: bar,
+                    child: MediaViewer(
+                      source: source,
+                      initialIndex: initialIndex,
+                      bridge: origins,
+                      policy: rules,
+                      tokens: viewerTokens,
+                      scope: scope,
+                      players: players,
+                      controller: controller,
+                      onIndexChanged: (value) {
+                        index.value = value;
+                        onIndexChanged?.call(value);
+                      },
+                      onClosed: () => Navigator.of(routeContext).pop(),
+                    ),
                   ),
                   PickerViewerChrome(
                     source: source,
@@ -192,6 +201,7 @@ abstract final class PickerViewer {
                     onRefused: onRefused,
                     onShow: controller.jumpTo,
                     onReorder: onReorder,
+                    onBottomHeight: (height) => bar.value = height,
                     viewer: controller,
                   ),
                 ],
@@ -199,7 +209,10 @@ abstract final class PickerViewer {
             ),
           ),
         )
-        .whenComplete(index.dispose);
+        .whenComplete(() {
+          index.dispose();
+          bar.dispose();
+        });
   }
 }
 
@@ -220,6 +233,7 @@ class PickerViewerChrome extends StatefulWidget {
     this.onShow,
     this.onReorder,
     this.viewer,
+    this.onBottomHeight,
     super.key,
   });
 
@@ -254,6 +268,11 @@ class PickerViewerChrome extends StatefulWidget {
   /// A strip item lifted by a long press was dragged to the place [to]
   /// (0-based) of the selection; the strip does not reorder when null.
   final void Function(MediaKey key, int to)? onReorder;
+
+  /// Told the height the host's bottom bar takes from the bottom of the
+  /// screen (the bar, the keyboard under it and the safe area), so the
+  /// viewer's own bottom controls stand above it.
+  final ValueChanged<double>? onBottomHeight;
 
   /// The viewer under the chrome: the chrome shows while its controls do,
   /// so it fades out as a dismiss drag starts and with a tap that hides
@@ -449,12 +468,21 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
               ),
             ),
           ),
+        // The host's bottom bar (a caption field and a send button): at the
+        // bottom of the safe area, lifted by the keyboard.
         if (widget.bottomBuilder case final builder?)
           PositionedDirectional(
             start: 0,
             end: 0,
-            bottom: 0,
-            child: builder(context, item),
+            bottom: MediaQuery.viewInsetsOf(context).bottom,
+            child: _SizeReport(
+              onHeight: (height) => widget.onBottomHeight?.call(
+                height +
+                    MediaQuery.viewInsetsOf(context).bottom +
+                    MediaQuery.paddingOf(context).bottom,
+              ),
+              child: builder(context, item),
+            ),
           ),
       ],
     ),
@@ -861,4 +889,74 @@ class _Cross extends CustomPainter {
 
   @override
   bool shouldRepaint(_Cross oldDelegate) => oldDelegate.colour != colour;
+}
+
+/// [child] with the bottom padding raised by the host's bottom bar, so
+/// whatever it lays at its bottom (a video's controls) stands above the bar.
+class _AboveBar extends StatelessWidget {
+  const _AboveBar({required this.bar, required this.child});
+
+  final ValueListenable<double> bar;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<double>(
+    valueListenable: bar,
+    builder: (context, height, child) {
+      // Always a MediaQuery, so the viewer under it is never remounted as
+      // the bar's height arrives.
+      final query = MediaQuery.of(context);
+      return MediaQuery(
+        data: query.copyWith(
+          padding: query.padding.copyWith(
+            bottom: math.max(query.padding.bottom, height),
+          ),
+        ),
+        child: child!,
+      );
+    },
+    child: child,
+  );
+}
+
+/// Tells [onHeight] its child's height after each layout that changes it.
+class _SizeReport extends SingleChildRenderObjectWidget {
+  const _SizeReport({required this.onHeight, super.child});
+
+  final ValueChanged<double> onHeight;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderSizeReport(onHeight);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderSizeReport renderObject,
+  ) {
+    renderObject
+      ..onHeight = onHeight
+      ..report();
+  }
+}
+
+class _RenderSizeReport extends RenderProxyBox {
+  _RenderSizeReport(this.onHeight);
+
+  ValueChanged<double> onHeight;
+  @override
+  void performLayout() {
+    super.performLayout();
+    report();
+  }
+
+  // After the frame: the listener rebuilds the viewer.
+  void report() {
+    if (!hasSize) return;
+    final height = size.height;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!attached) return;
+      onHeight(height);
+    });
+  }
 }
