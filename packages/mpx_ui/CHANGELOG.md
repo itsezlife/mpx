@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Order numbers step down to fit three or more digits. The grid's marks
+  follow each platform (a play mark before a video's duration, a live
+  photo's corner mark, HD on a checked photo with `highQuality`, GIF on
+  iOS) as `LibraryAssetMarks`, which the selected-items preview reuses
+  (`assetOf`). The preview animates removals and scrolls under a lifted
+  item near an edge. The album switcher's arrow is the platform's.
 - `ViewerVideoRules.autoHides`: whether a video's controls hide by
   themselves. The picker-mode viewer's chrome never does: it fades in with
   the open, out with the close and on a tap, and stands on top and bottom

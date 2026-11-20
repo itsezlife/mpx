@@ -535,4 +535,37 @@ void main() {
       );
     });
   });
+
+  group('album switcher arrow', () {
+    testWidgets(r'$Android: a filled triangle in a 24 box right after the '
+        'title', (tester) async {
+      final h = PickerHarness();
+      await h.pump(tester);
+      final switcher = find.byKey(const ValueKey('mpx-album-switcher'));
+      final arrow = find.byKey(const ValueKey('mpx-album-arrow'));
+      final title = find.descendant(of: switcher, matching: find.byType(Text));
+      expect(tester.getSize(arrow), const Size.square(24));
+      expect(tester.getTopLeft(arrow).dx, tester.getTopRight(title).dx);
+      expect(
+        tester.getCenter(arrow).dy,
+        closeTo(tester.getCenter(title).dy, 1),
+      );
+      expectThemedText(tester);
+    });
+
+    testWidgets(r'$IOS: a chevron 5 after the title, at 40% of its colour', (
+      tester,
+    ) async {
+      final h = PickerHarness();
+      await h.pump(tester, policy: LibraryGridPolicy.$IOS);
+      final switcher = find.byKey(const ValueKey('mpx-album-switcher'));
+      final arrow = find.byKey(const ValueKey('mpx-album-arrow'));
+      final title = find.descendant(of: switcher, matching: find.byType(Text));
+      expect(tester.getTopLeft(arrow).dx - tester.getTopRight(title).dx, 5);
+      final opacity = tester.widget<Opacity>(
+        find.ancestor(of: arrow, matching: find.byType(Opacity)).first,
+      );
+      expect(opacity.opacity, 0.4);
+    });
+  });
 }

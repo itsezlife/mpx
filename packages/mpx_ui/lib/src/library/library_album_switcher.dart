@@ -68,11 +68,31 @@ class LibraryAlbumSwitcher extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            const SizedBox(width: 4),
-            CustomPaint(
-              size: const Size(12, 8),
-              painter: _Chevron(tokens.title.color ?? const Color(0xFFFFFFFF)),
-            ),
+            // `$Android`: the drop-down triangle, a 10 x 5 filled arrow in a
+            // 24 box, right after the title. `$IOS`: a chevron 5 after it,
+            // at 40% of the title's colour.
+            if (_ios)
+              Padding(
+                padding: const EdgeInsetsDirectional.only(start: 5),
+                child: Opacity(
+                  opacity: 0.4,
+                  child: CustomPaint(
+                    key: const ValueKey('mpx-album-arrow'),
+                    size: const Size(10, 6),
+                    painter: _Chevron(
+                      tokens.title.color ?? const Color(0xFFFFFFFF),
+                    ),
+                  ),
+                ),
+              )
+            else
+              CustomPaint(
+                key: const ValueKey('mpx-album-arrow'),
+                size: const Size.square(24),
+                painter: _DropTriangle(
+                  tokens.title.color ?? const Color(0xFFFFFFFF),
+                ),
+              ),
           ],
         ),
       ),
@@ -236,6 +256,29 @@ class _AlbumMenu extends StatelessWidget {
   }
 }
 
+class _DropTriangle extends CustomPainter {
+  const _DropTriangle(this.color);
+
+  final Color color;
+
+  // A 10 x 5 triangle pointing down, centred in its box.
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    canvas.drawPath(
+      Path()
+        ..moveTo(c.dx - 5, c.dy - 2.5)
+        ..lineTo(c.dx + 5, c.dy - 2.5)
+        ..lineTo(c.dx, c.dy + 2.5)
+        ..close(),
+      Paint()..color = color,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_DropTriangle old) => old.color != color;
+}
+
 class _Chevron extends CustomPainter {
   const _Chevron(this.color);
 
@@ -250,7 +293,9 @@ class _Chevron extends CustomPainter {
     Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2,
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round,
   );
 
   @override
