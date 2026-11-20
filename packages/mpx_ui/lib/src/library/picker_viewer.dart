@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -177,6 +179,7 @@ abstract final class PickerViewer {
                   bottomBuilder: bottomBuilder,
                   onRefused: onRefused,
                   onShow: controller.jumpTo,
+                  viewer: controller,
                 ),
               ],
             ),
@@ -201,6 +204,7 @@ class PickerViewerChrome extends StatefulWidget {
     this.bottomBuilder,
     this.onRefused,
     this.onShow,
+    this.viewer,
     super.key,
   });
 
@@ -232,12 +236,63 @@ class PickerViewerChrome extends StatefulWidget {
   /// Moves the viewer to an index (a tap in the strip).
   final ValueChanged<int>? onShow;
 
+  /// The viewer under the chrome: the chrome shows while its controls do,
+  /// so it fades out as a dismiss drag starts and with a tap that hides
+  /// them. Always shown when null.
+  final ViewerController? viewer;
+
+  /// How long the chrome takes to fade in or out.
+  static const Duration fadeDuration = Duration(milliseconds: 200);
+
   @override
   State<PickerViewerChrome> createState() => _PickerViewerChromeState();
 }
 
-class _PickerViewerChromeState extends State<PickerViewerChrome> {
+class _PickerViewerChromeState extends State<PickerViewerChrome>
+    with SingleTickerProviderStateMixin {
   bool _strip = false;
+  late final AnimationController _fade = AnimationController(
+    vsync: this,
+    duration: PickerViewerChrome.fadeDuration,
+    value: _shown ? 1 : 0,
+  );
+
+  bool get _shown {
+    final viewer = widget.viewer;
+    return viewer == null || !viewer.isAttached || viewer.controlsVisible;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.viewer?.addListener(_onViewer);
+  }
+
+  @override
+  void didUpdateWidget(PickerViewerChrome oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.viewer, widget.viewer)) {
+      oldWidget.viewer?.removeListener(_onViewer);
+      widget.viewer?.addListener(_onViewer);
+      _onViewer();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.viewer?.removeListener(_onViewer);
+    _fade.dispose();
+    super.dispose();
+  }
+
+  void _onViewer() {
+    if (_shown) {
+      unawaited(_fade.forward());
+    } else {
+      unawaited(_fade.reverse());
+    }
+  }
+
   // Where selected keys were seen, so the strip can show them again.
   final Map<MediaKey, int> _indexOf = {};
 
@@ -262,82 +317,101 @@ class _PickerViewerChromeState extends State<PickerViewerChrome> {
       );
       final policy = widget.policy;
       final tokens = widget.tokens;
-      return SafeArea(
-        child: Stack(
-          children: [
-            PositionedDirectional(
-              top: 8,
-              end: 8,
-              child: Semantics(
-                key: const ValueKey('mpx-picker-viewer-check'),
-                button: true,
-                checked: order != null,
-                label: widget.labels.select,
-                value: order?.toString(),
-                onTap: () => _toggle(key),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _toggle(key),
-                  child: SizedBox.square(
-                    dimension: policy.viewerCheckSize + 12,
-                    child: Center(
-                      child: _ViewerCheck(
-                        size: policy.viewerCheckSize,
-                        order: order,
-                        tokens: tokens,
-                      ),
-                    ),
+      // Faded out, the chrome takes no touches: they reach the viewer.
+      return ValueListenableBuilder<double>(
+        valueListenable: _fade,
+        builder: (context, opacity, child) =>
+            IgnorePointer(ignoring: opacity == 0, child: child),
+        child: FadeTransition(
+          opacity: _fade,
+          child: _chrome(context, key, order, count, item, policy, tokens),
+        ),
+      );
+    },
+  );
+
+  Widget _chrome(
+    BuildContext context,
+    MediaKey? key,
+    int? order,
+    int count,
+    PickerViewerItem item,
+    LibraryGridPolicy policy,
+    LibraryGridTokens tokens,
+  ) => SafeArea(
+    child: Stack(
+      children: [
+        PositionedDirectional(
+          top: 8,
+          end: 8,
+          child: Semantics(
+            key: const ValueKey('mpx-picker-viewer-check'),
+            button: true,
+            checked: order != null,
+            label: widget.labels.select,
+            value: order?.toString(),
+            onTap: () => _toggle(key),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _toggle(key),
+              child: SizedBox.square(
+                dimension: policy.viewerCheckSize + 12,
+                child: Center(
+                  child: _ViewerCheck(
+                    size: policy.viewerCheckSize,
+                    order: order,
+                    tokens: tokens,
                   ),
                 ),
               ),
             ),
-            if (count > 0)
-              PositionedDirectional(
-                top: 14,
-                end: policy.viewerCheckSize + 28,
-                child: GestureDetector(
-                  key: const ValueKey('mpx-picker-viewer-counter'),
-                  onTap: () => setState(() => _strip = !_strip),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: tokens.checkFill,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text('$count', style: tokens.checkNumber),
-                  ),
-                ),
-              ),
-            if (_strip && count > 0)
-              PositionedDirectional(
-                top: policy.viewerCheckSize + 24,
-                start: 0,
-                end: 0,
-                height: policy.selectedStripHeight,
-                child: _SelectedStrip(
-                  keys: widget.selection.keys,
-                  height: policy.selectedStripHeight,
-                  tokens: tokens,
-                  onTap: (key) {
-                    final at = _indexOf[key];
-                    if (at != null) widget.onShow?.call(at);
-                  },
-                ),
-              ),
-            if (widget.bottomBuilder case final builder?)
-              PositionedDirectional(
-                start: 0,
-                end: 0,
-                bottom: 0,
-                child: builder(context, item),
-              ),
-          ],
+          ),
         ),
-      );
-    },
+        if (count > 0)
+          PositionedDirectional(
+            top: 14,
+            end: policy.viewerCheckSize + 28,
+            child: GestureDetector(
+              key: const ValueKey('mpx-picker-viewer-counter'),
+              onTap: () => setState(() => _strip = !_strip),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: tokens.checkFill,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text('$count', style: tokens.checkNumber),
+              ),
+            ),
+          ),
+        if (_strip && count > 0)
+          PositionedDirectional(
+            top: policy.viewerCheckSize + 24,
+            start: 0,
+            end: 0,
+            height: policy.selectedStripHeight,
+            child: _SelectedStrip(
+              keys: widget.selection.keys,
+              height: policy.selectedStripHeight,
+              tokens: tokens,
+              onTap: (key) {
+                final at = _indexOf[key];
+                if (at != null) widget.onShow?.call(at);
+              },
+            ),
+          ),
+        if (widget.bottomBuilder case final builder?)
+          PositionedDirectional(
+            start: 0,
+            end: 0,
+            bottom: 0,
+            child: builder(context, item),
+          ),
+      ],
+    ),
   );
 
   void _toggle(MediaKey? key) {

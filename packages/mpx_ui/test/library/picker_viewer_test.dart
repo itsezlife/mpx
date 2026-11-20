@@ -78,6 +78,41 @@ void main() {
     await _close(tester);
   });
 
+  testWidgets('the picker chrome fades out as a dismiss drag starts', (
+    tester,
+  ) async {
+    final h = PickerHarness();
+    await h.pump(tester, viewerSlot: true);
+    h.selection.toggle(key(0));
+    await _open(tester, 2);
+    double chromeOpacity() => tester
+        .widgetList<FadeTransition>(
+          find.ancestor(
+            of: find.byKey(const ValueKey('mpx-picker-viewer-check')),
+            matching: find.byType(FadeTransition),
+          ),
+        )
+        .map((f) => f.opacity.value)
+        .reduce((a, b) => a * b);
+    expect(chromeOpacity(), 1);
+
+    final gesture = await tester.startGesture(const Offset(195, 400));
+    await gesture.moveBy(const Offset(0, 40));
+    await tester.pump();
+    await gesture.moveBy(const Offset(0, 40));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(chromeOpacity(), 0);
+    // Faded out, it takes no taps.
+    await tester.tap(
+      find.byKey(const ValueKey('mpx-picker-viewer-check')),
+      warnIfMissed: false,
+    );
+    expect(h.selection.keys, [key(0)]);
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 400));
+  });
+
   testWidgets('the check goes through the gate', (tester) async {
     final h = PickerHarness();
     final gated = OrderedPickerSelection(
