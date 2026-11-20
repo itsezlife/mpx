@@ -56,7 +56,10 @@ fetched, and a failure left the arc on.
   a stand-in under content that may be transparent, fades out as the content
   rises.
 - A surface's own placeholder may outrank stand-in stages up to a stage it
-  names (`ContentView.placeholderUntil`).
+  names (`ContentView.placeholderUntil`). Content rises over it as over a
+  raster stand-in: the placeholder and the kept stand-in beneath it stay
+  opaque while the content fades in, so a cross-fade never lets the
+  background through.
 - Transitions are style values per platform (`MediaStageStyle`): a fade of a
   set length, a scale-in, or a hard swap (0 ms). A stage that arrives within
   the attach frame (a memory hit) is drawn without a fade.

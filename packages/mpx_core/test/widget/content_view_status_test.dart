@@ -269,6 +269,36 @@ void main() {
     expect(content.paints, isNotEmpty);
   });
 
+  testWidgets('content rising over an outranking placeholder fades in over '
+      'it and the thumbnail beneath, both opaque: no dip, no gap', (
+    tester,
+  ) async {
+    final own = FakeAssetPaintable(label: 'origin');
+    await tester.pumpWidget(
+      host(
+        ContentView(
+          content: _key,
+          preset: _preset,
+          placeholder: own,
+          placeholderUntil: AssetStage.firstFrame,
+        ),
+      ),
+    );
+    final thumbnail = producer.last.advance(AssetStage.placeholder);
+    await tester.pump();
+    await tester.pump(_gone);
+
+    final content = producer.last.advance(AssetStage.full);
+    await tester.pump();
+    // Half way through the 150 ms rise.
+    await tester.pump(const Duration(milliseconds: 75));
+    final rising = content.paints.last.context.opacity;
+    expect(rising, greaterThan(0));
+    expect(rising, lessThan(1));
+    expect(own.paints.last.context.opacity, 1);
+    expect(thumbnail.paints.last.context.opacity, 1);
+  });
+
   testWidgets('a host builder replaces the control; byte reports do not '
       'rebuild the view', (tester) async {
     var builds = 0;

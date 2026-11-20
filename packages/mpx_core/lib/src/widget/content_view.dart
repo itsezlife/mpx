@@ -1223,9 +1223,27 @@ class _RenderContent extends RenderBox {
     double fade,
     OutlineLook? outline,
   ) {
-    // An outranking placeholder was on screen until now, not the stand-in.
+    // An outranking placeholder was on screen until now, over the stand-in
+    // the binding kept: both stay as they were (the stand-in beneath shows
+    // where the placeholder has no picture, a frame cropped from a cell)
+    // and the content fades in over them. Fading the placeholder out as the
+    // content fades in would let the background through at mid-fade. It
+    // fades out only over content that may be transparent, which would show
+    // it through.
     final ownFirst = _standsIn && _placeholderUntil != AssetStage.none;
-    if (ownFirst || !_paintStandIn(canvas, box, fade, outline)) {
+    if (ownFirst) {
+      _paintStandIn(canvas, box, fade, outline);
+      final fadesOut = _binding.descriptor?.kind == MediaKind.vectorAnimation;
+      _placeholder.paint(
+        canvas,
+        box,
+        AssetPaintContext(
+          tint: _placeholderColor,
+          opacity: _opacity * (fadesOut ? 1 - fade : 1),
+          fit: _binding.profile.fit,
+        ),
+      );
+    } else if (!_paintStandIn(canvas, box, fade, outline)) {
       _placeholder.paint(
         canvas,
         box,

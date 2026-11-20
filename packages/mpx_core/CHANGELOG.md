@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Content rising over a view's outranking placeholder
+  (`ContentView.placeholderUntil`) fades in over it and the kept stand-in,
+  both opaque, instead of cross-fading with the placeholder; a viewer that
+  opened from a thumbnail no longer dips toward its background.
 - The asset cache, fetch and decode pipeline, playback clock, frame pool and
   texture seam, keyed by `MediaKey` (`remote`, `external`, `local`, with a
   stable, file-name-safe string form), with `MediaResolver` for bare keys.

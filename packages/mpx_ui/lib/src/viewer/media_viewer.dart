@@ -1775,9 +1775,10 @@ class MediaViewerState extends State<MediaViewer>
 
 /// The content of a page, with the origin's [frame] as its placeholder: the
 /// view draws it over the content's preview and thumbnail until the content
-/// has its first frame, and fades it out as the content rises, so content
-/// with transparency never shows it beneath. Without a frame the content's
-/// stand-ins show in turn (preview, thumbnail), on nothing.
+/// has its first frame, and the content fades in over it, the frame staying
+/// opaque (it fades out only under content that may be transparent).
+/// Without a frame the content's stand-ins show in turn (preview,
+/// thumbnail), on nothing.
 ///
 /// The placeholder holds a clone of [frame], so the viewer freeing its copy
 /// as it leaves the page never frees one a view still draws.
