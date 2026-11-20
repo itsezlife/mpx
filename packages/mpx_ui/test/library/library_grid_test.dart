@@ -11,6 +11,7 @@ import 'package:mpx_ui/mpx_ui.dart';
 import 'package:mpx_ui/testing.dart';
 
 const _labels = LibraryGridLabels(
+  highQuality: 'HD',
   photo: 'Photo',
   video: 'Video',
   open: 'Open',
@@ -53,6 +54,7 @@ void main() {
     CameraSlotBuilder? camera,
     TextDirection direction = TextDirection.ltr,
     ScrollController? controller,
+    bool highQuality = false,
     LibraryGridLookup? lookup,
     double bottomInset = 0,
   }) async {
@@ -82,6 +84,7 @@ void main() {
                   lookup: lookup,
                   onRefused: (key, reason) => refusals.add((key, reason)),
                   onOpen: (asset, index) => opened.add(index),
+                  highQuality: highQuality,
                 ),
               ),
             ),
@@ -353,6 +356,83 @@ void main() {
       greaterThan(tester.getTopRight(cell(1)).dx),
       reason: 'the first cell is on the right',
     );
+  });
+
+  group('marks', () {
+    Finder mark(int index, String name) => find.descendant(
+      of: cell(index),
+      matching: find.byKey(ValueKey('mpx-mark-$name')),
+    );
+
+    testWidgets(r'$Android: a video shows a play mark and its duration in a '
+        'rounded badge at the bottom start', (tester) async {
+      await pumpGrid(tester);
+      final badge = mark(3, 'badge');
+      final rect = tester.getRect(badge);
+      final cellRect = tester.getRect(cell(3));
+      expect(rect.height, 17);
+      expect(rect.left - cellRect.left, 4);
+      expect(cellRect.bottom - rect.bottom, 4);
+      expect(mark(3, 'play'), findsOneWidget);
+      final text = tester.widget<Text>(
+        find.descendant(of: badge, matching: find.text('0:08')),
+      );
+      expect(text.style!.fontSize, 12);
+      expect(text.style!.fontWeight, FontWeight.bold);
+      expectThemedText(tester);
+    });
+
+    Future<void> withSubtype(LibraryAssetSubtype subtype) async {
+      library.insert([
+        LibraryAsset(
+          id: const LibraryAssetId('marked'),
+          kind: LibraryAssetKind.photo,
+          subtypes: {subtype},
+        ),
+      ]);
+    }
+
+    Finder marked(String name) => find.descendant(
+      of: find.byKey(
+        ValueKey<MediaKey>(LibraryKeys.keyOf(const LibraryAssetId('marked'))),
+      ),
+      matching: find.byKey(ValueKey('mpx-mark-$name')),
+    );
+
+    testWidgets(r'$Android: no GIF badge; $IOS: a GIF badge', (tester) async {
+      await withSubtype(LibraryAssetSubtype.animated);
+      await pumpGrid(tester);
+      expect(find.text('GIF'), findsNothing);
+      await pumpGrid(tester, policy: LibraryGridPolicy.$IOS);
+      expect(find.text('GIF'), findsOneWidget);
+    });
+
+    testWidgets(r'$Android: a live photo shows its mark at the top start', (
+      tester,
+    ) async {
+      await withSubtype(LibraryAssetSubtype.live);
+      await pumpGrid(tester);
+      final live = tester.getRect(marked('live'));
+      final cellRect = tester.getRect(
+        find.byKey(
+          ValueKey<MediaKey>(LibraryKeys.keyOf(const LibraryAssetId('marked'))),
+        ),
+      );
+      expect(live.topLeft - cellRect.topLeft, const Offset(8, 8));
+      expect(live.size, const Size(22, 18));
+    });
+
+    testWidgets('a checked photo sent in high quality says HD', (tester) async {
+      await pumpGrid(tester, highQuality: true);
+      expect(mark(0, 'badge'), findsNothing);
+      await tapCheck(tester, 0);
+      expect(
+        find.descendant(of: mark(0, 'badge'), matching: find.text('HD')),
+        findsOneWidget,
+      );
+      expect(mark(3, 'play'), findsOneWidget, reason: 'a video keeps its own');
+      expectThemedText(tester);
+    });
   });
 
   testWidgets('cells say kind, duration and selection', (tester) async {

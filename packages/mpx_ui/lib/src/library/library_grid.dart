@@ -133,6 +133,7 @@ class LibraryGrid extends StatefulWidget {
     this.onCameraTap,
     this.onCameraLongPress,
     this.decorationBuilder,
+    this.highQuality = false,
     this.physics,
     this.controller,
     this.viewerOpen = false,
@@ -193,6 +194,9 @@ class LibraryGrid extends StatefulWidget {
   /// Builds a host mark over a cell's picture (a spoiler, say), or null.
   final Widget? Function(BuildContext context, LibraryAsset asset)?
   decorationBuilder;
+
+  /// Whether checked photos go in high quality: their badges say HD.
+  final bool highQuality;
 
   /// The scroll physics, from the host.
   final ScrollPhysics? physics;
@@ -761,6 +765,7 @@ class LibraryGridState extends State<LibraryGrid>
       decoration: asset == null
           ? null
           : widget.decorationBuilder?.call(context, asset),
+      highQuality: widget.highQuality,
       onToggle: () {
         if (asset != null) _toggle(asset);
       },

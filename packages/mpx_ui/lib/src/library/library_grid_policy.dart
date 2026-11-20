@@ -74,6 +74,9 @@ final class LibraryGridPolicy {
     this.swipeHorizontalSlop = 8,
     this.autoScrollEdge = 60,
     this.tabletShortestSide = 600,
+    this.gifBadge = true,
+    this.liveCornerMark = false,
+    this.videoPlayMark = false,
   });
 
   /// Android's values.
@@ -95,6 +98,9 @@ final class LibraryGridPolicy {
     durationFontSize: 12,
     durationShade: false,
     subtypeIcons: false,
+    gifBadge: false,
+    liveCornerMark: true,
+    videoPlayMark: true,
     swipeRule: SwipeSelectRule.longPressDrag,
     cameraPlacement: CameraSlotPlacement.allMediaAlbum,
     defersChangesWhileViewerOpen: true,
@@ -233,6 +239,17 @@ final class LibraryGridPolicy {
 
   /// How close to the top or bottom edge a swipe auto-scrolls.
   final double autoScrollEdge;
+
+  /// Whether an animated picture says GIF in its badge (`$IOS`); `$Android`
+  /// shows it as a photo.
+  final bool gifBadge;
+
+  /// Whether a live photo has its mark at the top start, 8 px in, 22 x 18
+  /// (`$Android`); `$IOS` shows it among the subtype icons.
+  final bool liveCornerMark;
+
+  /// Whether a video's badge leads with a play mark (`$Android`).
+  final bool videoPlayMark;
 
   /// The shortest side from which a screen counts as a tablet.
   final double tabletShortestSide;

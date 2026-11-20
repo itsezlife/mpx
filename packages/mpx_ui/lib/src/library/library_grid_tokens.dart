@@ -109,6 +109,7 @@ final class LibraryGridLabels {
     this.back,
     this.camera,
     this.dateOf,
+    this.highQuality,
   });
 
   /// A photo cell's kind.
@@ -128,6 +129,10 @@ final class LibraryGridLabels {
 
   /// The badge of an animated picture.
   final String gif;
+
+  /// The badge of a checked photo sent in high quality ("HD"); no badge
+  /// when null.
+  final String? highQuality;
 
   /// The camera slot's button, for screen readers.
   final String? camera;

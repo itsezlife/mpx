@@ -59,6 +59,7 @@ class LibraryPicker extends StatefulWidget {
     this.players,
     this.headerBuilder,
     this.decorationBuilder,
+    this.highQuality = false,
     this.physics,
     this.controller,
     this.lookup,
@@ -146,6 +147,9 @@ class LibraryPicker extends StatefulWidget {
   /// Builds a host mark over a cell's picture.
   final Widget? Function(BuildContext context, LibraryAsset asset)?
   decorationBuilder;
+
+  /// Whether checked photos go in high quality: their badges say HD.
+  final bool highQuality;
 
   /// The grid's scroll physics.
   final ScrollPhysics? physics;
@@ -431,6 +435,7 @@ class LibraryPickerState extends State<LibraryPicker> {
       onCameraTap: widget.onCameraTap,
       onCameraLongPress: widget.onCameraLongPress,
       decorationBuilder: widget.decorationBuilder,
+      highQuality: widget.highQuality,
       physics: widget.physics,
       controller: widget.controller,
       lookup: widget.lookup,

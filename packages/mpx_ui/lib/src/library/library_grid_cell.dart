@@ -29,6 +29,7 @@ class LibraryGridCell extends StatelessWidget {
     this.radius = BorderRadius.zero,
     this.decoration,
     this.originIndex,
+    this.highQuality = false,
     super.key,
   });
 
@@ -74,6 +75,9 @@ class LibraryGridCell extends StatelessWidget {
 
   /// See the constructor.
   final int? originIndex;
+
+  /// Whether the checked photo goes in high quality: its badge says so.
+  final bool highQuality;
 
   bool get _selected => order != null;
 
@@ -127,7 +131,13 @@ class LibraryGridCell extends StatelessWidget {
           ),
         ),
         ?decoration,
-        ..._badges(asset),
+        LibraryAssetMarks(
+          asset: asset,
+          policy: policy,
+          tokens: tokens,
+          labels: labels,
+          highQuality: highQuality && _selected,
+        ),
         PositionedDirectional(
           top: 0,
           end: 0,
@@ -163,19 +173,76 @@ class LibraryGridCell extends StatelessWidget {
       child: ClipRRect(borderRadius: radius, child: cell),
     );
   }
+}
 
-  List<Widget> _badges(LibraryAsset asset) {
+/// The marks a library item's picture carries, as the grid draws them on a
+/// cell and the selected-items preview on its items: a video's duration
+/// (after a play mark on `$Android`), GIF (`$IOS`), the subtype icons
+/// (`$IOS`) or a live photo's corner mark (`$Android`), and HD on a checked
+/// photo sent in high quality. Fills the item's box.
+class LibraryAssetMarks extends StatelessWidget {
+  /// Creates the marks of [asset].
+  const LibraryAssetMarks({
+    required this.asset,
+    required this.policy,
+    required this.tokens,
+    required this.labels,
+    this.highQuality = false,
+    super.key,
+  });
+
+  /// The item.
+  final LibraryAsset asset;
+
+  /// Placement, sizes and which marks show.
+  final LibraryGridPolicy policy;
+
+  /// Colours.
+  final LibraryGridTokens tokens;
+
+  /// Words.
+  final LibraryGridLabels labels;
+
+  /// Whether a photo's badge says HD.
+  final bool highQuality;
+
+  @override
+  Widget build(BuildContext context) =>
+      Stack(fit: StackFit.expand, children: _marks());
+
+  List<Widget> _marks() {
     final style = TextStyle(
       color: tokens.badgeForeground,
       fontSize: policy.durationFontSize,
       fontWeight: policy.durationFontWeight,
     );
+    final video = asset.kind == LibraryAssetKind.video;
     final text = switch (asset) {
       LibraryAsset(kind: LibraryAssetKind.video, :final duration?) =>
         LibraryGridLabels.formatDuration(duration),
-      _ when asset.has(LibraryAssetSubtype.animated) => labels.gif,
+      _ when policy.gifBadge && asset.has(LibraryAssetSubtype.animated) =>
+        labels.gif,
+      _ when highQuality && !video => labels.highQuality,
       _ => null,
     };
+    final play = video && policy.videoPlayMark;
+    final live = policy.liveCornerMark && asset.has(LibraryAssetSubtype.live)
+        ? [
+            PositionedDirectional(
+              top: 8,
+              start: 8,
+              width: 22,
+              height: 18,
+              child: CustomPaint(
+                key: const ValueKey('mpx-mark-live'),
+                painter: _SubtypePainter(
+                  LibraryAssetSubtype.live,
+                  tokens.badgeForeground,
+                ),
+              ),
+            ),
+          ]
+        : const <Widget>[];
     final marks = policy.subtypeIcons
         ? [
             for (final subtype in const [
@@ -186,10 +253,19 @@ class LibraryGridCell extends StatelessWidget {
               if (asset.has(subtype)) subtype,
           ]
         : const <LibraryAssetSubtype>[];
-    if (text == null && marks.isEmpty) return const [];
+    if (text == null && marks.isEmpty) return live;
     final row = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (play)
+          Padding(
+            padding: const EdgeInsetsDirectional.only(end: 3),
+            child: CustomPaint(
+              key: const ValueKey('mpx-mark-play'),
+              size: const Size(7, 8),
+              painter: _PlayMark(tokens.badgeForeground),
+            ),
+          ),
         for (final mark in marks)
           Padding(
             padding: const EdgeInsetsDirectional.only(end: 3),
@@ -203,6 +279,7 @@ class LibraryGridCell extends StatelessWidget {
     );
     if (policy.durationShade) {
       return [
+        ...live,
         PositionedDirectional(
           start: 0,
           end: 0,
@@ -225,11 +302,13 @@ class LibraryGridCell extends StatelessWidget {
       ];
     }
     return [
+      ...live,
       Align(
         alignment: policy.durationAlignment,
         child: Padding(
           padding: const EdgeInsets.all(4),
           child: Container(
+            key: const ValueKey('mpx-mark-badge'),
             height: 17,
             padding: const EdgeInsets.symmetric(horizontal: 5),
             decoration: BoxDecoration(
@@ -242,6 +321,27 @@ class LibraryGridCell extends StatelessWidget {
       ),
     ];
   }
+}
+
+class _PlayMark extends CustomPainter {
+  const _PlayMark(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawPath(
+      Path()
+        ..moveTo(0, 0)
+        ..lineTo(size.width, size.height / 2)
+        ..lineTo(0, size.height)
+        ..close(),
+      Paint()..color = color,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_PlayMark old) => old.color != color;
 }
 
 class _Check extends StatelessWidget {
