@@ -111,8 +111,16 @@ void main() {
       warnIfMissed: false,
     );
     expect(h.selection.keys, [key(0)]);
+    // Let go short of the close: it springs back and the chrome fades in
+    // with it.
     await gesture.up();
-    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(chromeOpacity(), inExclusiveRange(0, 1));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(MediaViewer), findsOneWidget);
+    expect(chromeOpacity(), 1);
+    expectThemedText(tester);
   });
 
   testWidgets('a back press fades the picker chrome as the close starts', (

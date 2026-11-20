@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `ViewerPolicy.controlsReturnOnSpringBack`: the picker-mode viewer's
+  chrome comes back when a dismiss drag springs back without closing.
 - `ViewerVideoRules.centreWhilePlaying`: the picker-mode viewer leaves the
   centre empty over a playing video and shows play when it pauses; its
   info line comes back when the viewer pages back to the video.

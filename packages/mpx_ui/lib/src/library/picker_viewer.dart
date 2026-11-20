@@ -188,6 +188,8 @@ abstract final class PickerViewer {
     // The picker's chrome never hides by itself: only a tap or the close
     // takes it away.
     final rules = resolved.copyWith(
+      // A dismiss drag let go short of the close brings the chrome back.
+      controlsReturnOnSpringBack: true,
       // A tap on a video plays or pauses it; never the chrome.
       video: resolved.video.copyWith(
         autoHides: false,

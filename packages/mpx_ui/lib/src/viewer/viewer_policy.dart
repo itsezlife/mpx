@@ -878,6 +878,7 @@ final class ViewerPolicy {
     this.dismissVelocity,
     this.backgroundFadeDistance,
     this.backgroundClickCloses = false,
+    this.controlsReturnOnSpringBack = false,
     this.pictureClickCloses = false,
     this.doubleTapEdgeInset = 0,
     this.desktopInput = false,
@@ -1174,6 +1175,11 @@ final class ViewerPolicy {
   /// viewer.
   final bool backgroundClickCloses;
 
+  /// Whether the controls, hidden as a dismiss drag starts, come back when
+  /// the drag springs back without closing (a picker-mode viewer, whose tap
+  /// does not toggle them); otherwise they stay hidden until a tap.
+  final bool controlsReturnOnSpringBack;
+
   /// Whether a click on a photo or an animation closes the viewer too,
   /// rather than showing or hiding the chrome.
   final bool pictureClickCloses;
@@ -1388,6 +1394,7 @@ final class ViewerPolicy {
     double? backgroundFadeWidthFraction,
     double? backgroundFadeDistance,
     bool? backgroundClickCloses,
+    bool? controlsReturnOnSpringBack,
     bool? pictureClickCloses,
     Duration? settleDuration,
     Curve? settleCurve,
@@ -1435,6 +1442,8 @@ final class ViewerPolicy {
     backgroundFadeDistance:
         backgroundFadeDistance ?? this.backgroundFadeDistance,
     backgroundClickCloses: backgroundClickCloses ?? this.backgroundClickCloses,
+    controlsReturnOnSpringBack:
+        controlsReturnOnSpringBack ?? this.controlsReturnOnSpringBack,
     pictureClickCloses: pictureClickCloses ?? this.pictureClickCloses,
     settleDuration: settleDuration ?? this.settleDuration,
     settleCurve: settleCurve ?? this.settleCurve,

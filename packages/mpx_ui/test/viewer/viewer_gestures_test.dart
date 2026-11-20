@@ -503,6 +503,17 @@ void main() {
       expect(harness.state(tester).controlsVisible, isFalse);
       await _release(tester, gesture);
       expect(harness.state(tester).controlsVisible, isFalse);
+
+      // A policy that brings them back with the spring back does.
+      final back = ViewerHarness();
+      await back.pump(
+        tester,
+        policy: _android.copyWith(controlsReturnOnSpringBack: true),
+      );
+      final again = await _drag(tester, const Offset(0, 60));
+      expect(back.state(tester).controlsVisible, isFalse);
+      await _release(tester, again);
+      expect(back.state(tester).controlsVisible, isTrue);
     });
 
     testWidgets('a close the host calls hides the chrome as it starts', (

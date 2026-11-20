@@ -1209,6 +1209,8 @@ class MediaViewerState extends State<MediaViewer>
       } else {
         _springFrom = offset;
         _springBack.forward(from: 0);
+        // The controls come back with the spring when the policy says so.
+        if (_policy.controlsReturnOnSpringBack) _controls.value = true;
       }
     },
   );
