@@ -5,7 +5,9 @@
 - `CameraSlotPreview`: the small preview of a camera session for a grid's
   camera slot (30 fps cap, pauses on the slot's signal, an allow-access
   state, unavailable sessions reported); `CameraCaptureSurface.show(from:)`
-  expands from the slot over 350 ms on the same session.
+  expands from the slot over 350 ms on the same session: only the preview
+  morphs; the controls are laid out at the whole screen and fade in after
+  the expand (150 ms) and out before the collapse.
 - `WebPreparationCodec`: still preparation on the web (object URLs in,
   JPEGs in memory out, `PreparedMedia.bytes`); `PreparationInput.byteSize`.
 - Camera session: `CameraSessions.open` (one session per process) gives a
