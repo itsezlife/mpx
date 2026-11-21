@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `CameraPreview` covers a pause and a switch with the last frame the user
+  saw, a small snapshot taken before the frames stop (80 px wide for a
+  pause, 100 for a switch), blurred and never flipped; it fades out as the
+  frames come back (180 ms after a resume, 120 ms after a switch).
+  `CameraSessionValue.awaitingFrames`. The capture surface expands from the
+  slot over 350 ms and collapses over 220 ms on an ease curve, its
+  controls fading with it.
 - Android: the camera session binds preview and photos only; the video
   use case and its encoder join when a recording starts and leave when it
   ends, so browsing with a live camera cell builds no encoder.
