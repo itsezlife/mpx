@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- `CaptureSurfacePolicy` (`$Android`, `$IOS`, `forPlatform`) on
+  `CameraCaptureSurface(policy:)`. `$IOS`:
+  - a Video / Photo mode control (`CaptureSurfaceLabels.videoMode` /
+    `photoMode`); a 250 ms hold in photo mode moves to video and records;
+  - flash off / auto;
+  - lens buttons and factor zoom (pinch, a drag up from the recording
+    shutter) up to 8×, back to 1× 0.3 s after a recording;
+  - a focus crosshair with an exposure drag;
+  - a shutter that turns into a red square while recording;
+  - a red `MM:SS` timer;
+  - close, flash, switch and modes fading while recording;
+  - a photo blink;
+  - a results strip (`resultBuilder`, `onShotRemoved`).
 - Zoom factors, lenses and exposure on the camera session:
   `CameraSessionValue.zoomFactor` / `minZoomFactor` / `maxZoomFactor` /
   `lenses` / `exposure` / `hasExposure`, `CameraSession.setZoomFactor` and

@@ -9,6 +9,7 @@ export 'src/camera/camera_preview.dart';
 export 'src/camera/camera_session.dart';
 export 'src/camera/camera_slot_preview.dart';
 export 'src/camera/capture_surface.dart';
+export 'src/camera/capture_surface_policy.dart';
 export 'src/camera/platform_camera_sessions.dart';
 export 'src/job/capture_job.dart';
 export 'src/prepare/media_preparer.dart';

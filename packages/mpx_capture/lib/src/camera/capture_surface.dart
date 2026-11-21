@@ -6,6 +6,8 @@ import 'package:flutter/widgets.dart';
 import 'package:mpx_capture/src/cache/capture_cache.dart';
 import 'package:mpx_capture/src/camera/camera_preview.dart';
 import 'package:mpx_capture/src/camera/camera_session.dart';
+import 'package:mpx_capture/src/camera/capture_surface_parts.dart';
+import 'package:mpx_capture/src/camera/capture_surface_policy.dart';
 import 'package:mpx_capture/src/job/capture_job.dart';
 import 'package:mpx_core/mpx_core.dart';
 
@@ -48,6 +50,8 @@ final class CaptureSurfaceLabels {
     required this.shutter,
     required this.switchCamera,
     required this.flash,
+    this.videoMode,
+    this.photoMode,
   });
 
   /// The close button.
@@ -61,6 +65,13 @@ final class CaptureSurfaceLabels {
 
   /// The flash button.
   final String flash;
+
+  /// The video mode's name in a mode control; with [photoMode], a policy
+  /// with `modeControl` shows one. Null for none.
+  final String? videoMode;
+
+  /// The photo mode's name in a mode control.
+  final String? photoMode;
 }
 
 /// What the capture surface took.
@@ -115,6 +126,9 @@ class CameraCaptureSurface extends StatefulWidget {
     this.mirrorFrontPhotos = true,
     this.onVideoRefused,
     this.videoNeedsMicrophone = true,
+    this.policy = CaptureSurfacePolicy.$Android,
+    this.resultBuilder,
+    this.onShotRemoved,
     super.key,
   });
 
@@ -134,6 +148,9 @@ class CameraCaptureSurface extends StatefulWidget {
     bool mirrorFrontPhotos = true,
     ValueChanged<CaptureVideoRefusal>? onVideoRefused,
     bool videoNeedsMicrophone = true,
+    CaptureSurfacePolicy policy = CaptureSurfacePolicy.$Android,
+    Widget Function(BuildContext context, CameraShot shot)? resultBuilder,
+    ValueChanged<CameraShot>? onShotRemoved,
     Duration transition = const Duration(milliseconds: 350),
     Duration closeTransition = const Duration(milliseconds: 220),
   }) =>
@@ -160,6 +177,9 @@ class CameraCaptureSurface extends StatefulWidget {
               mirrorFrontPhotos: mirrorFrontPhotos,
               onVideoRefused: onVideoRefused,
               videoNeedsMicrophone: videoNeedsMicrophone,
+              policy: policy,
+              resultBuilder: resultBuilder,
+              onShotRemoved: onShotRemoved,
             );
           },
           transitionsBuilder: (context, animation, _, child) {
@@ -176,7 +196,8 @@ class CameraCaptureSurface extends StatefulWidget {
         ),
       );
 
-  /// How long the shutter is held before a video starts recording.
+  /// How long the shutter is held before a video starts recording under
+  /// `CaptureSurfacePolicy.$Android`.
   static const Duration holdToRecord = Duration(milliseconds: 800);
 
   /// The running session.
@@ -228,6 +249,18 @@ class CameraCaptureSurface extends StatefulWidget {
   /// once it is granted, and a refusal goes to [onVideoRefused].
   final bool videoNeedsMicrophone;
 
+  /// The platform's behaviour: shutter timing and modes, zoom, focus, the
+  /// timer and what a recording hides.
+  final CaptureSurfacePolicy policy;
+
+  /// What a shot shows as in the results strip ([CaptureSurfacePolicy.
+  /// resultsStrip]); null for a plain tile.
+  final Widget Function(BuildContext context, CameraShot shot)? resultBuilder;
+
+  /// Called when a shot is removed from the results strip: the host drops
+  /// it from its selection.
+  final ValueChanged<CameraShot>? onShotRemoved;
+
   @override
   State<CameraCaptureSurface> createState() => _CameraCaptureSurfaceState();
 }
@@ -266,6 +299,7 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
   bool _dragZoomed = false;
 
   void _showZoom() {
+    if (_policy.zoomControl != CaptureZoomControl.slider) return;
     _zoomFade.forward().ignore();
     _zoomHide?.cancel();
     _zoomHide = Timer(const Duration(seconds: 2), () {
@@ -296,8 +330,14 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
   }
 
   // The held shutter's finger above its top zooms by the distance over 200;
-  // back down, the zoom returns to the widest.
-  void _holdMove(Offset local) {
+  // back down, the zoom returns to the widest. On the factor scale, while
+  // the hold records: 1 + the distance up from the press over 60.
+  void _holdMove(Offset local, Offset fromPress) {
+    if (_policy.zoomScale == CaptureZoomScale.factor) {
+      if (!_value.isRecording) return;
+      _zoomFactorTo(fromPress.dy < 0 ? 1 + -fromPress.dy / 60 : 1);
+      return;
+    }
     if (local.dy < 0) {
       _dragZoomed = true;
       _zoomTo(-local.dy / 200);
@@ -305,6 +345,108 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
       _dragZoomed = false;
       _zoomTo(0);
     }
+  }
+
+  CaptureSurfacePolicy get _policy => widget.policy;
+
+  // --- Modes ---
+
+  // The mode control shows when the policy has one, both kinds are allowed
+  // and the labels name the modes.
+  bool get _hasModes =>
+      _policy.modeControl &&
+      widget.kinds == CaptureKinds.photoAndVideo &&
+      widget.labels.videoMode != null &&
+      widget.labels.photoMode != null;
+  late bool _videoMode = widget.kinds == CaptureKinds.video;
+
+  void _setVideoMode(bool video) {
+    if (_value.isRecording || video == _videoMode) return;
+    setState(() => _videoMode = video);
+  }
+
+  // --- Factor zoom ---
+
+  double get _maxFactor =>
+      math.min(_value.maxZoomFactor, _policy.maxZoomFactor);
+
+  void _zoomFactorTo(double factor, {bool stopLens = true}) {
+    if (stopLens) _lens.stop();
+    final f = factor.clamp(_value.minZoomFactor, _maxFactor);
+    unawaited(_quietly(() => _session.setZoomFactor(f)));
+  }
+
+  // A lens tap moves the zoom there over 300 ms.
+  late final AnimationController _lens;
+  double _lensFrom = 1;
+  double _lensTo = 1;
+
+  void _goToLens(double lens) {
+    _lensFrom = _value.zoomFactor;
+    _lensTo = lens;
+    _lens.forward(from: 0).ignore();
+  }
+
+  void _onLens() {
+    final t = Curves.easeOut.transform(_lens.value);
+    _zoomFactorTo(_lensFrom + (_lensTo - _lensFrom) * t, stopLens: false);
+  }
+
+  Timer? _zoomBack;
+
+  // --- The focus crosshair and exposure ---
+
+  Offset? _crossAt;
+  late final AnimationController _crossIn;
+  late final AnimationController _crossDim;
+  Timer? _crossIdle;
+  bool _exposing = false;
+
+  void _crosshair(Offset at) {
+    _crossIdle?.cancel();
+    setState(() {
+      _crossAt = at;
+      _exposing = false;
+    });
+    _crossIn.forward(from: 0).ignore();
+    _crossDim.value = 0;
+    if (_value.hasExposure && _value.exposure != 0) {
+      unawaited(_quietly(() => _session.setExposure(0)));
+    }
+    // It dims to half 0.9 s after its 1 s of attention, over 0.2 s.
+    _crossIdle = Timer(const Duration(milliseconds: 1900), () {
+      if (mounted) _crossDim.forward().ignore();
+    });
+  }
+
+  // A vertical drag after a focus tap sets the exposure: down darker, up
+  // brighter, the whole range over 750 px each way.
+  void _expose(DragUpdateDetails details) {
+    if (_crossAt == null || !_value.hasExposure) return;
+    _crossIdle?.cancel();
+    _crossDim.value = 0;
+    final next = (_value.exposure - details.delta.dy / 750).clamp(-1.0, 1.0);
+    if (!_exposing) setState(() => _exposing = true);
+    unawaited(_quietly(() => _session.setExposure(next)));
+  }
+
+  void _exposed(DragEndDetails _) {
+    _crossIdle?.cancel();
+    _crossIdle = Timer(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      setState(() => _exposing = false);
+      _crossDim.forward().ignore();
+    });
+  }
+
+  // --- The photo blink and the results ---
+
+  late final AnimationController _blink;
+  final List<CameraShot> _results = [];
+
+  void _removeResult(CameraShot shot) {
+    setState(() => _results.remove(shot));
+    widget.onShotRemoved?.call(shot);
   }
 
   // The recording's seconds.
@@ -320,6 +462,7 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
       (at.dy / size.height).clamp(0.0, 1.0),
     );
     unawaited(_quietly(() => _session.focusAt(point)));
+    if (_policy.focus == CaptureFocusMark.crosshair) return _crosshair(at);
     setState(() => _ringAt = at);
     _ring.forward(from: 0).ignore();
   }
@@ -339,6 +482,15 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     final [a, b] = _pointers.values.toList();
     final distance = (a - b).distance;
     final from = _pinchFrom;
+    if (_policy.zoomScale == CaptureZoomScale.factor) {
+      // Each move scales by its share of the last distance.
+      _pinchFrom = distance;
+      if (from == null || from == 0) return;
+      var delta = (distance / from - 1) * 1.25;
+      if (_value.zoomFactor > 2) delta *= 2;
+      _zoomFactorTo(_value.zoomFactor + delta);
+      return;
+    }
     if (from == null) {
       _pinchFrom = distance;
       return;
@@ -366,6 +518,14 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     if (recording == _wasRecording) return;
     _wasRecording = recording;
     _tick?.cancel();
+    if (!recording) {
+      if (_policy.zoomResetAfterRecording case final after?) {
+        _zoomBack?.cancel();
+        _zoomBack = Timer(after, () {
+          if (mounted) _zoomFactorTo(1);
+        });
+      }
+    }
     if (recording) {
       _seconds = 0;
       _tick = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -397,8 +557,87 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
               key: const ValueKey('mpx-capture-picture'),
               behavior: HitTestBehavior.opaque,
               onTapUp: (details) => _focus(details, size),
+              onVerticalDragUpdate: _policy.focus == CaptureFocusMark.crosshair
+                  ? _expose
+                  : null,
+              onVerticalDragEnd: _policy.focus == CaptureFocusMark.crosshair
+                  ? _exposed
+                  : null,
             ),
           ),
+          if (_crossAt case final at?)
+            Positioned(
+              left: at.dx - 100,
+              top: at.dy - 100,
+              width: 200,
+              height: 200,
+              child: IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: Listenable.merge([
+                    _crossIn,
+                    _crossDim,
+                    _session.value,
+                  ]),
+                  builder: (context, _) => CustomPaint(
+                    key: const ValueKey('mpx-capture-crosshair'),
+                    painter: CaptureCrosshairPainter(
+                      appear: _crossIn.value,
+                      opacity: 1 - 0.5 * _crossDim.value,
+                      exposure: _value.hasExposure ? _value.exposure : null,
+                      track: _exposing,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          IgnorePointer(
+            child: FadeTransition(
+              opacity: _blink,
+              child: const ColoredBox(
+                key: ValueKey('mpx-capture-blink'),
+                color: Color(0xFF000000),
+              ),
+            ),
+          ),
+          if (_policy.zoomControl == CaptureZoomControl.lenses)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: MediaQuery.paddingOf(context).bottom + 140 + 18,
+              height: 43,
+              child: ValueListenableBuilder<CameraSessionValue>(
+                valueListenable: _session.value,
+                builder: (context, value, _) => value.lenses.length < 2
+                    ? const SizedBox.shrink()
+                    : Center(
+                        child: CaptureLensPill(
+                          key: const ValueKey('mpx-capture-lenses'),
+                          lenses: [
+                            for (final lens in value.lenses)
+                              if (lens <= _maxFactor) lens,
+                          ],
+                          factor: value.zoomFactor,
+                          minFactor: value.minZoomFactor,
+                          maxFactor: _maxFactor,
+                          onLens: _goToLens,
+                          onFactor: _zoomFactorTo,
+                        ),
+                      ),
+              ),
+            ),
+          if (_policy.resultsStrip && _results.isNotEmpty)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: MediaQuery.paddingOf(context).bottom + 140 + 18 + 43 + 12,
+              height: 56,
+              child: _ResultsStrip(
+                key: const ValueKey('mpx-capture-results'),
+                shots: _results,
+                builder: widget.resultBuilder,
+                onRemove: _removeResult,
+              ),
+            ),
           if (ringAt != null)
             Positioned(
               left: ringAt.dx - 2 * _ringRadius,
@@ -415,30 +654,45 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
                 ),
               ),
             ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: MediaQuery.paddingOf(context).bottom + 126,
-            height: 50,
-            child: AnimatedBuilder(
-              animation: _zoomFade,
-              builder: (context, child) => IgnorePointer(
-                ignoring: _zoomFade.value == 0,
-                child: Opacity(opacity: _zoomFade.value, child: child),
-              ),
-              child: ValueListenableBuilder<CameraSessionValue>(
-                valueListenable: _session.value,
-                builder: (context, value, _) => _ZoomSlider(
-                  key: const ValueKey('mpx-capture-zoom'),
-                  zoom: value.zoom,
-                  onZoom: _zoomTo,
-                  onStep: _stepZoom,
+          if (_policy.zoomControl == CaptureZoomControl.slider)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: MediaQuery.paddingOf(context).bottom + 126,
+              height: 50,
+              child: AnimatedBuilder(
+                animation: _zoomFade,
+                builder: (context, child) => IgnorePointer(
+                  ignoring: _zoomFade.value == 0,
+                  child: Opacity(opacity: _zoomFade.value, child: child),
+                ),
+                child: ValueListenableBuilder<CameraSessionValue>(
+                  valueListenable: _session.value,
+                  builder: (context, value, _) => _ZoomSlider(
+                    key: const ValueKey('mpx-capture-zoom'),
+                    zoom: value.zoom,
+                    onZoom: _zoomTo,
+                    onStep: _stepZoom,
+                  ),
                 ),
               ),
             ),
-          ),
           controls,
-          if (_value.isRecording)
+          if (_value.isRecording && _policy.timer == CaptureTimerStyle.redBox)
+            Positioned(
+              top: MediaQuery.paddingOf(context).top + 12,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                child: Center(
+                  child: CaptureRedTimer(
+                    key: const ValueKey('mpx-capture-timer'),
+                    seconds: _seconds,
+                  ),
+                ),
+              ),
+            )
+          else if (_value.isRecording)
             Positioned(
               top: MediaQuery.paddingOf(context).top + 16,
               left: 0,
@@ -512,6 +766,26 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
       vsync: this,
       duration: const Duration(milliseconds: 180),
     )..addListener(_onStep);
+    _lens = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    )..addListener(_onLens);
+    _crossIn = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 150),
+    );
+    _crossDim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _blink =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 70),
+          reverseDuration: const Duration(milliseconds: 150),
+        )..addStatusListener((status) {
+          if (status == AnimationStatus.completed) _blink.reverse().ignore();
+        });
     _session.value.addListener(_onValue);
     _wasRecording = _value.isRecording;
     _foundCap = _value.frameRateCap;
@@ -532,6 +806,12 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     _zoomHide?.cancel();
     _zoomFade.dispose();
     _zoomStep.dispose();
+    _lens.dispose();
+    _crossIn.dispose();
+    _crossDim.dispose();
+    _crossIdle?.cancel();
+    _zoomBack?.cancel();
+    _blink.dispose();
     final session = _session;
     final found = _foundCap;
     // Out of the locked tree: other widgets listen to the same session.
@@ -561,20 +841,34 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
 
   Future<void> _deliver(CaptureOutput output, {required bool isVideo}) async {
     // Each shot starts the next from the widest view.
-    if (_value.zoom != 0) unawaited(_quietly(() => _session.setZoom(0)));
-    final cache = widget.cache;
-    if (cache == null) {
-      widget.onCaptured(CameraShot(isVideo: isVideo, output: output));
-      return;
+    if (_policy.zoomResetsAfterEveryShot && _value.zoom != 0) {
+      unawaited(_quietly(() => _session.setZoom(0)));
     }
-    final key = cache.mintKey();
-    await cache.put(key, output);
-    widget.onCaptured(CameraShot(isVideo: isVideo, output: output, key: key));
+    final cache = widget.cache;
+    final MediaKey$Local? key;
+    if (cache == null) {
+      key = null;
+    } else {
+      key = cache.mintKey();
+      await cache.put(key, output);
+    }
+    final shot = CameraShot(isVideo: isVideo, output: output, key: key);
+    if (_policy.resultsStrip && mounted) setState(() => _results.add(shot));
+    widget.onCaptured(shot);
   }
 
   Future<void> _photo() async {
     if (_busy || !_value.isAvailable) return;
     _busy = true;
+    if (_policy.photoBlink) {
+      // 50 ms after the release the preview darkens for 70 ms and comes
+      // back over 150 ms.
+      Timer(const Duration(milliseconds: 50), () {
+        if (mounted) {
+          _blink.forward(from: 0).ignore();
+        }
+      });
+    }
     try {
       final output = await _session.capturePhoto(
         outputPath: _output('jpg'),
@@ -628,6 +922,8 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     final kinds = widget.kinds;
     if (_value.isRecording) {
       unawaited(_stopVideo());
+    } else if (_hasModes) {
+      unawaited(_videoMode ? _startVideo() : _photo());
     } else if (kinds.photos) {
       unawaited(_photo());
     } else {
@@ -635,7 +931,10 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     }
   }
 
+  // With a mode control a hold in photo mode moves to video mode and
+  // records until the release.
   void _holdStart() {
+    if (_hasModes && !_videoMode) setState(() => _videoMode = true);
     if (widget.kinds.videos) return unawaited(_startVideo());
     widget.onVideoRefused?.call(CaptureVideoRefusal.notAllowed);
   }
@@ -644,14 +943,33 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     if (widget.kinds.videos) unawaited(_stopVideo());
   }
 
+  // The policy's flash modes in turn.
   void _cycleFlash() {
-    final next = switch (_value.flash) {
-      CameraFlash.off => CameraFlash.auto,
-      CameraFlash.auto => CameraFlash.on,
-      CameraFlash.on => CameraFlash.off,
-    };
+    final modes = _policy.flashModes;
+    final at = modes.indexOf(_value.flash);
+    final next = modes[(at + 1) % modes.length];
     unawaited(_quietly(() => _session.setFlash(next)));
   }
+
+  // A control that a recording hides as the policy says.
+  Widget _whileRecording(
+    Key key,
+    bool recording,
+    Widget child, {
+    bool slides = true,
+  }) => switch (_policy.recordingChrome) {
+    CaptureRecordingChrome.slideAside when slides => _AsideWhileRecording(
+      key: key,
+      recording: recording,
+      child: child,
+    ),
+    CaptureRecordingChrome.slideAside => KeyedSubtree(key: key, child: child),
+    CaptureRecordingChrome.fade => _FadeWhileRecording(
+      key: key,
+      recording: recording,
+      child: child,
+    ),
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -725,18 +1043,23 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
           children: [
             Row(
               children: [
-                _GlyphButton(
-                  key: const ValueKey('mpx-capture-close'),
-                  glyph: _Glyph.close,
-                  label: labels.close,
-                  onTap: widget.onClose,
+                _whileRecording(
+                  const ValueKey('mpx-capture-close-slot'),
+                  value.isRecording,
+                  slides: false,
+                  _GlyphButton(
+                    key: const ValueKey('mpx-capture-close'),
+                    glyph: _Glyph.close,
+                    label: labels.close,
+                    onTap: widget.onClose,
+                  ),
                 ),
                 const Spacer(),
                 if (value.hasFlash)
-                  _AsideWhileRecording(
-                    key: const ValueKey('mpx-capture-flash-slot'),
-                    recording: value.isRecording,
-                    child: _GlyphButton(
+                  _whileRecording(
+                    const ValueKey('mpx-capture-flash-slot'),
+                    value.isRecording,
+                    _GlyphButton(
                       key: const ValueKey('mpx-capture-flash'),
                       glyph: switch (value.flash) {
                         CameraFlash.off => _Glyph.flashOff,
@@ -751,12 +1074,28 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
               ],
             ),
             const Spacer(),
+            if (_hasModes)
+              _whileRecording(
+                const ValueKey('mpx-capture-modes-slot'),
+                value.isRecording,
+                slides: false,
+                CaptureModeControl(
+                  key: const ValueKey('mpx-capture-modes'),
+                  video: labels.videoMode!,
+                  photo: labels.photoMode!,
+                  videoMode: _videoMode,
+                  onVideoMode: _setVideoMode,
+                ),
+              ),
             Row(
               children: [
                 const SizedBox(width: 48),
                 const Spacer(),
                 _Shutter(
                   label: labels.shutter,
+                  style: _policy.shutter,
+                  holdToRecord: _policy.holdToRecord,
+                  videoMode: _hasModes ? _videoMode : !widget.kinds.photos,
                   recording: value.isRecording,
                   enabled: value.isAvailable && !value.isPaused,
                   onTap: _tap,
@@ -766,10 +1105,10 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
                 ),
                 const Spacer(),
                 if (value.canSwitchCamera)
-                  _AsideWhileRecording(
-                    key: const ValueKey('mpx-capture-switch-slot'),
-                    recording: value.isRecording,
-                    child: _GlyphButton(
+                  _whileRecording(
+                    const ValueKey('mpx-capture-switch-slot'),
+                    value.isRecording,
+                    _GlyphButton(
                       key: const ValueKey('mpx-capture-switch'),
                       glyph: _Glyph.switchCamera,
                       label: labels.switchCamera,
@@ -817,6 +1156,109 @@ class _AsideWhileRecording extends StatelessWidget {
       ),
     );
   }
+}
+
+// While a recording runs, a control fades out over 250 ms and takes no
+// touches; it comes back the same way.
+class _FadeWhileRecording extends StatelessWidget {
+  const _FadeWhileRecording({
+    required this.recording,
+    required this.child,
+    super.key,
+  });
+
+  final bool recording;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+    ignoring: recording,
+    child: AnimatedOpacity(
+      opacity: recording ? 0 : 1,
+      duration: const Duration(milliseconds: 250),
+      child: child,
+    ),
+  );
+}
+
+// The shots taken so far, oldest first: 56 tiles 4 apart, each with a
+// remove button at its top end.
+class _ResultsStrip extends StatelessWidget {
+  const _ResultsStrip({
+    required this.shots,
+    required this.builder,
+    required this.onRemove,
+    super.key,
+  });
+
+  final List<CameraShot> shots;
+  final Widget Function(BuildContext context, CameraShot shot)? builder;
+  final ValueChanged<CameraShot> onRemove;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    scrollDirection: Axis.horizontal,
+    padding: const EdgeInsets.symmetric(horizontal: 4),
+    children: [
+      for (final shot in shots)
+        Padding(
+          key: ValueKey(('mpx-capture-result', shot.key ?? shot.output.path)),
+          padding: const EdgeInsetsDirectional.only(end: 4),
+          child: SizedBox.square(
+            dimension: 56,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child:
+                      builder?.call(context, shot) ??
+                      const ColoredBox(color: Color(0x66FFFFFF)),
+                ),
+                PositionedDirectional(
+                  top: 2,
+                  end: 2,
+                  child: GestureDetector(
+                    key: const ValueKey('mpx-capture-result-remove'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => onRemove(shot),
+                    child: const SizedBox.square(
+                      dimension: 18,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Color(0x99000000),
+                          shape: BoxShape.circle,
+                        ),
+                        child: CustomPaint(painter: _CrossPainter()),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+    ],
+  );
+}
+
+class _CrossPainter extends CustomPainter {
+  const _CrossPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    final p = Paint()
+      ..color = const Color(0xFFFFFFFF)
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round;
+    canvas
+      ..drawLine(c + const Offset(-4, -4), c + const Offset(4, 4), p)
+      ..drawLine(c + const Offset(4, -4), c + const Offset(-4, 4), p);
+  }
+
+  @override
+  bool shouldRepaint(_CrossPainter oldDelegate) => false;
 }
 
 // The zoom slider: minus and plus 41 from the ends, the track between them
@@ -961,6 +1403,9 @@ class _ZoomSliderPainter extends CustomPainter {
 
 class _Shutter extends StatefulWidget {
   const _Shutter({
+    required this.style,
+    required this.holdToRecord,
+    required this.videoMode,
     required this.label,
     required this.recording,
     required this.enabled,
@@ -970,7 +1415,10 @@ class _Shutter extends StatefulWidget {
     required this.onHoldEnd,
   });
 
-  final ValueChanged<Offset> onHoldMove;
+  final void Function(Offset local, Offset fromPress) onHoldMove;
+  final CaptureShutterStyle style;
+  final Duration holdToRecord;
+  final bool videoMode;
   final String label;
   final bool recording;
   final bool enabled;
@@ -984,9 +1432,12 @@ class _Shutter extends StatefulWidget {
 
 // Pressed, the shutter grows to 1.06 over 120 ms, decelerating; released,
 // it settles back the same way after 40 ms.
-class _ShutterState extends State<_Shutter>
-    with SingleTickerProviderStateMixin {
+class _ShutterState extends State<_Shutter> with TickerProviderStateMixin {
   late final AnimationController _press;
+  // The square style's colour (white to red) and shape (disc to square),
+  // each over 250 ms.
+  late final AnimationController _red;
+  late final AnimationController _square;
   Timer? _release;
 
   @override
@@ -996,17 +1447,41 @@ class _ShutterState extends State<_Shutter>
       vsync: this,
       duration: const Duration(milliseconds: 120),
     );
+    _red = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+      value: widget.videoMode || widget.recording ? 1 : 0,
+    );
+    _square = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+      value: widget.recording ? 1 : 0,
+    );
+  }
+
+  @override
+  void didUpdateWidget(_Shutter oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final red = widget.videoMode || widget.recording;
+    if (red != (oldWidget.videoMode || oldWidget.recording)) {
+      (red ? _red.forward() : _red.reverse()).ignore();
+    }
+    if (widget.recording != oldWidget.recording) {
+      (widget.recording ? _square.forward() : _square.reverse()).ignore();
+    }
   }
 
   @override
   void dispose() {
     _release?.cancel();
     _press.dispose();
+    _red.dispose();
+    _square.dispose();
     super.dispose();
   }
 
   void _down(PointerDownEvent _) {
-    if (!widget.enabled) return;
+    if (!widget.enabled || widget.style != CaptureShutterStyle.dot) return;
     _release?.cancel();
     _press.forward().ignore();
   }
@@ -1046,12 +1521,14 @@ class _ShutterState extends State<_Shutter>
                     LongPressGestureRecognizer
                   >(
                     () => LongPressGestureRecognizer(
-                      duration: CameraCaptureSurface.holdToRecord,
+                      duration: widget.holdToRecord,
                     ),
                     (hold) => hold
                       ..onLongPressStart = ((_) => widget.onHoldStart())
-                      ..onLongPressMoveUpdate = ((details) =>
-                          widget.onHoldMove(details.localPosition))
+                      ..onLongPressMoveUpdate = ((details) => widget.onHoldMove(
+                        details.localPosition,
+                        details.offsetFromOrigin,
+                      ))
                       ..onLongPressEnd = ((_) => widget.onHoldEnd()),
                   ),
           },
@@ -1061,15 +1538,30 @@ class _ShutterState extends State<_Shutter>
               scale: 1 + 0.06 * Curves.decelerate.transform(_press.value),
               child: child,
             ),
-            child: SizedBox.square(
-              dimension: 76,
-              child: CustomPaint(
-                painter: _ShutterPainter(
-                  recording: widget.recording,
-                  enabled: enabled,
+            child: switch (widget.style) {
+              CaptureShutterStyle.dot => SizedBox.square(
+                dimension: 76,
+                child: CustomPaint(
+                  painter: _ShutterPainter(
+                    recording: widget.recording,
+                    enabled: enabled,
+                  ),
                 ),
               ),
-            ),
+              CaptureShutterStyle.square => AnimatedBuilder(
+                animation: Listenable.merge([_red, _square]),
+                builder: (context, _) => SizedBox.square(
+                  dimension: 72,
+                  child: CustomPaint(
+                    painter: CaptureSquareShutterPainter(
+                      video: _red.value,
+                      recording: Curves.easeOut.transform(_square.value),
+                      enabled: enabled,
+                    ),
+                  ),
+                ),
+              ),
+            },
           ),
         ),
       ),

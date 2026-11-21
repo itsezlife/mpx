@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `LibraryGridPolicy.captureViewerEvery` / `opensViewerOnCapture`: on
+  `$IOS` the viewer also opens on every 10th capture.
 - Captures in the picker: `LibraryPicker.captures` (a host's listenable
   list of `PickerCapture`, keyed by the capture's `MediaKey$Local`, with
   kind, size and duration) shows them first in the grid, newest first, with

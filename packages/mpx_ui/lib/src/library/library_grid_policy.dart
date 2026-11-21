@@ -78,6 +78,7 @@ final class LibraryGridPolicy {
     this.liveCornerMark = false,
     this.videoPlayMark = false,
     this.viewerTapSelects = true,
+    this.captureViewerEvery,
   });
 
   /// Android's values.
@@ -136,6 +137,7 @@ final class LibraryGridPolicy {
     keepsDeniedCameraSlot: false,
     viewerCheckSize: 29,
     viewerInfoLine: false,
+    captureViewerEvery: 10,
   );
 
   /// [$IOS] on iOS and macOS, [$Android] elsewhere.
@@ -256,6 +258,17 @@ final class LibraryGridPolicy {
   /// selection; a tap on a video plays or pauses it either way, and the
   /// chrome stays.
   final bool viewerTapSelects;
+
+  /// Besides the first capture, every how many captures the viewer opens on
+  /// the newest (the 10th, 20th, … on iOS); null for the first only.
+  final int? captureViewerEvery;
+
+  /// Whether the [count]th capture opens the viewer.
+  bool opensViewerOnCapture(int count) {
+    if (count == 1) return true;
+    final every = captureViewerEvery;
+    return every != null && count > 0 && count % every == 0;
+  }
 
   /// The shortest side from which a screen counts as a tablet.
   final double tabletShortestSide;

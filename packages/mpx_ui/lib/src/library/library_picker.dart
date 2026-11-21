@@ -79,8 +79,9 @@ class LibraryPicker extends StatefulWidget {
   /// null for none.
   final ValueListenable<List<PickerCapture>>? captures;
 
-  /// Whether the first capture (the list growing from empty) opens the
-  /// viewer on it. Later ones only join the grid and the selection.
+  /// Whether a capture opens the viewer on it: the first (the list growing
+  /// from empty), and those the policy adds (`captureViewerEvery`). Others
+  /// only join the grid and the selection.
   final bool opensFirstCapture;
 
   /// The library read.
@@ -204,13 +205,18 @@ class LibraryPickerState extends State<LibraryPicker> {
   final GlobalKey<ViewerOriginScopeState> _origins = GlobalKey();
   int _captureCount = 0;
 
-  // The list growing from empty opens the viewer on the newest capture
-  // (index 0), once the grid has it.
+  // A capture that the policy names (the first; on iOS every 10th too)
+  // opens the viewer on the newest capture (index 0), once the grid has it.
   void _onCaptures() {
     final count = widget.captures?.value.length ?? 0;
-    final first = _captureCount == 0 && count > 0;
+    final grew = count > _captureCount;
     _captureCount = count;
-    if (!first || !widget.opensFirstCapture || _viewerOpen) return;
+    if (!grew ||
+        !widget.policy.opensViewerOnCapture(count) ||
+        !widget.opensFirstCapture ||
+        _viewerOpen) {
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final asset = _gallery?.assetAt(0);
       if (!mounted || asset == null || _viewerOpen) return;

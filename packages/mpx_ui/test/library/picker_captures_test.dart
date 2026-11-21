@@ -165,4 +165,50 @@ void main() {
     await _close(tester);
     expect(h.signals.last.viewerOpen, isFalse);
   });
+
+  test(r'$IOS opens the viewer on the 1st and every 10th capture, '
+      r'$Android on the first only', () {
+    expect(
+      [
+        for (var n = 1; n <= 21; n++)
+          if (LibraryGridPolicy.$IOS.opensViewerOnCapture(n)) n,
+      ],
+      [1, 10, 20],
+    );
+    expect(
+      [
+        for (var n = 1; n <= 21; n++)
+          if (LibraryGridPolicy.$Android.opensViewerOnCapture(n)) n,
+      ],
+      [1],
+    );
+  });
+
+  testWidgets(r'with $IOS the 10th capture opens the viewer again', (
+    tester,
+  ) async {
+    final h = PickerHarness();
+    final captures = ValueNotifier(<PickerCapture>[]);
+    addTearDown(captures.dispose);
+    await h.pump(
+      tester,
+      captures: captures,
+      viewerSlot: true,
+      policy: LibraryGridPolicy.$IOS,
+    );
+    captures.value = [_capture(1)];
+    await _frames(tester);
+    expect(find.byType(MediaViewer), findsOneWidget);
+    await _close(tester);
+    for (var n = 2; n <= 9; n++) {
+      captures.value = [...captures.value, _capture(n)];
+      await _frames(tester, 2);
+      expect(find.byType(MediaViewer), findsNothing, reason: '$n');
+    }
+    captures.value = [...captures.value, _capture(10)];
+    await _frames(tester);
+    expect(find.byType(MediaViewer), findsOneWidget);
+    expect(h.slotItems.last.key, _capture(10).key);
+    await _close(tester);
+  });
 }
