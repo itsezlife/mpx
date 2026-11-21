@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `CameraCaptureSurface.show` completes when the page is gone, after its
+  close transition, not at the pop: the page keeps building through the
+  close. A host that frees what it handed the page when `show` returns
+  (the strip's gallery) no longer frees it while the page still uses it.
 - The system back waits while a photo is taken, as the close button, the
   switch and a dismiss drag already did: a burst then a back no longer
   closes the page under a photo still in flight. The page closes on the

@@ -1183,6 +1183,63 @@ void main() {
     expect(find.byType(Texture), findsOneWidget);
   });
 
+  testWidgets('show completes once the page is gone: a host that frees the '
+      "strip's album then does not free it under the close's frames", (
+    tester,
+  ) async {
+    final session = await tester.runAsync(
+      () => sessions.open(frameRateCap: 30),
+    );
+    late BuildContext home;
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Navigator(
+          onGenerateRoute: (_) => PageRouteBuilder<void>(
+            pageBuilder: (context, _, _) {
+              home = context;
+              return const SizedBox.expand();
+            },
+          ),
+        ),
+      ),
+    );
+    final album = _Gallery(12);
+    final kept = ValueNotifier(<CameraShot>[]);
+    addTearDown(kept.dispose);
+    var done = false;
+    CameraCaptureSurface.show(
+      home,
+      session: session!,
+      labels: _labels,
+      outputDirectory: directory.path,
+      onCaptured: shots.add,
+      from: const Rect.fromLTWH(10, 300, 90, 90),
+      shots: kept,
+      gallery: album,
+    ).then((_) {
+      // As a host does: the album goes when the page has.
+      album.dispose();
+      done = true;
+    }).ignore();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.byKey(const ValueKey('mpx-capture-close')));
+    // Every frame of the close rebuilds the page.
+    for (var ms = 0; ms < 220; ms += 16) {
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(tester.takeException(), isNull, reason: '$ms ms into the close');
+      if (find.byType(CameraCaptureSurface).evaluate().isNotEmpty) {
+        expect(done, isFalse, reason: 'the page still shows at $ms ms');
+      }
+    }
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump();
+    expect(find.byType(CameraCaptureSurface), findsNothing);
+    expect(done, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('expanding from the slot over 350 ms on an ease curve, the '
       'preview grows from the slot to the screen and the controls fade in '
       'with it; closing takes 220 ms back the same way', (tester) async {

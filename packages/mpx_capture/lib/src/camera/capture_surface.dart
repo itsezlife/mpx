@@ -160,7 +160,9 @@ class CameraCaptureSurface extends StatefulWidget {
     super.key,
   });
 
-  /// Shows the surface over the app as a route; completes when it closes.
+  /// Shows the surface over the app as a route; completes when it has
+  /// closed and its close transition has ended, so what the host handed it
+  /// (the strip's gallery, the shots) may be freed then.
   /// [onCaptured] runs for each shot; the route pops on close. With [from]
   /// (the camera slot's rectangle, global) it expands from there over
   /// [transition] (350 ms), else it fades in.
@@ -198,59 +200,62 @@ class CameraCaptureSurface extends StatefulWidget {
     // may sit under the navigator the route goes on.
     final assets = AssetCacheProvider.maybeOf(context);
     try {
-      await // The preview grows from the slot to the screen over [transition] on
+      // The preview grows from the slot to the screen over [transition] on
       // an ease curve (back over [closeTransition], the same curve in
       // time), and the controls, laid out at the whole screen, fade with it.
-      Navigator.of(context).push<void>(
-        PageRouteBuilder<void>(
-          transitionDuration: transition,
-          reverseTransitionDuration: closeTransition,
-          pageBuilder: (context, animation, _) {
-            final progress = _EasedInTime(animation);
-            final surface = CameraCaptureSurface(
-              session: session,
-              labels: labels,
-              outputDirectory: outputDirectory,
-              onCaptured: onCaptured,
-              onClose: () => Navigator.of(context).pop(),
-              kinds: kinds,
-              cache: cache,
-              expandFrom: from,
-              expansion: from == null ? null : progress,
-              controlsReveal: from == null ? null : progress,
-              mirrorFrontPhotos: mirrorFrontPhotos,
-              onVideoRefused: onVideoRefused,
-              videoNeedsMicrophone: videoNeedsMicrophone,
-              policy: policy,
-              resultBuilder: resultBuilder,
-              onShotRemoved: onShotRemoved,
-              shots: shots,
-              onShotsTap: onShotsTap,
-              shotOrder: shotOrder,
-              onShotToggle: onShotToggle,
-              shotSelection: shotSelection,
-              gallery: gallery,
-              galleryOrder: galleryOrder,
-              onGalleryToggle: onGalleryToggle,
-            );
-            return switch (assets) {
-              final scope? => AssetCacheProvider(scope: scope, child: surface),
-              null => surface,
-            };
-          },
-          transitionsBuilder: (context, animation, _, child) {
-            if (from != null) return child;
-            return FadeTransition(
-              opacity: CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeOutCubic,
-                reverseCurve: Curves.easeInCubic,
-              ),
-              child: child,
-            );
-          },
-        ),
+      final route = PageRouteBuilder<void>(
+        transitionDuration: transition,
+        reverseTransitionDuration: closeTransition,
+        pageBuilder: (context, animation, _) {
+          final progress = _EasedInTime(animation);
+          final surface = CameraCaptureSurface(
+            session: session,
+            labels: labels,
+            outputDirectory: outputDirectory,
+            onCaptured: onCaptured,
+            onClose: () => Navigator.of(context).pop(),
+            kinds: kinds,
+            cache: cache,
+            expandFrom: from,
+            expansion: from == null ? null : progress,
+            controlsReveal: from == null ? null : progress,
+            mirrorFrontPhotos: mirrorFrontPhotos,
+            onVideoRefused: onVideoRefused,
+            videoNeedsMicrophone: videoNeedsMicrophone,
+            policy: policy,
+            resultBuilder: resultBuilder,
+            onShotRemoved: onShotRemoved,
+            shots: shots,
+            onShotsTap: onShotsTap,
+            shotOrder: shotOrder,
+            onShotToggle: onShotToggle,
+            shotSelection: shotSelection,
+            gallery: gallery,
+            galleryOrder: galleryOrder,
+            onGalleryToggle: onGalleryToggle,
+          );
+          return switch (assets) {
+            final scope? => AssetCacheProvider(scope: scope, child: surface),
+            null => surface,
+          };
+        },
+        transitionsBuilder: (context, animation, _, child) {
+          if (from != null) return child;
+          return FadeTransition(
+            opacity: CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+              reverseCurve: Curves.easeInCubic,
+            ),
+            child: child,
+          );
+        },
       );
+      await Navigator.of(context).push<void>(route);
+      // The page still builds through its close: what the host handed it
+      // (the strip's album, the shots) stays in use until the route is
+      // gone.
+      await route.completed;
     } finally {
       _shown.remove(session);
     }
