@@ -34,6 +34,11 @@ import kotlin.math.abs
 internal class CameraPipe(
     private val producer: TextureRegistry.SurfaceProducer,
     private val onSize: (width: Int, height: Int) -> Unit,
+    // Which axis of the drawn frame to flip: 0 none, 1 across (x), 2 down
+    // (y). A front camera's frames arrive mirrored; flipped back here, the
+    // frames are the scene as it is (what a recording keeps), and the
+    // preview mirrors them itself.
+    private val unmirror: () -> Int = { 0 },
 ) {
     private val main = Handler(Looper.getMainLooper())
     private val thread = HandlerThread("mpx-camera-gl").apply { start() }
@@ -133,6 +138,10 @@ internal class CameraPipe(
         if (!sized) size()
         surfaceTexture.updateTexImage()
         surfaceTexture.getTransformMatrix(matrix)
+        when (unmirror()) {
+            1 -> android.opengl.Matrix.multiplyMM(matrix, 0, matrix.copyOf(), 0, FLIP_U, 0)
+            2 -> android.opengl.Matrix.multiplyMM(matrix, 0, matrix.copyOf(), 0, FLIP_V, 0)
+        }
         val stage = stage ?: return
         previewSurface?.let {
             runCatching { stage.drawWhole(it, width, height, texture, matrix) }
@@ -378,6 +387,10 @@ internal class CameraPipe(
     }
 
     private companion object {
+        // Texture-coordinate flips about the centre (column-major).
+        val FLIP_U = floatArrayOf(-1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f, 1f, 0f, 0f, 1f)
+        val FLIP_V = floatArrayOf(1f, 0f, 0f, 0f, 0f, -1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 1f, 0f, 1f)
+
         // A frame's timestamp is close to now on its own clock (monotonic or
         // boot time, by device); the microphone's samples are timed on it.
         fun clockOf(frameNs: Long): () -> Long {

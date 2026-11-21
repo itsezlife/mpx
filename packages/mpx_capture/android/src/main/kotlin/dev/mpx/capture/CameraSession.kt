@@ -62,12 +62,19 @@ class CameraSession(
     private var preview: Preview? = null
     private var imageCapture: ImageCapture? = null
     private var recording = false
-    private val pipe = CameraPipe(producer) { width, height ->
-        if (closed) return@CameraPipe
-        previewWidth = width
-        previewHeight = height
-        reportOpen()
-    }
+    private val pipe = CameraPipe(
+        producer,
+        onSize = { width, height ->
+            if (!closed) {
+                previewWidth = width
+                previewHeight = height
+                reportOpen()
+            }
+        },
+        // The front camera's frames come mirrored: flipped back across the
+        // upright picture (down the drawn frame when it lies on its side).
+        unmirror = { if (facing != "front") 0 else if (quarterTurns % 2 != 0) 2 else 1 },
+    )
 
     // The camera's transformation: what turns the drawn frame upright.
     private var rotationDegrees = 0
