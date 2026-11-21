@@ -697,6 +697,69 @@ void main() {
     expect(selected.value, [shots.last, shots.first]);
   });
 
+  testWidgets('a camera page opened again shows the kept shots of an earlier '
+      'one with their pictures', (tester) async {
+    tester.view
+      ..physicalSize = const Size(400, 800)
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final kept = ValueNotifier(<CameraShot>[]);
+    addTearDown(kept.dispose);
+    const labels = CaptureSurfaceLabels(
+      close: 'Close',
+      shutter: 'Shutter',
+      switchCamera: 'Switch camera',
+      flash: 'Flash',
+      shotsCount: _count,
+    );
+    Future<void> page(CameraSession session, Key key) => tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: CameraCaptureSurface(
+          key: key,
+          session: session,
+          labels: labels,
+          outputDirectory: directory.path,
+          onCaptured: shots.add,
+          onClose: () {},
+          shots: kept,
+          videoNeedsMicrophone: false,
+        ),
+      ),
+    );
+    final session = await tester.runAsync(() => sessions.open());
+    await page(session!, const ValueKey('first'));
+    final hold = await tester.startGesture(tester.getCenter(shutter()));
+    await tester.pump(
+      CameraCaptureSurface.holdToRecord + const Duration(milliseconds: 50),
+    );
+    await settle(tester);
+    await tester.pump(const Duration(seconds: 1));
+    await hold.up();
+    for (var i = 0; i < 5 && shots.isEmpty; i++) {
+      await settle(tester);
+    }
+    expect(shots.single.isVideo, isTrue);
+    // Kept, then the page closes and another opens.
+    kept.value = [...shots];
+    await tester.pumpWidget(const SizedBox());
+    await page(session, const ValueKey('second'));
+    for (var i = 0; i < 5; i++) {
+      await settle(tester);
+    }
+    final cell = find.byKey(
+      ValueKey((
+        'mpx-capture-shot',
+        shots.single.key ?? shots.single.output.path,
+      )),
+    );
+    expect(
+      find.descendant(of: cell, matching: find.byType(RawImage)),
+      findsOneWidget,
+      reason: 'the picture comes back with the page',
+    );
+  });
+
   group('swipe to dismiss', () {
     double panel(WidgetTester tester) => tester
         .widget<Opacity>(find.byKey(const ValueKey('mpx-capture-panel')))
@@ -1014,3 +1077,5 @@ void main() {
     expect(find.byType(CameraCaptureSurface), findsNothing);
   });
 }
+
+String _count(int photos, int videos) => '$photos/$videos';

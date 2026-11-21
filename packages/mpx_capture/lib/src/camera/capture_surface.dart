@@ -86,7 +86,12 @@ final class CaptureSurfaceLabels {
 @immutable
 final class CameraShot {
   /// Describes a shot.
-  const CameraShot({required this.isVideo, required this.output, this.key});
+  const CameraShot({
+    required this.isVideo,
+    required this.output,
+    this.key,
+    this.thumbnailPath,
+  });
 
   /// Whether it is a video (else a photo).
   final bool isVideo;
@@ -98,6 +103,12 @@ final class CameraShot {
   /// The local media key the bytes resolve under, when the surface was given
   /// a [CaptureCache].
   final MediaKey$Local? key;
+
+  /// A small picture of the shot that stays a file after the capture moves
+  /// into a cache (a recording's poster, a photo's 240 wide PNG): a camera
+  /// page opened later draws the shot from it. Null when there is none; the
+  /// file may still be being written just after the shot.
+  final String? thumbnailPath;
 
   @override
   String toString() =>
@@ -566,38 +577,85 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
   // The file's bytes are read before the capture moves into a cache; the
   // decode then runs on its own and the cell shows the picture when it is
   // ready, so the next shot never waits for it.
+  // Only the strip's own cells draw pictures.
+  bool get _drawsThumbs =>
+      widget.resultBuilder == null &&
+      _policy.shotsCounter &&
+      widget.labels.shotsCount != null;
+
+  // Where a shot's lasting picture is: a recording's poster, or a PNG this
+  // page writes beside a photo.
+  static String? _thumbnailPathOf(
+    CaptureOutput output, {
+    required bool isVideo,
+  }) => isVideo ? output.posterPath : '${output.path}.thumb.png';
+
+  // The file's bytes are read before the capture moves into a cache; the
+  // decode then runs on its own and the cell shows the picture when it is
+  // ready, so the next shot never waits for it. A photo's picture is also
+  // written beside it, for camera pages opened later.
   Future<void> _thumbnail(
     CaptureOutput output, {
     required bool isVideo,
     required Object key,
   }) async {
-    // Only the strip's own cells draw them.
-    final drawn =
-        widget.resultBuilder == null &&
-        _policy.shotsCounter &&
-        widget.labels.shotsCount != null;
     final path = isVideo ? output.posterPath : output.path;
-    if (!drawn || path == null) return;
+    if (!_drawsThumbs || path == null) return;
     final Uint8List bytes;
     try {
       bytes = await File(path).readAsBytes();
     } on Object {
       return;
     }
-    unawaited(() async {
-      try {
-        final codec = await ui.instantiateImageCodec(bytes, targetWidth: 240);
-        final frame = await codec.getNextFrame();
-        codec.dispose();
-        if (!mounted) return frame.image.dispose();
-        setState(() {
-          _thumbs[key]?.dispose();
-          _thumbs[key] = frame.image;
-        });
-      } on Object {
-        // No picture: the cell keeps its background.
+    final keep = isVideo ? null : _thumbnailPathOf(output, isVideo: false);
+    unawaited(_decode(bytes, key, writeTo: keep));
+  }
+
+  Future<void> _decode(Uint8List bytes, Object key, {String? writeTo}) async {
+    try {
+      final codec = await ui.instantiateImageCodec(bytes, targetWidth: 240);
+      final frame = await codec.getNextFrame();
+      codec.dispose();
+      final image = frame.image;
+      if (writeTo != null) {
+        final png = await image.toByteData(format: ui.ImageByteFormat.png);
+        if (png != null) {
+          await File(writeTo).writeAsBytes(png.buffer.asUint8List());
+        }
       }
-    }());
+      if (!mounted) return image.dispose();
+      setState(() {
+        _thumbs[key]?.dispose();
+        _thumbs[key] = image;
+      });
+    } on Object {
+      // No picture: the cell keeps its background.
+    }
+  }
+
+  // Kept shots this page did not take (an earlier camera page's) are drawn
+  // from their lasting pictures.
+  final Set<Object> _loading = {};
+
+  void _loadKeptThumbs() {
+    if (!_drawsThumbs) return;
+    for (final shot in _shotList) {
+      final key = _thumbKey(shot);
+      final path = shot.thumbnailPath;
+      if (path == null || _thumbs.containsKey(key) || !_loading.add(key)) {
+        continue;
+      }
+      unawaited(() async {
+        try {
+          final bytes = await File(path).readAsBytes();
+          await _decode(bytes, key);
+        } on Object {
+          // Not written (yet): the cell keeps its background.
+        } finally {
+          _loading.remove(key);
+        }
+      }());
+    }
   }
 
   // The host's shots when it keeps them, else the ones taken here.
@@ -609,7 +667,9 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
       _shotList.isNotEmpty;
 
   void _onShots() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
+    _loadKeptThumbs();
   }
 
   void _removeResult(CameraShot shot) {
@@ -1020,6 +1080,7 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
       duration: const Duration(milliseconds: 250),
     )..addListener(_onSettle);
     widget.shots?.addListener(_onShots);
+    scheduleMicrotask(_loadKeptThumbs);
     _session.value.addListener(_onValue);
     _wasRecording = _value.isRecording;
     _foundCap = _value.frameRateCap;
@@ -1129,7 +1190,14 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     final key = cache?.mintKey();
     await _thumbnail(output, isVideo: isVideo, key: key ?? output.path);
     if (cache != null && key != null) await cache.put(key, output);
-    final shot = CameraShot(isVideo: isVideo, output: output, key: key);
+    final shot = CameraShot(
+      isVideo: isVideo,
+      output: output,
+      key: key,
+      thumbnailPath: _drawsThumbs
+          ? _thumbnailPathOf(output, isVideo: isVideo)
+          : null,
+    );
     if (widget.shots == null && mounted) setState(() => _results.add(shot));
     widget.onCaptured(shot);
   }

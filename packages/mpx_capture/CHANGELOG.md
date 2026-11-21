@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `CameraShot.thumbnailPath`: a lasting picture of each shot (a recording's
+  poster, a photo's 240 wide PNG written beside it), so a camera page opened
+  again draws the kept shots of an earlier one.
 - `CameraSession.prepareVideo` / `releaseVideo`: the full camera page keeps
   the camera ready to record while it shows, so a recording starts on the
   running session (on Android the video use case is bound with the preview
