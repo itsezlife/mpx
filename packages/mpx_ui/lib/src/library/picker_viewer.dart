@@ -670,6 +670,10 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
                   ),
                   child: _SelectedStrip(
                     keys: widget.selection.keys,
+                    assetOf: (key) => switch (widget.source.indexOf(key)) {
+                      final index? => widget.source.assetAt(index),
+                      null => null,
+                    },
                     current: key,
                     height: policy.selectedStripHeight,
                     tokens: tokens,
@@ -813,6 +817,7 @@ class _ViewerCheck extends StatelessWidget {
 class _SelectedStrip extends StatefulWidget {
   const _SelectedStrip({
     required this.keys,
+    required this.assetOf,
     required this.current,
     required this.height,
     required this.tokens,
@@ -828,6 +833,9 @@ class _SelectedStrip extends StatefulWidget {
   static const EdgeInsets inset = EdgeInsets.fromLTRB(12, 12, 12, 6);
 
   final List<MediaKey> keys;
+  // The item a key stands for, when the viewer's source holds it: a
+  // capture's thumbnail comes from it.
+  final LibraryAsset? Function(MediaKey key) assetOf;
   final MediaKey? current;
   final double height;
   final LibraryGridTokens tokens;
@@ -888,7 +896,9 @@ class _SelectedStripState extends State<_SelectedStrip> {
     // keys alone, and a library thumbnail is a still.
     final scope = AssetCacheProvider.maybeOf(context);
     for (final key in widget.keys) {
-      if (LibraryKeys.read(key) case final target?) {
+      if (_captureOf(key) case final capture?) {
+        scope?.know(PickerCaptureKeys.thumbnailDescriptorOf(capture, pixels));
+      } else if (LibraryKeys.read(key) case final target?) {
         scope?.know(
           MediaDescriptor(
             key: LibraryKeys.thumbnailKeyFor(target.asset, pixels),
@@ -930,11 +940,21 @@ class _SelectedStripState extends State<_SelectedStrip> {
     );
   }
 
+  // The capture [key] stands for, when it is one.
+  LibraryAsset? _captureOf(MediaKey key) {
+    if (key is! MediaKey$Local) return null;
+    final asset = widget.assetOf(key);
+    return asset != null && PickerCaptureKeys.isCapture(asset) ? asset : null;
+  }
+
   Widget _item(MediaKey key, double side, double dpr, int pixels) {
     final tokens = widget.tokens;
-    final thumbnail = switch (LibraryKeys.read(key)) {
-      final target? => LibraryKeys.thumbnailKeyFor(target.asset, pixels),
-      null => key,
+    final thumbnail = switch (_captureOf(key)) {
+      final capture? => PickerCaptureKeys.thumbnailKeyOf(capture, pixels),
+      null => switch (LibraryKeys.read(key)) {
+        final target? => LibraryKeys.thumbnailKeyFor(target.asset, pixels),
+        null => key,
+      },
     };
     final current = key == widget.current;
     return Transform.scale(

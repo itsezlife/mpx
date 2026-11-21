@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The viewer's selected strip and `PickerSelectionPreview` show a capture
+  by its `PickerCapture.thumbnail` when it has one (a recording's first
+  frame), as the grid does.
 - `PickerCapture.thumbnail`: a still (a recording's first frame) that
   stands for a capture in the grid's cells.
 - The viewer over the camera (`PickerViewer.show(overCamera:)`, used by

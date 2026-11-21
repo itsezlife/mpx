@@ -9,6 +9,7 @@ import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_ui/src/library/library_grid_cell.dart';
 import 'package:mpx_ui/src/library/library_grid_policy.dart';
 import 'package:mpx_ui/src/library/library_grid_tokens.dart';
+import 'package:mpx_ui/src/library/picker_captures.dart';
 import 'package:mpx_ui/src/library/picker_selection.dart';
 import 'package:mpx_ui/src/text/mpx_text_root.dart';
 
@@ -400,11 +401,22 @@ class _PreviewItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final thumbnail = switch (LibraryKeys.read(content)) {
-      final target? => LibraryKeys.thumbnailKeyFor(target.asset, pixels),
-      null => content,
+    // A capture with a thumbnail (a recording's first frame) shows it.
+    final capture = switch (asset) {
+      final asset? when PickerCaptureKeys.isCapture(asset) => asset,
+      _ => null,
     };
-    if (thumbnail != content) {
+    final thumbnail = capture != null
+        ? PickerCaptureKeys.thumbnailKeyOf(capture, pixels)
+        : switch (LibraryKeys.read(content)) {
+            final target? => LibraryKeys.thumbnailKeyFor(target.asset, pixels),
+            null => content,
+          };
+    if (capture != null && thumbnail != content) {
+      AssetCacheProvider.maybeOf(
+        context,
+      )?.know(PickerCaptureKeys.thumbnailDescriptorOf(capture, pixels));
+    } else if (thumbnail != content) {
       // A library key resolves only through its descriptor, which the grid
       // tells for its cells; the preview holds keys alone, and a library
       // thumbnail is a still whatever the asset is.

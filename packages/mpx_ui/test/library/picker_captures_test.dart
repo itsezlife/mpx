@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_library/testing.dart';
 import 'package:mpx_ui/mpx_ui.dart';
@@ -293,5 +294,84 @@ void main() {
     );
     await _frames(tester);
     expect(viewer, findsNothing);
+  });
+
+  testWidgets("the viewer's selected strip shows a recording by its "
+      'thumbnail', (tester) async {
+    final h = PickerHarness();
+    final poster = MediaKey$Local('00000000-0000-4000-8000-0000000000bb');
+    final video = PickerCapture(
+      key: _capture(7).key,
+      kind: LibraryAssetKind.video,
+      duration: const Duration(seconds: 3),
+      thumbnail: poster,
+    );
+    final captures = ValueNotifier([video]);
+    addTearDown(captures.dispose);
+    final picker = GlobalKey<LibraryPickerState>();
+    await h.pump(
+      tester,
+      captures: captures,
+      viewerSlot: true,
+      opensFirstCapture: false,
+      pickerKey: picker,
+    );
+    h.selection
+      ..toggle(video.key)
+      ..toggle(key(0));
+    picker.currentState!.openCaptures().ignore();
+    await _frames(tester);
+    await tester.tap(find.byKey(const ValueKey('mpx-picker-viewer-counter')));
+    await _frames(tester, 10);
+    final item = find.byKey(
+      ValueKey<(String, MediaKey)>(('mpx-picker-viewer-strip', video.key)),
+    );
+    expect(item, findsOneWidget);
+    final shown = tester
+        .widgetList<ContentView>(
+          find.descendant(of: item, matching: find.byType(ContentView)),
+        )
+        .map((view) => view.content);
+    expect(shown, [poster]);
+  });
+
+  testWidgets('the selection preview shows a recording by its thumbnail', (
+    tester,
+  ) async {
+    final poster = MediaKey$Local('00000000-0000-4000-8000-0000000000cc');
+    final video = PickerCapture(
+      key: _capture(8).key,
+      kind: LibraryAssetKind.video,
+      thumbnail: poster,
+    );
+    final selection = OrderedPickerSelection()..toggle(video.key);
+    addTearDown(selection.dispose);
+    final clock = PlaybackClock(ticks: ManualPlaybackTickSource());
+    final scope = AssetCacheScope(producer: FakeAssetProducer(), clock: clock);
+    addTearDown(() {
+      scope.dispose();
+      clock.dispose();
+    });
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: AssetCacheProvider(
+          scope: scope,
+          child: unthemedHost(
+            PickerSelectionPreview(
+              selection: selection,
+              labels: gridLabels,
+              onOpen: (_, _) {},
+              assetOf: (key) => key == video.key ? video.asset : null,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final shown = tester
+        .widgetList<ContentView>(find.byType(ContentView))
+        .map((view) => view.content);
+    expect(shown, [poster]);
   });
 }
