@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_capture/src/cache/capture_cache.dart';
@@ -52,6 +53,7 @@ final class CaptureSurfaceLabels {
     required this.flash,
     this.videoMode,
     this.photoMode,
+    this.shotsCount,
   });
 
   /// The close button.
@@ -72,6 +74,10 @@ final class CaptureSurfaceLabels {
 
   /// The photo mode's name in a mode control.
   final String? photoMode;
+
+  /// The shots counter's text for so many photos and videos ("3 PHOTOS",
+  /// "2 VIDEOS", "5 MEDIA" in the host's plurals); null for no counter.
+  final String Function(int photos, int videos)? shotsCount;
 }
 
 /// What the capture surface took.
@@ -129,6 +135,8 @@ class CameraCaptureSurface extends StatefulWidget {
     this.policy = CaptureSurfacePolicy.$Android,
     this.resultBuilder,
     this.onShotRemoved,
+    this.shots,
+    this.onShotsTap,
     super.key,
   });
 
@@ -151,6 +159,8 @@ class CameraCaptureSurface extends StatefulWidget {
     CaptureSurfacePolicy policy = CaptureSurfacePolicy.$Android,
     Widget Function(BuildContext context, CameraShot shot)? resultBuilder,
     ValueChanged<CameraShot>? onShotRemoved,
+    ValueListenable<List<CameraShot>>? shots,
+    VoidCallback? onShotsTap,
     Duration transition = const Duration(milliseconds: 350),
     Duration closeTransition = const Duration(milliseconds: 220),
   }) async {
@@ -185,6 +195,8 @@ class CameraCaptureSurface extends StatefulWidget {
               policy: policy,
               resultBuilder: resultBuilder,
               onShotRemoved: onShotRemoved,
+              shots: shots,
+              onShotsTap: onShotsTap,
             );
           },
           transitionsBuilder: (context, animation, _, child) {
@@ -271,6 +283,13 @@ class CameraCaptureSurface extends StatefulWidget {
   /// Called when a shot is removed from the results strip: the host drops
   /// it from its selection.
   final ValueChanged<CameraShot>? onShotRemoved;
+
+  /// The shots the host keeps, oldest first, which the strip and the counter
+  /// show; null for the surface's own list of the shots it took.
+  final ValueListenable<List<CameraShot>>? shots;
+
+  /// Called by the shots counter: the host opens its viewer over them.
+  final VoidCallback? onShotsTap;
 
   @override
   State<CameraCaptureSurface> createState() => _CameraCaptureSurfaceState();
@@ -515,8 +534,20 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
   late final AnimationController _blink;
   final List<CameraShot> _results = [];
 
+  // The host's shots when it keeps them, else the ones taken here.
+  List<CameraShot> get _shotList => widget.shots?.value ?? _results;
+
+  bool get _showsCounter =>
+      _policy.shotsCounter &&
+      widget.labels.shotsCount != null &&
+      _shotList.isNotEmpty;
+
+  void _onShots() {
+    if (mounted) setState(() {});
+  }
+
   void _removeResult(CameraShot shot) {
-    setState(() => _results.remove(shot));
+    if (widget.shots == null) setState(() => _results.remove(shot));
     widget.onShotRemoved?.call(shot);
   }
 
@@ -693,7 +724,55 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
                       ),
               ),
             ),
-          if (_policy.resultsStrip && _results.isNotEmpty)
+          if (_showsCounter) ...[
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: MediaQuery.paddingOf(context).bottom + 8,
+              height: 80,
+              child: ListView(
+                key: const ValueKey('mpx-capture-shots'),
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                children: [
+                  for (final shot in _shotList)
+                    SizedBox.square(
+                      key: ValueKey((
+                        'mpx-capture-shot',
+                        shot.key ?? shot.output.path,
+                      )),
+                      dimension: 80,
+                      child:
+                          widget.resultBuilder?.call(context, shot) ??
+                          const Padding(
+                            padding: EdgeInsets.all(2),
+                            child: ColoredBox(color: Color(0x66FFFFFF)),
+                          ),
+                    ),
+                ],
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: MediaQuery.paddingOf(context).bottom + 129 + 96,
+              height: 38,
+              child: Center(
+                child: _ShotsCounter(
+                  key: const ValueKey('mpx-capture-counter'),
+                  text: widget.labels.shotsCount!(
+                    _shotList.where((s) => !s.isVideo).length,
+                    _shotList.where((s) => s.isVideo).length,
+                  ),
+                  onTap: () {
+                    if (!_busy && !_value.isRecording)
+                      widget.onShotsTap?.call();
+                  },
+                ),
+              ),
+            ),
+          ],
+          if (_policy.resultsStrip && _shotList.isNotEmpty)
             Positioned(
               left: 0,
               right: 0,
@@ -701,7 +780,7 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
               height: 56,
               child: _ResultsStrip(
                 key: const ValueKey('mpx-capture-results'),
-                shots: _results,
+                shots: _shotList,
                 builder: widget.resultBuilder,
                 onRemove: _removeResult,
               ),
@@ -726,7 +805,10 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
             Positioned(
               left: 0,
               right: 0,
-              bottom: MediaQuery.paddingOf(context).bottom + 126,
+              bottom:
+                  MediaQuery.paddingOf(context).bottom +
+                  126 +
+                  (_showsCounter ? 96 + 38 : 0),
               height: 50,
               child: AnimatedBuilder(
                 animation: _zoomFade,
@@ -859,6 +941,7 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
       vsync: this,
       duration: const Duration(milliseconds: 250),
     )..addListener(_onSettle);
+    widget.shots?.addListener(_onShots);
     _session.value.addListener(_onValue);
     _wasRecording = _value.isRecording;
     _foundCap = _value.frameRateCap;
@@ -872,7 +955,17 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
   }
 
   @override
+  void didUpdateWidget(CameraCaptureSurface oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.shots, widget.shots)) {
+      oldWidget.shots?.removeListener(_onShots);
+      widget.shots?.addListener(_onShots);
+    }
+  }
+
+  @override
   void dispose() {
+    widget.shots?.removeListener(_onShots);
     _session.value.removeListener(_onValue);
     _tick?.cancel();
     _ring.dispose();
@@ -929,7 +1022,7 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
       await cache.put(key, output);
     }
     final shot = CameraShot(isVideo: isVideo, output: output, key: key);
-    if (_policy.resultsStrip && mounted) setState(() => _results.add(shot));
+    if (widget.shots == null && mounted) setState(() => _results.add(shot));
     widget.onCaptured(shot);
   }
 
@@ -1169,7 +1262,10 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     return SafeArea(
       key: const ValueKey('mpx-capture-controls'),
       child: Padding(
-        padding: const EdgeInsets.all(8),
+        // The shots strip takes the bottom 96.
+        padding: const EdgeInsets.all(
+          8,
+        ).copyWith(bottom: 8 + (_showsCounter ? 96 : 0)),
         child: Column(
           children: [
             Row(
@@ -1288,6 +1384,75 @@ class _AsideWhileRecording extends StatelessWidget {
       ),
     );
   }
+}
+
+// The shots counter: bold white text with a chevron 4 after it, 16 in from
+// each side, in a pill 38 high outlined white 2 thick over a soft shadow.
+class _ShotsCounter extends StatelessWidget {
+  const _ShotsCounter({required this.text, required this.onTap, super.key});
+
+  final String text;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    label: text,
+    onTap: onTap,
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(19),
+          border: Border.all(color: const Color(0xFFFFFFFF), width: 2),
+          boxShadow: const [BoxShadow(color: Color(0x1F000000), blurRadius: 5)],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              text,
+              style: const TextStyle(
+                color: Color(0xFFFFFFFF),
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                decoration: TextDecoration.none,
+              ),
+            ),
+            const SizedBox(width: 4),
+            const CustomPaint(size: Size(8, 12), painter: _ChevronPainter()),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _ChevronPainter extends CustomPainter {
+  const _ChevronPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = const Color(0xFFFFFFFF)
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(
+      Path()
+        ..moveTo(2, 1)
+        ..lineTo(size.width - 2, size.height / 2)
+        ..lineTo(2, size.height - 1),
+      p,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ChevronPainter oldDelegate) => false;
 }
 
 // While a recording runs, a control fades out over 250 ms and takes no

@@ -211,4 +211,29 @@ void main() {
     expect(h.slotItems.last.key, _capture(10).key);
     await _close(tester);
   });
+
+  testWidgets('the host opens the viewer over the captures, a slot closes '
+      'it, and the host hears it closed', (tester) async {
+    final h = PickerHarness();
+    final captures = ValueNotifier([_capture(1), _capture(2)]);
+    addTearDown(captures.dispose);
+    final picker = GlobalKey<LibraryPickerState>();
+    var closed = 0;
+    await h.pump(
+      tester,
+      captures: captures,
+      viewerSlot: true,
+      opensFirstCapture: false,
+      pickerKey: picker,
+      onViewerClosed: () => closed++,
+    );
+    picker.currentState!.openCaptures().ignore();
+    await _frames(tester);
+    expect(find.byType(MediaViewer), findsOneWidget);
+    expect(h.slotItems.last.key, _capture(2).key);
+    h.slotItems.last.close().ignore();
+    await _frames(tester);
+    expect(find.byType(MediaViewer), findsNothing);
+    expect(closed, 1);
+  });
 }

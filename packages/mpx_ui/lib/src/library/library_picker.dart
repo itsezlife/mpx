@@ -70,6 +70,7 @@ class LibraryPicker extends StatefulWidget {
     this.active = true,
     this.captures,
     this.opensFirstCapture = true,
+    this.onViewerClosed,
     super.key,
   });
 
@@ -78,6 +79,9 @@ class LibraryPicker extends StatefulWidget {
   /// host owns the list and selects a capture by its key like any item;
   /// null for none.
   final ValueListenable<List<PickerCapture>>? captures;
+
+  /// Called when the picker's viewer has closed, whatever closed it.
+  final VoidCallback? onViewerClosed;
 
   /// Whether a capture opens the viewer on it: the first (the list growing
   /// from empty), and those the policy adds (`captureViewerEvery`). Others
@@ -222,6 +226,15 @@ class LibraryPickerState extends State<LibraryPicker> {
       if (!mounted || asset == null || _viewerOpen) return;
       unawaited(_open(asset, 0));
     });
+  }
+
+  /// Opens the viewer on the newest capture, paging the captures and then
+  /// the album (a camera's shots counter); nothing without captures or
+  /// while a viewer is open.
+  Future<void> openCaptures() async {
+    final asset = _gallery?.assetAt(0);
+    if (asset == null || (widget.captures?.value.isEmpty ?? true)) return;
+    await _open(asset, 0);
   }
 
   /// The album shown, or null before the albums load.
@@ -383,6 +396,7 @@ class LibraryPickerState extends State<LibraryPicker> {
       bridge: _origins.currentState?.bridgeFor(gallery),
     );
     if (mounted) setState(() => _viewerOpen = false);
+    widget.onViewerClosed?.call();
     if (_changeHeld && mounted) {
       _changeHeld = false;
       _onChange(const LibraryChange.reload());

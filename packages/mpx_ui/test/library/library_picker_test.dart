@@ -91,6 +91,8 @@ final class PickerHarness {
     Widget Function(BuildContext context, Widget grid)? gridBuilder,
     ValueListenable<List<PickerCapture>>? captures,
     bool opensFirstCapture = true,
+    VoidCallback? onViewerClosed,
+    Key? pickerKey,
   }) async {
     tester.view
       ..physicalSize = const Size(390, 800)
@@ -139,8 +141,10 @@ final class PickerHarness {
                     controller: controller,
                     lookup: lookup,
                     gridBuilder: gridBuilder,
+                    key: pickerKey,
                     captures: captures,
                     opensFirstCapture: opensFirstCapture,
+                    onViewerClosed: onViewerClosed,
                     cameraSlotBuilder: cameraSlot
                         ? (context, value) {
                             signals.add(value.value);

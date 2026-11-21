@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The camera's capture flow: `LibraryPickerState.openCaptures` opens the
+  viewer on the newest capture, `PickerViewerItem.close` lets a slot close
+  the viewer, `LibraryPicker.onViewerClosed` tells the host it closed.
 - Input guards: a viewer close while it opens is ignored, and the picker
   opens one viewer at a time.
 - `LibraryGridPolicy.captureViewerEvery` / `opensViewerOnCapture`: on

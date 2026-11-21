@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The kept shots under `$Android` (`shotsCounter`): with
+  `CameraCaptureSurface(shots:, onShotsTap:)` and
+  `CaptureSurfaceLabels.shotsCount`, a strip of 80 tiles at the bottom
+  (`resultBuilder`) and a counter button ("3 PHOTOS") that opens them; the
+  shutter row moves up 96.
 - The capture surface closes with a vertical swipe: past 25 px the preview
   follows the finger and the controls fade (220 ms); released past a sixth
   of the height it closes from there into the slot, otherwise it comes back

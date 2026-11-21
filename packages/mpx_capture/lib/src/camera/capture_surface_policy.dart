@@ -88,6 +88,7 @@ final class CaptureSurfacePolicy {
     required this.photoBlink,
     required this.resultsStrip,
     required this.locksWhileSwitching,
+    required this.shotsCounter,
   });
 
   /// The Android reference camera: tap for a photo, hold 800 ms for a
@@ -109,6 +110,7 @@ final class CaptureSurfacePolicy {
     photoBlink: false,
     resultsStrip: false,
     locksWhileSwitching: false,
+    shotsCounter: true,
   );
 
   /// The iOS reference camera: a Video / Photo mode control; in photo mode
@@ -133,6 +135,7 @@ final class CaptureSurfacePolicy {
     photoBlink: true,
     resultsStrip: true,
     locksWhileSwitching: true,
+    shotsCounter: false,
   );
 
   /// The policy of [platform]: [$IOS] on iOS and macOS, [$Android]
@@ -191,4 +194,9 @@ final class CaptureSurfacePolicy {
   /// Whether every control ignores touches while the camera switches (until
   /// the new camera's first frame); otherwise only the switch does.
   final bool locksWhileSwitching;
+
+  /// Whether the host's kept shots show in a strip of 80 tiles at the
+  /// bottom with a counter button above the shutter ("3 PHOTOS") that opens
+  /// them; the shutter row moves up 96 to make room.
+  final bool shotsCounter;
 }

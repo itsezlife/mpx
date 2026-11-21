@@ -526,6 +526,61 @@ void main() {
     expect(File(shot.output.path).existsSync(), isFalse);
   });
 
+  testWidgets('the kept shots: a strip of 80 tiles at the bottom, a '
+      'counter in the host\'s words that opens them, the shutter 96 up', (
+    tester,
+  ) async {
+    tester.view
+      ..physicalSize = const Size(400, 800)
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final kept = ValueNotifier(<CameraShot>[]);
+    addTearDown(kept.dispose);
+    var opened = 0;
+    final session = await tester.runAsync(() => sessions.open());
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: CameraCaptureSurface(
+          session: session!,
+          labels: CaptureSurfaceLabels(
+            close: 'Close',
+            shutter: 'Shutter',
+            switchCamera: 'Switch camera',
+            flash: 'Flash',
+            shotsCount: (photos, videos) => '$photos/$videos',
+          ),
+          outputDirectory: directory.path,
+          onCaptured: shots.add,
+          onClose: () {},
+          shots: kept,
+          onShotsTap: () => opened++,
+        ),
+      ),
+    );
+    final counter = find.byKey(const ValueKey('mpx-capture-counter'));
+    expect(counter, findsNothing);
+    final shutterAt = tester.getCenter(shutter()).dy;
+    for (var i = 0; i < 2; i++) {
+      await tester.tap(shutter());
+      await settle(tester);
+    }
+    expect(counter, findsNothing, reason: 'the host keeps none yet');
+    kept.value = [...shots];
+    await tester.pump();
+    expect(
+      find.descendant(of: counter, matching: find.text('2/0')),
+      findsOneWidget,
+    );
+    expect(tester.getSize(counter).height, 38);
+    expect(tester.getRect(counter).bottom, 800 - 225);
+    final strip = find.byKey(const ValueKey('mpx-capture-shots'));
+    expect(tester.getRect(strip), const Rect.fromLTRB(0, 712, 400, 792));
+    expect(tester.getCenter(shutter()).dy, shutterAt - 96);
+    await tester.tap(counter);
+    expect(opened, 1);
+  });
+
   group('swipe to dismiss', () {
     double panel(WidgetTester tester) => tester
         .widget<Opacity>(find.byKey(const ValueKey('mpx-capture-panel')))

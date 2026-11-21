@@ -111,7 +111,14 @@ final class PickerViewerItem {
     this.chromeShown = const _Constant(value: true),
     this.chrome = kAlwaysCompleteAnimation,
     this.dismissing = const _Constant(value: false),
+    this.close = _noClose,
   });
+
+  static Future<void> _noClose() async {}
+
+  /// Closes the viewer as its back button does (a slot's own button that
+  /// leaves it, say); nothing while it opens or closes.
+  final Future<void> Function() close;
 
   /// The item's index in the album.
   final int index;
@@ -496,6 +503,7 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
         chromeShown: _chromeShown,
         chrome: _fade,
         dismissing: widget.viewer?.dismissing ?? const _Constant(value: false),
+        close: widget.viewer?.close ?? PickerViewerItem._noClose,
       );
       final policy = widget.policy;
       final tokens = widget.tokens;
