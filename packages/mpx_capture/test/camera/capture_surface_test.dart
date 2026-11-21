@@ -211,6 +211,17 @@ void main() {
     }
   });
 
+  testWidgets('the zoom goes back to the widest after each shot', (
+    tester,
+  ) async {
+    final session = await pumpSurface(tester);
+    await tester.runAsync(() => session.setZoom(0.6));
+    await tester.tap(shutter());
+    await settle(tester);
+    expect(shots, hasLength(1));
+    expect(session.value.value.zoom, 0);
+  });
+
   testWidgets('a hold records a video until released', (tester) async {
     final session = await pumpSurface(tester);
     final gesture = await tester.startGesture(tester.getCenter(shutter()));

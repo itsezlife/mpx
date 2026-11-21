@@ -443,6 +443,8 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
       '${DateTime.now().microsecondsSinceEpoch}-${_shots++}.$extension';
 
   Future<void> _deliver(CaptureOutput output, {required bool isVideo}) async {
+    // Each shot starts the next from the widest view.
+    if (_value.zoom != 0) unawaited(_quietly(() => _session.setZoom(0)));
     final cache = widget.cache;
     if (cache == null) {
       widget.onCaptured(CameraShot(isVideo: isVideo, output: output));
