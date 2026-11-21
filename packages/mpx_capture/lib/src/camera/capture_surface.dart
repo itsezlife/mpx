@@ -1110,7 +1110,17 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
       );
     },
   );
-  bool _busy = false;
+  // While a photo is taken (or a recording ends): the close, the switch, a
+  // dismiss drag and the system back wait for it.
+  bool _busyNow = false;
+  bool get _busy => _busyNow;
+  set _busy(bool value) {
+    if (value == _busyNow) return;
+    _busyNow = value;
+    // The back's gate follows.
+    if (mounted) setState(() {});
+  }
+
   int _shots = 0;
 
   CameraSession get _session => widget.session;
@@ -1440,7 +1450,10 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
   };
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      PopScope(canPop: !_busy, child: _page(context));
+
+  Widget _page(BuildContext context) {
     final preview = ColoredBox(
       color: const Color(0xFF000000),
       child: CameraPreview(session: _session),

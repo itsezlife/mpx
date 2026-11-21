@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The system back waits while a photo is taken, as the close button, the
+  switch and a dismiss drag already did: a burst then a back no longer
+  closes the page under a photo still in flight. The page closes on the
+  next back.
 - The camera page's strip lists the host's album after the shots
   (`CameraCaptureSurface.gallery`, a lazy `CaptureStripGallery`), each item
   with its picture, a video's duration and its selection number

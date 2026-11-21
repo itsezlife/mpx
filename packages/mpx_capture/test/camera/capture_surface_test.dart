@@ -990,6 +990,66 @@ void main() {
       expect(slow.current!.value.value.facing, CameraFacing.back);
     });
 
+    testWidgets('a back while a burst\'s photo is taken waits for it, as the '
+        'close does: the page closes after, and its one shot is delivered '
+        'once, with nothing acting on the closed page', (tester) async {
+      final slow = FakeCameraSessions(
+        textureId: 7,
+        photoTakes: const Duration(milliseconds: 900),
+      );
+      final session = await tester.runAsync(slow.open);
+      late BuildContext host;
+      await tester.pumpWidget(
+        WidgetsApp(
+          color: const Color(0xFF000000),
+          pageRouteBuilder: <T>(settings, builder) => PageRouteBuilder<T>(
+            settings: settings,
+            pageBuilder: (context, _, _) => builder(context),
+          ),
+          home: Builder(
+            builder: (context) {
+              host = context;
+              return const SizedBox.expand();
+            },
+          ),
+        ),
+      );
+      CameraCaptureSurface.show(
+        host,
+        session: session!,
+        labels: _labels,
+        outputDirectory: directory.path,
+        onCaptured: shots.add,
+      ).ignore();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      for (var i = 0; i < 6; i++) {
+        await tester.tap(shutter());
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      // The system back, twice, while the photo is taken.
+      await tester.binding.handlePopRoute();
+      await tester.binding.handlePopRoute();
+      // Past a close's transition: the page still shows.
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 100));
+      final page = ModalRoute.of(
+        tester.element(find.byType(CameraCaptureSurface)),
+      )!;
+      expect(page.isActive, isTrue, reason: 'the back waited for the photo');
+      expect(shots, isEmpty);
+      await tester.pump(const Duration(milliseconds: 500));
+      await settle(tester);
+      expect(shots, hasLength(1));
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(page.isActive, isFalse, reason: 'a back after it closes');
+      await tester.pump(const Duration(milliseconds: 300));
+      await settle(tester);
+      expect(shots, hasLength(1));
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('a second show for the same session while one is open does '
         'nothing', (tester) async {
       final session = await tester.runAsync(sessions.open);
