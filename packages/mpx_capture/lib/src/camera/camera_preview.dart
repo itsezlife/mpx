@@ -66,6 +66,12 @@ class _CameraPreviewState extends State<CameraPreview>
   // 1 when the snapshot is gone, 0 while it covers the preview.
   late final AnimationController _clear;
   final GlobalKey _live = GlobalKey();
+  // The bare frames at their own size, before any turn, mirror or fit: a
+  // snapshot is read here and shown through the same turn, mirror and fit
+  // as the frames the user saw. A snapshot of the fitted preview would hold
+  // the texture whole (a raster of a texture layer ignores the fit's crop),
+  // a differently framed picture.
+  final GlobalKey _frames = GlobalKey();
 
   // The value the frames were drawn with before the stop, for a fallback
   // when no snapshot could be taken.
@@ -90,23 +96,30 @@ class _CameraPreviewState extends State<CameraPreview>
     CameraSnapshots.add(widget.session, _take);
   }
 
-  // The frame taken by the session just before it stopped its frames.
+  // The frame taken by the session just before it stopped its frames, and
+  // how those frames were shown.
   ui.Image? _taken;
+  CameraSessionValue? _takenLook;
+  CameraSessionValue? _stubLook;
 
   // Called by the session before a pause or a switch: the snapshot is read
   // here, rasterized and awaited, while the texture still holds the frame
   // the user sees.
   Future<void> _take({required bool switching}) async {
-    final box = _live.currentContext?.findRenderObject();
+    final box = _frames.currentContext?.findRenderObject();
     if (box is! RenderRepaintBoundary || !box.hasSize || box.size.isEmpty) {
       return;
     }
     final sample = switching ? _switchSample : _pauseSample;
+    final look = widget.session.value.value;
     try {
-      final image = await box.toImage(pixelRatio: sample / box.size.width);
+      final image = await box.toImage(
+        pixelRatio: sample / box.size.shortestSide,
+      );
       if (!mounted) return image.dispose();
       _taken?.dispose();
       _taken = image;
+      _takenLook = look;
     } on Object {
       // No snapshot: the frozen frames stand in.
     }
@@ -171,12 +184,12 @@ class _CameraPreviewState extends State<CameraPreview>
   // The preview as it stands now, small: read before the value's change is
   // built, so it still has the orientation the user saw.
   ui.Image? _snapshot(int sample) {
-    final box = _live.currentContext?.findRenderObject();
+    final box = _frames.currentContext?.findRenderObject();
     if (box is! RenderRepaintBoundary || !box.hasSize || box.size.isEmpty) {
       return null;
     }
     try {
-      return box.toImageSync(pixelRatio: sample / box.size.width);
+      return box.toImageSync(pixelRatio: sample / box.size.shortestSide);
     } on Object {
       return null;
     }
@@ -189,8 +202,11 @@ class _CameraPreviewState extends State<CameraPreview>
       _waiting = true;
       _switch = now.isSwitching;
       _stub?.dispose();
-      _stub = _taken ?? _snapshot(_switch ? _switchSample : _pauseSample);
+      final taken = _taken;
+      _stub = taken ?? _snapshot(_switch ? _switchSample : _pauseSample);
+      _stubLook = taken != null ? _takenLook : _drawn;
       _taken = null;
+      _takenLook = null;
       _clear.value = 0;
       if (_switch && _ticking) _turn.forward(from: 0).ignore();
     } else if (!stopped && _waiting) {
@@ -219,10 +235,13 @@ class _CameraPreviewState extends State<CameraPreview>
     if (!now.isAvailable || textureId == null || size == null) {
       return widget.placeholder;
     }
-    Widget frames = SizedBox(
-      width: size.width.toDouble(),
-      height: size.height.toDouble(),
-      child: Texture(textureId: textureId),
+    Widget frames = RepaintBoundary(
+      key: _frames,
+      child: SizedBox(
+        width: size.width.toDouble(),
+        height: size.height.toDouble(),
+        child: Texture(textureId: textureId),
+      ),
     );
     if (drawn.quarterTurns % 4 != 0) {
       frames = RotatedBox(quarterTurns: drawn.quarterTurns, child: frames);
@@ -251,8 +270,41 @@ class _CameraPreviewState extends State<CameraPreview>
           if (stub != null && _clear.value < 1) {
             final sample = _switch ? _switchSample : _pauseSample;
             final radius = _switch ? _switchRadius : _pauseRadius;
-            // The radius in the snapshot's pixels, at the widget's size.
-            final sigma = radius * constraints.maxWidth / sample / 2;
+            final look = _stubLook ?? now;
+            final lookSize = look.previewSize ?? size;
+            final w = lookSize.width.toDouble();
+            final h = lookSize.height.toDouble();
+            final turned = look.quarterTurns.isOdd;
+            final shownW = turned ? h : w;
+            final shownH = turned ? w : h;
+            // The fit's scale of the frames, and the snapshot's pixel in
+            // them: the radius in the snapshot's pixels at the widget's size.
+            final scale = math.max(
+              constraints.maxWidth / shownW,
+              constraints.maxHeight / shownH,
+            );
+            final sigma = radius * math.min(w, h) / sample * scale / 2;
+            // The snapshot shown as the frames were: their size, turn,
+            // mirror and fit.
+            Widget picture = SizedBox(
+              width: w,
+              height: h,
+              child: RawImage(
+                key: const ValueKey('mpx-camera-stub'),
+                image: stub,
+                fit: BoxFit.fill,
+                filterQuality: FilterQuality.medium,
+              ),
+            );
+            if (look.quarterTurns % 4 != 0) {
+              picture = RotatedBox(
+                quarterTurns: look.quarterTurns,
+                child: picture,
+              );
+            }
+            if (look.mirrored) {
+              picture = Transform.flip(flipX: true, child: picture);
+            }
             shown = Stack(
               fit: StackFit.expand,
               children: [
@@ -269,11 +321,9 @@ class _CameraPreviewState extends State<CameraPreview>
                         sigmaY: sigma,
                         tileMode: TileMode.clamp,
                       ),
-                      child: RawImage(
-                        key: const ValueKey('mpx-camera-stub'),
-                        image: stub,
-                        fit: BoxFit.fill,
-                        filterQuality: FilterQuality.medium,
+                      child: SizedBox.expand(
+                        key: const ValueKey('mpx-camera-stub-card'),
+                        child: FittedBox(fit: widget.fit, child: picture),
                       ),
                     ),
                   ),

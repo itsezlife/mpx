@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The switch and pause snapshot is read from the bare frames and shown
+  through the turn, mirror and fit they had, so the card shows the crop the
+  user saw (a raster of the fitted preview held the texture whole, a
+  differently framed picture that jumped at the top and bottom).
 - Android records the preview's own frames: a GL thread draws each camera
   frame into the Flutter surface and, while recording, into an H.264
   encoder (3.5 Mbit/s from 720 lines, 1.8 below; AAC 32 kbit/s), so a

@@ -49,9 +49,9 @@ void main() {
   for (final twice in [false, true]) {
     testWidgets(
       'a switch ${twice ? 'back to the back camera' : 'to the front camera'} '
-      'covers the preview with the last frame as the user saw it, blurred '
-      'and never flipped, until the new camera\'s frames, then fades it in '
-      '120 ms',
+      'covers the preview with the last frame as the user saw it (mirrored '
+      'only as the old camera\'s frames were), blurred, until the new '
+      'camera\'s frames, then fades it in 120 ms',
       (tester) async {
         final (sessions, session) = await open(tester);
         if (twice) {
@@ -64,7 +64,19 @@ void main() {
         await tester.pump();
         expect(session.value.value.isSwitching, isTrue);
         expect(stub, findsOneWidget);
-        expect(flippedAbove(tester, stub), isFalse);
+        // The old camera's look: the front one's frames were mirrored.
+        expect(flippedAbove(tester, stub), twice);
+        // Framed as the frames were: their own size under the same fit, so
+        // the card shows the crop the user saw.
+        expect(tester.getSize(stub), const Size(1080, 1920));
+        expect(
+          tester
+              .widget<FittedBox>(
+                find.ancestor(of: stub, matching: find.byType(FittedBox)),
+              )
+              .fit,
+          BoxFit.cover,
+        );
         expect(
           find.ancestor(of: stub, matching: find.byType(ImageFiltered)),
           findsOneWidget,
@@ -216,7 +228,14 @@ void main() {
           );
           expect(stub, findsOneWidget, reason: 'one card at $ms ms');
           // Untransformed, the card is the preview's own box.
-          expect(tester.renderObject<RenderBox>(stub).size, box.size);
+          expect(
+            tester
+                .renderObject<RenderBox>(
+                  find.byKey(const ValueKey('mpx-camera-stub-card')),
+                )
+                .size,
+            box.size,
+          );
         }
         sessions.current!.deliverSwitchFrames();
         await tester.pump(const Duration(milliseconds: 600));
