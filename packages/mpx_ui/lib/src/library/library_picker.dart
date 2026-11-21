@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/mpx_library.dart';
@@ -10,6 +11,7 @@ import 'package:mpx_ui/src/library/library_grid.dart';
 import 'package:mpx_ui/src/library/library_grid_policy.dart';
 import 'package:mpx_ui/src/library/library_grid_tokens.dart';
 import 'package:mpx_ui/src/library/library_pages.dart';
+import 'package:mpx_ui/src/library/picker_captures.dart';
 import 'package:mpx_ui/src/library/picker_selection.dart';
 import 'package:mpx_ui/src/library/picker_viewer.dart';
 import 'package:mpx_ui/src/text/mpx_text_root.dart';
@@ -66,8 +68,20 @@ class LibraryPicker extends StatefulWidget {
     this.lookup,
     this.gridBuilder,
     this.active = true,
+    this.captures,
+    this.opensFirstCapture = true,
     super.key,
   });
+
+  /// The host's captures (from its camera), oldest first: shown ahead of the
+  /// album in the grid, newest first, and paged first in the viewer. The
+  /// host owns the list and selects a capture by its key like any item;
+  /// null for none.
+  final ValueListenable<List<PickerCapture>>? captures;
+
+  /// Whether the first capture (the list growing from empty) opens the
+  /// viewer on it. Later ones only join the grid and the selection.
+  final bool opensFirstCapture;
 
   /// The library read.
   final MediaLibrary library;
@@ -188,6 +202,21 @@ class LibraryPickerState extends State<LibraryPicker> {
   bool _asked = false;
   bool _viewerOpen = false;
   final GlobalKey<ViewerOriginScopeState> _origins = GlobalKey();
+  int _captureCount = 0;
+
+  // The list growing from empty opens the viewer on the newest capture
+  // (index 0), once the grid has it.
+  void _onCaptures() {
+    final count = widget.captures?.value.length ?? 0;
+    final first = _captureCount == 0 && count > 0;
+    _captureCount = count;
+    if (!first || !widget.opensFirstCapture || _viewerOpen) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final asset = _gallery?.assetAt(0);
+      if (!mounted || asset == null || _viewerOpen) return;
+      unawaited(_open(asset, 0));
+    });
+  }
 
   /// The album shown, or null before the albums load.
   LibraryAlbum? get album => _album;
@@ -196,6 +225,8 @@ class LibraryPickerState extends State<LibraryPicker> {
   void initState() {
     super.initState();
     widget.library.access.addListener(_onAccess);
+    widget.captures?.addListener(_onCaptures);
+    _captureCount = widget.captures?.value.length ?? 0;
     _lifecycle = AppLifecycleListener(onResume: reload);
     _changes = widget.library.changes.listen(_onChange);
     _onAccess();
@@ -245,6 +276,12 @@ class LibraryPickerState extends State<LibraryPicker> {
   @override
   void didUpdateWidget(LibraryPicker oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.captures, widget.captures)) {
+      oldWidget.captures?.removeListener(_onCaptures);
+      widget.captures?.addListener(_onCaptures);
+      _captureCount = widget.captures?.value.length ?? 0;
+      _bind(_album);
+    }
     if (!identical(oldWidget.library, widget.library)) {
       oldWidget.library.access.removeListener(_onAccess);
       widget.library.access.addListener(_onAccess);
@@ -259,6 +296,7 @@ class LibraryPickerState extends State<LibraryPicker> {
   @override
   void dispose() {
     widget.library.access.removeListener(_onAccess);
+    widget.captures?.removeListener(_onCaptures);
     unawaited(_changes?.cancel());
     _lifecycle?.dispose();
     _gallery?.dispose();
@@ -307,7 +345,9 @@ class LibraryPickerState extends State<LibraryPicker> {
     _pages = album == null
         ? null
         : LibraryPages(library: widget.library, album: album);
-    _gallery = _pages == null ? null : LibraryGallerySource(_pages!);
+    _gallery = _pages == null
+        ? null
+        : LibraryGallerySource(_pages!, captures: widget.captures);
   }
 
   void _choose(LibraryAlbum album) => setState(() => _bind(album));
@@ -431,6 +471,7 @@ class LibraryPickerState extends State<LibraryPicker> {
       library: widget.library,
       album: album,
       pages: pages,
+      captures: widget.captures,
       selection: widget.selection,
       labels: widget.labels,
       policy: widget.policy,
@@ -456,7 +497,10 @@ class LibraryPickerState extends State<LibraryPicker> {
           header,
           ...banners,
           Expanded(
-            child: album.count == 0 && pages.total == 0
+            child:
+                album.count == 0 &&
+                    pages.total == 0 &&
+                    (widget.captures?.value.isEmpty ?? true)
                 ? _Message(text: labels.empty, tokens: tokens)
                 : ViewerOriginScope(
                     key: _origins,

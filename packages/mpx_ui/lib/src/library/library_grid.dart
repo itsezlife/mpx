@@ -14,6 +14,7 @@ import 'package:mpx_ui/src/library/library_grid_layout.dart';
 import 'package:mpx_ui/src/library/library_grid_policy.dart';
 import 'package:mpx_ui/src/library/library_grid_tokens.dart';
 import 'package:mpx_ui/src/library/library_pages.dart';
+import 'package:mpx_ui/src/library/picker_captures.dart';
 import 'package:mpx_ui/src/library/picker_selection.dart';
 import 'package:mpx_ui/src/text/mpx_text_root.dart';
 
@@ -94,7 +95,7 @@ final class LibraryGridLookup extends ChangeNotifier {
 
   /// The assets in the attached grid's album as last read; 0 with none
   /// attached.
-  int get count => _grid?._pages.total ?? 0;
+  int get count => _grid?._items.total ?? 0;
 
   void _detach(LibraryGridState grid) {
     if (identical(_grid, grid)) _grid = null;
@@ -143,6 +144,7 @@ class LibraryGrid extends StatefulWidget {
     this.active = true,
     this.pageSize = 60,
     this.pages,
+    this.captures,
     this.lookup,
     super.key,
   });
@@ -219,6 +221,10 @@ class LibraryGrid extends StatefulWidget {
   /// See the constructor.
   final LibraryPages? pages;
 
+  /// The host's captures, oldest first, which the grid shows ahead of the
+  /// album, newest first; null for none. The host owns it.
+  final ValueListenable<List<PickerCapture>>? captures;
+
   /// Answers what the grid holds at a scroll offset, for the host; null for
   /// none. The host owns it.
   final LibraryGridLookup? lookup;
@@ -231,6 +237,17 @@ class LibraryGrid extends StatefulWidget {
 class LibraryGridState extends State<LibraryGrid>
     with SingleTickerProviderStateMixin {
   late LibraryPages _pages = _makePages();
+  late PickerItems _items = _makeItems();
+
+  PickerItems _makeItems() =>
+      PickerItems(_pages, captures: widget.captures)..addListener(_onPages);
+
+  void _dropItems() {
+    _items
+      ..removeListener(_onPages)
+      ..dispose();
+  }
+
   ScrollController? _ownController;
   StreamSubscription<LibraryChange>? _changes;
   bool _pendingChange = false;
@@ -263,20 +280,19 @@ class LibraryGridState extends State<LibraryGrid>
       widget.controller ?? (_ownController ??= ScrollController());
 
   LibraryPages _makePages() =>
-      (widget.pages ??
-            LibraryPages(
-              library: widget.library,
-              album: widget.album,
-              pageSize: widget.pageSize,
-            ))
-        ..addListener(_onPages);
+      widget.pages ??
+      LibraryPages(
+        library: widget.library,
+        album: widget.album,
+        pageSize: widget.pageSize,
+      );
 
   // Layout of the last build that the lookup answered from, to tell it when
   // a new one moves its answers.
   (int, double, bool)? _toldLayout;
 
   void _dropPages() {
-    _pages.removeListener(_onPages);
+    _dropItems();
     if (!identical(_pages, widget.pages)) _pages.dispose();
   }
 
@@ -323,9 +339,14 @@ class LibraryGridState extends State<LibraryGrid>
         old.album.id != widget.album.id ||
         old.pageSize != widget.pageSize ||
         !identical(old.pages, widget.pages)) {
-      _pages.removeListener(_onPages);
+      _dropItems();
       if (old.pages == null) _pages.dispose();
       _pages = _makePages();
+      _items = _makeItems();
+      widget.lookup?._tell();
+    } else if (!identical(old.captures, widget.captures)) {
+      _dropItems();
+      _items = _makeItems();
       widget.lookup?._tell();
       if (old.album.id != widget.album.id) _jumpToStart();
     }
@@ -393,7 +414,7 @@ class LibraryGridState extends State<LibraryGrid>
   // assets.
   LibraryAsset? _assetAtScrollOffset(double scrollOffset) {
     final layout = _layout;
-    final total = _pages.total;
+    final total = _items.total;
     if (layout == null || total == 0) return null;
     final stride = layout.extent + layout.gap;
     if (stride <= 0) return null;
@@ -405,7 +426,7 @@ class LibraryGridState extends State<LibraryGrid>
         : row < 2
         ? row * (n - 1)
         : 2 * (n - 1) + (row - 2) * n;
-    return _pages.nearestAt(math.min(index, total - 1));
+    return _items.nearestAt(math.min(index, total - 1));
   }
 
   void _subscribe() {
@@ -442,7 +463,7 @@ class LibraryGridState extends State<LibraryGrid>
   }
 
   void _toggle(LibraryAsset asset) {
-    final key = LibraryKeys.libraryKeyOf(asset);
+    final key = PickerCaptureKeys.keyOf(asset);
     if (widget.selection.toggle(key) case PickerToggle$Refused(:final reason)) {
       _report(key, reason);
     }
@@ -472,14 +493,14 @@ class LibraryGridState extends State<LibraryGrid>
     } else {
       asset = (_hasCamera ? 2 * (n - 1) + (row - 2) * n : row * n) + column;
     }
-    return asset < _pages.total ? asset : null;
+    return asset < _items.total ? asset : null;
   }
 
   void _swipeStart(Offset local) {
     final index = _indexAt(local);
-    final asset = index == null ? null : _pages.assetAt(index);
+    final asset = index == null ? null : _items.assetAt(index);
     if (index == null || asset == null) return;
-    final key = LibraryKeys.libraryKeyOf(asset);
+    final key = PickerCaptureKeys.keyOf(asset);
     final result = widget.selection.toggle(key);
     if (result case PickerToggle$Refused(:final reason)) {
       _report(key, reason);
@@ -516,15 +537,15 @@ class LibraryGridState extends State<LibraryGrid>
     for (final MapEntry(key: i, value: was) in _before.entries.toList()) {
       if (i >= from && i <= to) continue;
       _before.remove(i);
-      final asset = _pages.assetAt(i);
+      final asset = _items.assetAt(i);
       if (asset == null) continue;
-      (was ? reselect : deselect).add(LibraryKeys.libraryKeyOf(asset));
+      (was ? reselect : deselect).add(PickerCaptureKeys.keyOf(asset));
     }
     for (var i = from; i <= to; i++) {
       if (i == anchor || _before.containsKey(i)) continue;
-      final asset = _pages.assetAt(i);
+      final asset = _items.assetAt(i);
       if (asset == null) continue;
-      final key = LibraryKeys.libraryKeyOf(asset);
+      final key = PickerCaptureKeys.keyOf(asset);
       _before[i] = widget.selection.orderOf(key) != null;
       take.add(key);
     }
@@ -668,7 +689,7 @@ class LibraryGridState extends State<LibraryGrid>
           _tellLayout();
           final pixels = (extent * dpr).ceil();
           final scope = AssetCacheProvider.maybeOf(context);
-          final count = _pages.total + (camera ? 1 : 0);
+          final count = _items.total + (camera ? 1 : 0);
           return RawGestureDetector(
             gestures: _gestures(size.width),
             child: CustomScrollView(
@@ -748,11 +769,14 @@ class LibraryGridState extends State<LibraryGrid>
       );
     }
     final index = camera ? child - 1 : child;
-    final asset = _pages.assetAt(index);
+    final asset = _items.assetAt(index);
     if (asset != null) {
-      _known.tell(scope, LibraryKeys.thumbnailDescriptorOf(asset, pixels));
+      _known.tell(
+        scope,
+        PickerCaptureKeys.thumbnailDescriptorOf(asset, pixels),
+      );
     }
-    final key = asset == null ? null : LibraryKeys.libraryKeyOf(asset);
+    final key = asset == null ? null : PickerCaptureKeys.keyOf(asset);
     return LibraryGridCell(
       key: key == null ? null : ValueKey<MediaKey>(key),
       originIndex: index,

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -88,6 +89,8 @@ final class PickerHarness {
     ScrollController? controller,
     LibraryGridLookup? lookup,
     Widget Function(BuildContext context, Widget grid)? gridBuilder,
+    ValueListenable<List<PickerCapture>>? captures,
+    bool opensFirstCapture = true,
   }) async {
     tester.view
       ..physicalSize = const Size(390, 800)
@@ -136,6 +139,8 @@ final class PickerHarness {
                     controller: controller,
                     lookup: lookup,
                     gridBuilder: gridBuilder,
+                    captures: captures,
+                    opensFirstCapture: opensFirstCapture,
                     cameraSlotBuilder: cameraSlot
                         ? (context, value) {
                             signals.add(value.value);

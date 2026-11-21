@@ -6,6 +6,7 @@ import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_ui/src/library/library_grid_diagnostics.dart';
 import 'package:mpx_ui/src/library/library_grid_policy.dart';
 import 'package:mpx_ui/src/library/library_grid_tokens.dart';
+import 'package:mpx_ui/src/library/picker_captures.dart';
 import 'package:mpx_ui/src/viewer/viewer_origin.dart';
 
 /// One cell of the library grid: the thumbnail through the asset cache, the
@@ -92,7 +93,7 @@ class LibraryGridCell extends StatelessWidget {
       );
     }
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
-    final thumbnail = LibraryKeys.thumbnailKeyOf(asset, thumbnailPixels);
+    final thumbnail = PickerCaptureKeys.thumbnailKeyOf(asset, thumbnailPixels);
     final preset = AssetPresets.square(
       extent: extent,
       devicePixelRatio: dpr,

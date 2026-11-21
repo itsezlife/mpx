@@ -12,6 +12,7 @@ import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_ui/src/library/library_grid_policy.dart';
 import 'package:mpx_ui/src/library/library_grid_tokens.dart';
 import 'package:mpx_ui/src/library/library_pages.dart';
+import 'package:mpx_ui/src/library/picker_captures.dart';
 import 'package:mpx_ui/src/library/picker_selection.dart';
 import 'package:mpx_ui/src/text/mpx_text_root.dart';
 import 'package:mpx_ui/src/viewer/gallery_source.dart';
@@ -22,44 +23,52 @@ import 'package:mpx_ui/src/viewer/viewer_policy.dart';
 import 'package:mpx_ui/src/viewer/viewer_policy_scope.dart';
 import 'package:mpx_ui/src/viewer/viewer_tokens.dart';
 
-/// A [GallerySource] over a library album's [pages]: the viewer pages the
-/// album the grid shows, loading around the item it shows.
+/// A [GallerySource] over a library album's [pages], after the host's
+/// [captures] (newest first): the viewer pages what the grid shows, loading
+/// around the item it shows.
 ///
-/// Items carry the asset's library key and descriptor, its thumbnail of
-/// [thumbnailPixels] (what a grid cell shows) as the stand-in while the
+/// Items carry the asset's key and descriptor; a library item's thumbnail
+/// of [thumbnailPixels] (what a grid cell shows) is the stand-in while the
 /// original loads.
 final class LibraryGallerySource extends ChangeNotifier
     implements GallerySource {
-  /// Creates the source over [pages] (which the host owns).
-  LibraryGallerySource(this.pages, {this.thumbnailPixels = 320}) {
-    pages.addListener(notifyListeners);
+  /// Creates the source over [pages] and [captures] (which the host owns).
+  LibraryGallerySource(this.pages, {this.captures, this.thumbnailPixels = 320})
+    : _items = PickerItems(pages, captures: captures) {
+    _items.addListener(notifyListeners);
   }
 
   /// The album's pages.
   final LibraryPages pages;
 
+  /// The host's captures, oldest first; null for none.
+  final ValueListenable<List<PickerCapture>>? captures;
+
+  final PickerItems _items;
+
   /// The size of the stand-in thumbnail.
   final int thumbnailPixels;
 
   @override
-  int get count => pages.total;
+  int get count => _items.total;
+
+  /// How many captures come first.
+  int get captureCount => _items.captureCount;
 
   /// The asset at [index], or null while its page loads.
-  LibraryAsset? assetAt(int index) => pages.assetAt(index);
+  LibraryAsset? assetAt(int index) => _items.assetAt(index);
 
-  /// The index of the library item [key] among the pages read, or null.
-  int? indexOf(MediaKey key) => switch (LibraryKeys.read(key)) {
-    final target? when !target.isThumbnail => pages.indexOf(target.asset),
-    _ => null,
-  };
+  /// The index of the item [key] (a capture's or a library key) among the
+  /// captures and the pages read, or null.
+  int? indexOf(MediaKey key) => _items.indexOf(key);
 
   @override
   GalleryItem? itemAt(int index) {
-    final asset = pages.assetAt(index);
+    final asset = _items.assetAt(index);
     if (asset == null) return null;
     final size = asset.dimensions;
     return GalleryItem(
-      LibraryKeys.libraryKeyOf(asset),
+      PickerCaptureKeys.keyOf(asset),
       kind: switch (asset) {
         LibraryAsset(kind: LibraryAssetKind.video) => GalleryMediaKind.video,
         _ when asset.has(LibraryAssetSubtype.animated) =>
@@ -69,7 +78,7 @@ final class LibraryGallerySource extends ChangeNotifier
       size: size == null
           ? null
           : Size(size.width.toDouble(), size.height.toDouble()),
-      descriptor: LibraryKeys.descriptorOf(
+      descriptor: PickerCaptureKeys.descriptorOf(
         asset,
         thumbnailPixels: thumbnailPixels,
       ),
@@ -78,12 +87,14 @@ final class LibraryGallerySource extends ChangeNotifier
 
   @override
   void loadAround(int index) {
-    [index, index + 1, index - 1].forEach(pages.assetAt);
+    [index, index + 1, index - 1].forEach(_items.assetAt);
   }
 
   @override
   void dispose() {
-    pages.removeListener(notifyListeners);
+    _items
+      ..removeListener(notifyListeners)
+      ..dispose();
     super.dispose();
   }
 }
@@ -126,7 +137,7 @@ final class PickerViewerItem {
   final ValueListenable<bool> dismissing;
 
   /// The asset's key, or null while it loads.
-  MediaKey? get key => asset == null ? null : LibraryKeys.libraryKeyOf(asset!);
+  MediaKey? get key => asset == null ? null : PickerCaptureKeys.keyOf(asset!);
 
   /// What the slot's action takes: the selection, or the item shown when
   /// nothing is checked.
@@ -474,7 +485,7 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
     builder: (context, _) {
       final index = widget.index.value;
       final asset = widget.source.assetAt(index);
-      final key = asset == null ? null : LibraryKeys.libraryKeyOf(asset);
+      final key = asset == null ? null : PickerCaptureKeys.keyOf(asset);
       if (key != null) _indexOf[key] = index;
       final order = key == null ? null : widget.selection.orderOf(key);
       final count = widget.selection.keys.length;

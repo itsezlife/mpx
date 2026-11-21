@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Captures in the picker: `LibraryPicker.captures` (a host's listenable
+  list of `PickerCapture`, keyed by the capture's `MediaKey$Local`, with
+  kind, size and duration) shows them first in the grid, newest first, with
+  a library item's cell, marks and selection number, and pages them first
+  in the viewer. The first capture opens the viewer on it
+  (`opensFirstCapture`). `PickerCaptureKeys` maps either kind of item to its
+  key; `LibraryGrid.captures`, `LibraryGallerySource(captures:)`.
 - `ViewerVideoRules.restarts`: a video plays from its beginning each time
   the viewer comes to it, paged back to or opened again; the picker-mode
   viewer sets it, the gallery keeps a warm player's position.

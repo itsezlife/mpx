@@ -49,6 +49,7 @@ export 'src/library/library_grid_tokens.dart';
 export 'src/library/library_pages.dart';
 export 'src/library/library_picker.dart';
 export 'src/library/library_player_sources.dart';
+export 'src/library/picker_captures.dart';
 export 'src/library/picker_selection.dart';
 export 'src/library/picker_selection_preview.dart';
 export 'src/library/picker_viewer.dart';

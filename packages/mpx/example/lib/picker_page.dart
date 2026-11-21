@@ -44,6 +44,9 @@ class PickerPage extends StatefulWidget {
 class _PickerPageState extends State<PickerPage> {
   MediaLibrary get _library => widget.library;
   final OrderedPickerSelection _selection = OrderedPickerSelection(cap: 10);
+  // The camera's shots, oldest first: the grid shows them ahead of the
+  // library and the first one opens the viewer.
+  final ValueNotifier<List<PickerCapture>> _captures = ValueNotifier([]);
   late final CaptureCache _cache = CaptureCache(store: widget.store);
   late final AssetPipeline _pipeline = AssetPipeline(
     fetcher: LibraryFetcher(_library),
@@ -111,6 +114,7 @@ class _PickerPageState extends State<PickerPage> {
     _scope.dispose();
     _pipeline.dispose();
     _selection.dispose();
+    _captures.dispose();
     super.dispose();
   }
 
@@ -133,7 +137,23 @@ class _PickerPageState extends State<PickerPage> {
       cache: _cache,
       from: box == null ? null : box.localToGlobal(Offset.zero) & box.size,
       onCaptured: (shot) {
-        if (shot.key case final key?) _selection.toggle(key);
+        final key = shot.key;
+        if (key == null) return;
+        final output = shot.output;
+        _captures.value = [
+          ..._captures.value,
+          PickerCapture(
+            key: key,
+            kind: shot.isVideo
+                ? LibraryAssetKind.video
+                : LibraryAssetKind.photo,
+            dimensions: output.dimensions,
+            duration: shot.isVideo ? output.duration : null,
+            byteSize: output.size,
+            created: DateTime.now(),
+          ),
+        ];
+        _selection.toggle(key);
       },
     );
   }
@@ -163,6 +183,7 @@ class _PickerPageState extends State<PickerPage> {
       child: LibraryPicker(
         library: _library,
         selection: _selection,
+        captures: _captures,
         players: widget.players,
         labels: _gridLabels,
         stateLabels: _stateLabels,

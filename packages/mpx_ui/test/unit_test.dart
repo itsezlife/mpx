@@ -20,6 +20,7 @@ import 'library/library_picker_golden_test.dart' as library_picker_golden_test;
 import 'library/library_picker_test.dart' as library_picker_test;
 import 'library/library_player_sources_test.dart'
     as library_player_sources_test;
+import 'library/picker_captures_test.dart' as picker_captures_test;
 import 'library/picker_selection_preview_test.dart'
     as picker_selection_preview_test;
 import 'library/picker_selection_test.dart' as picker_selection_test;
@@ -52,6 +53,7 @@ void main() {
   group('library_picker_test', library_picker_test.main);
   group('picker_selection_preview_test', picker_selection_preview_test.main);
   group('picker_selection_test', picker_selection_test.main);
+  group('picker_captures_test', picker_captures_test.main);
   group('picker_viewer_test', picker_viewer_test.main);
   group('media_viewer_test', media_viewer_test.main);
   group('origin_bridge_contract_test', origin_bridge_contract_test.main);
