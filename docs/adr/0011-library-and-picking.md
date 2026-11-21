@@ -162,7 +162,7 @@ The source-bitrate ceiling of 0007 applies to every row.
 | Policy | `LibraryGridPolicy.$Android`: 3 columns portrait, 4 landscape or tablet, 2 dp padding and gap, first-row outer corners 16 dp, check 24 in a 26 frame with a 42 hit, selected image scales to 0.787 over 200 ms, video badge bottom-left, disabled alpha 0.3. `$IOS`: 3 portrait, 5 landscape, 1 pt gap, cells `floor((w - (n-1)) / n)`, check 29 with slop 8 and a 0.5 s spring, duration bottom-right, GIF and subtype icons. `forPlatform`; a host may pick either |
 | Picker selection | A seam: `orderOf(key)` (1-based, re-indexed on removal), `toggle(key)`, `toggleRange(keys)` (every key crossed takes the state the first took), a gate that may refuse a key with a typed reason (cap, kind), a change signal. `OrderedPickerSelection` is the default: ordered by selection, a cap the host sets (unbounded when unset), single select. A host with its own selection implements the seam |
 | Swipe select | `$Android`: long-press then drag. `$IOS`: horizontal pan from x > 44 that fails if \|dy\| > 5 before \|dx\| > 8; scrolling off while active. Auto-scroll at the edges |
-| Camera slot | Index 0 of the all-media album, one column by two rows. The grid owns placement (`$Android`: the all-media album only; `$IOS`: at 3 columns only, never in other albums, never when the host says the camera is denied or media is not allowed) and the pause signals (off screen, covered, viewer open, page inactive), and calls the host's builder with them. Tap and long-press go to the host |
+| Camera slot | Index 0 of the all-media album, one column by two rows. The grid owns placement (`$Android`: the all-media album only; `$IOS`: at 3 columns only, never in other albums, never when the host says the camera is denied or media is not allowed) and the pause signals (viewer open, page inactive; off screen is told but never pauses: a pause closes the camera and its reopen blocks frames), and calls the host's builder with them. Tap and long-press go to the host |
 | Album switcher | `$Android`: a drop-down of cover, name and count rows; `$IOS`: a menu from the title. Choosing rebinds and scrolls to the top (to the end for `startsAtEnd`) |
 | States | Loading, empty, not determined (request on first show), denied (Android: an empty view with camera and access buttons; iOS: a placeholder with Open Settings), restricted, limited (iOS: a Manage banner, Select more / Change settings), partial (Android 14: the chosen items with a banner that calls `manageSelected`), not allowed (a host text, grid hidden), camera denied (iOS: a banner, no camera slot; Android: the slot's builder is told). Strings from the host |
 | Changes | Library change events update the grid without losing the selection; `$Android` defers them while the picker-mode viewer is open |
@@ -261,6 +261,12 @@ preset.
   grid shows. Hand-off keeps the same texture, so the host's hold and
   fresh-frame rules have nothing to do; clipping and corners come from the
   widgets.
+- **The camera cell never pauses for scrolling**: the slot hears it is off
+  screen, but only the viewer covering it or an inactive page pauses the
+  session (a pause closes the camera; reopening reconfigures the capture
+  session and blocks the app's main thread for 150-240 ms). The Android
+  session binds preview and photos only; the video use case (its encoder)
+  is bound when a recording starts and unbound when it ends.
 - **One camera owner per process** across the camera session and round
   video: opening either takes the camera from the other (a session turns
   closed, a recording fails as taken over and its file is deleted).

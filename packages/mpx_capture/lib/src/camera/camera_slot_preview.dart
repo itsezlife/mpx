@@ -8,8 +8,9 @@ import 'package:mpx_capture/src/job/capture_job.dart';
 /// The small live preview of a [CameraSession] for a grid's camera slot.
 ///
 /// It caps the session at [frameRateCap] (30 fps) while it shows, pauses
-/// the session while [paused] (the slot is off screen, covered, or its page
-/// inactive) and resumes it after, and shows [deniedBuilder]'s pill when the
+/// the session while [paused] (the grid's viewer covers it, or its page is
+/// inactive; scrolling it away is no reason: a pause closes the camera)
+/// and resumes it after, and shows [deniedBuilder]'s pill when the
 /// session is denied. [onUnavailable] hears when the session is denied or
 /// failed, so the host can fall back to the system camera. A tap expands
 /// into the capture surface with `CameraCaptureSurface.show(from: ...)`,

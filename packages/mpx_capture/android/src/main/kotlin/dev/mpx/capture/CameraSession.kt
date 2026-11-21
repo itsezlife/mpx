@@ -89,16 +89,23 @@ class CameraSession(
             override fun onSurfaceAvailable() {
                 // The engine made a new surface (the app came back): hand it
                 // to the camera through a fresh surface request.
+                trace("surface available")
                 if (!closed) preview?.setSurfaceProvider(executor, ::provideSurface)
             }
 
-            override fun onSurfaceCleanup() {}
+            override fun onSurfaceCleanup() {
+                trace("surface cleanup")
+            }
         })
     }
+
+    // The session's lifecycle in logcat, tag `mpx.capture`.
+    private fun trace(what: String) = android.util.Log.d("mpx.capture", "session $id $what")
 
     // --- Controls ---
 
     fun open(done: (Map<String, Any?>) -> Unit) {
+        trace("open")
         if (!hasCamera(context)) return done(mapOf("state" to "denied"))
         opened = done
         lifecycleRegistry.currentState = Lifecycle.State.STARTED
@@ -116,6 +123,7 @@ class CameraSession(
     }
 
     fun setFrameRateCap(fps: Int?) {
+        trace("cap $fps")
         frameRateCap = fps
         applyFrameRate()
     }
@@ -140,10 +148,12 @@ class CameraSession(
     }
 
     fun pause() {
+        trace("pause")
         if (!closed) lifecycleRegistry.currentState = Lifecycle.State.CREATED
     }
 
     fun resume() {
+        trace("resume")
         if (!closed) lifecycleRegistry.currentState = Lifecycle.State.STARTED
     }
 
@@ -179,9 +189,9 @@ class CameraSession(
 
     @SuppressLint("MissingPermission")
     fun startRecording(output: String): Result<Unit> {
-        val capture = videoCapture
-            ?: return Result.failure(CaptureException.failed("video not available on this camera"))
         if (recording != null) return Result.failure(CaptureException.failed("already recording"))
+        val capture = videoCapture ?: bindVideo()
+            ?: return Result.failure(CaptureException.failed("video not available on this camera"))
         val file = File(output).apply { delete() }
         recordingPath = output
         var pending = capture.output.prepareRecording(context, FileOutputOptions.Builder(file).build())
@@ -201,6 +211,7 @@ class CameraSession(
     }
 
     fun close() {
+        trace("close")
         if (closed) return
         closed = true
         recording?.close()
@@ -219,17 +230,38 @@ class CameraSession(
         if (facing == "front") CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
 
     private fun bind() {
+        trace("bind $facing")
         val provider = provider ?: return
         if (!provider.hasCamera(selector(facing))) {
             facing = if (facing == "front") "back" else "front"
             if (!provider.hasCamera(selector(facing))) return failOpen()
         }
         provider.unbind(*listOfNotNull<UseCase>(preview, imageCapture, videoCapture).toTypedArray())
+        videoCapture = null
         val preview = previewBuilder().build().also { this.preview = it }
         val imageCapture = ImageCapture.Builder()
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
             .build()
             .also { this.imageCapture = it }
+        preview.setSurfaceProvider(executor, ::provideSurface)
+        // Preview and photos only: the video use case (its encoder, its
+        // recorder) joins when a recording starts and leaves when it ends,
+        // so browsing never builds an encoder.
+        camera = try {
+            provider.bindToLifecycle(this, selector(facing), preview, imageCapture)
+        } catch (error: Exception) {
+            return failOpen()
+        }
+        setFlash(flash)
+        applyFrameRate()
+        emitState()
+    }
+
+    // The video use case for one recording, beside the bound preview and
+    // photos; null when the camera cannot stream the three at once.
+    private fun bindVideo(): VideoCapture<Recorder>? {
+        val provider = provider ?: return null
+        trace("bind video")
         val recorder = Recorder.Builder()
             .setQualitySelector(
                 QualitySelector.from(
@@ -238,24 +270,22 @@ class CameraSession(
                 ),
             )
             .build()
-        val videoCapture = VideoCapture.withOutput(recorder)
-        preview.setSurfaceProvider(executor, ::provideSurface)
-        camera = try {
-            provider.bindToLifecycle(this, selector(facing), preview, imageCapture, videoCapture)
-                .also { this.videoCapture = videoCapture }
+        val capture = VideoCapture.withOutput(recorder)
+        return try {
+            camera = provider.bindToLifecycle(this, selector(facing), capture)
+            videoCapture = capture
+            applyFrameRate()
+            capture
         } catch (error: IllegalArgumentException) {
-            // A camera that cannot stream all three at once still takes
-            // photos; recording then reports that it is unavailable.
-            this.videoCapture = null
-            try {
-                provider.bindToLifecycle(this, selector(facing), preview, imageCapture)
-            } catch (error: Exception) {
-                return failOpen()
-            }
+            null
         }
-        setFlash(flash)
-        applyFrameRate()
-        emitState()
+    }
+
+    private fun unbindVideo() {
+        val capture = videoCapture ?: return
+        trace("unbind video")
+        videoCapture = null
+        provider?.unbind(capture)
     }
 
     // A preview whose first completed capture after a switch tells Dart the
@@ -286,6 +316,7 @@ class CameraSession(
     }
 
     private fun provideSurface(request: androidx.camera.core.SurfaceRequest) {
+        trace("surface request ${request.resolution}")
         if (closed) {
             request.willNotProvideSurface()
             return
@@ -340,6 +371,7 @@ class CameraSession(
     private fun finishRecording(event: VideoRecordEvent.Finalize) {
         camera?.cameraControl?.enableTorch(false)
         recording = null
+        unbindVideo()
         val path = recordingPath
         recordingPath = null
         val done = recordingDone

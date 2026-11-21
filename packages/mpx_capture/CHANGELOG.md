@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android: the camera session binds preview and photos only; the video
+  use case and its encoder join when a recording starts and leave when it
+  ends, so browsing with a live camera cell builds no encoder.
 - A camera switch no longer shows the old camera's frames mirrored or
   turned as the new camera's: `CameraSessionValue.isSwitching` holds from
   the switch until the platform reports the new camera's first frame, and
