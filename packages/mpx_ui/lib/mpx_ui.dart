@@ -52,6 +52,7 @@ export 'src/library/library_player_sources.dart';
 export 'src/library/picker_captures.dart';
 export 'src/library/picker_selection.dart';
 export 'src/library/picker_selection_preview.dart';
+export 'src/library/picker_strip_controller.dart';
 export 'src/library/picker_viewer.dart';
 export 'src/viewer/gallery_source.dart';
 export 'src/viewer/media_viewer.dart';

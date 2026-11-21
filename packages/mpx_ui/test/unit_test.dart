@@ -24,6 +24,8 @@ import 'library/picker_captures_test.dart' as picker_captures_test;
 import 'library/picker_selection_preview_test.dart'
     as picker_selection_preview_test;
 import 'library/picker_selection_test.dart' as picker_selection_test;
+import 'library/picker_strip_controller_test.dart'
+    as picker_strip_controller_test;
 import 'library/picker_viewer_test.dart' as picker_viewer_test;
 import 'viewer/media_viewer_test.dart' as media_viewer_test;
 import 'viewer/origin_bridge_contract_test.dart' as origin_bridge_contract_test;
@@ -54,6 +56,7 @@ void main() {
   group('picker_selection_preview_test', picker_selection_preview_test.main);
   group('picker_selection_test', picker_selection_test.main);
   group('picker_captures_test', picker_captures_test.main);
+  group('picker_strip_controller_test', picker_strip_controller_test.main);
   group('picker_viewer_test', picker_viewer_test.main);
   group('media_viewer_test', media_viewer_test.main);
   group('origin_bridge_contract_test', origin_bridge_contract_test.main);

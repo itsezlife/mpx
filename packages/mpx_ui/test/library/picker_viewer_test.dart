@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -16,6 +17,8 @@ double _opacityOver(WidgetTester tester, int index) {
   );
   return opacities.map((o) => o.opacity).reduce((a, b) => a * b);
 }
+
+final Finder _strip = find.byKey(const ValueKey('mpx-picker-viewer-selected'));
 
 Future<void> _open(WidgetTester tester, int index) async {
   await tester.tap(cell(index));
@@ -131,13 +134,10 @@ void main() {
     expect(h.slotItems.last.keys, [key(0), key(2)]);
     await tester.tap(find.byKey(const ValueKey('mpx-picker-viewer-counter')));
     await tester.pump();
-    expect(find.byType(ListView), findsWidgets, reason: 'the selected strip');
+    expect(_strip, findsOneWidget, reason: 'the selected strip');
     // The strip's thumbnails are told to the cache, so their keys resolve.
     final strip = tester.widgetList<ContentView>(
-      find.descendant(
-        of: find.byType(ListView).last,
-        matching: find.byType(ContentView),
-      ),
+      find.descendant(of: _strip, matching: find.byType(ContentView)),
     );
     expect(strip, hasLength(2));
     final known = h.producer.known.map((d) => d.key).toSet();
@@ -265,10 +265,7 @@ void main() {
     // The strip opens below the bar.
     await tester.tap(counter);
     await PickerHarness.settle(tester);
-    expect(
-      tester.getTopLeft(find.byType(ListView).last).dy,
-      greaterThanOrEqualTo(56),
-    );
+    expect(tester.getTopLeft(_strip).dy, greaterThanOrEqualTo(56));
 
     // Back closes the viewer.
     await tester.tap(find.byKey(const ValueKey('mpx-picker-viewer-back')));
@@ -669,5 +666,138 @@ void main() {
     expect(grid.pages.total, 30, reason: 'held');
     await _close(tester);
     expect(grid.pages.total, 31);
+  });
+
+  group('the selected strip', () {
+    Finder item(int index) =>
+        find.byKey(ValueKey(('mpx-picker-viewer-strip', key(index))));
+
+    Future<void> openStrip(WidgetTester tester, List<int> picked) async {
+      await _open(tester, picked.first);
+      await tester.tap(find.byKey(const ValueKey('mpx-picker-viewer-counter')));
+      await PickerHarness.settle(tester);
+      expect(_strip, findsOneWidget);
+    }
+
+    double opacityOf(WidgetTester tester, int index) => tester
+        .widgetList<Opacity>(
+          find.descendant(of: item(index), matching: find.byType(Opacity)),
+        )
+        .map((o) => o.opacity)
+        .reduce((a, b) => a * b);
+
+    testWidgets('a deselected item fades where it stood while the rest '
+        'slide into the gap and the shade closes with them', (tester) async {
+      final h = PickerHarness();
+      await h.pump(tester, viewerSlot: true);
+      for (final i in [0, 1, 2]) {
+        h.selection.toggle(key(i));
+      }
+      await openStrip(tester, [0, 1, 2]);
+      final gone = tester.getRect(item(1));
+      final third = tester.getRect(item(2));
+      final shade = tester.getSize(_strip).width;
+      // The check at the item's top end.
+      await tester.tapAt(gone.topRight + const Offset(-14, 14));
+      await tester.pump();
+      expect(h.selection.keys, [key(0), key(2)]);
+
+      await tester.pump(const Duration(milliseconds: 60));
+      expect(item(1), findsOneWidget, reason: 'still fading');
+      expect(tester.getRect(item(1)).left, gone.left, reason: 'in its place');
+      expect(opacityOf(tester, 1), inExclusiveRange(0, 1));
+      final sliding = tester.getRect(item(2)).left;
+      expect(sliding, lessThan(third.left));
+      expect(sliding, greaterThan(gone.left));
+      final closing = tester.getSize(_strip).width;
+      expect(closing, lessThan(shade));
+
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(item(1), findsNothing, reason: 'faded after 120 ms');
+      expect(tester.getRect(item(2)).left, lessThan(gone.left + 85));
+
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(tester.getRect(item(2)).left, gone.left, reason: 'after 250 ms');
+      expect(tester.getSize(_strip).width, shade - 85 - 6);
+      await _close(tester);
+    });
+
+    testWidgets('a lifted item held near the end scrolls the row, the '
+        'faster the closer, and moves along it', (tester) async {
+      final h = PickerHarness();
+      await h.pump(tester, viewerSlot: true, reorder: true);
+      final picked = [for (var i = 0; i < 10; i++) i];
+      for (final i in picked) {
+        h.selection.toggle(key(i));
+      }
+      await openStrip(tester, picked);
+      final row = find.descendant(
+        of: _strip,
+        matching: find.byType(SingleChildScrollView),
+      );
+      final scroll = tester.widget<SingleChildScrollView>(row).controller!;
+      expect(scroll.position.maxScrollExtent, greaterThan(0));
+      final edge = tester.getRect(row).right;
+
+      final gesture = await tester.startGesture(tester.getCenter(item(1)));
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await gesture.moveTo(Offset(edge - 24, tester.getCenter(item(1)).dy));
+      await tester.pump();
+      final start = scroll.offset;
+      // 24 from the end: (1 - 24 / 32) * 6 = 1.5 a step.
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 15));
+      }
+      final slow = scroll.offset - start;
+      expect(slow, closeTo(15, 3));
+
+      await gesture.moveTo(Offset(edge - 4, tester.getCenter(item(1)).dy));
+      await tester.pump();
+      final before = scroll.offset;
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 15));
+      }
+      expect(scroll.offset - before, greaterThan(slow * 2));
+      expect(
+        h.selection.keys.indexOf(key(1)),
+        greaterThan(3),
+        reason: 'moved along under the finger',
+      );
+
+      // Let go: the row stops.
+      await gesture.up();
+      await tester.pump();
+      final rest = scroll.offset;
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(scroll.offset, rest);
+      await _close(tester);
+    });
+
+    testWidgets('a video shows its duration on a bar along the bottom; a '
+        'photo shows none', (tester) async {
+      final h = PickerHarness();
+      await h.pump(tester, viewerSlot: true);
+      // 3 is a video of 8 s; 0 a photo.
+      h.selection
+        ..toggle(key(0))
+        ..toggle(key(3));
+      await openStrip(tester, [0, 3]);
+      final bar = find.byKey(
+        const ValueKey('mpx-picker-viewer-strip-duration'),
+      );
+      expect(find.descendant(of: item(0), matching: bar), findsNothing);
+      final video = find.descendant(of: item(3), matching: bar);
+      expect(video, findsOneWidget);
+      expect(
+        find.descendant(of: video, matching: find.text('0:08')),
+        findsOneWidget,
+      );
+      final cell = tester.getRect(item(3));
+      final rect = tester.getRect(video);
+      expect(rect.height, 16);
+      expect(rect.bottom, cell.bottom);
+      expect(rect.width, cell.width);
+      await _close(tester);
+    });
   });
 }

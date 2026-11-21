@@ -14,6 +14,7 @@ import 'package:mpx_ui/src/library/library_grid_tokens.dart';
 import 'package:mpx_ui/src/library/library_pages.dart';
 import 'package:mpx_ui/src/library/picker_captures.dart';
 import 'package:mpx_ui/src/library/picker_selection.dart';
+import 'package:mpx_ui/src/library/picker_strip_controller.dart';
 import 'package:mpx_ui/src/text/mpx_text_root.dart';
 import 'package:mpx_ui/src/viewer/gallery_source.dart';
 import 'package:mpx_ui/src/viewer/media_viewer.dart';
@@ -229,6 +230,10 @@ abstract final class PickerViewer {
     Widget Function(BuildContext context, PickerViewerItem item)? bottomBuilder,
     void Function(MediaKey key, PickerRefusal reason)? onRefused,
     void Function(MediaKey key, int to)? onReorder,
+    LibraryAsset? Function(MediaKey key)? assetOf,
+    PickerStripPolicy? selectedStrip = PickerStripPolicy.$Android,
+    Widget Function(BuildContext context, PickerStripController strip)?
+    selectedStripBuilder,
     String? title,
     bool bottomSlotHoldsKeyboard = false,
     String? Function(LibraryAsset asset)? subtitleOf,
@@ -320,6 +325,9 @@ abstract final class PickerViewer {
                     onRefused: onRefused,
                     onShow: controller.jumpTo,
                     onReorder: onReorder,
+                    assetOf: assetOf,
+                    selectedStrip: selectedStrip,
+                    selectedStripBuilder: selectedStripBuilder,
                     title: title,
                     bottomSlotHoldsKeyboard: bottomSlotHoldsKeyboard,
                     subtitleOf: subtitleOf,
@@ -354,6 +362,9 @@ class PickerViewerChrome extends StatefulWidget {
     this.onRefused,
     this.onShow,
     this.onReorder,
+    this.assetOf,
+    this.selectedStrip = PickerStripPolicy.$Android,
+    this.selectedStripBuilder,
     this.viewer,
     this.onBottomHeight,
     this.bottomSlotHoldsKeyboard = false,
@@ -393,6 +404,20 @@ class PickerViewerChrome extends StatefulWidget {
   /// A strip item lifted by a long press was dragged to the place [to]
   /// (0-based) of the selection; the strip does not reorder when null.
   final void Function(MediaKey key, int to)? onReorder;
+
+  /// The item behind a selected key the viewer's source has not read (one
+  /// picked in another album), so the strip shows its marks; the source's
+  /// own items need none.
+  final LibraryAsset? Function(MediaKey key)? assetOf;
+
+  /// The selected strip's sizes and timing; no strip when null (the
+  /// counter then opens nothing).
+  final PickerStripPolicy? selectedStrip;
+
+  /// Draws the selected strip in place of the viewer's own, over the same
+  /// behaviour (the items, the leaving ones, a lift and its edge scroll).
+  final Widget Function(BuildContext context, PickerStripController strip)?
+  selectedStripBuilder;
 
   /// Told the height the host's bottom bar takes from the bottom of the
   /// screen (the bar, the keyboard under it and the safe area), so the
@@ -435,7 +460,33 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
   static const double _checkSlop = 6;
   static const double _counterEnd = 64;
 
-  bool _strip = false;
+  bool _stripShown = false;
+
+  // The selected strip's behaviour, for the viewer's skin or the host's;
+  // none when the host shows no strip.
+  late final PickerStripController? _selectedStrip =
+      switch (widget.selectedStrip) {
+        final policy? => PickerStripController(
+          selection: widget.selection,
+          policy: policy,
+          onReorder: widget.onReorder,
+        ),
+        null => null,
+      };
+
+  // The item behind a selected key: the viewer's source's, else the
+  // host's.
+  LibraryAsset? _assetOf(MediaKey key) => switch (widget.source.indexOf(key)) {
+    final index? => widget.source.assetAt(index),
+    null => widget.assetOf?.call(key),
+  };
+
+  // Shows a selected item (a tap in the strip).
+  void _showKey(MediaKey key) {
+    final at = _indexOf[key] ?? widget.source.indexOf(key);
+    if (at != null) widget.onShow?.call(at);
+  }
+
   late final AnimationController _fade = AnimationController(
     vsync: this,
     duration: PickerViewerChrome.fadeDuration,
@@ -466,6 +517,7 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
 
   @override
   void dispose() {
+    _selectedStrip?.dispose();
     _chromeShown.dispose();
     widget.viewer?.removeListener(_onViewer);
     _fade.dispose();
@@ -609,10 +661,12 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
                       child: _CounterPill(
                         key: const ValueKey('mpx-picker-viewer-counter'),
                         count: count,
-                        open: _strip && count > 0,
+                        open: _stripShown && count > 0,
                         tokens: tokens,
                         onTap: () {
-                          if (count > 0) setState(() => _strip = !_strip);
+                          if (count > 0 && _selectedStrip != null) {
+                            setState(() => _stripShown = !_stripShown);
+                          }
                         },
                       ),
                     ),
@@ -652,7 +706,7 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
               ),
             ),
             // The selected strip, under the top bar, sliding and fading in.
-            if (_strip && count > 0)
+            if (_selectedStrip case final strip? when _stripShown && count > 0)
               PositionedDirectional(
                 top: _barHeight + 5,
                 start: 0,
@@ -668,23 +722,18 @@ class _PickerViewerChromeState extends State<PickerViewerChrome>
                       child: child,
                     ),
                   ),
-                  child: _SelectedStrip(
-                    keys: widget.selection.keys,
-                    assetOf: (key) => switch (widget.source.indexOf(key)) {
-                      final index? => widget.source.assetAt(index),
-                      null => null,
-                    },
-                    current: key,
-                    height: policy.selectedStripHeight,
-                    tokens: tokens,
-                    onTap: (tapped) {
-                      final at =
-                          _indexOf[tapped] ?? widget.source.indexOf(tapped);
-                      if (at != null) widget.onShow?.call(at);
-                    },
-                    onDeselect: _toggle,
-                    onReorder: widget.onReorder,
-                  ),
+                  child: switch (widget.selectedStripBuilder) {
+                    final builder? => builder(context, strip),
+                    null => _SelectedStrip(
+                      controller: strip,
+                      assetOf: _assetOf,
+                      current: key,
+                      height: policy.selectedStripHeight,
+                      tokens: tokens,
+                      onTap: _showKey,
+                      onDeselect: _toggle,
+                    ),
+                  },
                 ),
               ),
           ],
@@ -811,37 +860,38 @@ class _ViewerCheck extends StatelessWidget {
   );
 }
 
-/// The selected items in a row: a tap shows one, the check at its top end
+/// The selected items in a row, the viewer's skin over a
+/// [PickerStripController]: a tap shows one, the check at its top end
 /// deselects it, a long press lifts it so a drag moves it among the others,
 /// and the one the viewer shows is outlined.
+///
+/// A deselected item fades out where it stood while the ones after it slide
+/// into the gap, and the shade under the row follows them; a lifted item
+/// held near either end of the row scrolls it.
 class _SelectedStrip extends StatefulWidget {
   const _SelectedStrip({
-    required this.keys,
+    required this.controller,
     required this.assetOf,
     required this.current,
     required this.height,
     required this.tokens,
     required this.onTap,
     required this.onDeselect,
-    required this.onReorder,
   });
 
-  // The reference's row: 85 px items 6 apart, inset 12 at the sides and the
-  // top and 6 at the bottom, on a rounded shade.
-  static const double item = 85;
-  static const double gap = 6;
+  // The reference's row: inset 12 at the sides and the top and 6 at the
+  // bottom, on a rounded shade 6 in from the screen's sides.
   static const EdgeInsets inset = EdgeInsets.fromLTRB(12, 12, 12, 6);
 
-  final List<MediaKey> keys;
-  // The item a key stands for, when the viewer's source holds it: a
-  // capture's thumbnail comes from it.
+  final PickerStripController controller;
+  // The item a key stands for, when the viewer's source or the host holds
+  // it: a capture's thumbnail and a video's duration come from it.
   final LibraryAsset? Function(MediaKey key) assetOf;
   final MediaKey? current;
   final double height;
   final LibraryGridTokens tokens;
   final ValueChanged<MediaKey> onTap;
   final ValueChanged<MediaKey> onDeselect;
-  final void Function(MediaKey key, int to)? onReorder;
 
   @override
   State<_SelectedStrip> createState() => _SelectedStripState();
@@ -850,52 +900,74 @@ class _SelectedStrip extends StatefulWidget {
 class _SelectedStripState extends State<_SelectedStrip> {
   final ScrollController _scroll = ScrollController();
   final GlobalKey _list = GlobalKey();
-  MediaKey? _lifted;
+
+  PickerStripController get _strip => widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _strip.target = PickerStripScrollTarget.controller(_scroll);
+  }
+
+  @override
+  void didUpdateWidget(_SelectedStrip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.controller, widget.controller)) {
+      oldWidget.controller.target = null;
+      _strip.target = PickerStripScrollTarget.controller(_scroll);
+    }
+  }
 
   @override
   void dispose() {
+    _strip
+      ..drop()
+      ..target = null;
     _scroll.dispose();
     super.dispose();
   }
 
   void _lift(MediaKey key) {
-    if (widget.onReorder == null) return;
+    if (!_strip.reorders) return;
     unawaited(HapticFeedback.mediumImpact());
-    setState(() => _lifted = key);
+    _strip.lift(key);
   }
 
-  void _drag(Offset global) {
-    final key = _lifted;
+  // The finger along the row's viewport, the part of the row on screen,
+  // from its start edge.
+  void _hold(Offset global) {
     final box = _list.currentContext?.findRenderObject() as RenderBox?;
-    if (key == null || box == null) return;
-    final local = box.globalToLocal(global);
+    if (box == null) return;
+    final x = box.globalToLocal(global).dx;
     final rtl = Directionality.of(context) == TextDirection.rtl;
-    final along =
-        (rtl ? box.size.width - local.dx : local.dx) +
-        (_scroll.hasClients ? _scroll.offset : 0) -
-        _SelectedStrip.inset.left;
-    const stride = _SelectedStrip.item + _SelectedStrip.gap;
-    final keys = widget.keys;
-    final to = (along / stride).floor().clamp(0, keys.length - 1);
-    if (keys.indexOf(key) != to) widget.onReorder?.call(key, to);
+    final width = box.size.width;
+    _strip.hold(rtl ? width - x : x, width);
   }
 
   void _drop() {
-    if (_lifted == null) return;
+    if (_strip.lifted == null) return;
     unawaited(HapticFeedback.selectionClick());
-    setState(() => _lifted = null);
+    _strip.drop();
   }
 
   @override
-  Widget build(BuildContext context) {
-    const side = _SelectedStrip.item;
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: _strip,
+    builder: (context, _) => _row(context),
+  );
+
+  Widget _row(BuildContext context) {
+    final policy = _strip.policy;
+    final side = policy.item;
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
     final pixels = (side * dpr).ceil();
     final tokens = widget.tokens;
+    final keys = _strip.keys;
+    final leaving = _strip.leaving;
     // A library key resolves only through its descriptor; the strip holds
     // keys alone, and a library thumbnail is a still.
     final scope = AssetCacheProvider.maybeOf(context);
-    for (final key in widget.keys) {
+    for (final key in [...keys, ...leaving.keys]) {
       if (_captureOf(key) case final capture?) {
         scope?.know(PickerCaptureKeys.thumbnailDescriptorOf(capture, pixels));
       } else if (LibraryKeys.read(key) case final target?) {
@@ -907,34 +979,65 @@ class _SelectedStripState extends State<_SelectedStrip> {
         );
       }
     }
+    // Each item at its place, sliding there when its place changes; a
+    // removed one stays at the place it left as it fades.
+    Widget place(MediaKey key, int at, {bool leaving = false}) =>
+        AnimatedPositionedDirectional(
+          key: ValueKey(('mpx-picker-viewer-strip', key)),
+          duration: policy.move,
+          curve: policy.curve,
+          start: _strip.startOf(at),
+          top: 0,
+          width: side,
+          height: side,
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 1, end: leaving ? 0 : 1),
+            duration: policy.leave,
+            curve: policy.curve,
+            builder: (context, t, child) => Opacity(opacity: t, child: child),
+            child: IgnorePointer(
+              ignoring: leaving,
+              child: _item(key, side, dpr, pixels),
+            ),
+          ),
+        );
     return Align(
       alignment: AlignmentDirectional.topStart,
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 6),
+        key: const ValueKey('mpx-picker-viewer-selected'),
+        margin: EdgeInsets.symmetric(
+          horizontal: _SelectedStrip.inset.left - policy.ends,
+        ),
         decoration: BoxDecoration(
           color: tokens.shade,
           borderRadius: BorderRadius.circular(8),
         ),
         height: widget.height,
-        child: ListView(
+        child: SingleChildScrollView(
           key: _list,
           controller: _scroll,
-          shrinkWrap: true,
           scrollDirection: Axis.horizontal,
           padding: _SelectedStrip.inset.copyWith(
-            left: _SelectedStrip.inset.left - 6,
-            right: _SelectedStrip.inset.right - 6,
+            left: policy.ends,
+            right: policy.ends,
           ),
-          children: [
-            for (final (i, key) in widget.keys.indexed)
-              Padding(
-                key: ValueKey(('mpx-picker-viewer-strip', key)),
-                padding: EdgeInsetsDirectional.only(
-                  start: i == 0 ? 0 : _SelectedStrip.gap,
-                ),
-                child: _item(key, side, dpr, pixels),
-              ),
-          ],
+          // The row's length follows its items as they slide, so the shade
+          // closes with them.
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(end: _strip.length),
+            duration: policy.move,
+            curve: policy.curve,
+            builder: (context, length, child) =>
+                SizedBox(width: length, height: side, child: child),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                for (final MapEntry(key: key, value: at) in leaving.entries)
+                  place(key, at, leaving: true),
+                for (final (i, key) in keys.indexed) place(key, i),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -949,6 +1052,7 @@ class _SelectedStripState extends State<_SelectedStrip> {
 
   Widget _item(MediaKey key, double side, double dpr, int pixels) {
     final tokens = widget.tokens;
+    final asset = widget.assetOf(key);
     final thumbnail = switch (_captureOf(key)) {
       final capture? => PickerCaptureKeys.thumbnailKeyOf(capture, pixels),
       null => switch (LibraryKeys.read(key)) {
@@ -957,13 +1061,20 @@ class _SelectedStripState extends State<_SelectedStrip> {
       },
     };
     final current = key == widget.current;
+    // A video's duration on a bar along the bottom; a live photo has none.
+    final duration = switch (asset) {
+      LibraryAsset(kind: LibraryAssetKind.video, :final duration?)
+          when !asset.has(LibraryAssetSubtype.live) =>
+        duration,
+      _ => null,
+    };
     return Transform.scale(
-      scale: key == _lifted ? 1.05 : 1,
+      scale: key == _strip.lifted ? 1.05 : 1,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => widget.onTap(key),
         onLongPressStart: (_) => _lift(key),
-        onLongPressMoveUpdate: (d) => _drag(d.globalPosition),
+        onLongPressMoveUpdate: (d) => _hold(d.globalPosition),
         onLongPressEnd: (_) => _drop(),
         onLongPressCancel: _drop,
         child: SizedBox.square(
@@ -982,6 +1093,14 @@ class _SelectedStripState extends State<_SelectedStrip> {
                   ),
                 ),
               ),
+              if (duration != null)
+                PositionedDirectional(
+                  start: 0,
+                  end: 0,
+                  bottom: 0,
+                  height: 16,
+                  child: _StripDuration(duration),
+                ),
               DecoratedBox(
                 key: const ValueKey('mpx-picker-viewer-strip-frame'),
                 decoration: BoxDecoration(
@@ -1023,6 +1142,83 @@ class _SelectedStripState extends State<_SelectedStrip> {
       ),
     );
   }
+}
+
+// A strip item's video bar, as the reference's picked-photo cell draws it:
+// 16 high across the bottom on 50 % black with its bottom corners rounded
+// 4, a camcorder mark 14 x 9 at 3 in, and the duration in 12 white 18 from
+// the start.
+class _StripDuration extends StatelessWidget {
+  const _StripDuration(this.duration);
+
+  final Duration duration;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    key: const ValueKey('mpx-picker-viewer-strip-duration'),
+    decoration: const BoxDecoration(
+      color: Color(0x7F000000),
+      borderRadius: BorderRadius.vertical(bottom: Radius.circular(4)),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: Stack(
+        children: [
+          const PositionedDirectional(
+            start: 0,
+            top: 3.5,
+            width: 14,
+            height: 9,
+            child: CustomPaint(painter: _CamcorderMark()),
+          ),
+          PositionedDirectional(
+            start: 18,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: Text(
+                LibraryGridLabels.formatDuration(duration),
+                maxLines: 1,
+                style: const TextStyle(
+                  color: Color(0xFFFFFFFF),
+                  fontSize: 12,
+                  height: 1,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+// A camcorder: a rounded body 9 wide and a lens wedge opening to the end.
+class _CamcorderMark extends CustomPainter {
+  const _CamcorderMark();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = const Color(0xFFFFFFFF);
+    final h = size.height;
+    canvas
+      ..drawRRect(
+        RRect.fromLTRBR(0, 0, 9, h, const Radius.circular(1.5)),
+        paint,
+      )
+      ..drawPath(
+        Path()
+          ..moveTo(10, h / 2)
+          ..lineTo(size.width, 0)
+          ..lineTo(size.width, h)
+          ..close(),
+        paint,
+      );
+  }
+
+  @override
+  bool shouldRepaint(_CamcorderMark oldDelegate) => false;
 }
 
 class _Tick extends CustomPainter {

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- The viewer's selected strip runs on `PickerStripController`, a headless
+  behaviour a host can drive with its own row: a deselected item fades where
+  it stood (120 ms) while the rest slide into the gap (250 ms) and the shade
+  closes with them; a lifted item held within 32 of an end scrolls the row
+  through a `PickerStripScrollTarget`. The strip shows a video's duration
+  on a bar along the bottom. `PickerViewer.show` / `LibraryPicker` take the
+  strip's policy (`PickerStripPolicy`, none for no strip), a builder that
+  replaces its look, and `assetOf` for selected items the viewer's album
+  has not read. `LibraryPickerState.pages` is the album the grid shows.
 - The viewer's selected strip and `PickerSelectionPreview` show a capture
   by its `PickerCapture.thumbnail` when it has one (a recording's first
   frame), as the grid does.

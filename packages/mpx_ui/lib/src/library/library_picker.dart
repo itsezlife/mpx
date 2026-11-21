@@ -13,6 +13,7 @@ import 'package:mpx_ui/src/library/library_grid_tokens.dart';
 import 'package:mpx_ui/src/library/library_pages.dart';
 import 'package:mpx_ui/src/library/picker_captures.dart';
 import 'package:mpx_ui/src/library/picker_selection.dart';
+import 'package:mpx_ui/src/library/picker_strip_controller.dart';
 import 'package:mpx_ui/src/library/picker_viewer.dart';
 import 'package:mpx_ui/src/text/mpx_text_root.dart';
 import 'package:mpx_ui/src/viewer/viewer_origin.dart';
@@ -53,6 +54,9 @@ class LibraryPicker extends StatefulWidget {
     this.onCamera,
     this.onRefused,
     this.onReorder,
+    this.viewerAssetOf,
+    this.viewerSelectedStrip = PickerStripPolicy.$Android,
+    this.viewerSelectedStripBuilder,
     this.viewerTitle,
     this.viewerBottomSlotHoldsKeyboard = false,
     this.viewerSubtitleOf,
@@ -135,6 +139,20 @@ class LibraryPicker extends StatefulWidget {
   /// for the default selection; no reorder when null.
   final void Function(MediaKey key, int to)? onReorder;
 
+  /// The item behind a selected key the viewer's album has not read (one
+  /// picked in another album), so the viewer's strip shows its marks; see
+  /// `PickerViewerChrome.assetOf`.
+  final LibraryAsset? Function(MediaKey key)? viewerAssetOf;
+
+  /// The picker-mode viewer's selected strip; none when null. See
+  /// `PickerViewerChrome.selectedStrip`.
+  final PickerStripPolicy? viewerSelectedStrip;
+
+  /// Draws the viewer's selected strip over its behaviour, in place of the
+  /// viewer's own. See `PickerViewerChrome.selectedStripBuilder`.
+  final Widget Function(BuildContext context, PickerStripController strip)?
+  viewerSelectedStripBuilder;
+
   /// Whether the picker-mode viewer's bottom slot holds the keyboard's and
   /// the safe area's place itself (a host dock): see
   /// `PickerViewerChrome.bottomSlotHoldsKeyboard`.
@@ -207,6 +225,12 @@ class LibraryPickerState extends State<LibraryPicker> {
   bool _asked = false;
   bool _viewerOpen = false;
   final GlobalKey<ViewerOriginScopeState> _origins = GlobalKey();
+
+  /// The pages of the album the grid shows, or null before one is chosen:
+  /// a host's own view of the same album (a camera page's strip listing it
+  /// after the shots) reads the pages the grid has read. Replaced when the
+  /// album changes.
+  LibraryPages? get pages => _pages;
   int _captureCount = 0;
 
   // A capture that the policy names (the first; on iOS every 10th too)
@@ -397,6 +421,9 @@ class LibraryPickerState extends State<LibraryPicker> {
       bottomBuilder: widget.viewerBottomBuilder,
       onRefused: widget.onRefused,
       onReorder: widget.onReorder,
+      assetOf: widget.viewerAssetOf,
+      selectedStrip: widget.viewerSelectedStrip,
+      selectedStripBuilder: widget.viewerSelectedStripBuilder,
       title: widget.viewerTitle,
       bottomSlotHoldsKeyboard: widget.viewerBottomSlotHoldsKeyboard,
       subtitleOf: widget.viewerSubtitleOf,
