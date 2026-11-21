@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The capture surface closes with a vertical swipe: past 25 px the preview
+  follows the finger and the controls fade (220 ms); released past a sixth
+  of the height it closes from there into the slot, otherwise it comes back
+  (250 ms, decelerating).
 - Input guards as the reference: a camera switch asked for while one runs
   is ignored (until the new camera's first frame); the switch and close
   wait for a photo being taken; the flash icon swaps over 220 ms and taps

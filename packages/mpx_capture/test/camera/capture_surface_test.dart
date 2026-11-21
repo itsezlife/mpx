@@ -526,6 +526,64 @@ void main() {
     expect(File(shot.output.path).existsSync(), isFalse);
   });
 
+  group('swipe to dismiss', () {
+    double panel(WidgetTester tester) => tester
+        .widget<Opacity>(find.byKey(const ValueKey('mpx-capture-panel')))
+        .opacity;
+    double dragged(WidgetTester tester) => tester
+        .widget<Transform>(find.byKey(const ValueKey('mpx-capture-drag')))
+        .transform
+        .getTranslation()
+        .y;
+
+    Future<void> wide(WidgetTester tester) async {
+      tester.view
+        ..physicalSize = const Size(400, 800)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await pumpSurface(tester);
+    }
+
+    testWidgets('a short drag moves the preview, fades the controls over '
+        '220 ms, and both come back over 250 ms', (tester) async {
+      await wide(tester);
+      final drag = await tester.startGesture(const Offset(200, 300));
+      // The slop (18 for the recognizer, then 25 of ours) moves nothing.
+      await drag.moveBy(const Offset(0, 20));
+      await drag.moveBy(const Offset(0, 25));
+      await tester.pump();
+      expect(dragged(tester), 0);
+      await drag.moveBy(const Offset(0, 80));
+      await tester.pump();
+      expect(dragged(tester), 80);
+      await tester.pump(const Duration(milliseconds: 220));
+      expect(panel(tester), 0);
+      await drag.up();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 125));
+      expect(dragged(tester), inExclusiveRange(0, 80));
+      await tester.pump(const Duration(milliseconds: 130));
+      expect(dragged(tester), 0);
+      expect(panel(tester), 1);
+      expect(closes, 0);
+    });
+
+    testWidgets('released past a sixth of the height it closes', (
+      tester,
+    ) async {
+      await wide(tester);
+      final drag = await tester.startGesture(const Offset(200, 300));
+      await drag.moveBy(const Offset(0, -20));
+      await drag.moveBy(const Offset(0, -25));
+      await drag.moveBy(const Offset(0, -140));
+      await tester.pump();
+      expect(dragged(tester), -140);
+      await drag.up();
+      await tester.pump();
+      expect(closes, 1, reason: '140 > 800 / 6');
+    });
+  });
+
   group('spam', () {
     testWidgets('switch taps while a switch runs make one switch', (
       tester,

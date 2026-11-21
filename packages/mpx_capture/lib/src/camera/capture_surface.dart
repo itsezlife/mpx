@@ -450,6 +450,66 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     });
   }
 
+  // --- Swipe to dismiss ---
+
+  // One finger moved 25 px (0.4 cm) up or down starts the drag: the preview
+  // follows the finger and the controls fade over 220 ms. Released past a
+  // sixth of the height, the page closes from where the preview is;
+  // otherwise preview and controls come back over 250 ms, decelerating.
+  static const double _dismissSlop = 25;
+  final ValueNotifier<double> _dragY = ValueNotifier(0);
+  late final AnimationController _panel;
+  late final AnimationController _settle;
+  double _settleFrom = 0;
+  double _dragTotal = 0;
+  bool _dismissing = false;
+  bool _exposureDrag = false;
+
+  void _dragStart(DragStartDetails _) {
+    _dragTotal = 0;
+    _dismissing = false;
+    _exposureDrag =
+        _policy.focus == CaptureFocusMark.crosshair &&
+        _crossAt != null &&
+        _value.hasExposure;
+  }
+
+  void _dragUpdate(DragUpdateDetails details) {
+    if (_exposureDrag) return _expose(details);
+    if (_pointers.length > 1) return;
+    _dragTotal += details.delta.dy;
+    if (!_dismissing) {
+      if (_dragTotal.abs() < _dismissSlop) return;
+      _dismissing = true;
+      _settle.stop();
+      _panel
+        ..duration = const Duration(milliseconds: 220)
+        ..animateTo(0, curve: const Cubic(0.25, 0.1, 0.25, 1)).ignore();
+      return;
+    }
+    _dragY.value += details.delta.dy;
+  }
+
+  void _dragEnd(DragEndDetails details, double height) {
+    if (_exposureDrag) return _exposed(details);
+    if (!_dismissing) return;
+    _dismissing = false;
+    if (_dragY.value.abs() > height / 6 && !_busy) {
+      widget.onClose();
+      return;
+    }
+    _settleFrom = _dragY.value;
+    _settle.forward(from: 0).ignore();
+    _panel
+      ..duration = const Duration(milliseconds: 250)
+      ..animateTo(1, curve: const _Decelerate(1.5)).ignore();
+  }
+
+  void _onSettle() {
+    _dragY.value =
+        _settleFrom * (1 - const _Decelerate(1.5).transform(_settle.value));
+  }
+
   // --- The photo blink and the results ---
 
   late final AnimationController _blink;
@@ -568,12 +628,9 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
               key: const ValueKey('mpx-capture-picture'),
               behavior: HitTestBehavior.opaque,
               onTapUp: (details) => _focus(details, size),
-              onVerticalDragUpdate: _policy.focus == CaptureFocusMark.crosshair
-                  ? _expose
-                  : null,
-              onVerticalDragEnd: _policy.focus == CaptureFocusMark.crosshair
-                  ? _exposed
-                  : null,
+              onVerticalDragStart: _dragStart,
+              onVerticalDragUpdate: _dragUpdate,
+              onVerticalDragEnd: (details) => _dragEnd(details, size.height),
             ),
           ),
           if (_crossAt case final at?)
@@ -797,6 +854,11 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
         )..addStatusListener((status) {
           if (status == AnimationStatus.completed) _blink.reverse().ignore();
         });
+    _panel = AnimationController(vsync: this, value: 1);
+    _settle = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    )..addListener(_onSettle);
     _session.value.addListener(_onValue);
     _wasRecording = _value.isRecording;
     _foundCap = _value.frameRateCap;
@@ -823,6 +885,9 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     _crossIdle?.cancel();
     _zoomBack?.cancel();
     _blink.dispose();
+    _panel.dispose();
+    _settle.dispose();
+    _dragY.dispose();
     final session = _session;
     final found = _foundCap;
     // Out of the locked tree: other widgets listen to the same session.
@@ -1018,7 +1083,7 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     final from = widget.expandFrom;
     final expand = widget.expansion;
     final fade = widget.controlsReveal;
-    final shown = switch (fade) {
+    final revealed = switch (fade) {
       // Laid out at the whole screen at every step; shown, and touchable,
       // only once the preview fills it.
       final fade? => AnimatedBuilder(
@@ -1035,8 +1100,32 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
       ),
       null => controls,
     };
+    // A dismiss drag fades the controls.
+    final shown = AnimatedBuilder(
+      animation: _panel,
+      child: revealed,
+      builder: (context, child) => Opacity(
+        key: const ValueKey('mpx-capture-panel'),
+        opacity: _panel.value,
+        child: child,
+      ),
+    );
     if (from == null || expand == null) {
-      return Stack(fit: StackFit.expand, children: [preview, shown]);
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          ValueListenableBuilder<double>(
+            valueListenable: _dragY,
+            child: preview,
+            builder: (context, dy, preview) => Transform.translate(
+              key: const ValueKey('mpx-capture-drag'),
+              offset: Offset(0, dy),
+              child: preview,
+            ),
+          ),
+          shown,
+        ],
+      );
     }
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1046,12 +1135,18 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
           fit: StackFit.expand,
           children: [
             AnimatedBuilder(
-              animation: expand,
+              // The close runs from where a dismiss drag left the preview.
+              animation: Listenable.merge([expand, _dragY]),
               child: preview,
               builder: (context, preview) => Stack(
                 children: [
                   Positioned.fromRect(
-                    rect: Rect.lerp(from, screen, expand.value)!,
+                    key: const ValueKey('mpx-capture-drag'),
+                    rect: Rect.lerp(
+                      from,
+                      screen.shift(Offset(0, _dragY.value)),
+                      expand.value,
+                    )!,
                     child: ClipRect(child: preview),
                   ),
                 ],
@@ -1833,4 +1928,15 @@ class _FocusRing extends CustomPainter {
 
   @override
   bool shouldRepaint(_FocusRing oldDelegate) => oldDelegate.t != t;
+}
+
+// Android's DecelerateInterpolator: 1 − (1 − t)^(2 × factor).
+class _Decelerate extends Curve {
+  const _Decelerate(this.factor);
+
+  final double factor;
+
+  @override
+  double transformInternal(double t) =>
+      1 - math.pow(1 - t, 2 * factor).toDouble();
 }
