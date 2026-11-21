@@ -11,8 +11,8 @@
   default (`mirrorFrontPhotos`). Videos stay unmirrored. The zoom returns
   to the widest after each shot. A hold records after 800 ms
   (`CameraCaptureSurface.holdToRecord`); a pressed shutter grows to 1.06.
-  While recording,
-  the flash and the switch slide out to their edge and fade (150 ms).
+  While recording, the flash and the switch slide out to their edge and
+  fade (150 ms).
 - `CameraSession.setZoom` (linear 0..1, `CameraSessionValue.zoom`) and
   `focusAt` (a point of the preview). The capture surface focuses where the
   picture is tapped (a closing ring), zooms with two fingers, and counts a
