@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The camera page's strip lists the host's album after the shots
+  (`CameraCaptureSurface.gallery`, a lazy `CaptureStripGallery`), each item
+  with its picture, a video's duration and its selection number
+  (`galleryOrder`, `onGalleryToggle`). The route carries the host's asset
+  cache for those pictures.
 - The switch and pause snapshot is read from the bare frames and shown
   through the turn, mirror and fit they had, so the card shows the crop the
   user saw (a raster of the fitted preview held the texture whole, a

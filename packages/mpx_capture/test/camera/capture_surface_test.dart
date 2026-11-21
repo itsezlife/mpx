@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:mpx_capture/mpx_capture.dart';
 import 'package:mpx_capture/testing.dart';
+import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 
 const _labels = CaptureSurfaceLabels(
   close: 'Close',
@@ -719,6 +721,114 @@ void main() {
     expect(selected.value, [shots.last, shots.first]);
   });
 
+  testWidgets('the strip lists the shots, then the whole album, built as it '
+      'scrolls in; an album item shows its picture, a video its duration, '
+      'its number, and a tap toggles it', (tester) async {
+    tester.view
+      ..physicalSize = const Size(400, 800)
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final kept = ValueNotifier(<CameraShot>[]);
+    addTearDown(kept.dispose);
+    final gallery = _Gallery(5000);
+    addTearDown(gallery.dispose);
+    final selected = ValueNotifier(<MediaKey>[]);
+    addTearDown(selected.dispose);
+    final producer = FakeAssetProducer();
+    final scope = AssetCacheScope(
+      producer: producer,
+      clock: PlaybackClock(ticks: ManualPlaybackTickSource()),
+    );
+    addTearDown(scope.dispose);
+    final session = await tester.runAsync(() => sessions.open());
+    await tester.pumpWidget(
+      AssetCacheProvider(
+        scope: scope,
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: CameraCaptureSurface(
+            session: session!,
+            labels: CaptureSurfaceLabels(
+              close: 'Close',
+              shutter: 'Shutter',
+              switchCamera: 'Switch camera',
+              flash: 'Flash',
+              shotsCount: (photos, videos) => '$photos/$videos',
+            ),
+            outputDirectory: directory.path,
+            onCaptured: shots.add,
+            onClose: () {},
+            shots: kept,
+            shotSelection: selected,
+            gallery: gallery,
+            galleryOrder: (key) {
+              final i = selected.value.indexOf(key);
+              return i < 0 ? null : i + 1;
+            },
+            onGalleryToggle: (key) {
+              final now = [...selected.value];
+              if (!now.remove(key)) now.add(key);
+              selected.value = now;
+            },
+            videoNeedsMicrophone: false,
+          ),
+        ),
+      ),
+    );
+    await tester.tap(shutter());
+    for (var i = 0; i < 5 && shots.isEmpty; i++) {
+      await settle(tester);
+    }
+    kept.value = [...shots];
+    await tester.pump();
+    final strip = find.byKey(const ValueKey('mpx-capture-shots'));
+    Finder item(int i) =>
+        find.byKey(ValueKey(('mpx-capture-gallery', _Gallery.keyAt(i))));
+    // The shot first, then the album from its start.
+    final shot = find.byKey(
+      ValueKey((
+        'mpx-capture-shot',
+        shots.single.key ?? shots.single.output.path,
+      )),
+    );
+    expect(tester.getTopLeft(shot).dx, 8);
+    expect(tester.getTopLeft(item(0)).dx, 8 + 86);
+    expect(tester.getSize(item(0)), const Size(86, 80));
+    // Only what is on screen (and the list's cache) is asked for.
+    expect(gallery.asked.reduce((a, b) => a > b ? a : b), lessThan(20));
+    // A picture through the cache, told its descriptor.
+    final picture = tester.widget<ContentView>(
+      find.descendant(of: item(1), matching: find.byType(ContentView)),
+    );
+    expect(picture.content, _Gallery.thumbnailAt(1, 80));
+    expect(producer.known.map((d) => d.key), contains(picture.content));
+    // 0 is a video: its duration; 1 a photo: none.
+    final duration = find.byKey(const ValueKey('mpx-capture-shot-duration'));
+    expect(
+      find.descendant(of: item(0), matching: find.text('0:07')),
+      findsOneWidget,
+    );
+    expect(find.descendant(of: item(1), matching: duration), findsNothing);
+    // A tap toggles it in the host's selection; its check shows the number.
+    await tester.tap(item(1));
+    await tester.pump();
+    expect(selected.value, [_Gallery.keyAt(1)]);
+    expect(
+      tester.renderObject(
+        find.descendant(
+          of: item(1),
+          matching: find.byKey(const ValueKey('mpx-capture-shot-check')),
+        ),
+      ),
+      paints..circle(color: const Color(0xFF229AF0)),
+    );
+    // Far along the album, a cell is built as it scrolls in.
+    await tester.drag(strip, const Offset(-40000, 0));
+    await tester.pump();
+    expect(gallery.asked.reduce((a, b) => a > b ? a : b), greaterThan(400));
+    expect(find.byType(ContentView), findsWidgets);
+  });
+
   testWidgets('a camera page opened again shows the kept shots of an earlier '
       'one with their pictures', (tester) async {
     tester.view
@@ -1101,3 +1211,31 @@ void main() {
 }
 
 String _count(int photos, int videos) => '$photos/$videos';
+
+// An album of [count] items, read lazily: every third a video of 7 s.
+final class _Gallery extends ChangeNotifier implements CaptureStripGallery {
+  _Gallery(this.count);
+
+  @override
+  final int count;
+
+  final List<int> asked = [];
+
+  static MediaKey keyAt(int i) => MediaKey.remote('album-$i');
+
+  static MediaKey thumbnailAt(int i, int pixels) =>
+      MediaKey.remote('album-$i-thumb-$pixels');
+
+  @override
+  CaptureStripItem? itemAt(int index, {required int thumbnailPixels}) {
+    asked.add(index);
+    return CaptureStripItem(
+      key: keyAt(index),
+      thumbnail: MediaDescriptor(
+        key: thumbnailAt(index, thumbnailPixels),
+        kind: MediaKind.still,
+      ),
+      duration: index % 3 == 0 ? const Duration(seconds: 7) : null,
+    );
+  }
+}

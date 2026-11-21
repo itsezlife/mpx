@@ -8,6 +8,7 @@ export 'src/cache/capture_cache.dart';
 export 'src/camera/camera_preview.dart';
 export 'src/camera/camera_session.dart';
 export 'src/camera/camera_slot_preview.dart';
+export 'src/camera/capture_strip_gallery.dart';
 export 'src/camera/capture_surface.dart';
 export 'src/camera/capture_surface_policy.dart';
 export 'src/camera/platform_camera_sessions.dart';

@@ -9,6 +9,7 @@ import 'package:flutter/widgets.dart';
 import 'package:mpx_capture/src/cache/capture_cache.dart';
 import 'package:mpx_capture/src/camera/camera_preview.dart';
 import 'package:mpx_capture/src/camera/camera_session.dart';
+import 'package:mpx_capture/src/camera/capture_strip_gallery.dart';
 import 'package:mpx_capture/src/camera/capture_surface_parts.dart';
 import 'package:mpx_capture/src/camera/capture_surface_policy.dart';
 import 'package:mpx_capture/src/job/capture_job.dart';
@@ -153,6 +154,9 @@ class CameraCaptureSurface extends StatefulWidget {
     this.shotOrder,
     this.onShotToggle,
     this.shotSelection,
+    this.gallery,
+    this.galleryOrder,
+    this.onGalleryToggle,
     super.key,
   });
 
@@ -180,6 +184,9 @@ class CameraCaptureSurface extends StatefulWidget {
     int? Function(CameraShot shot)? shotOrder,
     ValueChanged<CameraShot>? onShotToggle,
     Listenable? shotSelection,
+    CaptureStripGallery? gallery,
+    int? Function(MediaKey key)? galleryOrder,
+    ValueChanged<MediaKey>? onGalleryToggle,
     Duration transition = const Duration(milliseconds: 350),
     Duration closeTransition = const Duration(milliseconds: 220),
   }) async {
@@ -187,6 +194,9 @@ class CameraCaptureSurface extends StatefulWidget {
     // shows does nothing (the reference ignores the camera cell while its
     // camera opens or is open).
     if (!_shown.add(session)) return;
+    // The strip's gallery cells draw through the host's asset cache, which
+    // may sit under the navigator the route goes on.
+    final assets = AssetCacheProvider.maybeOf(context);
     try {
       await // The preview grows from the slot to the screen over [transition] on
       // an ease curve (back over [closeTransition], the same curve in
@@ -197,7 +207,7 @@ class CameraCaptureSurface extends StatefulWidget {
           reverseTransitionDuration: closeTransition,
           pageBuilder: (context, animation, _) {
             final progress = _EasedInTime(animation);
-            return CameraCaptureSurface(
+            final surface = CameraCaptureSurface(
               session: session,
               labels: labels,
               outputDirectory: outputDirectory,
@@ -219,7 +229,14 @@ class CameraCaptureSurface extends StatefulWidget {
               shotOrder: shotOrder,
               onShotToggle: onShotToggle,
               shotSelection: shotSelection,
+              gallery: gallery,
+              galleryOrder: galleryOrder,
+              onGalleryToggle: onGalleryToggle,
             );
+            return switch (assets) {
+              final scope? => AssetCacheProvider(scope: scope, child: surface),
+              null => surface,
+            };
           },
           transitionsBuilder: (context, animation, _, child) {
             if (from != null) return child;
@@ -321,9 +338,21 @@ class CameraCaptureSurface extends StatefulWidget {
   /// selection.
   final ValueChanged<CameraShot>? onShotToggle;
 
-  /// Tells the strip that [shotOrder]'s answers changed (the host's
-  /// selection).
+  /// Tells the strip that [shotOrder]'s and [galleryOrder]'s answers
+  /// changed (the host's selection).
   final Listenable? shotSelection;
+
+  /// The host's album the strip lists after the shots, each item with its
+  /// check; the strip lists only the shots when null.
+  final CaptureStripGallery? gallery;
+
+  /// A [gallery] item's number in the host's selection (1-based), or null
+  /// when it is not selected.
+  final int? Function(MediaKey key)? galleryOrder;
+
+  /// Called by a [gallery] item's tap: the host toggles it in its
+  /// selection.
+  final ValueChanged<MediaKey>? onGalleryToggle;
 
   @override
   State<CameraCaptureSurface> createState() => _CameraCaptureSurfaceState();
@@ -677,6 +706,89 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     widget.onShotRemoved?.call(shot);
   }
 
+  // The strip: the kept shots, oldest first, then the host's album, as the
+  // reference's camera strip counts its camera photos and then the album's.
+  // 80 square cells 6 apart, the last with no gap; built only as they
+  // scroll in, the album can be long.
+  Widget _strip(BuildContext context) {
+    final gallery = widget.gallery;
+    final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
+    final pixels = (80 * dpr).ceil();
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        widget.shotSelection ?? const _Never(),
+        ?gallery,
+      ]),
+      builder: (context, _) {
+        final shots = _shotList;
+        final count = shots.length + (gallery?.count ?? 0);
+        // Each cell with its key: a shot's, or an album item's once loaded.
+        (Key, Widget) cell(int i) {
+          if (i < shots.length) {
+            final shot = shots[i];
+            return (
+              ValueKey(('mpx-capture-shot', shot.key ?? shot.output.path)),
+              widget.resultBuilder?.call(context, shot) ??
+                  _StripCell(
+                    picture: switch (_thumbs[_thumbKey(shot)]) {
+                      final image? => RawImage(image: image, fit: BoxFit.cover),
+                      null => null,
+                    },
+                    duration: shot.isVideo ? shot.output.duration : null,
+                    order: widget.shotOrder?.call(shot),
+                    onToggle: () => widget.onShotToggle?.call(shot),
+                  ),
+            );
+          }
+          final at = i - shots.length;
+          final item = gallery?.itemAt(at, thumbnailPixels: pixels);
+          if (item == null) {
+            return (
+              ValueKey(('mpx-capture-gallery-at', at)),
+              const ColoredBox(color: _StripCell.background),
+            );
+          }
+          final assets = AssetCacheProvider.maybeOf(context)
+            ?..know(item.thumbnail);
+          return (
+            ValueKey(('mpx-capture-gallery', item.key)),
+            _StripCell(
+              picture: switch (assets) {
+                null => null,
+                _ => ContentView(
+                  content: item.thumbnail.key,
+                  preset: AssetPresets.square(
+                    extent: 80,
+                    devicePixelRatio: dpr,
+                    profile: const AssetProfile(fit: AssetFit.cover),
+                  ),
+                ),
+              },
+              duration: item.duration,
+              order: widget.galleryOrder?.call(item.key),
+              onToggle: () => widget.onGalleryToggle?.call(item.key),
+            ),
+          );
+        }
+
+        return ListView.builder(
+          key: const ValueKey('mpx-capture-shots'),
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          itemCount: count,
+          itemBuilder: (context, i) {
+            final (key, child) = cell(i);
+            return Padding(
+              key: key,
+              padding: EdgeInsetsDirectional.only(end: i == count - 1 ? 0 : 6),
+              child: SizedBox.square(dimension: 80, child: child),
+            );
+          },
+        );
+      },
+    );
+  }
+
   // The recording's seconds.
   Timer? _tick;
   int _seconds = 0;
@@ -856,39 +968,7 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
               right: 0,
               bottom: MediaQuery.paddingOf(context).bottom + 8,
               height: 80,
-              child: ListView(
-                key: const ValueKey('mpx-capture-shots'),
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                children: [
-                  for (final (i, shot) in _shotList.indexed)
-                    // 80 square cells 6 apart, the last with no gap.
-                    Padding(
-                      key: ValueKey((
-                        'mpx-capture-shot',
-                        shot.key ?? shot.output.path,
-                      )),
-                      padding: EdgeInsetsDirectional.only(
-                        end: i == _shotList.length - 1 ? 0 : 6,
-                      ),
-                      child: SizedBox.square(
-                        dimension: 80,
-                        child:
-                            widget.resultBuilder?.call(context, shot) ??
-                            ListenableBuilder(
-                              listenable:
-                                  widget.shotSelection ?? const _Never(),
-                              builder: (context, _) => _ShotCell(
-                                shot: shot,
-                                thumbnail: _thumbs[_thumbKey(shot)],
-                                order: widget.shotOrder?.call(shot),
-                                onToggle: () => widget.onShotToggle?.call(shot),
-                              ),
-                            ),
-                      ),
-                    ),
-                ],
-              ),
+              child: _strip(context),
             ),
             Positioned(
               left: 0,
@@ -1596,22 +1676,27 @@ class _Never implements Listenable {
   void removeListener(VoidCallback listener) {}
 }
 
-// A kept shot in the strip, as the reference draws its attach cell there:
+// A strip cell (a kept shot or an album item), as the reference draws its
+// attach cell there:
 // the picture 80 square over a 5 % black background; a recording's
 // duration in a 17 high pill at its bottom start (4 in, 5 padding, a
 // play mark 8 x 10, the time 12 bold white, 13 after the mark's start, on
 // 40 % black, radius 4); the check 24 at 52, 4 (a white ring, or the
 // selection number on the accent when checked). A tap anywhere toggles.
-class _ShotCell extends StatelessWidget {
-  const _ShotCell({
-    required this.shot,
-    required this.thumbnail,
+class _StripCell extends StatelessWidget {
+  const _StripCell({
+    required this.picture,
+    required this.duration,
     required this.order,
     required this.onToggle,
   });
 
-  final CameraShot shot;
-  final ui.Image? thumbnail;
+  static const Color background = Color(0x0C000000);
+
+  // The shot's or the album item's picture; none while it loads.
+  final Widget? picture;
+  // A recording's or a video's duration.
+  final Duration? duration;
   final int? order;
   final VoidCallback onToggle;
 
@@ -1622,16 +1707,16 @@ class _ShotCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final picture = thumbnail;
+    final time = duration;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onToggle,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          const ColoredBox(color: Color(0x0C000000)),
-          if (picture != null) RawImage(image: picture, fit: BoxFit.cover),
-          if (shot.isVideo)
+          const ColoredBox(color: background),
+          ?picture,
+          if (time != null)
             PositionedDirectional(
               start: 4,
               bottom: 4,
@@ -1652,7 +1737,7 @@ class _ShotCell extends StatelessWidget {
                     ),
                     const SizedBox(width: 5),
                     Text(
-                      _duration(shot.output.duration),
+                      _duration(time),
                       style: const TextStyle(
                         color: Color(0xFFFFFFFF),
                         fontSize: 12,
