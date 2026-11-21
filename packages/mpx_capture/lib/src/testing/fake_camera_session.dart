@@ -233,6 +233,20 @@ final class FakeCameraSession implements CameraSession {
     );
   }
 
+  /// Whether the session is kept ready to record.
+  bool videoPrepared = false;
+
+  @override
+  Future<void> prepareVideo() async {
+    _open();
+    videoPrepared = true;
+  }
+
+  @override
+  Future<void> releaseVideo() async {
+    videoPrepared = false;
+  }
+
   @override
   Future<void> setExposure(double value) async {
     _open();

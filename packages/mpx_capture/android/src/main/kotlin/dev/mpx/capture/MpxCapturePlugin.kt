@@ -201,6 +201,8 @@ class MpxCapturePlugin :
             "cameraCap" -> session.setFrameRateCap(call.argument<Int>("fps")).also { result.success(null) }
             "cameraSwitch" -> result.success(session.switchCamera())
             "cameraFlash" -> session.setFlash(call.argument<String>("mode") ?: "off").also { result.success(null) }
+            "cameraPrepareVideo" -> session.prepareVideo().also { result.success(null) }
+            "cameraReleaseVideo" -> session.releaseVideo().also { result.success(null) }
             "cameraMicrophone" -> microphone(call.argument<Boolean>("request") ?: false, result)
             "cameraZoomFactor" -> session.setZoomFactor(call.argument<Double>("factor") ?: 1.0).also { result.success(null) }
             "cameraExposure" -> session.setExposure(call.argument<Double>("value") ?: 0.0).also { result.success(null) }
@@ -351,6 +353,7 @@ class MpxCapturePlugin :
             "permissions" -> requestPermissions(result)
             "cameraOpen", "cameraClose", "cameraCap", "cameraSwitch", "cameraFlash",
             "cameraZoomFactor", "cameraExposure", "cameraFocus", "cameraMicrophone",
+            "cameraPrepareVideo", "cameraReleaseVideo",
             "cameraPause", "cameraResume", "cameraPhoto", "cameraRecordStart",
             "cameraRecordStop" -> onCamera(call, result)
             "roundStart" -> startRound(call, result)

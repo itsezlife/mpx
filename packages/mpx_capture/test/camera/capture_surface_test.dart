@@ -72,6 +72,21 @@ void main() {
     }
   }
 
+  testWidgets('the page keeps the session ready to record while it shows '
+      '(not for photos only), and lets it go when it closes', (tester) async {
+    final session = await pumpSurface(tester) as FakeCameraSession;
+    await settle(tester);
+    expect(session.videoPrepared, isTrue);
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    expect(session.videoPrepared, isFalse);
+    final photos =
+        await pumpSurface(tester, kinds: CaptureKinds.photo)
+            as FakeCameraSession;
+    await settle(tester);
+    expect(photos.videoPrepared, isFalse);
+  });
+
   testWidgets('shows the preview texture and lifts the cap', (tester) async {
     final session = await pumpSurface(tester);
     expect(find.byType(Texture), findsOneWidget);

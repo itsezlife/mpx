@@ -321,11 +321,23 @@ class CameraSession(
         // Preview and photos only: the video use case (its encoder, its
         // recorder) joins when a recording starts and leaves when it ends,
         // so browsing never builds an encoder.
+        // A rebind (a camera switch) keeps a prepared video use case, in the
+        // same session.
+        val video = if (videoReady) newVideoCapture() else null
         camera = try {
-            provider.bindToLifecycle(this, selector(facing), preview, imageCapture)
+            provider.bindToLifecycle(
+                this,
+                selector(facing),
+                *listOfNotNull<UseCase>(preview, imageCapture, video).toTypedArray(),
+            )
         } catch (error: Exception) {
-            return failOpen()
+            try {
+                provider.bindToLifecycle(this, selector(facing), preview, imageCapture)
+            } catch (error: Exception) {
+                return failOpen()
+            }
         }
+        if (video != null && camera != null && provider.isBound(video)) videoCapture = video
         setFlash(flash)
         setZoomFactor(zoomRatio.toDouble())
         applyFrameRate()
@@ -334,18 +346,21 @@ class CameraSession(
 
     // The video use case for one recording, beside the bound preview and
     // photos; null when the camera cannot stream the three at once.
-    private fun bindVideo(): VideoCapture<Recorder>? {
-        val provider = provider ?: return null
-        trace("bind video")
-        val recorder = Recorder.Builder()
+    private fun newVideoCapture(): VideoCapture<Recorder> = VideoCapture.withOutput(
+        Recorder.Builder()
             .setQualitySelector(
                 QualitySelector.from(
                     Quality.FHD,
                     FallbackStrategy.lowerQualityOrHigherThan(Quality.SD),
                 ),
             )
-            .build()
-        val capture = VideoCapture.withOutput(recorder)
+            .build(),
+    )
+
+    private fun bindVideo(): VideoCapture<Recorder>? {
+        val provider = provider ?: return null
+        trace("bind video")
+        val capture = newVideoCapture()
         return try {
             camera = provider.bindToLifecycle(this, selector(facing), capture)
             videoCapture = capture
@@ -354,6 +369,24 @@ class CameraSession(
         } catch (error: IllegalArgumentException) {
             null
         }
+    }
+
+    // While a full camera page shows, the video use case stays bound with
+    // the preview and photos, so a recording starts on the running session:
+    // binding it at the start closes and reopens the camera's session (the
+    // preview stalls). A camera slot in a grid never holds it.
+    private var videoReady = false
+
+    /** Keeps the video use case bound until [releaseVideo]. */
+    fun prepareVideo() {
+        videoReady = true
+        if (videoCapture == null && !closed) bindVideo()
+    }
+
+    /** Lets the video use case go once no recording runs. */
+    fun releaseVideo() {
+        videoReady = false
+        if (recording == null) unbindVideo()
     }
 
     private fun unbindVideo() {
@@ -491,7 +524,7 @@ class CameraSession(
     private fun finishRecording(event: VideoRecordEvent.Finalize) {
         camera?.cameraControl?.enableTorch(false)
         recording = null
-        unbindVideo()
+        if (!videoReady) unbindVideo()
         val path = recordingPath
         recordingPath = null
         val done = recordingDone

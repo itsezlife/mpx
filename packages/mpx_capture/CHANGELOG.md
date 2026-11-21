@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `CameraSession.prepareVideo` / `releaseVideo`: the full camera page keeps
+  the camera ready to record while it shows, so a recording starts on the
+  running session (on Android the video use case is bound with the preview
+  and photos in one session; binding it at the start closed and reopened
+  the session and stalled the preview). The switch turn's perspective is
+  four heights deep, so the turning card stays near the preview's size.
 - The kept shots strip draws the reference's cell (80 square, 6 apart, a
   recording's duration pill, the selection check and number;
   `shotOrder`, `onShotToggle`, `shotSelection`) with a picture of each

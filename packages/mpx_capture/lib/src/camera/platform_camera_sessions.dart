@@ -235,6 +235,18 @@ final class _PlatformCameraSession implements CameraSession {
   }
 
   @override
+  Future<void> prepareVideo() async {
+    _open();
+    await _channel.invoke<void>('cameraPrepareVideo', _args());
+  }
+
+  @override
+  Future<void> releaseVideo() async {
+    if (_now.state == CameraSessionState.closed) return;
+    await _channel.invoke<void>('cameraReleaseVideo', _args());
+  }
+
+  @override
   Future<void> setExposure(double value) async {
     _open();
     if (!_now.hasExposure) return;

@@ -299,6 +299,16 @@ abstract interface class CameraSession {
   /// past a lens's factor the camera moves to that lens.
   Future<void> setZoomFactor(double factor);
 
+  /// Keeps the camera ready to record until [releaseVideo]: a recording then
+  /// starts on the running session, with no pause of the preview. Holding
+  /// it costs an encoder's setup; a full camera page holds it, a small
+  /// preview does not. Idempotent.
+  Future<void> prepareVideo();
+
+  /// Lets go of [prepareVideo]'s readiness once no recording runs.
+  /// Idempotent.
+  Future<void> releaseVideo();
+
   /// Sets the exposure bias, -1 (darkest) to 1 (brightest), clamped; a
   /// camera without one ([CameraSessionValue.hasExposure] false) keeps 0.
   Future<void> setExposure(double value);

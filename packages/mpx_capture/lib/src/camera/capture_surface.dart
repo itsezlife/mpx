@@ -1025,6 +1025,7 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     _foundCap = _value.frameRateCap;
     // After the build that mounts the surface: the slot's preview listens to
     // the same session and must not be marked dirty mid-build.
+    _prepareVideoWhenOpen();
     if (_value.state != CameraSessionState.closed && _foundCap != null) {
       scheduleMicrotask(
         () => unawaited(_quietly(() => _session.setFrameRateCap(null))),
@@ -1064,6 +1065,7 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     _dragY.dispose();
     final session = _session;
     final found = _foundCap;
+    final prepared = _videoPrepared;
     // Out of the locked tree: other widgets listen to the same session.
     scheduleMicrotask(() {
       final value = session.value.value;
@@ -1072,8 +1074,37 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
       if (value.frameRateCap != found) {
         unawaited(_quietly(() => session.setFrameRateCap(found)));
       }
+      if (prepared) unawaited(_quietly(session.releaseVideo));
     });
     super.dispose();
+  }
+
+  // A recording starts on the running session when the camera was made
+  // ready for it; that readiness is set up once the page has opened (the
+  // setup may hold the camera's frames a moment, which the opening must
+  // not show) and given back when it closes.
+  bool _videoPrepared = false;
+
+  void _prepareVideoWhenOpen() {
+    if (!widget.kinds.videos) return;
+    void prepare() {
+      if (!mounted || _videoPrepared) return;
+      _videoPrepared = true;
+      unawaited(_quietly(_session.prepareVideo));
+    }
+
+    final expansion = widget.expansion;
+    if (expansion == null || expansion.isCompleted) {
+      scheduleMicrotask(prepare);
+      return;
+    }
+    void onStatus(AnimationStatus status) {
+      if (!status.isCompleted) return;
+      expansion.removeStatusListener(onStatus);
+      prepare();
+    }
+
+    expansion.addStatusListener(onStatus);
   }
 
   // A control on a session that closed meanwhile is nothing to report.
