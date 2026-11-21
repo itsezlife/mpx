@@ -172,6 +172,69 @@ void main() {
     });
   });
 
+  group('restart', () {
+    Future<Duration> pageAwayAndBack(
+      WidgetTester tester, {
+      required bool restarts,
+    }) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(2),
+        videoDuration: const Duration(seconds: 60),
+      );
+      await harness.pump(
+        tester,
+        policy: ViewerPolicy.$Android.copyWith(
+          video: ViewerPolicy.$Android.video.copyWith(restarts: restarts),
+        ),
+      );
+      harness.engine(0).advance(const Duration(seconds: 7));
+      await tester.pump();
+      expect(harness.lease(tester).position, const Duration(seconds: 7));
+      await tester.dragFrom(const Offset(300, 300), const Offset(-300, 0));
+      await _settle(tester);
+      expect(harness.state(tester).index, 1);
+      await tester.dragFrom(const Offset(100, 300), const Offset(300, 0));
+      await _settle(tester);
+      expect(harness.state(tester).index, 0);
+      expectThemedText(tester);
+      return harness.lease(tester).position;
+    }
+
+    testWidgets('a policy that restarts plays a video paged back to from '
+        'its beginning', (tester) async {
+      expect(await pageAwayAndBack(tester, restarts: true), Duration.zero);
+    });
+
+    testWidgets('a policy that restarts plays a video opened again from its '
+        'beginning, though its player is still warm', (tester) async {
+      final policy = ViewerPolicy.$Android.copyWith(
+        video: ViewerPolicy.$Android.video.copyWith(restarts: true),
+      );
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+      );
+      await harness.pump(tester, policy: policy);
+      harness.engine(0).advance(const Duration(seconds: 9));
+      await tester.pump();
+      harness.state(tester).close().ignore();
+      await _settle(tester);
+      await tester.pumpWidget(const SizedBox());
+      // Opened again over the same players: the warm player is sought back.
+      await harness.pump(tester, policy: policy);
+      expect(harness.lease(tester).position, Duration.zero);
+    });
+
+    testWidgets('without it, the video goes on where it was left', (
+      tester,
+    ) async {
+      expect(
+        await pageAwayAndBack(tester, restarts: false),
+        const Duration(seconds: 7),
+      );
+    });
+  });
+
   group('the neighbours', () {
     testWidgets('a tap open leases the player before the morph\'s first '
         'frame', (tester) async {

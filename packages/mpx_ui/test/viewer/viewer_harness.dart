@@ -80,6 +80,7 @@ final class ViewerHarness {
   late final FakeGallerySource source;
   late final FakeOriginBridge bridge;
   int closed = 0;
+  bool _pumped = false;
   final List<double> backdrop = [];
 
   Future<void> pump(
@@ -97,12 +98,16 @@ final class ViewerHarness {
     tester.view.physicalSize = viewerSize;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    addTearDown(() {
-      scope.dispose();
-      clock.dispose();
-      source.dispose();
-      players?.dispose();
-    });
+    // Pumped again (a viewer opened anew), the stack is torn down once.
+    if (!_pumped) {
+      addTearDown(() {
+        scope.dispose();
+        clock.dispose();
+        source.dispose();
+        players?.dispose();
+      });
+    }
+    _pumped = true;
     await tester.pumpWidget(
       Directionality(
         textDirection: TextDirection.ltr,

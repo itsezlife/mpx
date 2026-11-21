@@ -653,7 +653,7 @@ class MediaViewerState extends State<MediaViewer>
                   ? widget.bridge?.originOf(index)?.position
                   : null) ??
               _cache?.playbackPosition(item.key, _loopSpec),
-        ViewerVideoStart.beginning => null,
+        ViewerVideoStart.beginning => _video.restarts ? Duration.zero : null,
       };
 
   // Prepares the players of the video items next to the one shown, paused,
@@ -687,8 +687,8 @@ class MediaViewerState extends State<MediaViewer>
       if (_neighbours.containsKey(index)) continue;
       final item = widget.source.itemAt(index)!;
       final lease = players!.lease(item.key);
-      // A warm player stays where it was left.
-      if (!lease.state.value.holdsEngine) {
+      // A warm player stays where it was left, unless the policy restarts.
+      if (_video.restarts || !lease.state.value.holdsEngine) {
         final startAt = _startOf(index, item);
         if (startAt != null) lease.seekTo(startAt);
       }

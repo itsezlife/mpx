@@ -227,6 +227,8 @@ abstract final class PickerViewer {
         autoHides: false,
         clickPlays: true,
         centreWhilePlaying: false,
+        // A picker's videos keep no position: back to one, it starts over.
+        restarts: true,
       ),
     );
     final index = ValueNotifier(initialIndex);

@@ -371,6 +371,7 @@ void main() {
       expect(viewer.policy!.video.autoHides, isFalse);
       expect(viewer.policy!.video.clickPlays, isTrue);
       expect(viewer.policy!.video.centreWhilePlaying, isFalse);
+      expect(viewer.policy!.video.restarts, isTrue);
       await tester.pump(const Duration(seconds: 5));
       expect(opacity(tester), 1);
     });

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `ViewerVideoRules.restarts`: a video plays from its beginning each time
+  the viewer comes to it, paged back to or opened again; the picker-mode
+  viewer sets it, the gallery keeps a warm player's position.
 - `CameraSlotSignals.shouldPause` no longer pauses the camera cell when it
   scrolls off screen (only the viewer over it or an inactive page do): the
   pause and resume closed and reopened the camera while scrolling.

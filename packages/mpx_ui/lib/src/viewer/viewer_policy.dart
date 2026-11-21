@@ -686,6 +686,7 @@ final class ViewerVideoRules {
     required this.loops,
     this.autoHides = true,
     this.centreWhilePlaying = true,
+    this.restarts = false,
     this.doubleTapSeek,
     this.doubleTapFullscreen = false,
     this.doubleTapZooms = true,
@@ -729,6 +730,12 @@ final class ViewerVideoRules {
   /// a pause); without it the centre is empty while the video plays and
   /// shows play when it pauses, as a picker-mode viewer draws it.
   final bool centreWhilePlaying;
+
+  /// Whether a video plays from its beginning each time the viewer comes
+  /// to it (paged back to, or opened again), wherever its player was left;
+  /// otherwise a player still warm goes on from where it was. A picker's
+  /// viewer restarts: its videos keep no position.
+  final bool restarts;
 
   /// The speeds offered and where a choice applies.
   final ViewerSpeedRule speed;
@@ -781,6 +788,7 @@ final class ViewerVideoRules {
     Duration? autoHide,
     bool? autoHides,
     bool? centreWhilePlaying,
+    bool? restarts,
     ViewerSpeedRule? speed,
     bool Function(Duration? duration, {required bool hasAudio})? loops,
     ViewerDoubleTapSeek? doubleTapSeek,
@@ -798,6 +806,7 @@ final class ViewerVideoRules {
     autoHide: autoHide ?? this.autoHide,
     autoHides: autoHides ?? this.autoHides,
     centreWhilePlaying: centreWhilePlaying ?? this.centreWhilePlaying,
+    restarts: restarts ?? this.restarts,
     speed: speed ?? this.speed,
     loops: loops ?? this.loops,
     doubleTapSeek: doubleTapSeek ?? this.doubleTapSeek,
