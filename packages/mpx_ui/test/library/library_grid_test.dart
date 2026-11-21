@@ -1,6 +1,7 @@
 import 'dart:ui' show CheckedState;
 
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -199,6 +200,50 @@ void main() {
     await back.up();
     await tester.pump();
     expect(selection.keys, [_key(0), _key(4)]);
+  });
+
+  testWidgets('the swipe\'s edge auto-scroll moves the list as a user '
+      'scroll: the host\'s position sees each step, past the start too', (
+    tester,
+  ) async {
+    final controller = _RecordingController();
+    addTearDown(controller.dispose);
+    await pumpGrid(tester, controller: controller);
+    final gesture = await tester.startGesture(tester.getCenter(cell(0)));
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 20));
+    // Deep in the bottom edge band: forward steps of up to 16.
+    await gesture.moveTo(const Offset(100, 795));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    final forward = [...controller.offsets];
+    expect(forward, isNotEmpty);
+    for (final dy in forward) {
+      // A drag's offset: the content moves up for a forward scroll.
+      expect(dy, inInclusiveRange(-16, 0));
+    }
+    expect(controller.position.pixels, -forward.reduce((a, b) => a + b));
+    // Back at the top edge: steps back, past the start as well.
+    controller.offsets.clear();
+    await gesture.moveTo(const Offset(100, 2));
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(controller.offsets, isNotEmpty);
+    expect(controller.offsets.every((dy) => dy > 0), isTrue);
+    expect(controller.position.pixels, 0);
+    expect(
+      controller.offsets.reduce((a, b) => a + b),
+      greaterThan(-forward.reduce((a, b) => a + b)),
+      reason: 'it keeps asking past the start, for a host to take',
+    );
+    await gesture.up();
+    await tester.pump();
+    expect(
+      controller.position.userScrollDirection,
+      ScrollDirection.idle,
+      reason: 'the scroll ends with the swipe',
+    );
   });
 
   testWidgets(r'$Android swipe: dragging back gives the cells left behind '
@@ -550,4 +595,38 @@ void main() {
       expect(lookup.assetAt(0), isNull);
     });
   });
+}
+
+// A controller whose position records the user offsets it is given.
+class _RecordingController extends ScrollController {
+  final List<double> offsets = [];
+
+  @override
+  ScrollPosition createScrollPosition(
+    ScrollPhysics physics,
+    ScrollContext context,
+    ScrollPosition? oldPosition,
+  ) => _RecordingPosition(
+    offsets,
+    physics: physics,
+    context: context,
+    oldPosition: oldPosition,
+  );
+}
+
+class _RecordingPosition extends ScrollPositionWithSingleContext {
+  _RecordingPosition(
+    this.offsets, {
+    required super.physics,
+    required super.context,
+    super.oldPosition,
+  });
+
+  final List<double> offsets;
+
+  @override
+  void applyUserOffset(double delta) {
+    offsets.add(delta);
+    super.applyUserOffset(delta);
+  }
 }

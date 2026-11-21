@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The swipe selection's edge auto-scroll drags the list
+  (`ScrollPosition.drag`, a step of up to 16 a frame) instead of jumping
+  it: a host's position takes it as a user scroll (a sheet rises first, and
+  lowers when the scroll goes back past the start), and the drag ends at
+  rest when the auto-scroll stops.
 - The camera's capture flow: `LibraryPickerState.openCaptures` opens the
   viewer on the newest capture, `PickerViewerItem.close` lets a slot close
   the viewer, `LibraryPicker.onViewerClosed` tells the host it closed.

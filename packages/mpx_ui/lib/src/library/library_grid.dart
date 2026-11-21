@@ -376,6 +376,7 @@ class LibraryGridState extends State<LibraryGrid>
     _controller.removeListener(_onScroll);
     widget.lookup?._detach(this);
     unawaited(_changes?.cancel());
+    _autoDrag?.cancel();
     _ticker?.dispose();
     _dropPages();
     _ownController?.dispose();
@@ -563,6 +564,7 @@ class LibraryGridState extends State<LibraryGrid>
   }
 
   void _swipeEnd() {
+    if (_ticker?.isActive ?? false) _endAutoScroll();
     _ticker?.stop();
     setState(() {
       _anchor = null;
@@ -581,6 +583,7 @@ class LibraryGridState extends State<LibraryGrid>
       unawaited(_autoScroll.start());
     } else if (!near && _autoScroll.isActive) {
       _autoScroll.stop();
+      _endAutoScroll();
     }
   }
 
@@ -598,13 +601,34 @@ class LibraryGridState extends State<LibraryGrid>
         : 0.0;
     if (depth == 0) return;
     final position = _controller.position;
-    final target = (position.pixels + depth.clamp(-1, 1) * 16).clamp(
-      position.minScrollExtent,
-      position.maxScrollExtent,
+    final step = depth.clamp(-1.0, 1.0) * 16;
+    // A drag of the list, as a finger's would be, so a host's position (a
+    // sheet that rises before its content scrolls, and lowers when a scroll
+    // goes back past the start) takes each step as a user scroll. Past an
+    // end the step is still offered; the position keeps what it takes.
+    final global = box.localToGlobal(pointer);
+    final drag = _autoDrag ??= position.drag(
+      DragStartDetails(globalPosition: global, localPosition: pointer),
+      () => _autoDrag = null,
     );
-    if (target == position.pixels) return;
-    _controller.jumpTo(target);
+    drag.update(
+      DragUpdateDetails(
+        globalPosition: global,
+        localPosition: pointer,
+        delta: Offset(0, -step),
+        primaryDelta: -step,
+      ),
+    );
     _extendTo(pointer);
+  }
+
+  // The auto-scroll's drag, while it runs.
+  Drag? _autoDrag;
+
+  // The auto-scroll's drag ends with it, at rest.
+  void _endAutoScroll() {
+    _autoDrag?.end(DragEndDetails(primaryVelocity: 0));
+    _autoDrag = null;
   }
 
   Map<Type, GestureRecognizerFactory> _gestures(double width) {
