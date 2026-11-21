@@ -1102,7 +1102,8 @@ class MediaViewerState extends State<MediaViewer>
 
   /// Closes the viewer on the item it shows.
   Future<void> close() async {
-    if (_phase == _Phase.closing || _phase == _Phase.closed) return;
+    // Ignored while the viewer opens, as while it closes.
+    if (_phase != _Phase.open) return;
     // Every close fades the chrome out with it, as a dismiss drag does: a
     // back press, a close button, a call from the host.
     _controls.value = false;

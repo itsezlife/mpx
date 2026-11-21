@@ -87,6 +87,7 @@ final class CaptureSurfacePolicy {
     required this.zoomResetAfterRecording,
     required this.photoBlink,
     required this.resultsStrip,
+    required this.locksWhileSwitching,
   });
 
   /// The Android reference camera: tap for a photo, hold 800 ms for a
@@ -107,6 +108,7 @@ final class CaptureSurfacePolicy {
     zoomResetAfterRecording: null,
     photoBlink: false,
     resultsStrip: false,
+    locksWhileSwitching: false,
   );
 
   /// The iOS reference camera: a Video / Photo mode control; in photo mode
@@ -130,6 +132,7 @@ final class CaptureSurfacePolicy {
     zoomResetAfterRecording: Duration(milliseconds: 300),
     photoBlink: true,
     resultsStrip: true,
+    locksWhileSwitching: true,
   );
 
   /// The policy of [platform]: [$IOS] on iOS and macOS, [$Android]
@@ -184,4 +187,8 @@ final class CaptureSurfacePolicy {
 
   /// Whether the shots taken so far show in a strip above the shutter.
   final bool resultsStrip;
+
+  /// Whether every control ignores touches while the camera switches (until
+  /// the new camera's first frame); otherwise only the switch does.
+  final bool locksWhileSwitching;
 }

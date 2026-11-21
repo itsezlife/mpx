@@ -299,6 +299,7 @@ void main() {
         await tester.tap(flash);
         await settle(tester);
         seen.add(session.value.value.flash);
+        await tester.pump(const Duration(milliseconds: 230));
       }
       expect(seen, [CameraFlash.auto, CameraFlash.off, CameraFlash.auto]);
     });

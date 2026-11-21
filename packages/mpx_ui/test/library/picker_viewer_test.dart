@@ -35,6 +35,71 @@ Future<void> _close(WidgetTester tester) async {
 }
 
 void main() {
+  group('spam', () {
+    testWidgets('taps on a cell while the viewer opens open one viewer', (
+      tester,
+    ) async {
+      final h = PickerHarness();
+      await h.pump(tester, viewerSlot: true);
+      for (var i = 0; i < 4; i++) {
+        await tester.tap(cell(2), warnIfMissed: false);
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.byType(MediaViewer), findsOneWidget);
+      await _close(tester);
+      expect(find.byType(MediaViewer), findsNothing);
+    });
+
+    testWidgets('a close while the viewer opens is ignored', (tester) async {
+      final h = PickerHarness();
+      await h.pump(tester, viewerSlot: true);
+      await tester.tap(cell(2));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+      // ignore: unawaited_futures
+      tester.state<MediaViewerState>(find.byType(MediaViewer)).close();
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.byType(MediaViewer), findsOneWidget);
+      expect(
+        tester.state<MediaViewerState>(find.byType(MediaViewer)).isOpen,
+        isTrue,
+      );
+      await _close(tester);
+    });
+
+    testWidgets('a grid check tapped while the viewer opens or closes does '
+        'nothing', (tester) async {
+      final h = PickerHarness();
+      await h.pump(tester, viewerSlot: true);
+      final corner = tester.getTopRight(cell(4)) + const Offset(-12, 12);
+      await tester.tap(cell(2));
+      await tester.pump();
+      for (var i = 0; i < 3; i++) {
+        await tester.tapAt(corner);
+        await tester.pump(const Duration(milliseconds: 30));
+      }
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      // ignore: unawaited_futures
+      tester.state<MediaViewerState>(find.byType(MediaViewer)).close();
+      await tester.pump();
+      for (var i = 0; i < 3; i++) {
+        await tester.tapAt(corner);
+        await tester.pump(const Duration(milliseconds: 30));
+      }
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(h.selection.keys, isEmpty);
+    });
+  });
+
   testWidgets('a picture tap opens the viewer on that item', (tester) async {
     final h = PickerHarness();
     await h.pump(tester, viewerSlot: true);

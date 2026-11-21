@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Input guards: a viewer close while it opens is ignored, and the picker
+  opens one viewer at a time.
 - `LibraryGridPolicy.captureViewerEvery` / `opensViewerOnCapture`: on
   `$IOS` the viewer also opens on every 10th capture.
 - Captures in the picker: `LibraryPicker.captures` (a host's listenable

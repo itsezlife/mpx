@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Input guards as the reference: a camera switch asked for while one runs
+  is ignored (until the new camera's first frame); the switch and close
+  wait for a photo being taken; the flash icon swaps over 220 ms and taps
+  meanwhile are ignored; `CameraCaptureSurface.show` opens one surface per
+  session; under `$IOS` (`locksWhileSwitching`) every control waits for a
+  switch. `FakeCameraSessions(photoTakes:)` and `FakeCameraSession.switches`.
 - Android frames and photos take the screen's shape (16:9 unless the screen
   is within 0.1 of 4:3): preview 1280 wide, photos up to 1920 x 1080 from
   the back camera and 1280 x 720 from the front. A `CameraPreview` under

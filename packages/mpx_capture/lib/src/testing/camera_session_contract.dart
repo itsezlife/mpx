@@ -123,6 +123,19 @@ abstract final class CameraSessionContract {
         if (!session.value.value.canSwitchCamera) expect(after, before);
       });
 
+      test('a switch asked for while one runs is ignored', () async {
+        final session = await open();
+        if (!session.value.value.canSwitchCamera) return;
+        final before = session.value.value.facing;
+        final results = await Future.wait([
+          session.switchCamera(),
+          session.switchCamera(),
+          session.switchCamera(),
+        ]);
+        expect(results.toSet(), hasLength(2), reason: 'one switched');
+        expect(session.value.value.facing, isNot(before));
+      });
+
       test('the flash mode is kept', () async {
         final session = await open();
         await session.setFlash(CameraFlash.auto);

@@ -135,9 +135,23 @@ final class _PlatformCameraSession implements CameraSession {
   // The texture holds the old camera's frames until the new camera's
   // first frame, which the platform reports with `firstFrame`; until then
   // the value says it is switching.
+  // A switch runs from the call until the new camera's first frame; a
+  // switch asked for meanwhile is ignored.
+  bool _switchCalled = false;
+
   @override
   Future<CameraFacing> switchCamera() async {
     _open();
+    if (_switchCalled || _now.isSwitching) return _now.facing;
+    _switchCalled = true;
+    try {
+      return await _switch();
+    } finally {
+      _switchCalled = false;
+    }
+  }
+
+  Future<CameraFacing> _switch() async {
     final before = _now.facing;
     // The previews hold the frame the user sees before the camera changes.
     await CameraSnapshots.takeAll(this, switching: true);

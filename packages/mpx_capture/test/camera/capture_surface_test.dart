@@ -334,12 +334,14 @@ void main() {
     Finder slot(String name) => find.byKey(ValueKey('mpx-capture-$name-slot'));
     double opacity(String name) => tester
         .widget<Opacity>(
-          find.descendant(of: slot(name), matching: find.byType(Opacity)),
+          find.descendant(of: slot(name), matching: find.byType(Opacity)).first,
         )
         .opacity;
     double shift(String name) => tester
         .widget<Transform>(
-          find.descendant(of: slot(name), matching: find.byType(Transform)),
+          find
+              .descendant(of: slot(name), matching: find.byType(Transform))
+              .first,
         )
         .transform
         .getTranslation()
@@ -524,6 +526,78 @@ void main() {
     expect(File(shot.output.path).existsSync(), isFalse);
   });
 
+  group('spam', () {
+    testWidgets('switch taps while a switch runs make one switch', (
+      tester,
+    ) async {
+      final held = FakeCameraSessions(textureId: 7, holdsSwitchFrames: true);
+      final session = await pumpSurface(tester, from: held);
+      for (var i = 0; i < 5; i++) {
+        await tester.tap(find.byKey(const ValueKey('mpx-capture-switch')));
+        await tester.pump(const Duration(milliseconds: 20));
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      }
+      expect((session as FakeCameraSession).switches, 1);
+      expect(session.value.value.facing, CameraFacing.front);
+      held.current!.deliverSwitchFrames();
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('mpx-capture-switch')));
+      await settle(tester);
+      expect(session.switches, 2, reason: 'after its frames, a switch goes');
+    });
+
+    testWidgets('shutter taps while a photo is taken make one photo, and '
+        'the switch and close wait for it', (tester) async {
+      final slow = FakeCameraSessions(
+        textureId: 7,
+        photoTakes: const Duration(milliseconds: 300),
+      );
+      await pumpSurface(tester, from: slow);
+      for (var i = 0; i < 5; i++) {
+        await tester.tap(shutter());
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      await tester.tap(find.byKey(const ValueKey('mpx-capture-switch')));
+      await tester.tap(find.byKey(const ValueKey('mpx-capture-close')));
+      await tester.pump(const Duration(milliseconds: 400));
+      await settle(tester);
+      expect(shots, hasLength(1));
+      expect(closes, 0);
+      expect(slow.current!.value.value.facing, CameraFacing.back);
+    });
+
+    testWidgets('a second show for the same session while one is open does '
+        'nothing', (tester) async {
+      final session = await tester.runAsync(sessions.open);
+      late BuildContext host;
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Navigator(
+            onGenerateRoute: (_) => PageRouteBuilder<void>(
+              pageBuilder: (context, _, _) {
+                host = context;
+                return const SizedBox.expand();
+              },
+            ),
+          ),
+        ),
+      );
+      for (var i = 0; i < 3; i++) {
+        CameraCaptureSurface.show(
+          host,
+          session: session!,
+          labels: _labels,
+          outputDirectory: directory.path,
+          onCaptured: shots.add,
+        ).ignore();
+      }
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(CameraCaptureSurface), findsOneWidget);
+    });
+  });
+
   testWidgets('switch, flash and close', (tester) async {
     final session = await pumpSurface(tester);
     expect(session.value.value.facing, CameraFacing.back);
@@ -536,8 +610,19 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('mpx-capture-flash')));
       await settle(tester);
       flashes.add(session.value.value.flash);
+      // Past the icon's 220 ms swap.
+      await tester.pump(const Duration(milliseconds: 230));
     }
     expect(flashes, [CameraFlash.auto, CameraFlash.on, CameraFlash.off]);
+
+    // Taps within the swap's 220 ms are ignored.
+    for (var i = 0; i < 5; i++) {
+      await tester.tap(find.byKey(const ValueKey('mpx-capture-flash')));
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    await settle(tester);
+    expect(session.value.value.flash, CameraFlash.auto, reason: 'one change');
+    await tester.pump(const Duration(milliseconds: 230));
 
     await tester.tap(find.byKey(const ValueKey('mpx-capture-close')));
     expect(closes, 1);

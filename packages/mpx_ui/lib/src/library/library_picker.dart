@@ -360,6 +360,8 @@ class LibraryPickerState extends State<LibraryPicker> {
 
   Future<void> _open(LibraryAsset asset, int index) async {
     if (widget.onOpen case final open?) return open(asset, index);
+    // One viewer at a time: taps while it opens, shows or closes do nothing.
+    if (_viewerOpen) return;
     final gallery = _gallery;
     if (gallery == null) return;
     setState(() => _viewerOpen = true);

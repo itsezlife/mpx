@@ -31,6 +31,7 @@ final class FakeCameraSessions implements CameraSessions {
     this.maxZoomFactor = 10,
     this.lenses = const [1, 2],
     this.hasExposure = true,
+    this.photoTakes = Duration.zero,
     this.microphoneOnRequest = MicrophoneAccess.granted,
     FakeCamera? camera,
   }) : camera = camera ?? FakeCamera();
@@ -46,6 +47,9 @@ final class FakeCameraSessions implements CameraSessions {
 
   /// Whether the cameras take an exposure bias.
   final bool hasExposure;
+
+  /// How long a photo takes before it completes.
+  final Duration photoTakes;
 
   /// The microphone access sessions open with.
   MicrophoneAccess microphone;
@@ -153,11 +157,24 @@ final class FakeCameraSession implements CameraSession {
     _value.value = _now.copyWith(frameRateCap: fps, replaceFrameRateCap: true);
   }
 
+  bool _switchCalled = false;
+
+  /// How many switches were made (not counting ignored ones).
+  int switches = 0;
+
   @override
   Future<CameraFacing> switchCamera() async {
     _open();
     if (!_now.canSwitchCamera) return _now.facing;
-    await CameraSnapshots.takeAll(this, switching: true);
+    // Ignored while a switch runs, until the new camera's first frame.
+    if (_switchCalled || _now.isSwitching) return _now.facing;
+    _switchCalled = true;
+    try {
+      await CameraSnapshots.takeAll(this, switching: true);
+    } finally {
+      _switchCalled = false;
+    }
+    switches++;
     final next = _now.facing == CameraFacing.front
         ? CameraFacing.back
         : CameraFacing.front;
@@ -289,6 +306,9 @@ final class FakeCameraSession implements CameraSession {
     bool mirrorFront = false,
   }) async {
     _available();
+    if (_owner.photoTakes > Duration.zero) {
+      await Future<void>.delayed(_owner.photoTakes);
+    }
     photosMirrored.add(mirrorFront && _now.facing == CameraFacing.front);
     final bytes = Uint8List.fromList(List.filled(2048, 0xff));
     File(outputPath).writeAsBytesSync(bytes);

@@ -153,8 +153,13 @@ class CameraCaptureSurface extends StatefulWidget {
     ValueChanged<CameraShot>? onShotRemoved,
     Duration transition = const Duration(milliseconds: 350),
     Duration closeTransition = const Duration(milliseconds: 220),
-  }) =>
-      // The preview grows from the slot to the screen over [transition] on
+  }) async {
+    // One surface at a time per session: a second tap while one opens or
+    // shows does nothing (the reference ignores the camera cell while its
+    // camera opens or is open).
+    if (!_shown.add(session)) return;
+    try {
+      await // The preview grows from the slot to the screen over [transition] on
       // an ease curve (back over [closeTransition], the same curve in
       // time), and the controls, laid out at the whole screen, fade with it.
       Navigator.of(context).push<void>(
@@ -195,6 +200,12 @@ class CameraCaptureSurface extends StatefulWidget {
           },
         ),
       );
+    } finally {
+      _shown.remove(session);
+    }
+  }
+
+  static final Set<CameraSession> _shown = {};
 
   /// How long the shutter is held before a video starts recording under
   /// `CaptureSurfacePolicy.$Android`.
@@ -943,8 +954,28 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     if (widget.kinds.videos) unawaited(_stopVideo());
   }
 
+  // The camera switch: ignored while a photo is taken, and (in the session)
+  // while a switch runs.
+  void _switchCamera() {
+    if (_busy) return;
+    unawaited(_quietly(_session.switchCamera));
+  }
+
+  // The close button: ignored while a photo is taken.
+  void _close() {
+    if (_busy) return;
+    widget.onClose();
+  }
+
+  // The flash icon's change runs 220 ms; a tap meanwhile is ignored.
+  static const Duration _flashSwap = Duration(milliseconds: 220);
+  bool _flashSwapping = false;
+
   // The policy's flash modes in turn.
   void _cycleFlash() {
+    if (_flashSwapping) return;
+    _flashSwapping = true;
+    Timer(_flashSwap, () => _flashSwapping = false);
     final modes = _policy.flashModes;
     final at = modes.indexOf(_value.flash);
     final next = modes[(at + 1) % modes.length];
@@ -1033,7 +1064,12 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     );
   }
 
-  Widget _controls(CameraSessionValue value) {
+  Widget _controls(CameraSessionValue value) => IgnorePointer(
+    ignoring: _policy.locksWhileSwitching && value.isSwitching,
+    child: _controlsOf(value),
+  );
+
+  Widget _controlsOf(CameraSessionValue value) {
     final labels = widget.labels;
     return SafeArea(
       key: const ValueKey('mpx-capture-controls'),
@@ -1051,7 +1087,7 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
                     key: const ValueKey('mpx-capture-close'),
                     glyph: _Glyph.close,
                     label: labels.close,
-                    onTap: widget.onClose,
+                    onTap: _close,
                   ),
                 ),
                 const Spacer(),
@@ -1066,6 +1102,7 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
                         CameraFlash.auto => _Glyph.flashAuto,
                         CameraFlash.on => _Glyph.flashOn,
                       },
+                      swap: _flashSwap,
                       label: labels.flash,
                       value: value.flash.name,
                       onTap: _cycleFlash,
@@ -1112,7 +1149,7 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
                       key: const ValueKey('mpx-capture-switch'),
                       glyph: _Glyph.switchCamera,
                       label: labels.switchCamera,
-                      onTap: () => unawaited(_quietly(_session.switchCamera)),
+                      onTap: _switchCamera,
                     ),
                   )
                 else
@@ -1610,6 +1647,7 @@ class _GlyphButton extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.value,
+    this.swap,
     super.key,
   });
 
@@ -1618,21 +1656,59 @@ class _GlyphButton extends StatelessWidget {
   final String? value;
   final VoidCallback onTap;
 
+  // With a duration, a new glyph swaps in over it: the old one goes 48
+  // down and fades, the new one comes from 48 above.
+  final Duration? swap;
+
   @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    label: label,
-    value: value,
-    onTap: onTap,
-    child: GestureDetector(
-      behavior: HitTestBehavior.opaque,
+  Widget build(BuildContext context) {
+    final picture = CustomPaint(
+      key: ValueKey(glyph),
+      painter: _GlyphPainter(glyph),
+    );
+    return Semantics(
+      button: true,
+      label: label,
+      value: value,
       onTap: onTap,
-      child: SizedBox.square(
-        dimension: 48,
-        child: CustomPaint(painter: _GlyphPainter(glyph)),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox.square(
+          dimension: 48,
+          child: switch (swap) {
+            null => picture,
+            final swap => ClipRect(
+              child: AnimatedSwitcher(
+                duration: swap,
+                switchInCurve: const Cubic(0.25, 0.1, 0.25, 1),
+                switchOutCurve: const Cubic(0.25, 0.1, 0.25, 1),
+                layoutBuilder: (current, previous) => Stack(
+                  fit: StackFit.expand,
+                  children: [...previous, ?current],
+                ),
+                transitionBuilder: (child, animation) {
+                  final incoming = child.key == ValueKey(glyph);
+                  return AnimatedBuilder(
+                    animation: animation,
+                    child: child,
+                    builder: (context, child) => Transform.translate(
+                      offset: Offset(
+                        0,
+                        (incoming ? -48 : 48) * (1 - animation.value),
+                      ),
+                      child: Opacity(opacity: animation.value, child: child),
+                    ),
+                  );
+                },
+                child: picture,
+              ),
+            ),
+          },
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 // Glyphs drawn with strokes, so the package needs no icon font.
