@@ -233,7 +233,7 @@ class CameraCaptureSurface extends StatefulWidget {
 }
 
 class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   int? _foundCap;
 
   // --- Focus, zoom and the recording timer ---
@@ -251,6 +251,61 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
   final Map<int, Offset> _pointers = {};
   double? _pinchFrom;
   bool _pinching = false;
+
+  // --- The zoom slider ---
+
+  // It fades in over 180 ms when the zoom is used (a pinch, the slider, a
+  // drag up from the held shutter) and out 2 s after the last use.
+  late final AnimationController _zoomFade;
+  Timer? _zoomHide;
+  // A step of the slider's minus or plus, over 180 ms.
+  late final AnimationController _zoomStep;
+  double _stepFrom = 0;
+  double _stepTo = 0;
+  // Whether the held shutter's drag zoomed.
+  bool _dragZoomed = false;
+
+  void _showZoom() {
+    _zoomFade.forward().ignore();
+    _zoomHide?.cancel();
+    _zoomHide = Timer(const Duration(seconds: 2), () {
+      if (mounted) _zoomFade.reverse().ignore();
+    });
+  }
+
+  void _zoomTo(double zoom, {bool stopStep = true}) {
+    if (stopStep) _zoomStep.stop();
+    final clamped = zoom.clamp(0.0, 1.0);
+    unawaited(_quietly(() => _session.setZoom(clamped)));
+    _showZoom();
+  }
+
+  // To the quarter below or above, as the slider's minus and plus do.
+  void _stepZoom(int direction) {
+    final to = (_value.zoom / 0.25).floor() * 0.25 + 0.25 * direction;
+    if (to < 0 || to > 1) return;
+    _stepFrom = _value.zoom;
+    _stepTo = to;
+    _zoomStep.forward(from: 0).ignore();
+    _showZoom();
+  }
+
+  void _onStep() {
+    final t = Curves.easeInOut.transform(_zoomStep.value);
+    _zoomTo(_stepFrom + (_stepTo - _stepFrom) * t, stopStep: false);
+  }
+
+  // The held shutter's finger above its top zooms by the distance over 200;
+  // back down, the zoom returns to the widest.
+  void _holdMove(Offset local) {
+    if (local.dy < 0) {
+      _dragZoomed = true;
+      _zoomTo(-local.dy / 200);
+    } else if (_dragZoomed) {
+      _dragZoomed = false;
+      _zoomTo(0);
+    }
+  }
 
   // The recording's seconds.
   Timer? _tick;
@@ -294,9 +349,8 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
       _pinchFrom = distance;
       return;
     }
-    final zoom = (_value.zoom + (distance - from) / 100).clamp(0.0, 1.0);
     _pinchFrom = distance;
-    unawaited(_quietly(() => _session.setZoom(zoom)));
+    _zoomTo(_value.zoom + (distance - from) / 100);
   }
 
   void _pointerUp(PointerEvent event) {
@@ -361,6 +415,28 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
                 ),
               ),
             ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: MediaQuery.paddingOf(context).bottom + 126,
+            height: 50,
+            child: AnimatedBuilder(
+              animation: _zoomFade,
+              builder: (context, child) => IgnorePointer(
+                ignoring: _zoomFade.value == 0,
+                child: Opacity(opacity: _zoomFade.value, child: child),
+              ),
+              child: ValueListenableBuilder<CameraSessionValue>(
+                valueListenable: _session.value,
+                builder: (context, value, _) => _ZoomSlider(
+                  key: const ValueKey('mpx-capture-zoom'),
+                  zoom: value.zoom,
+                  onZoom: _zoomTo,
+                  onStep: _stepZoom,
+                ),
+              ),
+            ),
+          ),
           controls,
           if (_value.isRecording)
             Positioned(
@@ -428,6 +504,14 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
         )..addStatusListener((status) {
           if (status.isCompleted && mounted) setState(() => _ringAt = null);
         });
+    _zoomFade = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+    );
+    _zoomStep = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+    )..addListener(_onStep);
     _session.value.addListener(_onValue);
     _wasRecording = _value.isRecording;
     _foundCap = _value.frameRateCap;
@@ -445,6 +529,9 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     _session.value.removeListener(_onValue);
     _tick?.cancel();
     _ring.dispose();
+    _zoomHide?.cancel();
+    _zoomFade.dispose();
+    _zoomStep.dispose();
     final session = _session;
     final found = _foundCap;
     // Out of the locked tree: other widgets listen to the same session.
@@ -674,6 +761,7 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
                   enabled: value.isAvailable && !value.isPaused,
                   onTap: _tap,
                   onHoldStart: _holdStart,
+                  onHoldMove: _holdMove,
                   onHoldEnd: _holdEnd,
                 ),
                 const Spacer(),
@@ -731,6 +819,146 @@ class _AsideWhileRecording extends StatelessWidget {
   }
 }
 
+// The zoom slider: minus and plus 41 from the ends, the track between them
+// 18 in from each, 6 thick; the knob drags the zoom, a tap on the track
+// (moved 10 at most) jumps there, minus and plus step a quarter.
+class _ZoomSlider extends StatefulWidget {
+  const _ZoomSlider({
+    required this.zoom,
+    required this.onZoom,
+    required this.onStep,
+    super.key,
+  });
+
+  final double zoom;
+  final ValueChanged<double> onZoom;
+  final ValueChanged<int> onStep;
+
+  @override
+  State<_ZoomSlider> createState() => _ZoomSliderState();
+}
+
+enum _ZoomPress { knob, minus, plus, track }
+
+class _ZoomSliderState extends State<_ZoomSlider> {
+  static const double _end = 41;
+  static const double _inset = 18;
+
+  _ZoomPress? _press;
+  double _from = 0;
+
+  static (double, double) _track(double width) =>
+      (_end + _inset, width - _end - _inset);
+
+  void _down(PointerDownEvent event, Size size) {
+    final p = event.localPosition;
+    final (start, end) = _track(size.width);
+    final cy = size.height / 2;
+    final knob = start + (end - start) * widget.zoom.clamp(0.0, 1.0);
+    if ((p.dx - knob).abs() <= 20 && (p.dy - cy).abs() <= 25) {
+      _press = _ZoomPress.knob;
+      _from = p.dx - knob;
+    } else if ((p.dx - _end).abs() <= 16 && (p.dy - cy).abs() <= 16) {
+      _press = _ZoomPress.minus;
+    } else if ((p.dx - (size.width - _end)).abs() <= 16 &&
+        (p.dy - cy).abs() <= 16) {
+      _press = _ZoomPress.plus;
+    } else if (p.dx >= start && p.dx <= end) {
+      _press = _ZoomPress.track;
+      _from = p.dx;
+    } else {
+      _press = null;
+    }
+    setState(() {});
+  }
+
+  void _move(PointerMoveEvent event, Size size) {
+    if (_press != _ZoomPress.knob) return;
+    final (start, end) = _track(size.width);
+    widget.onZoom((event.localPosition.dx - _from - start) / (end - start));
+  }
+
+  void _up(PointerUpEvent event, Size size) {
+    final (start, end) = _track(size.width);
+    final x = event.localPosition.dx;
+    switch (_press) {
+      case _ZoomPress.minus:
+        widget.onStep(-1);
+      case _ZoomPress.plus:
+        widget.onStep(1);
+      case _ZoomPress.track when (x - _from).abs() <= 10:
+        widget.onZoom((x - start) / (end - start));
+      case _:
+    }
+    setState(() => _press = null);
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final size = constraints.biggest;
+      return Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (e) => _down(e, size),
+        onPointerMove: (e) => _move(e, size),
+        onPointerUp: (e) => _up(e, size),
+        onPointerCancel: (_) => setState(() => _press = null),
+        child: CustomPaint(
+          size: size,
+          painter: _ZoomSliderPainter(
+            zoom: widget.zoom,
+            pressed: _press == _ZoomPress.knob,
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _ZoomSliderPainter extends CustomPainter {
+  const _ZoomSliderPainter({required this.zoom, required this.pressed});
+
+  final double zoom;
+  final bool pressed;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const end = _ZoomSliderState._end;
+    final (start, stop) = _ZoomSliderState._track(size.width);
+    final cy = size.height / 2;
+    final white = Paint()
+      ..color = const Color(0xFFFFFFFF)
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+    final plus = size.width - end;
+    // Minus and plus, 14 across.
+    canvas
+      ..drawLine(Offset(end - 7, cy), Offset(end + 7, cy), white)
+      ..drawLine(Offset(plus - 7, cy), Offset(plus + 7, cy), white)
+      ..drawLine(Offset(plus, cy - 7), Offset(plus, cy + 7), white);
+    final knob = start + (stop - start) * zoom.clamp(0.0, 1.0);
+    const round = Radius.circular(3);
+    canvas
+      ..drawRRect(
+        RRect.fromLTRBR(start, cy - 3, stop, cy + 3, round),
+        Paint()..color = const Color(0x66FFFFFF),
+      )
+      ..drawRRect(
+        RRect.fromLTRBR(start, cy - 3, knob, cy + 3, round),
+        Paint()..color = const Color(0xFFFFFFFF),
+      )
+      ..drawCircle(
+        Offset(knob, cy),
+        pressed ? 14 : 12,
+        Paint()..color = const Color(0xFFFFFFFF),
+      );
+  }
+
+  @override
+  bool shouldRepaint(_ZoomSliderPainter oldDelegate) =>
+      oldDelegate.zoom != zoom || oldDelegate.pressed != pressed;
+}
+
 class _Shutter extends StatefulWidget {
   const _Shutter({
     required this.label,
@@ -738,9 +966,11 @@ class _Shutter extends StatefulWidget {
     required this.enabled,
     required this.onTap,
     required this.onHoldStart,
+    required this.onHoldMove,
     required this.onHoldEnd,
   });
 
+  final ValueChanged<Offset> onHoldMove;
   final String label;
   final bool recording;
   final bool enabled;
@@ -820,6 +1050,8 @@ class _ShutterState extends State<_Shutter>
                     ),
                     (hold) => hold
                       ..onLongPressStart = ((_) => widget.onHoldStart())
+                      ..onLongPressMoveUpdate = ((details) =>
+                          widget.onHoldMove(details.localPosition))
                       ..onLongPressEnd = ((_) => widget.onHoldEnd()),
                   ),
           },

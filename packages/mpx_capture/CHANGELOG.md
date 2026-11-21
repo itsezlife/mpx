@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The capture surface's zoom slider: 50 high, 126 above the bottom, shown
+  (180 ms fade) whenever the zoom is used and hidden 2 s after; its knob
+  drags the zoom, a tap on its track jumps there, minus and plus step a
+  quarter over 180 ms. A held shutter dragged above its top zooms by the
+  distance over 200, back to the widest when it comes down.
 - `CameraSession.requestMicrophone` and `CameraSessionValue.microphone`
   (`MicrophoneAccess`): a grant mid-session gives the next recording sound.
   `CameraCaptureSurface.onVideoRefused` (`CaptureVideoRefusal`) tells the

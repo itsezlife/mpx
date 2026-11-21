@@ -156,6 +156,136 @@ void main() {
     });
   });
 
+  group('the zoom slider', () {
+    Finder slider() => find.byKey(const ValueKey('mpx-capture-zoom'));
+    double shown(WidgetTester tester) => tester
+        .widget<Opacity>(
+          find.ancestor(of: slider(), matching: find.byType(Opacity)).first,
+        )
+        .opacity;
+
+    // A short pinch shows the slider.
+    Future<void> reveal(WidgetTester tester) async {
+      final a = await tester.startGesture(const Offset(150, 300));
+      final b = await tester.startGesture(const Offset(250, 300));
+      await a.moveBy(const Offset(-40, 0));
+      await b.moveBy(const Offset(40, 0));
+      await a.moveBy(const Offset(-5, 0));
+      await b.moveBy(const Offset(5, 0));
+      await a.up();
+      await b.up();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    }
+
+    Future<CameraSession> pumpWide(WidgetTester tester) async {
+      tester.view
+        ..physicalSize = const Size(400, 800)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      return pumpSurface(tester);
+    }
+
+    testWidgets('it lies 50 high, 126 above the bottom, hidden until the zoom '
+        'is used; it shows over 180 ms and hides 2 s after the last use', (
+      tester,
+    ) async {
+      final session = await pumpWide(tester);
+      expect(tester.getRect(slider()), const Rect.fromLTWH(0, 624, 400, 50));
+      expect(shown(tester), 0);
+      final a = await tester.startGesture(const Offset(150, 300));
+      final b = await tester.startGesture(const Offset(250, 300));
+      await a.moveBy(const Offset(-40, 0));
+      await b.moveBy(const Offset(40, 0));
+      await a.moveBy(const Offset(-10, 0));
+      await b.moveBy(const Offset(10, 0));
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      expect(session.value.value.zoom, greaterThan(0));
+      await tester.pump(const Duration(milliseconds: 90));
+      expect(shown(tester), inExclusiveRange(0, 1));
+      await tester.pump(const Duration(milliseconds: 90));
+      expect(shown(tester), 1);
+      await a.up();
+      await b.up();
+      await tester.pump(const Duration(milliseconds: 1800));
+      expect(shown(tester), 1);
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pump(const Duration(milliseconds: 180));
+      expect(shown(tester), 0);
+    });
+
+    testWidgets('its knob drags the zoom along the track; a tap on the track '
+        'jumps there', (tester) async {
+      final session = await pumpWide(tester);
+      await reveal(tester);
+      await tester.runAsync(() => session.setZoom(0));
+      await tester.tapAt(const Offset(400 - 41, 649));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      expect(session.value.value.zoom, closeTo(0.25, 1e-6));
+      // The track runs from 59 to 341.
+      const knob = 59 + 282 * 0.25;
+      final drag = await tester.startGesture(const Offset(knob, 649));
+      await drag.moveTo(const Offset(59 + 282 * 0.75, 649));
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      expect(session.value.value.zoom, closeTo(0.75, 1e-6));
+      await drag.up();
+      await tester.tapAt(const Offset(59 + 282 * 0.4, 649));
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      expect(session.value.value.zoom, closeTo(0.4, 1e-6));
+    });
+
+    testWidgets('minus and plus step to the quarter below and above over '
+        '180 ms', (tester) async {
+      final session = await pumpWide(tester);
+      await reveal(tester);
+      await tester.runAsync(() => session.setZoom(0.6));
+      await tester.tapAt(const Offset(41, 649));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 90));
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      expect(session.value.value.zoom, inExclusiveRange(0.25, 0.6));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      // floor(0.6 / 0.25) * 0.25 - 0.25
+      expect(session.value.value.zoom, closeTo(0.25, 1e-6));
+      await tester.tapAt(const Offset(400 - 41, 649));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      expect(session.value.value.zoom, closeTo(0.5, 1e-6));
+    });
+
+    testWidgets('a held shutter dragged above its top zooms by the distance '
+        'over 200, and back to the widest when it comes down', (tester) async {
+      final session = await pumpWide(tester);
+      final top = tester.getRect(shutter()).top;
+      final hold = await tester.startGesture(tester.getCenter(shutter()));
+      await tester.pump(
+        CameraCaptureSurface.holdToRecord + const Duration(milliseconds: 50),
+      );
+      await settle(tester);
+      await hold.moveTo(Offset(tester.getCenter(shutter()).dx, top - 100));
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      expect(session.value.value.zoom, closeTo(0.5, 1e-6));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(shown(tester), 1);
+      await hold.moveTo(tester.getCenter(shutter()));
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      expect(session.value.value.zoom, 0);
+      await hold.up();
+      await settle(tester);
+      expect(shots.single.isVideo, isTrue);
+    });
+  });
+
   testWidgets('a tap takes a photo', (tester) async {
     await pumpSurface(tester);
     await tester.tap(shutter());
