@@ -3,12 +3,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_ui/src/known_descriptors.dart';
+import 'package:mpx_ui/src/library/edge_auto_scroll.dart';
 import 'package:mpx_ui/src/library/library_grid_cell.dart';
 import 'package:mpx_ui/src/library/library_grid_layout.dart';
 import 'package:mpx_ui/src/library/library_grid_policy.dart';
@@ -263,9 +263,20 @@ class LibraryGridState extends State<LibraryGrid>
   // and whether each was selected before: a cell the swipe leaves behind as
   // it comes back toward its start goes back to that state.
   final Map<int, bool> _before = {};
-  Offset? _pointer;
-  Ticker? _ticker;
-  Ticker get _autoScroll => _ticker ??= createTicker(_onAutoScroll);
+  // Scrolls the list while the swipe is held near an end; the finger is
+  // kept on the screen, so a list moving under a still finger (a sheet
+  // rising) keeps it in the band.
+  EdgeAutoScroll? _edgeScroll;
+  EdgeAutoScroll get _autoScroll => _edgeScroll ??= EdgeAutoScroll(
+    vsync: this,
+    edge: widget.policy.autoScrollEdge,
+    position: () => _controller.hasClients ? _controller.position : null,
+    viewport: _visibleRect,
+    onStep: (global) {
+      final box = context.findRenderObject() as RenderBox?;
+      if (box != null) _extendTo(box.globalToLocal(global));
+    },
+  );
   bool _swiping = false;
 
   // Layout of the last build, for hit tests.
@@ -376,8 +387,7 @@ class LibraryGridState extends State<LibraryGrid>
     _controller.removeListener(_onScroll);
     widget.lookup?._detach(this);
     unawaited(_changes?.cancel());
-    _autoDrag?.cancel();
-    _ticker?.dispose();
+    _edgeScroll?.dispose();
     _dropPages();
     _ownController?.dispose();
     _signals.dispose();
@@ -513,15 +523,18 @@ class LibraryGridState extends State<LibraryGrid>
       _anchor = index;
       _swiping = true;
       _before.clear();
-      _pointer = local;
     });
     unawaited(HapticFeedback.selectionClick());
   }
 
-  void _swipeUpdate(Offset local) {
-    _pointer = local;
-    _extendTo(local);
-    _updateAutoScroll(local);
+  // The finger at [global]: an event's own local position is taken through
+  // the grid's place when the pointer went down, stale once the grid moved
+  // under the finger (a sheet rising), so it is read against the grid now.
+  void _swipeUpdate(Offset global) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    _extendTo(box.globalToLocal(global));
+    _autoScroll.hold(global);
   }
 
   // The cells between the start and the pointer take the swipe's state;
@@ -564,83 +577,25 @@ class LibraryGridState extends State<LibraryGrid>
   }
 
   void _swipeEnd() {
-    if (_ticker?.isActive ?? false) _endAutoScroll();
-    _ticker?.stop();
+    _edgeScroll?.release();
     setState(() {
       _anchor = null;
       _swiping = false;
-      _pointer = null;
       _before.clear();
     });
   }
 
-  void _updateAutoScroll(Offset local) {
+  // The grid's part on screen, global: from its top to its bottom, or to
+  // the screen's bottom when it reaches below (a sheet not raised lays it
+  // out past the bottom). The bottom band sits there, as on a list that
+  // spans the screen.
+  Rect? _visibleRect() {
     final box = context.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final edge = widget.policy.autoScrollEdge;
-    final bottom = _visibleBottom(box);
-    final near = local.dy < edge || local.dy > bottom - edge;
-    if (near && !_autoScroll.isActive) {
-      unawaited(_autoScroll.start());
-    } else if (!near && _autoScroll.isActive) {
-      _autoScroll.stop();
-      _endAutoScroll();
-    }
-  }
-
-  // Where the grid's part on screen ends, in its own coordinates: its
-  // height, or less when it reaches below the screen (a sheet not raised
-  // lays it out past the bottom). The bottom band sits there, at the
-  // screen's bottom, as on a list that spans the screen.
-  double _visibleBottom(RenderBox box) {
+    if (box == null || !box.hasSize) return null;
+    final rect = box.localToGlobal(Offset.zero) & box.size;
     final screen = MediaQuery.maybeSizeOf(context)?.height;
-    if (screen == null) return box.size.height;
-    final top = box.localToGlobal(Offset.zero).dy;
-    return math.min(box.size.height, screen - top);
-  }
-
-  void _onAutoScroll(Duration _) {
-    final pointer = _pointer;
-    final box = context.findRenderObject() as RenderBox?;
-    if (pointer == null || box == null || !_controller.hasClients) return;
-    final edge = widget.policy.autoScrollEdge;
-    final height = _visibleBottom(box);
-    // Faster the deeper the pointer is in the edge band, up to 16 px a frame.
-    final depth = pointer.dy < edge
-        ? -(edge - pointer.dy) / edge
-        : pointer.dy > height - edge
-        ? (pointer.dy - (height - edge)) / edge
-        : 0.0;
-    if (depth == 0) return;
-    final position = _controller.position;
-    final step = depth.clamp(-1.0, 1.0) * 16;
-    // A drag of the list, as a finger's would be, so a host's position (a
-    // sheet that rises before its content scrolls, and lowers when a scroll
-    // goes back past the start) takes each step as a user scroll. Past an
-    // end the step is still offered; the position keeps what it takes.
-    final global = box.localToGlobal(pointer);
-    final drag = _autoDrag ??= position.drag(
-      DragStartDetails(globalPosition: global, localPosition: pointer),
-      () => _autoDrag = null,
-    );
-    drag.update(
-      DragUpdateDetails(
-        globalPosition: global,
-        localPosition: pointer,
-        delta: Offset(0, -step),
-        primaryDelta: -step,
-      ),
-    );
-    _extendTo(pointer);
-  }
-
-  // The auto-scroll's drag, while it runs.
-  Drag? _autoDrag;
-
-  // The auto-scroll's drag ends with it, at rest.
-  void _endAutoScroll() {
-    _autoDrag?.end(DragEndDetails(primaryVelocity: 0));
-    _autoDrag = null;
+    if (screen == null || rect.bottom <= screen) return rect;
+    return Rect.fromLTRB(rect.left, rect.top, rect.right, screen);
   }
 
   Map<Type, GestureRecognizerFactory> _gestures(double width) {
@@ -652,7 +607,8 @@ class LibraryGridState extends State<LibraryGrid>
               () => LongPressGestureRecognizer(debugOwner: this),
               (recognizer) => recognizer
                 ..onLongPressStart = ((d) => _swipeStart(d.localPosition))
-                ..onLongPressMoveUpdate = ((d) => _swipeUpdate(d.localPosition))
+                ..onLongPressMoveUpdate = ((d) =>
+                    _swipeUpdate(d.globalPosition))
                 ..onLongPressEnd = ((_) => _swipeEnd())
                 ..onLongPressCancel = _swipeEnd,
             ),
@@ -866,7 +822,9 @@ class HorizontalSwipeSelectRecognizer extends OneSequenceGestureRecognizer {
   /// Called once accepted, with where the pointer went down (local).
   ValueChanged<Offset>? onStart;
 
-  /// Called as the pointer moves once accepted (local).
+  /// Called as the pointer moves once accepted (global: the region may move
+  /// under a pointer, and a position taken through where it was at the down
+  /// would be stale).
   ValueChanged<Offset>? onUpdate;
 
   /// Called when the pointer goes up or the swipe is cancelled.
@@ -875,7 +833,6 @@ class HorizontalSwipeSelectRecognizer extends OneSequenceGestureRecognizer {
   Offset? _down;
   Offset? _downLocal;
   bool _accepted = false;
-  Matrix4? _transform;
 
   @override
   bool isPointerAllowed(PointerDownEvent event) {
@@ -890,7 +847,6 @@ class HorizontalSwipeSelectRecognizer extends OneSequenceGestureRecognizer {
     super.addAllowedPointer(event);
     _down = event.position;
     _downLocal = event.localPosition;
-    _transform = event.transform;
     _accepted = false;
   }
 
@@ -913,9 +869,7 @@ class HorizontalSwipeSelectRecognizer extends OneSequenceGestureRecognizer {
         }
       }
       if (_accepted) {
-        onUpdate?.call(
-          PointerEvent.transformPosition(_transform, event.position),
-        );
+        onUpdate?.call(event.position);
       }
     } else if (event is PointerUpEvent || event is PointerCancelEvent) {
       if (_accepted) onEnd?.call();

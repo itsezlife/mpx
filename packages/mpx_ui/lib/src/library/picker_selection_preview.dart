@@ -330,7 +330,10 @@ class PickerSelectionPreviewState extends State<PickerSelectionPreview> {
       }
 
       final lifted = _lifted;
+      // The scroll view fills the preview, so the area past the picks takes
+      // drags too (a sheet's drag), not only the picks themselves.
       return Stack(
+        fit: StackFit.expand,
         children: [
           SingleChildScrollView(
             controller: _controller,

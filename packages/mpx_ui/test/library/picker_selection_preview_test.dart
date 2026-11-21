@@ -166,6 +166,26 @@ void main() {
     expectThemedText(tester);
   });
 
+  testWidgets('the list fills the preview, past the picks: the empty area '
+      'below them takes drags too', (tester) async {
+    await pumpPreview(tester);
+    final list = find.descendant(
+      of: find.byType(PickerSelectionPreview),
+      matching: find.byType(SingleChildScrollView),
+    );
+    expect(
+      tester.getSize(list),
+      tester.getSize(find.byType(PickerSelectionPreview)),
+    );
+    expect(tester.getSize(list).height, 800);
+    // A point well below the three picks hits the list.
+    final hits = tester.hitTestOnBinding(const Offset(200, 700));
+    expect(
+      hits.path.any((entry) => entry.target == tester.renderObject(list)),
+      isTrue,
+    );
+  });
+
   testWidgets('shows the selected items in their order', (tester) async {
     await pumpPreview(tester);
     expect(orderIn(4, '1'), findsOneWidget);

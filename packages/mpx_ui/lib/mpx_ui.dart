@@ -39,6 +39,7 @@ export 'src/gallery/gallery_page_transition.dart';
 export 'src/gallery/gallery_pager.dart';
 export 'src/gallery/gallery_pager_physics.dart';
 export 'src/gallery/gallery_tap_recognizer.dart' show GalleryTapRules;
+export 'src/library/edge_auto_scroll.dart';
 export 'src/library/library_album_switcher.dart';
 export 'src/library/library_grid.dart';
 export 'src/library/library_grid_cell.dart';

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- The swipe selection's edge auto-scroll is `EdgeAutoScroll`, a headless
+  session a host can drive under its own list. It keeps the finger on the
+  screen: a finger held still at the bottom of a grid in a part-raised sheet
+  goes on raising the sheet to its top and then scrolls the grid, where it
+  used to stop after a few steps as the grid moved under the finger. Swipe
+  moves are read against the grid where it is now (an event's own local
+  position is through its place at the down).
+- `PickerSelectionPreview`'s list fills the preview, so the area past the
+  picks takes drags too.
 - The picker-mode viewer's videos neither autoplay nor loop: a page shown
   waits paused at the start with play shown, and a video played to its end
   is back at its start, paused, play shown. `ViewerVideoRules.autoplay`

@@ -11,6 +11,7 @@ import 'feed/feed_list_view_test.dart' as feed_list_view_test;
 import 'feed/feed_pager_view_test.dart' as feed_pager_view_test;
 import 'gallery/gallery_pager_test.dart' as gallery_pager_test;
 import 'gallery/gallery_physics_test.dart' as gallery_physics_test;
+import 'library/edge_auto_scroll_test.dart' as edge_auto_scroll_test;
 import 'library/library_grid_cell_golden_test.dart'
     as library_grid_cell_golden_test;
 import 'library/library_grid_layout_test.dart' as library_grid_layout_test;
@@ -56,6 +57,7 @@ void main() {
   group('picker_selection_preview_test', picker_selection_preview_test.main);
   group('picker_selection_test', picker_selection_test.main);
   group('picker_captures_test', picker_captures_test.main);
+  group('edge_auto_scroll_test', edge_auto_scroll_test.main);
   group('picker_strip_controller_test', picker_strip_controller_test.main);
   group('picker_viewer_test', picker_viewer_test.main);
   group('media_viewer_test', media_viewer_test.main);
