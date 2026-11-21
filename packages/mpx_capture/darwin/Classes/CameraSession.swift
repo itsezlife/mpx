@@ -119,6 +119,44 @@ final class CameraSession: NSObject, FlutterTexture,
     queue.async { self.flash = mode }
   }
 
+  /// Linear zoom, 0 to 1 over the device's factors (capped at 10x).
+  func setZoom(_ value: Double) {
+    #if os(iOS)
+    queue.async {
+      guard let device = self.cameraInput?.device,
+        (try? device.lockForConfiguration()) != nil
+      else { return }
+      defer { device.unlockForConfiguration() }
+      let low = device.minAvailableVideoZoomFactor
+      let high = min(device.maxAvailableVideoZoomFactor, 10)
+      device.videoZoomFactor = low + (high - low) * CGFloat(max(0, min(1, value)))
+    }
+    #endif
+  }
+
+  /// Focuses and exposes at (x, y) of the preview as shown, 0 to 1 from its
+  /// top left (the preview stands upright; the front camera's is mirrored).
+  func focusAt(x: Double, y: Double) {
+    queue.async {
+      guard let device = self.cameraInput?.device,
+        (try? device.lockForConfiguration()) != nil
+      else { return }
+      defer { device.unlockForConfiguration() }
+      let shownX = self.facing == "front" ? 1 - x : x
+      // The sensor's point of interest is in landscape: (0, 0) top left
+      // with the home button on the right.
+      let point = CGPoint(x: y, y: 1 - shownX)
+      if device.isFocusPointOfInterestSupported, device.isFocusModeSupported(.autoFocus) {
+        device.focusPointOfInterest = point
+        device.focusMode = .autoFocus
+      }
+      if device.isExposurePointOfInterestSupported, device.isExposureModeSupported(.autoExpose) {
+        device.exposurePointOfInterest = point
+        device.exposureMode = .autoExpose
+      }
+    }
+  }
+
   func pause() {
     queue.async {
       guard !self.closed else { return }

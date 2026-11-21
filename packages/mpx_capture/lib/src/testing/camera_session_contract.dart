@@ -128,6 +128,27 @@ abstract final class CameraSessionContract {
         expect(session.value.value.flash, CameraFlash.auto);
       });
 
+      test('the zoom is kept, clamped to 0..1', () async {
+        final session = await open();
+        expect(session.value.value.zoom, 0);
+        await session.setZoom(0.4);
+        expect(session.value.value.zoom, 0.4);
+        await session.setZoom(3);
+        expect(session.value.value.zoom, 1);
+        await session.setZoom(-1);
+        expect(session.value.value.zoom, 0);
+      });
+
+      test('focusing at a point of the preview is taken', () async {
+        final session = await open();
+        await session.focusAt(const Offset(0.25, 0.75));
+        await expectLater(
+          session.focusAt(const Offset(2, 0.5)),
+          throwsA(isA<ArgumentError>()),
+          reason: 'a point outside the preview',
+        );
+      });
+
       test('a second open takes the camera over', () async {
         final first = await open();
         final second = await open();

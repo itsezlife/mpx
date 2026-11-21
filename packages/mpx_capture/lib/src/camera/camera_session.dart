@@ -1,3 +1,5 @@
+import 'dart:ui' show Offset;
+
 import 'package:flutter/foundation.dart';
 import 'package:mpx_capture/src/job/capture_job.dart';
 import 'package:mpx_capture/src/round/round_video_recorder.dart';
@@ -52,6 +54,7 @@ final class CameraSessionValue {
     this.frameRateCap,
     this.isSwitching = false,
     this.awaitingFrames = false,
+    this.zoom = 0,
   });
 
   /// Where the session stands.
@@ -99,6 +102,9 @@ final class CameraSessionValue {
   /// the resume. The texture holds the last frame meanwhile.
   final bool awaitingFrames;
 
+  /// The zoom, 0 (the widest) to 1 (the camera's longest), linear.
+  final double zoom;
+
   /// Whether the preview is drawn mirrored, as a front camera's is. The
   /// frames and the captures are not mirrored; only the preview is.
   bool get mirrored => facing == CameraFacing.front;
@@ -123,6 +129,7 @@ final class CameraSessionValue {
     bool replaceFrameRateCap = false,
     bool? isSwitching,
     bool? awaitingFrames,
+    double? zoom,
   }) => CameraSessionValue(
     state: state ?? this.state,
     facing: facing ?? this.facing,
@@ -137,6 +144,7 @@ final class CameraSessionValue {
     frameRateCap: replaceFrameRateCap ? frameRateCap : this.frameRateCap,
     isSwitching: isSwitching ?? this.isSwitching,
     awaitingFrames: awaitingFrames ?? this.awaitingFrames,
+    zoom: zoom ?? this.zoom,
   );
 
   @override
@@ -154,7 +162,8 @@ final class CameraSessionValue {
       other.canSwitchCamera == canSwitchCamera &&
       other.frameRateCap == frameRateCap &&
       other.isSwitching == isSwitching &&
-      other.awaitingFrames == awaitingFrames;
+      other.awaitingFrames == awaitingFrames &&
+      other.zoom == zoom;
 
   @override
   int get hashCode => Object.hash(
@@ -171,6 +180,7 @@ final class CameraSessionValue {
     frameRateCap,
     isSwitching,
     awaitingFrames,
+    zoom,
   );
 
   @override
@@ -219,6 +229,15 @@ abstract interface class CameraSession {
   /// Sets the flash mode.
   Future<void> setFlash(CameraFlash flash);
 
+  /// Zooms to [zoom], 0 (the widest) to 1 (the longest the camera has),
+  /// linear; clamped.
+  Future<void> setZoom(double zoom);
+
+  /// Focuses (and meters) at [point] of the preview as it shows, from
+  /// (0, 0) at its top left to (1, 1) at its bottom right. Throws an
+  /// [ArgumentError] for a point outside.
+  Future<void> focusAt(Offset point);
+
   /// Stops frames until [resume].
   Future<void> pause();
 
@@ -255,4 +274,14 @@ abstract interface class CameraSessions {
     int? frameRateCap,
     bool audio = true,
   });
+}
+
+/// The point checks of [CameraSession.focusAt].
+abstract final class CameraFocus {
+  /// Throws an [ArgumentError] unless [point] lies in the unit square.
+  static void check(Offset point) {
+    if (point.dx < 0 || point.dx > 1 || point.dy < 0 || point.dy > 1) {
+      throw ArgumentError.value(point, 'point', 'outside the preview');
+    }
+  }
 }

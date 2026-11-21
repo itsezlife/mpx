@@ -147,6 +147,29 @@ class CameraSession(
         return facing
     }
 
+    // Linear zoom, 0 to 1 over the camera's range; kept across rebinds.
+    private var zoom = 0f
+
+    fun setZoom(value: Double) {
+        zoom = value.toFloat().coerceIn(0f, 1f)
+        camera?.cameraControl?.setLinearZoom(zoom)
+    }
+
+    /**
+     * Focuses and meters at ([x], [y]) of the preview as shown, 0 to 1 from
+     * its top left; the focus holds until the next one.
+     */
+    fun focusAt(x: Double, y: Double) {
+        val camera = camera ?: return
+        // A preview mirrored for the front camera shows x flipped.
+        val shownX = if (facing == "front") 1 - x else x
+        val point = androidx.camera.core.SurfaceOrientedMeteringPointFactory(1f, 1f)
+            .createPoint(shownX.toFloat(), y.toFloat())
+        camera.cameraControl.startFocusAndMetering(
+            androidx.camera.core.FocusMeteringAction.Builder(point).disableAutoCancel().build(),
+        )
+    }
+
     fun setFlash(mode: String) {
         flash = mode
         imageCapture?.flashMode = when (mode) {
@@ -263,6 +286,7 @@ class CameraSession(
             return failOpen()
         }
         setFlash(flash)
+        camera?.cameraControl?.setLinearZoom(zoom)
         applyFrameRate()
         emitState()
     }

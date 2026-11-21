@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show Offset;
 
 import 'package:flutter/foundation.dart';
 import 'package:mpx_capture/src/camera/camera_claim.dart';
@@ -123,6 +124,24 @@ final class _PlatformCameraSession implements CameraSession {
         _now.state != CameraSessionState.closed) {
       _value.value = _now.copyWith(isSwitching: false, awaitingFrames: false);
     }
+  }
+
+  @override
+  Future<void> setZoom(double zoom) async {
+    _open();
+    final clamped = zoom.clamp(0.0, 1.0);
+    await _channel.invoke<void>('cameraZoom', _args({'zoom': clamped}));
+    _value.value = _now.copyWith(zoom: clamped);
+  }
+
+  @override
+  Future<void> focusAt(Offset point) async {
+    _open();
+    CameraFocus.check(point);
+    await _channel.invoke<void>(
+      'cameraFocus',
+      _args({'x': point.dx, 'y': point.dy}),
+    );
   }
 
   @override

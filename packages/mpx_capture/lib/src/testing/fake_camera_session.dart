@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show Offset;
 
 import 'package:flutter/foundation.dart';
 import 'package:mpx_capture/src/camera/camera_session.dart';
@@ -131,6 +132,22 @@ final class FakeCameraSession implements CameraSession {
   void deliverSwitchFrames() {
     if (_disposed || !(_now.isSwitching || _now.awaitingFrames)) return;
     _value.value = _now.copyWith(isSwitching: false, awaitingFrames: false);
+  }
+
+  /// The points focused at, in order.
+  final List<Offset> focusedAt = [];
+
+  @override
+  Future<void> setZoom(double zoom) async {
+    _open();
+    _value.value = _now.copyWith(zoom: zoom.clamp(0.0, 1.0));
+  }
+
+  @override
+  Future<void> focusAt(Offset point) async {
+    _open();
+    CameraFocus.check(point);
+    focusedAt.add(point);
   }
 
   @override
