@@ -687,6 +687,7 @@ final class ViewerVideoRules {
     this.autoHides = true,
     this.centreWhilePlaying = true,
     this.restarts = false,
+    this.autoplay = true,
     this.doubleTapSeek,
     this.doubleTapFullscreen = false,
     this.doubleTapZooms = true,
@@ -737,6 +738,11 @@ final class ViewerVideoRules {
   /// viewer restarts: its videos keep no position.
   final bool restarts;
 
+  /// Whether a video starts playing by itself when its page shows; off, it
+  /// waits paused at its start, the play button shown, as a picker-mode
+  /// viewer's do.
+  final bool autoplay;
+
   /// The speeds offered and where a choice applies.
   final ViewerSpeedRule speed;
 
@@ -776,6 +782,10 @@ final class ViewerVideoRules {
   static bool loopSilent(Duration? duration, {required bool hasAudio}) =>
       !hasAudio;
 
+  /// Loops no video: each stops at its end, back at its start, paused (a
+  /// picker-mode viewer's).
+  static bool loopNever(Duration? duration, {required bool hasAudio}) => false;
+
   /// These rules with the given fields changed.
   ///
   /// A field passed as null keeps its value: a nullable field cannot be
@@ -789,6 +799,7 @@ final class ViewerVideoRules {
     bool? autoHides,
     bool? centreWhilePlaying,
     bool? restarts,
+    bool? autoplay,
     ViewerSpeedRule? speed,
     bool Function(Duration? duration, {required bool hasAudio})? loops,
     ViewerDoubleTapSeek? doubleTapSeek,
@@ -807,6 +818,7 @@ final class ViewerVideoRules {
     autoHides: autoHides ?? this.autoHides,
     centreWhilePlaying: centreWhilePlaying ?? this.centreWhilePlaying,
     restarts: restarts ?? this.restarts,
+    autoplay: autoplay ?? this.autoplay,
     speed: speed ?? this.speed,
     loops: loops ?? this.loops,
     doubleTapSeek: doubleTapSeek ?? this.doubleTapSeek,

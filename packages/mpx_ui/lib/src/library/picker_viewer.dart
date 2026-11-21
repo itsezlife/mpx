@@ -209,9 +209,30 @@ abstract final class PickerViewer {
     return '${value.toStringAsFixed(1)} ${units[unit]}';
   }
 
+  /// The picker's video rules over the platform's [resolved] ones:
+  /// - a tap on a video plays or pauses it, never the chrome;
+  /// - the controls never hide by themselves, and the centre is empty while
+  ///   the video plays;
+  /// - a video keeps no position: back to one, it starts over;
+  /// - a video does not play by itself when its page shows, and does not
+  ///   loop: at its end it is back at its start, paused, the play button
+  ///   shown, and play plays it again from there.
+  static ViewerVideoRules videoRules(ViewerVideoRules resolved) =>
+      resolved.copyWith(
+        autoHides: false,
+        clickPlays: true,
+        centreWhilePlaying: false,
+        restarts: true,
+        autoplay: false,
+        loops: ViewerVideoRules.loopNever,
+      );
+
   /// Shows the viewer over [source] at [initialIndex]; completes when it
   /// closed. [bridge] is the grid's origins; by default the closest
   /// `ViewerOriginScope` above [context].
+  ///
+  /// [video] adjusts the picker's [videoRules] (a host whose videos should
+  /// autoplay or loop, say).
   ///
   /// With [overCamera] (a viewer over the camera's shots) no grid origin is
   /// used, no vertical drag dismisses, and a close slides the picture off
@@ -240,6 +261,7 @@ abstract final class PickerViewer {
     ValueChanged<int>? onIndexChanged,
     OriginBridge? bridge,
     bool overCamera = false,
+    ViewerVideoRules Function(ViewerVideoRules picker)? video,
   }) {
     final scope = AssetCacheProvider.of(context);
     // Over a camera the pictures have no place on screen to come from or
@@ -257,14 +279,10 @@ abstract final class PickerViewer {
       // off downwards.
       dismissDrag: overCamera ? false : null,
       plainCloseSlides: overCamera ? true : null,
-      // A tap on a video plays or pauses it; never the chrome.
-      video: resolved.video.copyWith(
-        autoHides: false,
-        clickPlays: true,
-        centreWhilePlaying: false,
-        // A picker's videos keep no position: back to one, it starts over.
-        restarts: true,
-      ),
+      video: switch (video) {
+        final adjust? => adjust(videoRules(resolved.video)),
+        null => videoRules(resolved.video),
+      },
     );
     final index = ValueNotifier(initialIndex);
     final controller = ViewerController();

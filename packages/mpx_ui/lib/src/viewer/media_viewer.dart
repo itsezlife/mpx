@@ -603,7 +603,8 @@ class MediaViewerState extends State<MediaViewer>
 
   // --- Video ----------------------------------------------------------------
 
-  // Plays the item on screen when it is a video, and gives back the lease
+  // Plays the item on screen when it is a video (or prepares it, paused,
+  // when the policy does not autoplay), and gives back the lease
   // of the one before. Only the item on screen holds a lease: the pool keeps
   // the one left warm until its budget needs it.
   void _syncVideo() {
@@ -636,6 +637,7 @@ class MediaViewerState extends State<MediaViewer>
       controls: _controls,
       speeds: _speeds,
       startAt: startAt,
+      play: _video.autoplay,
       autoHide: _phase == _Phase.open,
     )..addListener(_onSession);
     _sessionIndex = _index;

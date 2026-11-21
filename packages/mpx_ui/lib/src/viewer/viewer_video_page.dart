@@ -138,6 +138,7 @@ class ViewerVideoPageState extends State<ViewerVideoPage> {
       controls: _controls,
       speeds: widget.speeds,
       startAt: widget.startAt,
+      play: widget.policy.video.autoplay,
       autoHide: true,
     )..addListener(_onSession);
   }

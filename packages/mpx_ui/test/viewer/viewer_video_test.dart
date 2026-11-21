@@ -172,6 +172,83 @@ void main() {
     });
   });
 
+  group("a picker's videos", () {
+    final picker = ViewerPolicy.$Android.copyWith(
+      video: PickerViewer.videoRules(ViewerPolicy.$Android.video),
+    );
+
+    double playShown(WidgetTester tester) => tester
+        .widget<Opacity>(find.byKey(const ValueKey('mpx-viewer-play-fade')))
+        .opacity;
+
+    testWidgets('a page shown waits paused at the start, play shown', (
+      tester,
+    ) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(2),
+        videoDuration: const Duration(seconds: 10),
+      );
+      await harness.pump(tester, policy: picker);
+      await _settle(tester);
+      final state = harness.engine(0).state.value;
+      expect(state.playing, isFalse);
+      expect(state.firstFrameRendered, isTrue, reason: 'prepared');
+      expect(harness.lease(tester).position, Duration.zero);
+      expect(playShown(tester), 1);
+
+      // Paged to, the next waits too.
+      await tester.dragFrom(const Offset(300, 300), const Offset(-300, 0));
+      await _settle(tester);
+      expect(harness.state(tester).index, 1);
+      expect(harness.engine(1).state.value.playing, isFalse);
+    });
+
+    testWidgets('played to its end it stops back at the start, play shown, '
+        'with no new pass; play then plays it from the start', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 10),
+      );
+      await harness.pump(tester, policy: picker);
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('mpx-viewer-play')));
+      await tester.pump();
+      final engine = harness.engine(0);
+      expect(engine.state.value.playing, isTrue);
+      expect(engine.state.value.looping, isFalse);
+
+      engine.advance(const Duration(seconds: 11));
+      await tester.pump();
+      await _settle(tester);
+      expect(engine.state.value.playing, isFalse);
+      expect(harness.lease(tester).position, Duration.zero);
+      expect(playShown(tester), 1);
+      // No new pass by itself.
+      engine.advance(const Duration(seconds: 3));
+      await tester.pump();
+      expect(harness.lease(tester).position, Duration.zero);
+
+      await tester.tap(find.byKey(const ValueKey('mpx-viewer-play')));
+      await tester.pump();
+      expect(engine.state.value.playing, isTrue);
+      engine.advance(const Duration(seconds: 2));
+      await tester.pump();
+      expect(harness.lease(tester).position, const Duration(seconds: 2));
+    });
+
+    testWidgets('a short video loops and autoplays under the chat viewer\'s '
+        'own rules', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 10),
+      );
+      await harness.pump(tester);
+      await _settle(tester);
+      expect(harness.engine(0).state.value.playing, isTrue);
+      expect(harness.engine(0).state.value.looping, isTrue);
+    });
+  });
+
   group('restart', () {
     Future<Duration> pageAwayAndBack(
       WidgetTester tester, {

@@ -17,6 +17,7 @@ import 'package:mpx_ui/src/library/picker_strip_controller.dart';
 import 'package:mpx_ui/src/library/picker_viewer.dart';
 import 'package:mpx_ui/src/text/mpx_text_root.dart';
 import 'package:mpx_ui/src/viewer/viewer_origin.dart';
+import 'package:mpx_ui/src/viewer/viewer_policy.dart';
 
 /// The library picker: the album switcher, the library grid and the
 /// picker-mode viewer over a [MediaLibrary], in every library access
@@ -55,6 +56,7 @@ class LibraryPicker extends StatefulWidget {
     this.onRefused,
     this.onReorder,
     this.viewerAssetOf,
+    this.viewerVideo,
     this.viewerSelectedStrip = PickerStripPolicy.$Android,
     this.viewerSelectedStripBuilder,
     this.viewerTitle,
@@ -143,6 +145,10 @@ class LibraryPicker extends StatefulWidget {
   /// picked in another album), so the viewer's strip shows its marks; see
   /// `PickerViewerChrome.assetOf`.
   final LibraryAsset? Function(MediaKey key)? viewerAssetOf;
+
+  /// Adjusts the picker-mode viewer's video rules; see `PickerViewer.show`'s
+  /// `video`.
+  final ViewerVideoRules Function(ViewerVideoRules picker)? viewerVideo;
 
   /// The picker-mode viewer's selected strip; none when null. See
   /// `PickerViewerChrome.selectedStrip`.
@@ -422,6 +428,7 @@ class LibraryPickerState extends State<LibraryPicker> {
       onRefused: widget.onRefused,
       onReorder: widget.onReorder,
       assetOf: widget.viewerAssetOf,
+      video: widget.viewerVideo,
       selectedStrip: widget.viewerSelectedStrip,
       selectedStripBuilder: widget.viewerSelectedStripBuilder,
       title: widget.viewerTitle,

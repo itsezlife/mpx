@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The picker-mode viewer's videos neither autoplay nor loop: a page shown
+  waits paused at the start with play shown, and a video played to its end
+  is back at its start, paused, play shown. `ViewerVideoRules.autoplay`
+  and `ViewerVideoRules.loopNever`; `PickerViewer.videoRules` is the
+  picker's rule set, and `PickerViewer.show(video:)` /
+  `LibraryPicker.viewerVideo` let a host adjust it. The chat viewer's rules
+  are unchanged.
 - The viewer's selected strip runs on `PickerStripController`, a headless
   behaviour a host can drive with its own row: a deselected item fades where
   it stood (120 ms) while the rest slide into the gap (250 ms) and the shade
