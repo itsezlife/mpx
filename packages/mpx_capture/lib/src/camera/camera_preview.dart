@@ -83,10 +83,12 @@ class _CameraPreviewState extends State<CameraPreview>
   @override
   void initState() {
     super.initState();
-    _turn = AnimationController(
-      vsync: this,
-      duration: CameraPreview.turnDuration,
-    );
+    _turn =
+        AnimationController(vsync: this, duration: CameraPreview.turnDuration)
+          ..addStatusListener((status) {
+            // Frames that came back while the card turned clear it now.
+            if (status.isCompleted && !_waiting && _clear.value < 1) _fadeOut();
+          });
     _clear = AnimationController(vsync: this, value: 1)
       ..addStatusListener((status) {
         if (status.isCompleted) _dropStub();
@@ -195,6 +197,44 @@ class _CameraPreviewState extends State<CameraPreview>
     }
   }
 
+  void _fadeOut() {
+    _clear.duration = _switch
+        ? CameraPreview.switchClear
+        : CameraPreview.resumeClear;
+    _clear.forward(from: 0).ignore();
+  }
+
+  // The snapshot blurred once, into a picture of its own: the card then
+  // draws a plain image, with no live filter under the turn's perspective
+  // (a filter there is drawn unevenly from frame to frame). [radius] is in
+  // the snapshot's pixels; [image] is disposed.
+  ui.Image _blurred(ui.Image image, double radius) {
+    final width = image.width;
+    final height = image.height;
+    final bounds = Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble());
+    final recorder = ui.PictureRecorder();
+    Canvas(recorder, bounds)
+      ..clipRect(bounds)
+      ..saveLayer(
+        bounds,
+        Paint()
+          ..imageFilter = ui.ImageFilter.blur(
+            sigmaX: radius / 2,
+            sigmaY: radius / 2,
+            tileMode: TileMode.clamp,
+          ),
+      )
+      ..drawImage(image, Offset.zero, Paint())
+      ..restore();
+    final picture = recorder.endRecording();
+    try {
+      return picture.toImageSync(width, height);
+    } finally {
+      picture.dispose();
+      image.dispose();
+    }
+  }
+
   void _onValue() {
     final now = widget.session.value.value;
     final stopped = now.isSwitching || now.awaitingFrames;
@@ -203,7 +243,11 @@ class _CameraPreviewState extends State<CameraPreview>
       _switch = now.isSwitching;
       _stub?.dispose();
       final taken = _taken;
-      _stub = taken ?? _snapshot(_switch ? _switchSample : _pauseSample);
+      final picture =
+          taken ?? _snapshot(_switch ? _switchSample : _pauseSample);
+      _stub = picture == null
+          ? null
+          : _blurred(picture, _switch ? _switchRadius : _pauseRadius);
       _stubLook = taken != null ? _takenLook : _drawn;
       _taken = null;
       _takenLook = null;
@@ -211,14 +255,13 @@ class _CameraPreviewState extends State<CameraPreview>
       if (_switch && _ticking) _turn.forward(from: 0).ignore();
     } else if (!stopped && _waiting) {
       _waiting = false;
-      if (_ticking) {
-        _clear.duration = _switch
-            ? CameraPreview.switchClear
-            : CameraPreview.resumeClear;
-        _clear.forward(from: 0).ignore();
-      } else {
+      if (!_ticking) {
         _clear.value = 1;
+      } else if (!_turn.isAnimating) {
+        _fadeOut();
       }
+      // Otherwise the card clears when it has turned: the new camera's
+      // frames never turn with it.
     }
     if (!stopped) _drawn = now;
     setState(() {});
@@ -268,22 +311,10 @@ class _CameraPreviewState extends State<CameraPreview>
           final angle = (t < 0.5 ? t : t - 1) * math.pi;
           final turning = _turn.isAnimating && angle != 0;
           if (stub != null && _clear.value < 1) {
-            final sample = _switch ? _switchSample : _pauseSample;
-            final radius = _switch ? _switchRadius : _pauseRadius;
             final look = _stubLook ?? now;
             final lookSize = look.previewSize ?? size;
             final w = lookSize.width.toDouble();
             final h = lookSize.height.toDouble();
-            final turned = look.quarterTurns.isOdd;
-            final shownW = turned ? h : w;
-            final shownH = turned ? w : h;
-            // The fit's scale of the frames, and the snapshot's pixel in
-            // them: the radius in the snapshot's pixels at the widget's size.
-            final scale = math.max(
-              constraints.maxWidth / shownW,
-              constraints.maxHeight / shownH,
-            );
-            final sigma = radius * math.min(w, h) / sample * scale / 2;
             // The snapshot shown as the frames were: their size, turn,
             // mirror and fit.
             Widget picture = SizedBox(
@@ -315,16 +346,9 @@ class _CameraPreviewState extends State<CameraPreview>
                 Opacity(
                   opacity: 1 - _clear.value,
                   child: ClipRect(
-                    child: ImageFiltered(
-                      imageFilter: ui.ImageFilter.blur(
-                        sigmaX: sigma,
-                        sigmaY: sigma,
-                        tileMode: TileMode.clamp,
-                      ),
-                      child: SizedBox.expand(
-                        key: const ValueKey('mpx-camera-stub-card'),
-                        child: FittedBox(fit: widget.fit, child: picture),
-                      ),
+                    child: SizedBox.expand(
+                      key: const ValueKey('mpx-camera-stub-card'),
+                      child: FittedBox(fit: widget.fit, child: picture),
                     ),
                   ),
                 ),

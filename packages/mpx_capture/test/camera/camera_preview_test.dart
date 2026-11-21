@@ -77,9 +77,11 @@ void main() {
               .fit,
           BoxFit.cover,
         );
+        // Blurred once into the picture: no filter is drawn under the
+        // turn, where it would be drawn unevenly from frame to frame.
         expect(
           find.ancestor(of: stub, matching: find.byType(ImageFiltered)),
-          findsOneWidget,
+          findsNothing,
         );
         expect(stubOpacity(tester), 1);
         await tester.pump(const Duration(milliseconds: 600));
@@ -105,7 +107,8 @@ void main() {
     expect(stub, findsOneWidget);
     expect(
       find.ancestor(of: stub, matching: find.byType(ImageFiltered)),
-      findsOneWidget,
+      findsNothing,
+      reason: 'blurred once into the picture',
     );
     await tester.runAsync(session.resume);
     await tester.pump(const Duration(milliseconds: 500));
@@ -251,6 +254,66 @@ void main() {
           hasLength(1),
           reason: 'the live frames are back',
         );
+      },
+    );
+  }
+
+  for (final toFront in [true, false]) {
+    testWidgets(
+      'frames back while the card turns ${toFront ? 'to the front' : 'to the '
+                'back'} camera wait for the turn: until it ends, every frame '
+      'draws the card alone, as a plain picture',
+      (tester) async {
+        final sessions = FakeCameraSessions(
+          textureId: 3,
+          holdsSwitchFrames: true,
+        );
+        final session = await tester.runAsync(
+          () => sessions.open(
+            facing: toFront ? CameraFacing.back : CameraFacing.front,
+          ),
+        );
+        await tester.pumpWidget(preview(session!));
+        await tester.runAsync(session.switchCamera);
+        await tester.pump();
+        final turnedCard = find.byWidgetPredicate(
+          (w) => w is Transform && w.transform.storage[11] != 0,
+        );
+        var ms = 0;
+        for (; ms < 500; ms += 8) {
+          // The new camera's first frame comes early in the turn.
+          if (ms == 104) sessions.current!.deliverSwitchFrames();
+          await tester.pump(const Duration(milliseconds: 8));
+          if (turnedCard.evaluate().isEmpty) break;
+          expect(
+            find
+                .byType(Texture)
+                .evaluate()
+                .where(
+                  (e) =>
+                      e.findAncestorWidgetOfExactType<Offstage>()?.offstage !=
+                      true,
+                ),
+            isEmpty,
+            reason: 'no live frames drawn at $ms ms',
+          );
+          expect(stub, findsOneWidget, reason: 'the card at $ms ms');
+          expect(stubOpacity(tester), 1, reason: 'held whole at $ms ms');
+          expect(
+            find.descendant(
+              of: turnedCard,
+              matching: find.byType(ImageFiltered),
+            ),
+            findsNothing,
+            reason: 'no filter under the turn at $ms ms',
+          );
+        }
+        expect(ms, greaterThan(400), reason: 'the turn ran to its end');
+        await tester.pump(const Duration(milliseconds: 60));
+        expect(stubOpacity(tester), inExclusiveRange(0, 1));
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(stub, findsNothing);
+        expect(liveMirrored(tester), toFront);
       },
     );
   }

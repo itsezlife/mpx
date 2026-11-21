@@ -7,6 +7,11 @@
   with its picture, a video's duration and its selection number
   (`galleryOrder`, `onGalleryToggle`). The route carries the host's asset
   cache for those pictures.
+- The snapshot is blurred once into a picture of its own, so the turning
+  card draws a plain image: a blur filter under the turn's perspective was
+  drawn unevenly from frame to frame, flashing a flatter, sharper card. A
+  switched camera's frames that come back while the card turns wait for the
+  turn to end before they fade in, so they never turn with it.
 - The switch and pause snapshot is read from the bare frames and shown
   through the turn, mirror and fit they had, so the card shows the crop the
   user saw (a raster of the fitted preview held the texture whole, a
