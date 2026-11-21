@@ -73,6 +73,83 @@ void main() {
     expect(session.value.value.frameRateCap, isNull);
   });
 
+  group('the camera at hand', () {
+    setUp(() {});
+
+    testWidgets('a tap on the picture focuses there and rings it: the ring '
+        'closes in over 200 ms, then fades', (tester) async {
+      tester.view
+        ..physicalSize = const Size(400, 800)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final session = await pumpSurface(tester);
+      await tester.tapAt(const Offset(100, 400));
+      await tester.pump();
+      expect((session as FakeCameraSession).focusedAt, [
+        const Offset(0.25, 0.5),
+      ]);
+      final ring = find.byKey(const ValueKey('mpx-capture-focus'));
+      expect(ring, findsOneWidget);
+      expect(tester.getCenter(ring), const Offset(100, 400));
+      await tester.pump(const Duration(milliseconds: 520));
+      expect(ring, findsNothing);
+    });
+
+    testWidgets('two fingers spreading zoom in by their spread over 100, '
+        'past a first stretch of slop', (tester) async {
+      tester.view
+        ..physicalSize = const Size(400, 800)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final session = await pumpSurface(tester);
+      final a = await tester.startGesture(const Offset(150, 400));
+      final b = await tester.startGesture(const Offset(250, 400));
+      await a.moveBy(const Offset(-10, 0));
+      await b.moveBy(const Offset(10, 0));
+      await tester.pump();
+      expect(session.value.value.zoom, 0, reason: 'inside the slop');
+      await a.moveBy(const Offset(-30, 0));
+      await b.moveBy(const Offset(30, 0));
+      await tester.pump();
+      await a.moveBy(const Offset(-20, 0));
+      await b.moveBy(const Offset(20, 0));
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      // The slop ends at 150 px apart; from there to 220: 0.7.
+      expect(session.value.value.zoom, closeTo(0.7, 1e-9));
+      await a.up();
+      await b.up();
+    });
+
+    testWidgets('while recording, a timer counts the seconds in a pill at '
+        'the top', (tester) async {
+      await pumpSurface(tester);
+      final hold = await tester.startGesture(tester.getCenter(shutter()));
+      await tester.pump(const Duration(milliseconds: 600));
+      await settle(tester);
+      final timer = find.byKey(const ValueKey('mpx-capture-timer'));
+      expect(timer, findsOneWidget);
+      expect(
+        find.descendant(of: timer, matching: find.text('0:00')),
+        findsOneWidget,
+      );
+      await tester.pump(const Duration(seconds: 1));
+      expect(
+        find.descendant(of: timer, matching: find.text('0:01')),
+        findsOneWidget,
+      );
+      final style = tester
+          .widget<Text>(find.descendant(of: timer, matching: find.byType(Text)))
+          .style!;
+      expect(style.fontSize, 15);
+      expect(style.fontWeight, FontWeight.bold);
+      await hold.up();
+      await settle(tester);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(timer, findsNothing);
+    });
+  });
+
   testWidgets('a tap takes a photo', (tester) async {
     await pumpSurface(tester);
     await tester.tap(shutter());

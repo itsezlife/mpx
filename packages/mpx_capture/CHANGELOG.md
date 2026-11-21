@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `CameraSession.setZoom` (linear 0..1, `CameraSessionValue.zoom`) and
+  `focusAt` (a point of the preview). The capture surface focuses where the
+  picture is tapped (a closing ring), zooms with two fingers, and counts a
+  recording's seconds in a pill at the top.
 - `CameraPreview` covers a pause and a switch with the last frame the user
   saw, a small snapshot taken before the frames stop (80 px wide for a
   pause, 100 for a switch), blurred and never flipped; it fades out as the

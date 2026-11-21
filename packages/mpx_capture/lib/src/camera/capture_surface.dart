@@ -195,8 +195,186 @@ class CameraCaptureSurface extends StatefulWidget {
   State<CameraCaptureSurface> createState() => _CameraCaptureSurfaceState();
 }
 
-class _CameraCaptureSurfaceState extends State<CameraCaptureSurface> {
+class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
+    with SingleTickerProviderStateMixin {
   int? _foundCap;
+
+  // --- Focus, zoom and the recording timer ---
+
+  // The ring at the last tap: it closes in over 200 ms (outer radius from
+  // twice its 30 px to 30, the inner disc from 0 to 30), then the disc and
+  // the ring fade over 150 ms each, decelerating.
+  static const double _ringRadius = 30;
+  late final AnimationController _ring;
+  Offset? _ringAt;
+
+  // Two fingers: once their distance has moved by [_pinchSlop], the zoom
+  // follows each further change, by its length over 100 px.
+  static const double _pinchSlop = 25;
+  final Map<int, Offset> _pointers = {};
+  double? _pinchFrom;
+  bool _pinching = false;
+
+  // The recording's seconds.
+  Timer? _tick;
+  int _seconds = 0;
+  bool _wasRecording = false;
+
+  void _focus(TapUpDetails details, Size size) {
+    if (size.isEmpty) return;
+    final at = details.localPosition;
+    final point = Offset(
+      (at.dx / size.width).clamp(0.0, 1.0),
+      (at.dy / size.height).clamp(0.0, 1.0),
+    );
+    unawaited(_quietly(() => _session.focusAt(point)));
+    setState(() => _ringAt = at);
+    _ring.forward(from: 0).ignore();
+  }
+
+  void _pointerDown(PointerDownEvent event) {
+    _pointers[event.pointer] = event.localPosition;
+    _pinching = false;
+    _pinchFrom = _pointers.length == 2
+        ? (_pointers.values.first - _pointers.values.last).distance
+        : null;
+  }
+
+  void _pointerMove(PointerMoveEvent event) {
+    if (!_pointers.containsKey(event.pointer)) return;
+    _pointers[event.pointer] = event.localPosition;
+    if (_pointers.length != 2) return;
+    final [a, b] = _pointers.values.toList();
+    final distance = (a - b).distance;
+    final from = _pinchFrom;
+    if (from == null) {
+      _pinchFrom = distance;
+      return;
+    }
+    if (!_pinching) {
+      if ((distance - from).abs() < _pinchSlop) return;
+      _pinching = true;
+      _pinchFrom = distance;
+      return;
+    }
+    final zoom = (_value.zoom + (distance - from) / 100).clamp(0.0, 1.0);
+    _pinchFrom = distance;
+    unawaited(_quietly(() => _session.setZoom(zoom)));
+  }
+
+  void _pointerUp(PointerEvent event) {
+    _pointers.remove(event.pointer);
+    if (_pointers.length < 2) {
+      _pinchFrom = null;
+      _pinching = false;
+    }
+  }
+
+  void _onValue() {
+    final recording = _value.isRecording;
+    if (recording == _wasRecording) return;
+    _wasRecording = recording;
+    _tick?.cancel();
+    if (recording) {
+      _seconds = 0;
+      _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() => _seconds++);
+      });
+    }
+    if (mounted) setState(() {});
+  }
+
+  static String _clock(Duration time) {
+    final seconds = time.inSeconds;
+    return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+  }
+
+  Widget _hands(BuildContext context, Widget controls) => LayoutBuilder(
+    builder: (context, constraints) {
+      final size = constraints.biggest;
+      final ringAt = _ringAt;
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Listener(
+            onPointerDown: _pointerDown,
+            onPointerMove: _pointerMove,
+            onPointerUp: _pointerUp,
+            onPointerCancel: _pointerUp,
+            behavior: HitTestBehavior.translucent,
+            child: GestureDetector(
+              key: const ValueKey('mpx-capture-picture'),
+              behavior: HitTestBehavior.opaque,
+              onTapUp: (details) => _focus(details, size),
+            ),
+          ),
+          if (ringAt != null)
+            Positioned(
+              left: ringAt.dx - 2 * _ringRadius,
+              top: ringAt.dy - 2 * _ringRadius,
+              width: 4 * _ringRadius,
+              height: 4 * _ringRadius,
+              child: IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: _ring,
+                  builder: (context, _) => CustomPaint(
+                    key: const ValueKey('mpx-capture-focus'),
+                    painter: _FocusRing(_ring.value),
+                  ),
+                ),
+              ),
+            ),
+          controls,
+          if (_value.isRecording)
+            Positioned(
+              top: MediaQuery.paddingOf(context).top + 16,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                child: Center(
+                  child: Container(
+                    key: const ValueKey('mpx-capture-timer'),
+                    padding: const EdgeInsets.fromLTRB(24, 5, 10, 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0x66000000),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      alignment: Alignment.centerLeft,
+                      children: [
+                        // The red dot of a recording, in the pill's
+                        // leading padding.
+                        const Positioned(
+                          left: -15,
+                          child: SizedBox.square(
+                            dimension: 8,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: Color(0xFFFF3B30),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                        ),
+                        Text(
+                          _clock(Duration(seconds: _seconds)),
+                          style: const TextStyle(
+                            color: Color(0xFFFFFFFF),
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+    },
+  );
   bool _busy = false;
   int _shots = 0;
 
@@ -206,6 +384,15 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface> {
   @override
   void initState() {
     super.initState();
+    _ring =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 500),
+        )..addStatusListener((status) {
+          if (status.isCompleted && mounted) setState(() => _ringAt = null);
+        });
+    _session.value.addListener(_onValue);
+    _wasRecording = _value.isRecording;
     _foundCap = _value.frameRateCap;
     // After the build that mounts the surface: the slot's preview listens to
     // the same session and must not be marked dirty mid-build.
@@ -218,6 +405,9 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface> {
 
   @override
   void dispose() {
+    _session.value.removeListener(_onValue);
+    _tick?.cancel();
+    _ring.dispose();
     final session = _session;
     final found = _foundCap;
     // Out of the locked tree: other widgets listen to the same session.
@@ -321,9 +511,12 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface> {
       color: const Color(0xFF000000),
       child: CameraPreview(session: _session),
     );
-    final controls = ValueListenableBuilder<CameraSessionValue>(
-      valueListenable: _session.value,
-      builder: (context, value, _) => _controls(value),
+    final controls = _hands(
+      context,
+      ValueListenableBuilder<CameraSessionValue>(
+        valueListenable: _session.value,
+        builder: (context, value, _) => _controls(value),
+      ),
     );
     final from = widget.expandFrom;
     final expand = widget.expansion;
@@ -625,4 +818,41 @@ class _EasedInTime extends Animation<double>
       _ => Curves.ease.transform(t),
     };
   }
+}
+
+class _FocusRing extends CustomPainter {
+  const _FocusRing(this.t);
+
+  // 0 to 1 over the ring's 500 ms: 200 to close in, 150 for the disc to
+  // fade, 150 for the ring.
+  final double t;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const curve = Curves.decelerate;
+    const base = 30.0;
+    final ms = t * 500;
+    final closing = curve.transform((ms / 200).clamp(0.0, 1.0));
+    final inner = 1 - ((ms - 200) / 150).clamp(0.0, 1.0);
+    final outer = 1 - ((ms - 350) / 150).clamp(0.0, 1.0);
+    final c = size.center(Offset.zero);
+    canvas
+      ..drawCircle(
+        c,
+        base + base * (1 - closing),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..color = Color.fromRGBO(255, 255, 255, curve.transform(outer)),
+      )
+      ..drawCircle(
+        c,
+        base * closing,
+        Paint()
+          ..color = Color.fromRGBO(255, 255, 255, curve.transform(inner) * 0.5),
+      );
+  }
+
+  @override
+  bool shouldRepaint(_FocusRing oldDelegate) => oldDelegate.t != t;
 }
