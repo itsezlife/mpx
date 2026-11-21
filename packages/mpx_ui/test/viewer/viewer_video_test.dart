@@ -195,6 +195,11 @@ void main() {
       expect(state.firstFrameRendered, isTrue, reason: 'prepared');
       expect(harness.lease(tester).position, Duration.zero);
       expect(playShown(tester), 1);
+      expect(
+        _playerShows(tester),
+        isTrue,
+        reason: 'its first frame, sharp, over the blurred picture',
+      );
 
       // Paged to, the next waits too.
       await tester.dragFrom(const Offset(300, 300), const Offset(-300, 0));

@@ -8,7 +8,8 @@
   and `ViewerVideoRules.loopNever`; `PickerViewer.videoRules` is the
   picker's rule set, and `PickerViewer.show(video:)` /
   `LibraryPicker.viewerVideo` let a host adjust it. The chat viewer's rules
-  are unchanged.
+  are unchanged. A player a policy leaves paused shows its first frame
+  sharp over the blurred picture as soon as it is drawn.
 - The viewer's selected strip runs on `PickerStripController`, a headless
   behaviour a host can drive with its own row: a deselected item fades where
   it stood (120 ms) while the rest slide into the gap (250 ms) and the shade

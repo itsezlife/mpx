@@ -1756,6 +1756,7 @@ class MediaViewerState extends State<MediaViewer>
                 shown: identical(_movingSession, session),
                 onMoving: () => _movingSession = session,
                 rules: _policy.loading,
+                showsPaused: !_video.autoplay,
               ),
       ),
     );
@@ -1979,6 +1980,10 @@ final class _GlobalClip extends CustomClipper<Rect> {
 /// plays: shown at once that frame stood in for the origin's and stood
 /// still, a jump and a freeze before playback. A warm one moves at once and
 /// shows at once.
+///
+/// A player the policy leaves paused ([showsPaused]) shows once its first
+/// frame is drawn: it will not move by itself, and that frame is the sharp
+/// picture the blurred stand-in waited for.
 class _PlayerOverPicture extends StatefulWidget {
   const _PlayerOverPicture({
     required this.lease,
@@ -1987,11 +1992,18 @@ class _PlayerOverPicture extends StatefulWidget {
     required this.shown,
     required this.onMoving,
     required this.rules,
+    this.showsPaused = false,
   });
 
   final PlayerLease lease;
   final Widget picture;
   final BoxFit fit;
+
+  /// Whether a paused player shows once its first frame is drawn, sharp
+  /// over the blurred picture: a policy that does not autoplay leaves the
+  /// player paused at its start, and its picture is that frame, so nothing
+  /// jumps.
+  final bool showsPaused;
 
   /// How long the player fades in.
   final ViewerLoadingRules rules;
@@ -2041,7 +2053,14 @@ class _PlayerOverPictureState extends State<_PlayerOverPicture>
 
   void _check(Duration _) {
     final state = widget.lease.state.value;
-    if (!state.playing || !state.firstFrameRendered) return;
+    if (!state.firstFrameRendered) return;
+    if (!state.playing) {
+      if (!widget.showsPaused) return;
+      _watch.stop();
+      setState(() => _moving = true);
+      widget.onMoving();
+      return;
+    }
     final position = widget.lease.position;
     final first = _firstAt ??= position;
     if (position == first) return;
