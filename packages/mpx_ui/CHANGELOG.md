@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `CameraSlotSignals.shouldPause` no longer pauses the camera cell when it
+  scrolls off screen (only the viewer over it or an inactive page do): the
+  pause and resume closed and reopened the camera while scrolling.
 - The picker-mode viewer's bottom slot hears the chrome:
   `PickerViewerItem.chromeShown` (where the chrome heads), `chrome` (its
   fade) and `dismissing` (a dismiss drag under way), also

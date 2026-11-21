@@ -42,8 +42,11 @@ final class CameraSlotSignals {
   /// "allow access" state instead of a preview).
   final bool cameraDenied;
 
-  /// Whether the preview should pause: off screen, covered, or inactive.
-  bool get shouldPause => !onScreen || viewerOpen || !active;
+  /// Whether the preview should pause: covered by the viewer, or its page
+  /// inactive. Not for being scrolled off screen: the slot keeps its camera
+  /// running there, since a pause closes the camera and opening it again
+  /// (a session reconfigure) blocks the app's frames.
+  bool get shouldPause => viewerOpen || !active;
 
   @override
   bool operator ==(Object other) =>

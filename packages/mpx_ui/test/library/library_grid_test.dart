@@ -324,8 +324,8 @@ void main() {
     );
   });
 
-  testWidgets('the camera slot holds the leading top and hears when it is '
-      'off screen', (tester) async {
+  testWidgets('the camera slot holds the leading top, hears when it is '
+      'off screen, and does not pause for it', (tester) async {
     final signals = <CameraSlotSignals>[];
     final controller = ScrollController();
     addTearDown(controller.dispose);
@@ -341,10 +341,18 @@ void main() {
     final first = tester.getRect(cell(0));
     expect(slot.left, lessThan(first.left));
     expect(slot.height, greaterThan(first.height * 2));
-    controller.jumpTo(600);
-    await tester.pump();
-    expect(signals.last.onScreen, isFalse);
-    expect(signals.last.shouldPause, isTrue);
+    // Scrolled away and back, again and again: the slot hears it is off
+    // screen, but the camera never pauses for it (a pause closes the
+    // camera, and opening it again blocks the app's frames).
+    for (var i = 0; i < 4; i++) {
+      controller.jumpTo(600);
+      await tester.pump();
+      expect(signals.last.onScreen, isFalse);
+      controller.jumpTo(0);
+      await tester.pump();
+    }
+    expect(signals.map((s) => s.shouldPause), everyElement(isFalse));
+    expectThemedText(tester);
   });
 
   testWidgets('right to left puts the check at the top end', (tester) async {
