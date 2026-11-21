@@ -1391,7 +1391,9 @@ class _ZoomSliderPainter extends CustomPainter {
       )
       ..drawCircle(
         Offset(knob, cy),
-        pressed ? 14 : 12,
+        // The knob image's disc: 12 across, 16.7 pressed (the pressed image
+        // is 20 with a 50/60 disc).
+        pressed ? 50 / 60 * 10 : 6,
         Paint()..color = const Color(0xFFFFFFFF),
       );
   }

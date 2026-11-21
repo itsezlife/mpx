@@ -118,4 +118,55 @@ void main() {
     await tester.pump();
     expect(tester.widget<RawImage>(stub).image!.width, 80);
   });
+
+  testWidgets('a preview under another page does not play a switch made '
+      'there, nor when the page closes', (tester) async {
+    final sessions = FakeCameraSessions(textureId: 3, holdsSwitchFrames: true);
+    final session = await tester.runAsync(sessions.open);
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Navigator(
+          key: navigator,
+          onGenerateRoute: (_) => PageRouteBuilder<void>(
+            pageBuilder: (context, _, _) => Center(
+              child: SizedBox(
+                width: 200,
+                height: 300,
+                child: CameraPreview(session: session!),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    navigator.currentState!
+        .push(
+          PageRouteBuilder<void>(
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+            pageBuilder: (context, _, _) =>
+                const ColoredBox(color: Color(0xFF000000)),
+          ),
+        )
+        .ignore();
+    await tester.pump();
+    await tester.pump();
+    await tester.runAsync(session!.switchCamera);
+    await tester.pump(const Duration(milliseconds: 200));
+    sessions.current!.deliverSwitchFrames();
+    await tester.pump(const Duration(seconds: 1));
+    navigator.currentState!.pop();
+    final turned = <double>[];
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      for (final t in tester.widgetList<Transform>(find.byType(Transform))) {
+        // A turn about the vertical axis has a perspective entry.
+        if (t.transform.storage[11] != 0) turned.add(t.transform.storage[0]);
+      }
+    }
+    expect(turned, isEmpty, reason: 'no turn plays');
+    expect(find.byKey(const ValueKey('mpx-camera-stub')), findsNothing);
+  });
 }

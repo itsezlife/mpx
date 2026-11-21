@@ -240,6 +240,25 @@ void main() {
       expect(session.value.value.zoom, closeTo(0.4, 1e-6));
     });
 
+    testWidgets('the knob is the reference image\'s 12 disc, 16.7 pressed', (
+      tester,
+    ) async {
+      final session = await pumpWide(tester);
+      await reveal(tester);
+      final paint = find.descendant(
+        of: slider(),
+        matching: find.byType(CustomPaint),
+      );
+      expect(tester.renderObject(paint), paints..circle(radius: 6));
+      final knob =
+          tester.getTopLeft(slider()) +
+          Offset(59 + 282 * session.value.value.zoom, 25);
+      final press = await tester.startGesture(knob);
+      await tester.pump();
+      expect(tester.renderObject(paint), paints..circle(radius: 50 / 60 * 10));
+      await press.up();
+    });
+
     testWidgets('minus and plus step to the quarter below and above over '
         '180 ms', (tester) async {
       final session = await pumpWide(tester);

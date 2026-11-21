@@ -112,6 +112,27 @@ class _CameraPreviewState extends State<CameraPreview>
     }
   }
 
+  // Whether this preview's tickers run (false under an opaque route): a
+  // preview not on screen does not animate a switch or a fade, or it would
+  // play them when it shows again.
+  bool _ticking = true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final ticking = TickerMode.valuesOf(context).enabled;
+    if (ticking == _ticking) return;
+    _ticking = ticking;
+    if (!ticking) return;
+    // Showing again: what ran while hidden is over.
+    if (_turn.value != 0) {
+      _turn
+        ..stop()
+        ..value = 0;
+    }
+    if (!_waiting && _clear.value < 1) _clear.value = 1;
+  }
+
   @override
   void didUpdateWidget(CameraPreview oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -171,13 +192,17 @@ class _CameraPreviewState extends State<CameraPreview>
       _stub = _taken ?? _snapshot(_switch ? _switchSample : _pauseSample);
       _taken = null;
       _clear.value = 0;
-      if (_switch) _turn.forward(from: 0).ignore();
+      if (_switch && _ticking) _turn.forward(from: 0).ignore();
     } else if (!stopped && _waiting) {
       _waiting = false;
-      _clear.duration = _switch
-          ? CameraPreview.switchClear
-          : CameraPreview.resumeClear;
-      _clear.forward(from: 0).ignore();
+      if (_ticking) {
+        _clear.duration = _switch
+            ? CameraPreview.switchClear
+            : CameraPreview.resumeClear;
+        _clear.forward(from: 0).ignore();
+      } else {
+        _clear.value = 1;
+      }
     }
     if (!stopped) _drawn = now;
     setState(() {});

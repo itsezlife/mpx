@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Android frames and photos take the screen's shape (16:9 unless the screen
+  is within 0.1 of 4:3): preview 1280 wide, photos up to 1920 x 1080 from
+  the back camera and 1280 x 720 from the front. A `CameraPreview` under
+  another page no longer plays a switch made there when it shows again.
+  The zoom knob is 12 across (16.7 pressed).
 - `CaptureSurfacePolicy` (`$Android`, `$IOS`, `forPlatform`) on
   `CameraCaptureSurface(policy:)`. `$IOS`:
   - a Video / Photo mode control (`CaptureSurfaceLabels.videoMode` /

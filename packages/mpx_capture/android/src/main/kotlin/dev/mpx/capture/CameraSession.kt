@@ -314,6 +314,7 @@ class CameraSession(
         val preview = previewBuilder().build().also { this.preview = it }
         val imageCapture = ImageCapture.Builder()
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            .setResolutionSelector(photoResolution())
             .build()
             .also { this.imageCapture = it }
         preview.setSurfaceProvider(executor, ::provideSurface)
@@ -365,8 +366,52 @@ class CameraSession(
     // A preview whose first completed capture after a switch tells Dart the
     // new camera's frames have started.
     @SuppressLint("UnsafeOptInUsageError")
+    // The screen's shape decides the frames': 4:3 on a screen within 0.1 of
+    // 4:3, 16:9 otherwise, so a photo has the full-screen preview's shape.
+    private fun aspect(): Int {
+        val metrics = context.resources.displayMetrics
+        val long = maxOf(metrics.widthPixels, metrics.heightPixels).toFloat()
+        val short = minOf(metrics.widthPixels, metrics.heightPixels).toFloat()
+        return if (short > 0 && kotlin.math.abs(long / short - 4f / 3f) < 0.1f) {
+            androidx.camera.core.AspectRatio.RATIO_4_3
+        } else {
+            androidx.camera.core.AspectRatio.RATIO_16_9
+        }
+    }
+
+    private fun resolution(width: Int, height: Int) =
+        androidx.camera.core.resolutionselector.ResolutionSelector.Builder()
+            .setAspectRatioStrategy(
+                androidx.camera.core.resolutionselector.AspectRatioStrategy(
+                    aspect(),
+                    androidx.camera.core.resolutionselector.AspectRatioStrategy.FALLBACK_RULE_AUTO,
+                ),
+            )
+            .setResolutionStrategy(
+                androidx.camera.core.resolutionselector.ResolutionStrategy(
+                    android.util.Size(width, height),
+                    androidx.camera.core.resolutionselector.ResolutionStrategy
+                        .FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER,
+                ),
+            )
+            .build()
+
+    private fun fourByThree() = aspect() == androidx.camera.core.AspectRatio.RATIO_4_3
+
+    // Preview frames: 1280 wide, at the screen's shape.
+    private fun previewResolution() =
+        if (fourByThree()) resolution(1280, 960) else resolution(1280, 720)
+
+    // Photos: up to 1920 x 1080 (1440 high at 4:3) from the back camera,
+    // 1280 x 720 from the front.
+    private fun photoResolution() = when {
+        facing == "front" -> resolution(1280, 720)
+        fourByThree() -> resolution(1920, 1440)
+        else -> resolution(1920, 1080)
+    }
+
     private fun previewBuilder(): Preview.Builder {
-        val builder = Preview.Builder()
+        val builder = Preview.Builder().setResolutionSelector(previewResolution())
         Camera2Interop.Extender(builder).setSessionCaptureCallback(
             object : CameraCaptureSession.CaptureCallback() {
                 override fun onCaptureCompleted(
