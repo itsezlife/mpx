@@ -1,22 +1,25 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_capture/src/camera/camera_session.dart';
+import 'package:mpx_capture/src/camera/camera_snapshots.dart';
 
 /// Shows a [CameraSession]'s preview: upright, mirrored for a front camera,
 /// covering the widget's size by default.
 ///
-/// A camera switch turns the preview over about its vertical axis and
-/// blurs it; the frames stay drawn as they were before the switch (the
-/// texture still holds the old camera's) until the new camera's first
-/// frame, when they take the new camera's orientation and the blur clears.
-/// The old frames are never drawn mirrored or turned as the new camera's.
+/// While its frames stop (a pause, until the first frame after the resume)
+/// or the camera changes (a switch, until the new camera's first frame), the
+/// preview is covered by its last frame as the user saw it: a small
+/// snapshot, blurred, which keeps the orientation it had (it never takes the
+/// new camera's mirror). A switch turns the preview over about its vertical
+/// axis meanwhile. When frames come again the snapshot fades out: 120 ms
+/// after a switch, 180 ms after a resume.
 ///
-/// It only shows: pausing the session when the preview is off screen or
-/// covered is the host's call (the library grid's camera slot hands it the
-/// signals). [placeholder] stands in while there is no texture (opening,
-/// denied, failed, closed, or a fake).
+/// It only shows: pausing the session is the host's call (the library
+/// grid's camera slot hands it the signals). [placeholder] stands in while
+/// there is no texture (opening, denied, failed, closed, or a fake).
 class CameraPreview extends StatefulWidget {
   /// Creates a preview of [session].
   const CameraPreview({
@@ -38,25 +41,38 @@ class CameraPreview extends StatefulWidget {
   /// How long the preview turns over on a switch.
   static const Duration turnDuration = Duration(milliseconds: 500);
 
-  /// How long the blur takes to clear once the new camera's frames show.
-  static const Duration clearDuration = Duration(milliseconds: 120);
+  /// How long the snapshot takes to fade once a switched camera's frames
+  /// show.
+  static const Duration switchClear = Duration(milliseconds: 120);
 
-  /// How strongly the frames blur during a switch.
-  static const double switchBlur = 24;
+  /// How long the live preview takes to fade in over the snapshot after a
+  /// resume.
+  static const Duration resumeClear = Duration(milliseconds: 180);
 
   @override
   State<CameraPreview> createState() => _CameraPreviewState();
 }
 
+// The snapshot's sample width and blur radius, in its own pixels: 100 wide
+// with a radius of 3 for a switch, 80 wide with 7 for a pause.
+const int _switchSample = 100;
+const double _switchRadius = 3;
+const int _pauseSample = 80;
+const double _pauseRadius = 7;
+
 class _CameraPreviewState extends State<CameraPreview>
     with TickerProviderStateMixin {
   late final AnimationController _turn;
-  // 1 when clear, 0 fully blurred.
+  // 1 when the snapshot is gone, 0 while it covers the preview.
   late final AnimationController _clear;
+  final GlobalKey _live = GlobalKey();
 
-  // How the frames are drawn: the value from before a switch while it runs.
+  // The value the frames were drawn with before the stop, for a fallback
+  // when no snapshot could be taken.
   late CameraSessionValue _drawn;
-  bool _switching = false;
+  bool _waiting = false;
+  bool _switch = false;
+  ui.Image? _stub;
 
   @override
   void initState() {
@@ -65,13 +81,35 @@ class _CameraPreviewState extends State<CameraPreview>
       vsync: this,
       duration: CameraPreview.turnDuration,
     );
-    _clear = AnimationController(
-      vsync: this,
-      duration: CameraPreview.clearDuration,
-      value: 1,
-    );
+    _clear = AnimationController(vsync: this, value: 1)
+      ..addStatusListener((status) {
+        if (status.isCompleted) _dropStub();
+      });
     _drawn = widget.session.value.value;
     widget.session.value.addListener(_onValue);
+    CameraSnapshots.add(widget.session, _take);
+  }
+
+  // The frame taken by the session just before it stopped its frames.
+  ui.Image? _taken;
+
+  // Called by the session before a pause or a switch: the snapshot is read
+  // here, rasterized and awaited, while the texture still holds the frame
+  // the user sees.
+  Future<void> _take({required bool switching}) async {
+    final box = _live.currentContext?.findRenderObject();
+    if (box is! RenderRepaintBoundary || !box.hasSize || box.size.isEmpty) {
+      return;
+    }
+    final sample = switching ? _switchSample : _pauseSample;
+    try {
+      final image = await box.toImage(pixelRatio: sample / box.size.width);
+      if (!mounted) return image.dispose();
+      _taken?.dispose();
+      _taken = image;
+    } on Object {
+      // No snapshot: the frozen frames stand in.
+    }
   }
 
   @override
@@ -80,8 +118,11 @@ class _CameraPreviewState extends State<CameraPreview>
     if (!identical(oldWidget.session, widget.session)) {
       oldWidget.session.value.removeListener(_onValue);
       widget.session.value.addListener(_onValue);
-      _switching = false;
+      CameraSnapshots.remove(oldWidget.session, _take);
+      CameraSnapshots.add(widget.session, _take);
+      _waiting = false;
       _drawn = widget.session.value.value;
+      _dropStub();
       _clear.value = 1;
       _turn.value = 0;
     }
@@ -90,33 +131,64 @@ class _CameraPreviewState extends State<CameraPreview>
   @override
   void dispose() {
     widget.session.value.removeListener(_onValue);
+    CameraSnapshots.remove(widget.session, _take);
+    _taken?.dispose();
     _turn.dispose();
     _clear.dispose();
+    _stub?.dispose();
     super.dispose();
+  }
+
+  void _dropStub() {
+    final stub = _stub;
+    if (stub == null) return;
+    _stub = null;
+    stub.dispose();
+    if (mounted) setState(() {});
+  }
+
+  // The preview as it stands now, small: read before the value's change is
+  // built, so it still has the orientation the user saw.
+  ui.Image? _snapshot(int sample) {
+    final box = _live.currentContext?.findRenderObject();
+    if (box is! RenderRepaintBoundary || !box.hasSize || box.size.isEmpty) {
+      return null;
+    }
+    try {
+      return box.toImageSync(pixelRatio: sample / box.size.width);
+    } on Object {
+      return null;
+    }
   }
 
   void _onValue() {
     final now = widget.session.value.value;
-    if (now.isSwitching) {
-      if (!_switching) {
-        _switching = true;
-        _clear.value = 0;
-        _turn.forward(from: 0).ignore();
-      }
-    } else {
-      if (_switching) {
-        _switching = false;
-        _clear.forward(from: 0).ignore();
-      }
-      _drawn = now;
+    final stopped = now.isSwitching || now.awaitingFrames;
+    if (stopped && !_waiting) {
+      _waiting = true;
+      _switch = now.isSwitching;
+      _stub?.dispose();
+      _stub = _taken ?? _snapshot(_switch ? _switchSample : _pauseSample);
+      _taken = null;
+      _clear.value = 0;
+      if (_switch) _turn.forward(from: 0).ignore();
+    } else if (!stopped && _waiting) {
+      _waiting = false;
+      _clear.duration = _switch
+          ? CameraPreview.switchClear
+          : CameraPreview.resumeClear;
+      _clear.forward(from: 0).ignore();
     }
+    if (!stopped) _drawn = now;
     setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
     final now = widget.session.value.value;
-    final drawn = _switching ? _drawn : now;
+    // With a snapshot over it the preview takes the new camera's
+    // orientation at once; without one, it keeps the old until the frames.
+    final drawn = _waiting && _stub == null ? _drawn : now;
     final textureId = now.textureId;
     final size = drawn.previewSize ?? now.previewSize;
     if (!now.isAvailable || textureId == null || size == null) {
@@ -131,38 +203,76 @@ class _CameraPreviewState extends State<CameraPreview>
       frames = RotatedBox(quarterTurns: drawn.quarterTurns, child: frames);
     }
     if (drawn.mirrored) frames = Transform.flip(flipX: true, child: frames);
-    final preview = ClipRect(
-      child: FittedBox(fit: widget.fit, child: frames),
+    final live = RepaintBoundary(
+      key: _live,
+      child: KeyedSubtree(
+        key: const ValueKey('mpx-camera-live'),
+        child: ClipRect(
+          child: FittedBox(fit: widget.fit, child: frames),
+        ),
+      ),
     );
-    return AnimatedBuilder(
-      animation: Listenable.merge([_turn, _clear]),
-      builder: (context, child) {
-        var shown = child!;
-        final sigma = (1 - _clear.value) * CameraPreview.switchBlur;
-        if (sigma > 0) {
-          shown = ClipRect(
-            child: ImageFiltered(
-              imageFilter: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+    return LayoutBuilder(
+      builder: (context, constraints) => AnimatedBuilder(
+        animation: Listenable.merge([_turn, _clear]),
+        builder: (context, child) {
+          var shown = child!;
+          final stub = _stub;
+          if (stub != null && _clear.value < 1) {
+            final sample = _switch ? _switchSample : _pauseSample;
+            final radius = _switch ? _switchRadius : _pauseRadius;
+            // The radius in the snapshot's pixels, at the widget's size.
+            final sigma = radius * constraints.maxWidth / sample / 2;
+            shown = Stack(
+              fit: StackFit.expand,
+              children: [
+                shown,
+                Opacity(
+                  opacity: 1 - _clear.value,
+                  child: ClipRect(
+                    child: ImageFiltered(
+                      imageFilter: ui.ImageFilter.blur(
+                        sigmaX: sigma,
+                        sigmaY: sigma,
+                        tileMode: TileMode.clamp,
+                      ),
+                      child: RawImage(
+                        key: const ValueKey('mpx-camera-stub'),
+                        image: stub,
+                        fit: BoxFit.fill,
+                        filterQuality: FilterQuality.medium,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          } else if (_waiting) {
+            // No snapshot: the frozen frames, blurred.
+            shown = ClipRect(
+              child: ImageFiltered(
+                imageFilter: ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                child: shown,
+              ),
+            );
+          }
+          // The first half turns the old picture away to the edge, the
+          // second brings the preview back from the other side.
+          final t = Curves.ease.transform(_turn.value);
+          final angle = (t < 0.5 ? t : t - 1) * math.pi;
+          if (_turn.isAnimating && angle != 0) {
+            shown = Transform(
+              alignment: Alignment.center,
+              transform: Matrix4.identity()
+                ..setEntry(3, 2, 0.001)
+                ..rotateY(angle),
               child: shown,
-            ),
-          );
-        }
-        // The first half turns the old frames away to the edge, the second
-        // brings the preview back from the other side.
-        final t = Curves.ease.transform(_turn.value);
-        final angle = (t < 0.5 ? t : t - 1) * math.pi;
-        if (_turn.isAnimating && angle != 0) {
-          shown = Transform(
-            alignment: Alignment.center,
-            transform: Matrix4.identity()
-              ..setEntry(3, 2, 0.001)
-              ..rotateY(angle),
-            child: shown,
-          );
-        }
-        return shown;
-      },
-      child: preview,
+            );
+          }
+          return shown;
+        },
+        child: live,
+      ),
     );
   }
 }

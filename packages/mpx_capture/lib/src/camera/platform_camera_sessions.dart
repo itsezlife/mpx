@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:mpx_capture/src/camera/camera_claim.dart';
 import 'package:mpx_capture/src/camera/camera_session.dart';
+import 'package:mpx_capture/src/camera/camera_snapshots.dart';
 import 'package:mpx_capture/src/job/capture_job.dart';
 import 'package:mpx_capture/src/platform/capture_channel.dart';
 import 'package:mpx_capture/src/round/round_video_recorder.dart';
@@ -93,6 +94,8 @@ final class _PlatformCameraSession implements CameraSession {
   Future<CameraFacing> switchCamera() async {
     _open();
     final before = _now.facing;
+    // The previews hold the frame the user sees before the camera changes.
+    await CameraSnapshots.takeAll(this, switching: true);
     _value.value = _now.copyWith(isSwitching: true);
     _switchTimer?.cancel();
     _switchTimer = Timer(_switchWait, _switched);
@@ -116,8 +119,9 @@ final class _PlatformCameraSession implements CameraSession {
   void _switched() {
     _switchTimer?.cancel();
     _switchTimer = null;
-    if (_now.isSwitching && _now.state != CameraSessionState.closed) {
-      _value.value = _now.copyWith(isSwitching: false);
+    if ((_now.isSwitching || (_now.awaitingFrames && !_now.isPaused)) &&
+        _now.state != CameraSessionState.closed) {
+      _value.value = _now.copyWith(isSwitching: false, awaitingFrames: false);
     }
   }
 
@@ -133,8 +137,9 @@ final class _PlatformCameraSession implements CameraSession {
     _open();
     if (_now.isPaused) return;
     if (_now.isRecording) await stopRecording();
+    await CameraSnapshots.takeAll(this, switching: false);
     await _channel.invoke<void>('cameraPause', _args());
-    _value.value = _now.copyWith(isPaused: true);
+    _value.value = _now.copyWith(isPaused: true, awaitingFrames: true);
   }
 
   @override
@@ -143,6 +148,9 @@ final class _PlatformCameraSession implements CameraSession {
     if (!_now.isPaused) return;
     await _channel.invoke<void>('cameraResume', _args());
     _value.value = _now.copyWith(isPaused: false);
+    // Waits for the first frame after the resume, as after a switch.
+    _switchTimer?.cancel();
+    _switchTimer = Timer(_switchWait, _switched);
   }
 
   @override

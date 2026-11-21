@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:mpx_capture/src/camera/camera_session.dart';
+import 'package:mpx_capture/src/camera/camera_snapshots.dart';
 import 'package:mpx_capture/src/job/capture_job.dart';
 import 'package:mpx_capture/src/round/round_video_recorder.dart';
 import 'package:mpx_capture/src/testing/fake_camera.dart';
@@ -114,6 +115,7 @@ final class FakeCameraSession implements CameraSession {
   Future<CameraFacing> switchCamera() async {
     _open();
     if (!_now.canSwitchCamera) return _now.facing;
+    await CameraSnapshots.takeAll(this, switching: true);
     final next = _now.facing == CameraFacing.front
         ? CameraFacing.back
         : CameraFacing.front;
@@ -124,11 +126,11 @@ final class FakeCameraSession implements CameraSession {
     return next;
   }
 
-  /// The new camera's first frame after a switch, for an opener that
-  /// [FakeCameraSessions.holdsSwitchFrames].
+  /// The camera's first frame after a switch or a resume, for an opener
+  /// that [FakeCameraSessions.holdsSwitchFrames].
   void deliverSwitchFrames() {
-    if (_disposed || !_now.isSwitching) return;
-    _value.value = _now.copyWith(isSwitching: false);
+    if (_disposed || !(_now.isSwitching || _now.awaitingFrames)) return;
+    _value.value = _now.copyWith(isSwitching: false, awaitingFrames: false);
   }
 
   @override
@@ -141,13 +143,17 @@ final class FakeCameraSession implements CameraSession {
   Future<void> pause() async {
     _open();
     if (_now.isRecording) await stopRecording();
-    _value.value = _now.copyWith(isPaused: true);
+    await CameraSnapshots.takeAll(this, switching: false);
+    _value.value = _now.copyWith(isPaused: true, awaitingFrames: true);
   }
 
   @override
   Future<void> resume() async {
     _open();
-    _value.value = _now.copyWith(isPaused: false);
+    _value.value = _now.copyWith(
+      isPaused: false,
+      awaitingFrames: _owner.holdsSwitchFrames,
+    );
   }
 
   @override

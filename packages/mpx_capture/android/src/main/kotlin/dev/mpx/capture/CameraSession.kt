@@ -78,6 +78,10 @@ class CameraSession(
     // Set by a switch until the new camera's first frame, which Dart hears
     // as `firstFrame`: until then the texture holds the old camera's frames.
     @Volatile private var awaitingFirstFrame = false
+
+    // Completed captures still to see before the frames count as back: the
+    // first completes before its frame reaches the texture.
+    @Volatile private var capturesToWait = 0
     private var previewWidth = 0
     private var previewHeight = 0
     private var opened: ((Map<String, Any?>) -> Unit)? = null
@@ -97,6 +101,11 @@ class CameraSession(
                 trace("surface cleanup")
             }
         })
+    }
+
+    private fun awaitFrames() {
+        capturesToWait = 3
+        awaitingFirstFrame = true
     }
 
     // The session's lifecycle in logcat, tag `mpx.capture`.
@@ -133,7 +142,7 @@ class CameraSession(
         val next = if (facing == "front") "back" else "front"
         if (!provider.hasCamera(selector(next))) return facing
         facing = next
-        awaitingFirstFrame = true
+        awaitFrames()
         bind()
         return facing
     }
@@ -154,6 +163,7 @@ class CameraSession(
 
     fun resume() {
         trace("resume")
+        awaitFrames()
         if (!closed) lifecycleRegistry.currentState = Lifecycle.State.STARTED
     }
 
@@ -301,6 +311,7 @@ class CameraSession(
                     result: TotalCaptureResult,
                 ) {
                     if (!awaitingFirstFrame) return
+                    if (--capturesToWait > 0) return
                     awaitingFirstFrame = false
                     main.post {
                         if (closed || opened != null || previewWidth == 0) return@post

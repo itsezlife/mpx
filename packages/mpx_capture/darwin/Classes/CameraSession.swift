@@ -129,6 +129,7 @@ final class CameraSession: NSObject, FlutterTexture,
 
   func resume() {
     queue.async {
+      self.awaitingFirstFrame = true
       guard !self.closed, self.paused else { return }
       self.paused = false
       self.session.startRunning()

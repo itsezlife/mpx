@@ -51,6 +51,7 @@ final class CameraSessionValue {
     this.canSwitchCamera = false,
     this.frameRateCap,
     this.isSwitching = false,
+    this.awaitingFrames = false,
   });
 
   /// Where the session stands.
@@ -94,6 +95,10 @@ final class CameraSessionValue {
   /// a preview draws the frames as it drew them before the switch.
   final bool isSwitching;
 
+  /// Whether the frames stopped: from a pause until the first frame after
+  /// the resume. The texture holds the last frame meanwhile.
+  final bool awaitingFrames;
+
   /// Whether the preview is drawn mirrored, as a front camera's is. The
   /// frames and the captures are not mirrored; only the preview is.
   bool get mirrored => facing == CameraFacing.front;
@@ -117,6 +122,7 @@ final class CameraSessionValue {
     int? frameRateCap,
     bool replaceFrameRateCap = false,
     bool? isSwitching,
+    bool? awaitingFrames,
   }) => CameraSessionValue(
     state: state ?? this.state,
     facing: facing ?? this.facing,
@@ -130,6 +136,7 @@ final class CameraSessionValue {
     canSwitchCamera: canSwitchCamera ?? this.canSwitchCamera,
     frameRateCap: replaceFrameRateCap ? frameRateCap : this.frameRateCap,
     isSwitching: isSwitching ?? this.isSwitching,
+    awaitingFrames: awaitingFrames ?? this.awaitingFrames,
   );
 
   @override
@@ -146,7 +153,8 @@ final class CameraSessionValue {
       other.hasFlash == hasFlash &&
       other.canSwitchCamera == canSwitchCamera &&
       other.frameRateCap == frameRateCap &&
-      other.isSwitching == isSwitching;
+      other.isSwitching == isSwitching &&
+      other.awaitingFrames == awaitingFrames;
 
   @override
   int get hashCode => Object.hash(
@@ -162,6 +170,7 @@ final class CameraSessionValue {
     canSwitchCamera,
     frameRateCap,
     isSwitching,
+    awaitingFrames,
   );
 
   @override
