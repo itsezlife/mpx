@@ -182,7 +182,11 @@ class MpxCapturePlugin :
             ).also { result.success(null) }
             "cameraPause" -> session.pause().also { result.success(null) }
             "cameraResume" -> session.resume().also { result.success(null) }
-            "cameraPhoto" -> session.capturePhoto(call.argument<String>("output") ?: "", ::reply)
+            "cameraPhoto" -> session.capturePhoto(
+                call.argument<String>("output") ?: "",
+                call.argument<Boolean>("mirrorFront") ?: false,
+                ::reply,
+            )
             "cameraRecordStart" -> session.startRecording(call.argument<String>("output") ?: "").fold(
                 onSuccess = { result.success(null) },
                 onFailure = { error -> result.error("failed", error.message, null) },

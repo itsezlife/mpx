@@ -198,10 +198,19 @@ final class CameraSession: NSObject, FlutterTexture,
     }
   }
 
-  func capturePhoto(output: String, _ done: @escaping (Result<[String: Any], Error>) -> Void) {
+  func capturePhoto(
+    output: String, mirrorFront: Bool = false,
+    _ done: @escaping (Result<[String: Any], Error>) -> Void
+  ) {
     queue.async {
       guard !self.closed, !self.paused, self.session.outputs.contains(self.photoOutput) else {
         return done(.failure(CaptureError.failed("camera not available")))
+      }
+      // Saved as the preview shows it, for a front camera asked to.
+      if let connection = self.photoOutput.connection(with: .video),
+        connection.isVideoMirroringSupported
+      {
+        connection.isVideoMirrored = mirrorFront && self.facing == "front"
       }
       let settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
       #if os(iOS)

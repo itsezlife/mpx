@@ -101,6 +101,7 @@ class CameraCaptureSurface extends StatefulWidget {
     this.expandFrom,
     this.expansion,
     this.controlsReveal,
+    this.mirrorFrontPhotos = true,
     super.key,
   });
 
@@ -117,6 +118,7 @@ class CameraCaptureSurface extends StatefulWidget {
     CaptureKinds kinds = CaptureKinds.photoAndVideo,
     CaptureCache? cache,
     Rect? from,
+    bool mirrorFrontPhotos = true,
     Duration transition = const Duration(milliseconds: 350),
     Duration closeTransition = const Duration(milliseconds: 220),
   }) =>
@@ -140,6 +142,7 @@ class CameraCaptureSurface extends StatefulWidget {
               expandFrom: from,
               expansion: from == null ? null : progress,
               controlsReveal: from == null ? null : progress,
+              mirrorFrontPhotos: mirrorFrontPhotos,
             );
           },
           transitionsBuilder: (context, animation, _, child) {
@@ -190,6 +193,10 @@ class CameraCaptureSurface extends StatefulWidget {
   /// backwards, before it); they take no touches until it is 1. Null for
   /// controls that are simply there.
   final Animation<double>? controlsReveal;
+
+  /// Whether a front camera's photos are saved mirrored, as the preview
+  /// shows them (a chat's camera does); videos never are.
+  final bool mirrorFrontPhotos;
 
   @override
   State<CameraCaptureSurface> createState() => _CameraCaptureSurfaceState();
@@ -450,7 +457,10 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     if (_busy || !_value.isAvailable) return;
     _busy = true;
     try {
-      final output = await _session.capturePhoto(outputPath: _output('jpg'));
+      final output = await _session.capturePhoto(
+        outputPath: _output('jpg'),
+        mirrorFront: widget.mirrorFrontPhotos,
+      );
       await _deliver(output, isVideo: false);
     } on CaptureException {
       // The session's state tells; nothing was taken.
@@ -585,16 +595,20 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
                 ),
                 const Spacer(),
                 if (value.hasFlash)
-                  _GlyphButton(
-                    key: const ValueKey('mpx-capture-flash'),
-                    glyph: switch (value.flash) {
-                      CameraFlash.off => _Glyph.flashOff,
-                      CameraFlash.auto => _Glyph.flashAuto,
-                      CameraFlash.on => _Glyph.flashOn,
-                    },
-                    label: labels.flash,
-                    value: value.flash.name,
-                    onTap: _cycleFlash,
+                  _AsideWhileRecording(
+                    key: const ValueKey('mpx-capture-flash-slot'),
+                    recording: value.isRecording,
+                    child: _GlyphButton(
+                      key: const ValueKey('mpx-capture-flash'),
+                      glyph: switch (value.flash) {
+                        CameraFlash.off => _Glyph.flashOff,
+                        CameraFlash.auto => _Glyph.flashAuto,
+                        CameraFlash.on => _Glyph.flashOn,
+                      },
+                      label: labels.flash,
+                      value: value.flash.name,
+                      onTap: _cycleFlash,
+                    ),
                   ),
               ],
             ),
@@ -612,12 +626,16 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
                   onHoldEnd: _holdEnd,
                 ),
                 const Spacer(),
-                if (value.canSwitchCamera && !value.isRecording)
-                  _GlyphButton(
-                    key: const ValueKey('mpx-capture-switch'),
-                    glyph: _Glyph.switchCamera,
-                    label: labels.switchCamera,
-                    onTap: () => unawaited(_quietly(_session.switchCamera)),
+                if (value.canSwitchCamera)
+                  _AsideWhileRecording(
+                    key: const ValueKey('mpx-capture-switch-slot'),
+                    recording: value.isRecording,
+                    child: _GlyphButton(
+                      key: const ValueKey('mpx-capture-switch'),
+                      glyph: _Glyph.switchCamera,
+                      label: labels.switchCamera,
+                      onTap: () => unawaited(_quietly(_session.switchCamera)),
+                    ),
                   )
                 else
                   const SizedBox(width: 48),
@@ -625,6 +643,38 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// While a recording runs, a control slides 30 px out towards its edge and
+// fades, over 150 ms on an ease curve, and takes no touches; it comes back
+// the same way.
+class _AsideWhileRecording extends StatelessWidget {
+  const _AsideWhileRecording({
+    required this.recording,
+    required this.child,
+    super.key,
+  });
+
+  final bool recording;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final outward = Directionality.of(context) == TextDirection.ltr ? 1 : -1;
+    return IgnorePointer(
+      ignoring: recording,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(end: recording ? 1 : 0),
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.ease,
+        builder: (context, t, child) => Transform.translate(
+          offset: Offset(outward * 30 * t, 0),
+          child: Opacity(opacity: 1 - t, child: child),
+        ),
+        child: child,
       ),
     );
   }

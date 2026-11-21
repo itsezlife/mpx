@@ -173,9 +173,16 @@ final class FakeCameraSession implements CameraSession {
     );
   }
 
+  /// Whether each photo taken was saved mirrored, in order.
+  final List<bool> photosMirrored = [];
+
   @override
-  Future<CaptureOutput> capturePhoto({required String outputPath}) async {
+  Future<CaptureOutput> capturePhoto({
+    required String outputPath,
+    bool mirrorFront = false,
+  }) async {
     _available();
+    photosMirrored.add(mirrorFront && _now.facing == CameraFacing.front);
     final bytes = Uint8List.fromList(List.filled(2048, 0xff));
     File(outputPath).writeAsBytesSync(bytes);
     photos++;

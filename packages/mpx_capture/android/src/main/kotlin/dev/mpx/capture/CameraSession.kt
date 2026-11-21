@@ -190,12 +190,20 @@ class CameraSession(
         if (!closed) lifecycleRegistry.currentState = Lifecycle.State.STARTED
     }
 
-    fun capturePhoto(output: String, done: (Result<Map<String, Any?>>) -> Unit) {
+    fun capturePhoto(output: String, mirrorFront: Boolean, done: (Result<Map<String, Any?>>) -> Unit) {
         val capture = imageCapture
             ?: return done(Result.failure(CaptureException.failed("camera not available")))
         val file = File(output).apply { delete() }
         capture.takePicture(
-            ImageCapture.OutputFileOptions.Builder(file).build(),
+            ImageCapture.OutputFileOptions.Builder(file)
+                // Saved as the preview shows it: the flip lands in the EXIF
+                // orientation with the rotation.
+                .setMetadata(
+                    ImageCapture.Metadata().apply {
+                        isReversedHorizontal = mirrorFront && facing == "front"
+                    },
+                )
+                .build(),
             executor,
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(result: ImageCapture.OutputFileResults) {

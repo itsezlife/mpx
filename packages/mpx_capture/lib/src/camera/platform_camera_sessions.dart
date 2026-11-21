@@ -173,11 +173,14 @@ final class _PlatformCameraSession implements CameraSession {
   }
 
   @override
-  Future<CaptureOutput> capturePhoto({required String outputPath}) async {
+  Future<CaptureOutput> capturePhoto({
+    required String outputPath,
+    bool mirrorFront = false,
+  }) async {
     _available();
     final map = await _channel.invoke<Map<Object?, Object?>>(
       'cameraPhoto',
-      _args({'output': outputPath}),
+      _args({'output': outputPath, 'mirrorFront': mirrorFront}),
     );
     return _output(map, video: false);
   }

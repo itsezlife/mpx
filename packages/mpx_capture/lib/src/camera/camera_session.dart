@@ -208,7 +208,8 @@ final class CameraSessionValue {
 ///   its facts; [startRecording] and [stopRecording] write an MP4 (H.264,
 ///   AAC when the microphone is allowed). Both fail with `CaptureFailed`
 ///   unless the session is available, and [stopRecording] unless it
-///   records. Captures are never mirrored.
+///   records. Captures are not mirrored, except a front camera's photo
+///   taken with `mirrorFront`.
 /// - [pause] stops frames until [resume]; a pause stops a recording first.
 /// - A newer session from the same `CameraSessions` takes the camera over:
 ///   this one turns [CameraSessionState.closed]. Every call on a closed
@@ -245,7 +246,12 @@ abstract interface class CameraSession {
   Future<void> resume();
 
   /// Takes a photo into [outputPath] (a JPEG; an existing file is replaced).
-  Future<CaptureOutput> capturePhoto({required String outputPath});
+  /// With [mirrorFront] a front camera's photo is saved mirrored, as its
+  /// preview shows it; a back camera's never is.
+  Future<CaptureOutput> capturePhoto({
+    required String outputPath,
+    bool mirrorFront = false,
+  });
 
   /// Starts recording a video into [outputPath] (an MP4).
   Future<void> startRecording({required String outputPath});

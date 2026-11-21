@@ -180,7 +180,9 @@ public class MpxCapturePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       session.resume()
       result(nil)
     case "cameraPhoto":
-      session.capturePhoto(output: args["output"] as? String ?? "", reply)
+      session.capturePhoto(
+        output: args["output"] as? String ?? "",
+        mirrorFront: args["mirrorFront"] as? Bool ?? false, reply)
     case "cameraRecordStart":
       session.startRecording(output: args["output"] as? String ?? "") { error in
         DispatchQueue.main.async { result(error.map { CaptureError.wrap($0).flutter }) }

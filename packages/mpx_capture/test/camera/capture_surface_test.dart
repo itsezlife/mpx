@@ -160,6 +160,57 @@ void main() {
     expect(File(shots.single.output.path).existsSync(), isTrue);
   });
 
+  testWidgets('a front camera photo is mirrored as the preview shows it, a '
+      'back one is not', (tester) async {
+    final session = await pumpSurface(tester);
+    await tester.tap(shutter());
+    await settle(tester);
+    await tester.runAsync(session.switchCamera);
+    (session as FakeCameraSession).deliverSwitchFrames();
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.tap(shutter());
+    await settle(tester);
+    expect(session.photosMirrored, [false, true]);
+  });
+
+  testWidgets('a recording slides the flash and the switch out to their '
+      'edge, fading, over 150 ms; they come back after', (tester) async {
+    await pumpSurface(tester);
+    Finder slot(String name) => find.byKey(ValueKey('mpx-capture-$name-slot'));
+    double opacity(String name) => tester
+        .widget<Opacity>(
+          find.descendant(of: slot(name), matching: find.byType(Opacity)),
+        )
+        .opacity;
+    double shift(String name) => tester
+        .widget<Transform>(
+          find.descendant(of: slot(name), matching: find.byType(Transform)),
+        )
+        .transform
+        .getTranslation()
+        .x;
+    expect(opacity('flash'), 1);
+    expect(opacity('switch'), 1);
+    final hold = await tester.startGesture(tester.getCenter(shutter()));
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+    await settle(tester);
+    await tester.pump(const Duration(milliseconds: 75));
+    expect(opacity('flash'), inExclusiveRange(0, 1));
+    expect(shift('switch'), inExclusiveRange(0, 30));
+    await tester.pump(const Duration(milliseconds: 80));
+    for (final name in ['flash', 'switch']) {
+      expect(opacity(name), 0, reason: name);
+      expect(shift(name), 30, reason: name);
+    }
+    await hold.up();
+    await settle(tester);
+    await tester.pump(const Duration(milliseconds: 160));
+    for (final name in ['flash', 'switch']) {
+      expect(opacity(name), 1, reason: name);
+      expect(shift(name), 0, reason: name);
+    }
+  });
+
   testWidgets('a hold records a video until released', (tester) async {
     final session = await pumpSurface(tester);
     final gesture = await tester.startGesture(tester.getCenter(shutter()));

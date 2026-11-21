@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `CameraSession.capturePhoto(mirrorFront:)` saves a front camera's photo
+  mirrored, as its preview shows it; `CameraCaptureSurface` does so by
+  default (`mirrorFrontPhotos`). Videos stay unmirrored. While recording,
+  the flash and the switch slide out to their edge and fade (150 ms).
 - `CameraSession.setZoom` (linear 0..1, `CameraSessionValue.zoom`) and
   `focusAt` (a point of the preview). The capture surface focuses where the
   picture is tapped (a closing ring), zooms with two fingers, and counts a
