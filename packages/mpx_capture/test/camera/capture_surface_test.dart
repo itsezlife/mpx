@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http_bytes_cache/http_bytes_cache.dart';
@@ -125,7 +124,9 @@ void main() {
         'the top', (tester) async {
       await pumpSurface(tester);
       final hold = await tester.startGesture(tester.getCenter(shutter()));
-      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(
+        CameraCaptureSurface.holdToRecord + const Duration(milliseconds: 50),
+      );
       await settle(tester);
       final timer = find.byKey(const ValueKey('mpx-capture-timer'));
       expect(timer, findsOneWidget);
@@ -192,7 +193,9 @@ void main() {
     expect(opacity('flash'), 1);
     expect(opacity('switch'), 1);
     final hold = await tester.startGesture(tester.getCenter(shutter()));
-    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+    await tester.pump(
+      CameraCaptureSurface.holdToRecord + const Duration(milliseconds: 50),
+    );
     await settle(tester);
     await tester.pump(const Duration(milliseconds: 75));
     expect(opacity('flash'), inExclusiveRange(0, 1));
@@ -222,10 +225,48 @@ void main() {
     expect(session.value.value.zoom, 0);
   });
 
+  testWidgets('a hold records only after 800 ms; the pressed shutter grows '
+      'to 1.06 over 120 ms and settles 40 ms after the release', (
+    tester,
+  ) async {
+    final session = await pumpSurface(tester);
+    double scale() => tester
+        .widget<Transform>(
+          find.descendant(of: shutter(), matching: find.byType(Transform)),
+        )
+        .transform
+        .getMaxScaleOnAxis();
+    expect(
+      CameraCaptureSurface.holdToRecord,
+      const Duration(milliseconds: 800),
+    );
+    final press = await tester.startGesture(tester.getCenter(shutter()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(scale(), inExclusiveRange(1, 1.06));
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(scale(), closeTo(1.06, 1e-9));
+    await tester.pump(const Duration(milliseconds: 600));
+    await settle(tester);
+    expect(session.value.value.isRecording, isFalse, reason: 'at 720 ms');
+    await tester.pump(const Duration(milliseconds: 100));
+    await settle(tester);
+    expect(session.value.value.isRecording, isTrue);
+    await press.up();
+    await tester.pump(const Duration(milliseconds: 39));
+    expect(scale(), closeTo(1.06, 1e-9));
+    await tester.pump(const Duration(milliseconds: 2));
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(scale(), closeTo(1, 1e-9));
+    await settle(tester);
+  });
+
   testWidgets('a hold records a video until released', (tester) async {
     final session = await pumpSurface(tester);
     final gesture = await tester.startGesture(tester.getCenter(shutter()));
-    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+    await tester.pump(
+      CameraCaptureSurface.holdToRecord + const Duration(milliseconds: 50),
+    );
     await settle(tester);
     expect(session.value.value.isRecording, isTrue);
     await gesture.up();
@@ -237,7 +278,9 @@ void main() {
   testWidgets('photo only: a hold records nothing', (tester) async {
     final session = await pumpSurface(tester, kinds: CaptureKinds.photo);
     final gesture = await tester.startGesture(tester.getCenter(shutter()));
-    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+    await tester.pump(
+      CameraCaptureSurface.holdToRecord + const Duration(milliseconds: 50),
+    );
     await settle(tester);
     expect(session.value.value.isRecording, isFalse);
     await gesture.up();

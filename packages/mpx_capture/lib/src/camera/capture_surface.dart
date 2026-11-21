@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_capture/src/cache/capture_cache.dart';
 import 'package:mpx_capture/src/camera/camera_preview.dart';
@@ -158,6 +159,9 @@ class CameraCaptureSurface extends StatefulWidget {
           },
         ),
       );
+
+  /// How long the shutter is held before a video starts recording.
+  static const Duration holdToRecord = Duration(milliseconds: 800);
 
   /// The running session.
   final CameraSession session;
@@ -682,7 +686,7 @@ class _AsideWhileRecording extends StatelessWidget {
   }
 }
 
-class _Shutter extends StatelessWidget {
+class _Shutter extends StatefulWidget {
   const _Shutter({
     required this.label,
     required this.recording,
@@ -700,25 +704,100 @@ class _Shutter extends StatelessWidget {
   final VoidCallback onHoldEnd;
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    key: const ValueKey('mpx-capture-shutter'),
-    button: true,
-    enabled: enabled,
-    label: label,
-    onTap: enabled ? onTap : null,
-    child: GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: enabled ? onTap : null,
-      onLongPressStart: enabled ? (_) => onHoldStart() : null,
-      onLongPressEnd: enabled ? (_) => onHoldEnd() : null,
-      child: SizedBox.square(
-        dimension: 76,
-        child: CustomPaint(
-          painter: _ShutterPainter(recording: recording, enabled: enabled),
+  State<_Shutter> createState() => _ShutterState();
+}
+
+// Pressed, the shutter grows to 1.06 over 120 ms, decelerating; released,
+// it settles back the same way after 40 ms.
+class _ShutterState extends State<_Shutter>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _press;
+  Timer? _release;
+
+  @override
+  void initState() {
+    super.initState();
+    _press = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 120),
+    );
+  }
+
+  @override
+  void dispose() {
+    _release?.cancel();
+    _press.dispose();
+    super.dispose();
+  }
+
+  void _down(PointerDownEvent _) {
+    if (!widget.enabled) return;
+    _release?.cancel();
+    _press.forward().ignore();
+  }
+
+  void _up(PointerEvent _) {
+    _release?.cancel();
+    _release = Timer(const Duration(milliseconds: 40), () {
+      if (mounted) _press.reverse().ignore();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.enabled;
+    return Semantics(
+      key: const ValueKey('mpx-capture-shutter'),
+      button: true,
+      enabled: enabled,
+      label: widget.label,
+      onTap: enabled ? widget.onTap : null,
+      child: Listener(
+        onPointerDown: _down,
+        onPointerUp: _up,
+        onPointerCancel: _up,
+        child: RawGestureDetector(
+          behavior: HitTestBehavior.opaque,
+          gestures: {
+            if (enabled)
+              TapGestureRecognizer:
+                  GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+                    TapGestureRecognizer.new,
+                    (tap) => tap.onTap = widget.onTap,
+                  ),
+            if (enabled)
+              LongPressGestureRecognizer:
+                  GestureRecognizerFactoryWithHandlers<
+                    LongPressGestureRecognizer
+                  >(
+                    () => LongPressGestureRecognizer(
+                      duration: CameraCaptureSurface.holdToRecord,
+                    ),
+                    (hold) => hold
+                      ..onLongPressStart = ((_) => widget.onHoldStart())
+                      ..onLongPressEnd = ((_) => widget.onHoldEnd()),
+                  ),
+          },
+          child: AnimatedBuilder(
+            animation: _press,
+            builder: (context, child) => Transform.scale(
+              scale: 1 + 0.06 * Curves.decelerate.transform(_press.value),
+              child: child,
+            ),
+            child: SizedBox.square(
+              dimension: 76,
+              child: CustomPaint(
+                painter: _ShutterPainter(
+                  recording: widget.recording,
+                  enabled: enabled,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _ShutterPainter extends CustomPainter {
