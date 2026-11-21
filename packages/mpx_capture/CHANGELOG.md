@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The kept shots strip draws the reference's cell (80 square, 6 apart, a
+  recording's duration pill, the selection check and number;
+  `shotOrder`, `onShotToggle`, `shotSelection`) with a picture of each
+  shot: a photo's own, a recording's first frame
+  (`CaptureOutput.posterPath`, a small JPEG the platform writes beside the
+  video).
 - A camera switch turns one card: while it turns, only the snapshot is
   drawn (the live frames under it, mirrored and shaped differently, no
   longer show at its edges).

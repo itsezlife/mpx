@@ -76,6 +76,7 @@ final class CaptureOutput {
     required this.dimensions,
     required this.headerRewritten,
     this.reencoded = true,
+    this.posterPath,
   });
 
   /// Absolute path of the MP4 file.
@@ -98,6 +99,11 @@ final class CaptureOutput {
   /// instead of encoding it again.
   final bool reencoded;
 
+  /// A recording's first frame as a small JPEG beside it (320 on its long
+  /// side), for a thumbnail; null for a photo, or when it could not be read.
+  /// It stays a file: moving the capture into a cache leaves it.
+  final String? posterPath;
+
   @override
   bool operator ==(Object other) =>
       other is CaptureOutput &&
@@ -106,11 +112,19 @@ final class CaptureOutput {
       other.duration == duration &&
       other.dimensions == dimensions &&
       other.headerRewritten == headerRewritten &&
-      other.reencoded == reencoded;
+      other.reencoded == reencoded &&
+      other.posterPath == posterPath;
 
   @override
-  int get hashCode =>
-      Object.hash(path, size, duration, dimensions, headerRewritten, reencoded);
+  int get hashCode => Object.hash(
+    path,
+    size,
+    duration,
+    dimensions,
+    headerRewritten,
+    reencoded,
+    posterPath,
+  );
 
   @override
   String toString() =>

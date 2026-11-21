@@ -507,6 +507,35 @@ class CameraSession(
         done(runCatching { videoFacts(path, event.recordingStats.recordedDurationNanos / 1000) })
     }
 
+    // The first frame as a small JPEG beside the video (320 on its long
+    // side), upright: what a thumbnail of the recording shows. Null when the
+    // frame cannot be read.
+    private fun poster(retriever: MediaMetadataRetriever, path: String): String? = try {
+        val frame = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+        if (frame == null) {
+            null
+        } else {
+            val scale = 320f / maxOf(frame.width, frame.height)
+            val small = if (scale < 1f) {
+                android.graphics.Bitmap.createScaledBitmap(
+                    frame,
+                    maxOf(1, (frame.width * scale).toInt()),
+                    maxOf(1, (frame.height * scale).toInt()),
+                    true,
+                )
+            } else {
+                frame
+            }
+            val file = File("$path.poster.jpg")
+            file.outputStream().use { small.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, it) }
+            if (small !== frame) small.recycle()
+            frame.recycle()
+            file.path
+        }
+    } catch (error: Exception) {
+        null
+    }
+
     private fun videoFacts(path: String, durationUs: Long): Map<String, Any?> {
         val retriever = MediaMetadataRetriever()
         try {
@@ -521,6 +550,7 @@ class CameraSession(
                 "width" to maxOf(1, if (turned) height else width),
                 "height" to maxOf(1, if (turned) width else height),
                 "durationUs" to durationUs,
+                "poster" to poster(retriever, path),
             )
         } finally {
             retriever.release()

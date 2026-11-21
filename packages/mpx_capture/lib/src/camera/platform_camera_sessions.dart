@@ -429,6 +429,7 @@ final class _PlatformCameraSession implements CameraSession {
       duration: Duration(microseconds: map['durationUs'] as int? ?? 0),
       dimensions: MediaDimensions(map['width']! as int, map['height']! as int),
       headerRewritten: video,
+      posterPath: map['poster'] as String?,
     );
   }
 }

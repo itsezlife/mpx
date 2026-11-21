@@ -63,7 +63,8 @@ void main() {
   Future<void> settle(WidgetTester tester) async {
     // Captures write real files (and the cache reads them): let real time
     // pass, then build what changed.
-    for (var i = 0; i < 3; i++) {
+    // Captures write and read real files: let real time pass.
+    for (var i = 0; i < 8; i++) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 10)),
       );
@@ -579,6 +580,106 @@ void main() {
     expect(tester.getCenter(shutter()).dy, shutterAt - 96);
     await tester.tap(counter);
     expect(opened, 1);
+  });
+
+  testWidgets('a kept shot\'s strip cell: 80 square 6 apart, the picture '
+      '(a recording\'s first frame), its duration, the selection number; a '
+      'tap toggles it', (tester) async {
+    tester.view
+      ..physicalSize = const Size(400, 800)
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final kept = ValueNotifier(<CameraShot>[]);
+    addTearDown(kept.dispose);
+    final selected = ValueNotifier(<CameraShot>[]);
+    addTearDown(selected.dispose);
+    final session = await tester.runAsync(() => sessions.open());
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: CameraCaptureSurface(
+          session: session!,
+          labels: CaptureSurfaceLabels(
+            close: 'Close',
+            shutter: 'Shutter',
+            switchCamera: 'Switch camera',
+            flash: 'Flash',
+            shotsCount: (photos, videos) => '$photos/$videos',
+          ),
+          outputDirectory: directory.path,
+          onCaptured: shots.add,
+          onClose: () {},
+          shots: kept,
+          shotSelection: selected,
+          shotOrder: (shot) {
+            final i = selected.value.indexOf(shot);
+            return i < 0 ? null : i + 1;
+          },
+          onShotToggle: (shot) {
+            final now = [...selected.value];
+            if (!now.remove(shot)) now.add(shot);
+            selected.value = now;
+          },
+          videoNeedsMicrophone: false,
+        ),
+      ),
+    );
+    await tester.tap(shutter());
+    // The photo's file is read for its cell before the next shot.
+    for (var i = 0; i < 5 && shots.isEmpty; i++) {
+      await settle(tester);
+    }
+    final hold = await tester.startGesture(tester.getCenter(shutter()));
+    await tester.pump(
+      CameraCaptureSurface.holdToRecord + const Duration(milliseconds: 50),
+    );
+    await settle(tester);
+    await tester.pump(const Duration(seconds: 1));
+    await hold.up();
+    for (var i = 0; i < 5 && shots.length < 2; i++) {
+      await settle(tester);
+    }
+    expect(shots.map((s) => s.isVideo), [false, true]);
+    // The posters decode on their own.
+    for (var i = 0; i < 5; i++) {
+      await settle(tester);
+    }
+    kept.value = [...shots];
+    selected.value = [shots.last];
+    await tester.pump();
+    Finder cellOf(CameraShot shot) => find.byKey(
+      ValueKey(('mpx-capture-shot', shot.key ?? shot.output.path)),
+    );
+    final video = cellOf(shots.last);
+    expect(tester.getSize(cellOf(shots.first)), const Size(86, 80));
+    expect(tester.getSize(video), const Size(80, 80), reason: 'the last');
+    expect(
+      find.descendant(of: video, matching: find.byType(RawImage)),
+      findsOneWidget,
+      reason: "the recording's first frame",
+    );
+    final duration = find.descendant(
+      of: video,
+      matching: find.byKey(const ValueKey('mpx-capture-shot-duration')),
+    );
+    expect(tester.getSize(duration).height, 17);
+    expect(
+      tester.getBottomLeft(duration) - tester.getBottomLeft(video),
+      const Offset(4, -4),
+    );
+    final check = find.descendant(
+      of: video,
+      matching: find.byKey(const ValueKey('mpx-capture-shot-check')),
+    );
+    expect(tester.getRect(check).size, const Size(24, 24));
+    expect(
+      tester.renderObject(check),
+      paints..circle(color: const Color(0xFF229AF0)),
+      reason: 'number 1',
+    );
+    await tester.tap(cellOf(shots.first));
+    await tester.pump();
+    expect(selected.value, [shots.last, shots.first]);
   });
 
   group('swipe to dismiss', () {

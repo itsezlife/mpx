@@ -67,7 +67,8 @@ void main() {
   Finder shutter() => find.byKey(const ValueKey('mpx-capture-shutter'));
 
   Future<void> settle(WidgetTester tester) async {
-    for (var i = 0; i < 3; i++) {
+    // Captures write and read real files: let real time pass.
+    for (var i = 0; i < 8; i++) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 10)),
       );

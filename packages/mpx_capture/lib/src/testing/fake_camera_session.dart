@@ -344,6 +344,9 @@ final class FakeCameraSession implements CameraSession {
     _recordingPath = null;
     final bytes = Uint8List(4096);
     File(path).writeAsBytesSync(bytes);
+    // A small picture beside it, as a platform writes the first frame.
+    final poster = '$path.poster.jpg';
+    File(poster).writeAsBytesSync(_posterBytes);
     _value.value = _now.copyWith(isRecording: false);
     return CaptureOutput(
       path: path,
@@ -351,6 +354,7 @@ final class FakeCameraSession implements CameraSession {
       duration: _recording.elapsed,
       dimensions: const MediaDimensions(1080, 1920),
       headerRewritten: true,
+      posterPath: poster,
     );
   }
 
@@ -383,3 +387,80 @@ final class FakeCameraSession implements CameraSession {
     }
   }
 }
+
+// A 2 x 2 PNG: a stand-in poster any image codec reads.
+final Uint8List _posterBytes = Uint8List.fromList(const [
+  137,
+  80,
+  78,
+  71,
+  13,
+  10,
+  26,
+  10,
+  0,
+  0,
+  0,
+  13,
+  73,
+  72,
+  68,
+  82,
+  0,
+  0,
+  0,
+  2,
+  0,
+  0,
+  0,
+  2,
+  8,
+  2,
+  0,
+  0,
+  0,
+  253,
+  212,
+  154,
+  115,
+  0,
+  0,
+  0,
+  16,
+  73,
+  68,
+  65,
+  84,
+  120,
+  156,
+  99,
+  56,
+  81,
+  161,
+  1,
+  68,
+  12,
+  16,
+  10,
+  0,
+  41,
+  238,
+  5,
+  161,
+  140,
+  9,
+  206,
+  136,
+  0,
+  0,
+  0,
+  0,
+  73,
+  69,
+  78,
+  68,
+  174,
+  66,
+  96,
+  130,
+]);

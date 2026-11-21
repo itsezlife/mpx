@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -137,6 +139,9 @@ class CameraCaptureSurface extends StatefulWidget {
     this.onShotRemoved,
     this.shots,
     this.onShotsTap,
+    this.shotOrder,
+    this.onShotToggle,
+    this.shotSelection,
     super.key,
   });
 
@@ -161,6 +166,9 @@ class CameraCaptureSurface extends StatefulWidget {
     ValueChanged<CameraShot>? onShotRemoved,
     ValueListenable<List<CameraShot>>? shots,
     VoidCallback? onShotsTap,
+    int? Function(CameraShot shot)? shotOrder,
+    ValueChanged<CameraShot>? onShotToggle,
+    Listenable? shotSelection,
     Duration transition = const Duration(milliseconds: 350),
     Duration closeTransition = const Duration(milliseconds: 220),
   }) async {
@@ -197,6 +205,9 @@ class CameraCaptureSurface extends StatefulWidget {
               onShotRemoved: onShotRemoved,
               shots: shots,
               onShotsTap: onShotsTap,
+              shotOrder: shotOrder,
+              onShotToggle: onShotToggle,
+              shotSelection: shotSelection,
             );
           },
           transitionsBuilder: (context, animation, _, child) {
@@ -290,6 +301,18 @@ class CameraCaptureSurface extends StatefulWidget {
 
   /// Called by the shots counter: the host opens its viewer over them.
   final VoidCallback? onShotsTap;
+
+  /// A kept shot's number in the host's selection (1-based), or null when
+  /// it is not selected: the strip cell's check shows it.
+  final int? Function(CameraShot shot)? shotOrder;
+
+  /// Called by a strip cell's tap or check: the host toggles the shot in its
+  /// selection.
+  final ValueChanged<CameraShot>? onShotToggle;
+
+  /// Tells the strip that [shotOrder]'s answers changed (the host's
+  /// selection).
+  final Listenable? shotSelection;
 
   @override
   State<CameraCaptureSurface> createState() => _CameraCaptureSurfaceState();
@@ -534,6 +557,49 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
   late final AnimationController _blink;
   final List<CameraShot> _results = [];
 
+  // A small picture of each shot taken here, read from its file (a photo)
+  // or its poster (a recording) before the file moves into a cache.
+  final Map<Object, ui.Image> _thumbs = {};
+
+  static Object _thumbKey(CameraShot shot) => shot.key ?? shot.output.path;
+
+  // The file's bytes are read before the capture moves into a cache; the
+  // decode then runs on its own and the cell shows the picture when it is
+  // ready, so the next shot never waits for it.
+  Future<void> _thumbnail(
+    CaptureOutput output, {
+    required bool isVideo,
+    required Object key,
+  }) async {
+    // Only the strip's own cells draw them.
+    final drawn =
+        widget.resultBuilder == null &&
+        _policy.shotsCounter &&
+        widget.labels.shotsCount != null;
+    final path = isVideo ? output.posterPath : output.path;
+    if (!drawn || path == null) return;
+    final Uint8List bytes;
+    try {
+      bytes = await File(path).readAsBytes();
+    } on Object {
+      return;
+    }
+    unawaited(() async {
+      try {
+        final codec = await ui.instantiateImageCodec(bytes, targetWidth: 240);
+        final frame = await codec.getNextFrame();
+        codec.dispose();
+        if (!mounted) return frame.image.dispose();
+        setState(() {
+          _thumbs[key]?.dispose();
+          _thumbs[key] = frame.image;
+        });
+      } on Object {
+        // No picture: the cell keeps its background.
+      }
+    }());
+  }
+
   // The host's shots when it keeps them, else the ones taken here.
   List<CameraShot> get _shotList => widget.shots?.value ?? _results;
 
@@ -735,19 +801,31 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 children: [
-                  for (final shot in _shotList)
-                    SizedBox.square(
+                  for (final (i, shot) in _shotList.indexed)
+                    // 80 square cells 6 apart, the last with no gap.
+                    Padding(
                       key: ValueKey((
                         'mpx-capture-shot',
                         shot.key ?? shot.output.path,
                       )),
-                      dimension: 80,
-                      child:
-                          widget.resultBuilder?.call(context, shot) ??
-                          const Padding(
-                            padding: EdgeInsets.all(2),
-                            child: ColoredBox(color: Color(0x66FFFFFF)),
-                          ),
+                      padding: EdgeInsetsDirectional.only(
+                        end: i == _shotList.length - 1 ? 0 : 6,
+                      ),
+                      child: SizedBox.square(
+                        dimension: 80,
+                        child:
+                            widget.resultBuilder?.call(context, shot) ??
+                            ListenableBuilder(
+                              listenable:
+                                  widget.shotSelection ?? const _Never(),
+                              builder: (context, _) => _ShotCell(
+                                shot: shot,
+                                thumbnail: _thumbs[_thumbKey(shot)],
+                                order: widget.shotOrder?.call(shot),
+                                onToggle: () => widget.onShotToggle?.call(shot),
+                              ),
+                            ),
+                      ),
                     ),
                 ],
               ),
@@ -978,6 +1056,9 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     _crossIdle?.cancel();
     _zoomBack?.cancel();
     _blink.dispose();
+    for (final image in _thumbs.values) {
+      image.dispose();
+    }
     _panel.dispose();
     _settle.dispose();
     _dragY.dispose();
@@ -1014,13 +1095,9 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
       unawaited(_quietly(() => _session.setZoom(0)));
     }
     final cache = widget.cache;
-    final MediaKey$Local? key;
-    if (cache == null) {
-      key = null;
-    } else {
-      key = cache.mintKey();
-      await cache.put(key, output);
-    }
+    final key = cache?.mintKey();
+    await _thumbnail(output, isVideo: isVideo, key: key ?? output.path);
+    if (cache != null && key != null) await cache.put(key, output);
     final shot = CameraShot(isVideo: isVideo, output: output, key: key);
     if (widget.shots == null && mounted) setState(() => _results.add(shot));
     widget.onCaptured(shot);
@@ -1384,6 +1461,172 @@ class _AsideWhileRecording extends StatelessWidget {
       ),
     );
   }
+}
+
+// A listenable that never notifies.
+class _Never implements Listenable {
+  const _Never();
+
+  @override
+  void addListener(VoidCallback listener) {}
+
+  @override
+  void removeListener(VoidCallback listener) {}
+}
+
+// A kept shot in the strip, as the reference draws its attach cell there:
+// the picture 80 square over a 5 % black background; a recording's
+// duration in a 17 high pill at its bottom start (4 in, 5 padding, a
+// play mark 8 x 10, the time 12 bold white, 13 after the mark's start, on
+// 40 % black, radius 4); the check 24 at 52, 4 (a white ring, or the
+// selection number on the accent when checked). A tap anywhere toggles.
+class _ShotCell extends StatelessWidget {
+  const _ShotCell({
+    required this.shot,
+    required this.thumbnail,
+    required this.order,
+    required this.onToggle,
+  });
+
+  final CameraShot shot;
+  final ui.Image? thumbnail;
+  final int? order;
+  final VoidCallback onToggle;
+
+  static String _duration(Duration time) {
+    final s = time.inSeconds;
+    return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final picture = thumbnail;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onToggle,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const ColoredBox(color: Color(0x0C000000)),
+          if (picture != null) RawImage(image: picture, fit: BoxFit.cover),
+          if (shot.isVideo)
+            PositionedDirectional(
+              start: 4,
+              bottom: 4,
+              height: 17,
+              child: Container(
+                key: const ValueKey('mpx-capture-shot-duration'),
+                padding: const EdgeInsets.symmetric(horizontal: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0x66000000),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CustomPaint(
+                      size: Size(8, 10),
+                      painter: _PlayMarkPainter(),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      _duration(shot.output.duration),
+                      style: const TextStyle(
+                        color: Color(0xFFFFFFFF),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          Positioned(
+            left: 52 + 1,
+            top: 4 + 1,
+            width: 24,
+            height: 24,
+            child: CustomPaint(
+              key: const ValueKey('mpx-capture-shot-check'),
+              painter: _CheckPainter(order),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlayMarkPainter extends CustomPainter {
+  const _PlayMarkPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) => canvas.drawPath(
+    Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width, size.height / 2)
+      ..lineTo(0, size.height)
+      ..close(),
+    Paint()..color = const Color(0xFFFFFFFF),
+  );
+
+  @override
+  bool shouldRepaint(_PlayMarkPainter oldDelegate) => false;
+}
+
+// The selection check: unchecked a white ring 1.5 thick over a light
+// shade; checked the accent disc with a white ring and the number.
+class _CheckPainter extends CustomPainter {
+  const _CheckPainter(this.order);
+
+  final int? order;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    final r = size.shortestSide / 2;
+    final number = order;
+    if (number == null) {
+      canvas
+        ..drawCircle(c, r - 1, Paint()..color = const Color(0x22000000))
+        ..drawCircle(
+          c,
+          r - 1,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color = const Color(0xFFFFFFFF),
+        );
+      return;
+    }
+    canvas
+      ..drawCircle(c, r, Paint()..color = const Color(0xFF229AF0))
+      ..drawCircle(
+        c,
+        r - 0.75,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5
+          ..color = const Color(0xFFFFFFFF),
+      );
+    final text = TextPainter(
+      text: TextSpan(
+        text: '$number',
+        style: const TextStyle(
+          color: Color(0xFFFFFFFF),
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    text.paint(canvas, c - Offset(text.width / 2, text.height / 2));
+    text.dispose();
+  }
+
+  @override
+  bool shouldRepaint(_CheckPainter oldDelegate) => oldDelegate.order != order;
 }
 
 // The shots counter: bold white text with a chevron 4 after it, 16 in from

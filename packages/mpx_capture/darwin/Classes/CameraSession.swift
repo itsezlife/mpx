@@ -1,4 +1,5 @@
 import AVFoundation
+import ImageIO
 import CoreMedia
 import CoreVideo
 
@@ -418,14 +419,32 @@ final class CameraSession: NSObject, FlutterTexture,
               .failure(
                 CaptureError.failed(writer.error?.localizedDescription ?? "cannot finish writing")))
           }
-          done(
-            .success([
-              "path": url.path, "size": fileSize(url), "width": width, "height": height,
-              "durationUs": Int(CMTimeGetSeconds(duration) * 1_000_000),
-            ]))
+          var facts: [String: Any] = [
+            "path": url.path, "size": fileSize(url), "width": width, "height": height,
+            "durationUs": Int(CMTimeGetSeconds(duration) * 1_000_000),
+          ]
+          if let poster = Self.poster(of: url) { facts["poster"] = poster }
+          done(.success(facts))
         }
       }
     }
+  }
+
+  /// The first frame as a small JPEG beside the video (320 on its long
+  /// side), upright; nil when it cannot be read.
+  static func poster(of url: URL) -> String? {
+    let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+    generator.appliesPreferredTrackTransform = true
+    generator.maximumSize = CGSize(width: 320, height: 320)
+    guard let image = try? generator.copyCGImage(at: .zero, actualTime: nil) else { return nil }
+    let path = url.path + ".poster.jpg"
+    guard
+      let destination = CGImageDestinationCreateWithURL(
+        URL(fileURLWithPath: path) as CFURL, "public.jpeg" as CFString, 1, nil)
+    else { return nil }
+    CGImageDestinationAddImage(
+      destination, image, [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
+    return CGImageDestinationFinalize(destination) ? path : nil
   }
 
   func close() {
