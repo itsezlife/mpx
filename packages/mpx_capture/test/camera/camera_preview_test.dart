@@ -235,4 +235,37 @@ void main() {
       },
     );
   }
+
+  testWidgets('the turn keeps its card within a little of the preview: the eye '
+      'stands four heights away', (tester) async {
+    final sessions = FakeCameraSessions(textureId: 3, holdsSwitchFrames: true);
+    final session = await tester.runAsync(sessions.open);
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Center(
+          child: SizedBox(
+            width: 360,
+            height: 780,
+            child: CameraPreview(session: session!),
+          ),
+        ),
+      ),
+    );
+    await tester.runAsync(session.switchCamera);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
+    final turn = tester
+        .widgetList<Transform>(find.byType(Transform))
+        .firstWhere((t) => t.transform.storage[11] != 0);
+    // The card's corners, from its centre: the near edge grows by less than
+    // 15 % of the height (the eye at four heights), where an eye at 1000
+    // grew it past the screen.
+    for (final corner in const [Offset(180, 390), Offset(-180, 390)]) {
+      final at = MatrixUtils.transformPoint(turn.transform, corner);
+      expect(at.dy.abs(), lessThan(390 * 1.15));
+    }
+    sessions.current!.deliverSwitchFrames();
+    await tester.pump(const Duration(milliseconds: 600));
+  });
 }

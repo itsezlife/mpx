@@ -292,8 +292,10 @@ class _CameraPreviewState extends State<CameraPreview>
           if (turning) {
             shown = Transform(
               alignment: Alignment.center,
+              // The eye stands 4 heights away, so the card's near edge
+              // grows only a little as it turns.
               transform: Matrix4.identity()
-                ..setEntry(3, 2, 0.001)
+                ..setEntry(3, 2, 1 / (4 * constraints.maxHeight))
                 ..rotateY(angle),
               child: shown,
             );
