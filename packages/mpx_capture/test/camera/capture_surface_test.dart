@@ -222,11 +222,9 @@ void main() {
     expect(find.byType(Texture), findsOneWidget);
   });
 
-  testWidgets('expanding from the slot, only the preview morphs: the '
-      'controls are laid out at the whole screen at every step, fade in '
-      'after the expand and out before the collapse, and never overflow', (
-    tester,
-  ) async {
+  testWidgets('expanding from the slot over 350 ms on an ease curve, the '
+      'preview grows from the slot to the screen and the controls fade in '
+      'with it; closing takes 220 ms back the same way', (tester) async {
     tester.view
       ..physicalSize = const Size(400, 800)
       ..devicePixelRatio = 1;
@@ -249,7 +247,7 @@ void main() {
       ),
     );
     const slot = Rect.fromLTWH(10, 300, 90, 90);
-    const screen = Size(400, 800);
+    const screen = Rect.fromLTWH(0, 0, 400, 800);
     final controls = find.byKey(const ValueKey('mpx-capture-controls'));
     final preview = find.byType(CameraPreview);
     double opacity() => tester
@@ -257,6 +255,16 @@ void main() {
           find.byKey(const ValueKey('mpx-capture-controls-fade')),
         )
         .opacity;
+    void expectRect(Rect actual, Rect expected, String at) {
+      for (final (a, e) in [
+        (actual.left, expected.left),
+        (actual.top, expected.top),
+        (actual.right, expected.right),
+        (actual.bottom, expected.bottom),
+      ]) {
+        expect(a, closeTo(e, 0.5), reason: '$at: $actual vs $expected');
+      }
+    }
 
     CameraCaptureSurface.show(
       home,
@@ -266,44 +274,36 @@ void main() {
       onCaptured: shots.add,
       from: slot,
     ).ignore();
-    // 350 ms of expansion, then 150 ms of fade, sampled every 25 ms.
-    final opacities = <double>[];
-    for (var t = 0; t <= 500; t += 25) {
-      await tester.pump(
-        t == 0 ? Duration.zero : const Duration(milliseconds: 25),
+    await tester.pump();
+    var at = 0;
+    for (final ms in [0, 70, 175, 280, 350]) {
+      if (ms > at) await tester.pump(Duration(milliseconds: ms - at));
+      at = ms;
+      final p = Curves.ease.transform(ms / 350);
+      expectRect(
+        tester.getRect(preview),
+        Rect.lerp(slot, screen, p)!,
+        '$ms ms',
       );
-      expect(tester.takeException(), isNull, reason: 'no overflow at $t ms');
-      expect(tester.getSize(controls), screen, reason: 'controls at $t ms');
-      expect(
-        tester.getSize(find.byKey(const ValueKey('mpx-capture-shutter'))),
-        const Size(76, 76),
-      );
-      opacities.add(opacity());
-      if (t < 350) {
-        expect(opacity(), 0, reason: 'hidden while expanding ($t ms)');
-      }
+      expect(opacity(), closeTo(p, 1e-6), reason: 'controls with it, $ms ms');
+      expect(tester.getSize(controls), screen.size, reason: '$ms ms');
+      expect(tester.takeException(), isNull);
     }
-    expect(tester.getRect(preview), Offset.zero & screen);
-    expect(opacities.last, 1);
-    expect(opacities.first, 0);
     await settle(tester);
 
     await tester.tap(find.byKey(const ValueKey('mpx-capture-close')));
-    var collapsing = false;
-    for (var t = 0; t <= 500; t += 25) {
-      await tester.pump(
-        t == 0 ? Duration.zero : const Duration(milliseconds: 25),
+    await tester.pump();
+    for (final ms in [0, 110, 220]) {
+      if (ms > 0) await tester.pump(const Duration(milliseconds: 110));
+      final p = 1 - Curves.ease.transform(ms / 220);
+      if (preview.evaluate().isEmpty) break;
+      expectRect(
+        tester.getRect(preview),
+        Rect.lerp(slot, screen, p)!,
+        'close $ms ms',
       );
-      expect(tester.takeException(), isNull, reason: 'no overflow at $t ms');
-      if (controls.evaluate().isEmpty) break;
-      expect(tester.getSize(controls), screen, reason: 'controls at $t ms');
-      final rect = tester.getRect(preview);
-      if (rect.size != screen) {
-        collapsing = true;
-        expect(opacity(), 0, reason: 'faded out before the collapse');
-      }
+      expect(opacity(), closeTo(p, 1e-6), reason: 'close $ms ms');
     }
-    expect(collapsing, isTrue);
     await tester.pumpAndSettle();
     expect(find.byType(CameraCaptureSurface), findsNothing);
   });

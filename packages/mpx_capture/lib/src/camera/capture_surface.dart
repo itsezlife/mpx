@@ -104,10 +104,6 @@ class CameraCaptureSurface extends StatefulWidget {
     super.key,
   });
 
-  /// The share of [show]'s transition the controls take to fade, after the
-  /// preview has expanded (and before it collapses).
-  static const Duration controlsFade = Duration(milliseconds: 150);
-
   /// Shows the surface over the app as a route; completes when it closes.
   /// [onCaptured] runs for each shot; the route pops on close. With [from]
   /// (the camera slot's rectangle, global) it expands from there over
@@ -122,52 +118,43 @@ class CameraCaptureSurface extends StatefulWidget {
     CaptureCache? cache,
     Rect? from,
     Duration transition = const Duration(milliseconds: 350),
-  }) {
-    // Expanding, only the preview morphs: the controls are laid out at the
-    // whole screen throughout, and fade in once the preview has expanded
-    // (out before it collapses), on a route that runs both in turn.
-    final total = from == null ? transition : transition + controlsFade;
-    final split = transition.inMicroseconds / total.inMicroseconds;
-    return Navigator.of(context).push<void>(
-      PageRouteBuilder<void>(
-        transitionDuration: total,
-        reverseTransitionDuration: total,
-        pageBuilder: (context, animation, _) => CameraCaptureSurface(
-          session: session,
-          labels: labels,
-          outputDirectory: outputDirectory,
-          onCaptured: onCaptured,
-          onClose: () => Navigator.of(context).pop(),
-          kinds: kinds,
-          cache: cache,
-          expandFrom: from,
-          expansion: switch (from) {
-            null => null,
-            _ => CurvedAnimation(
-              parent: animation,
-              curve: Interval(0, split, curve: Curves.easeOutCubic),
-              reverseCurve: Interval(0, split, curve: Curves.easeInCubic),
-            ),
+    Duration closeTransition = const Duration(milliseconds: 220),
+  }) =>
+      // The preview grows from the slot to the screen over [transition] on
+      // an ease curve (back over [closeTransition], the same curve in
+      // time), and the controls, laid out at the whole screen, fade with it.
+      Navigator.of(context).push<void>(
+        PageRouteBuilder<void>(
+          transitionDuration: transition,
+          reverseTransitionDuration: closeTransition,
+          pageBuilder: (context, animation, _) {
+            final progress = _EasedInTime(animation);
+            return CameraCaptureSurface(
+              session: session,
+              labels: labels,
+              outputDirectory: outputDirectory,
+              onCaptured: onCaptured,
+              onClose: () => Navigator.of(context).pop(),
+              kinds: kinds,
+              cache: cache,
+              expandFrom: from,
+              expansion: from == null ? null : progress,
+              controlsReveal: from == null ? null : progress,
+            );
           },
-          controlsReveal: switch (from) {
-            null => null,
-            _ => CurvedAnimation(parent: animation, curve: Interval(split, 1)),
+          transitionsBuilder: (context, animation, _, child) {
+            if (from != null) return child;
+            return FadeTransition(
+              opacity: CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+                reverseCurve: Curves.easeInCubic,
+              ),
+              child: child,
+            );
           },
         ),
-        transitionsBuilder: (context, animation, _, child) {
-          if (from != null) return child;
-          return FadeTransition(
-            opacity: CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOutCubic,
-              reverseCurve: Curves.easeInCubic,
-            ),
-            child: child,
-          );
-        },
-      ),
-    );
-  }
+      );
 
   /// The running session.
   final CameraSession session;
@@ -199,7 +186,7 @@ class CameraCaptureSurface extends StatefulWidget {
   /// throughout. Null without [expandFrom].
   final Animation<double>? expansion;
 
-  /// The controls' opacity, which [show] runs after the [expansion] (and,
+  /// The controls' opacity, which [show] runs with the [expansion] (and,
   /// backwards, before it); they take no touches until it is 1. Null for
   /// controls that are simply there.
   final Animation<double>? controlsReveal;
@@ -348,7 +335,7 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface> {
         animation: fade,
         child: controls,
         builder: (context, controls) => IgnorePointer(
-          ignoring: fade.value < 1,
+          ignoring: fade.value < 1 && fade.status != AnimationStatus.completed,
           child: Opacity(
             key: const ValueKey('mpx-capture-controls-fade'),
             opacity: fade.value.clamp(0.0, 1.0),
@@ -618,4 +605,24 @@ class _GlyphPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_GlyphPainter old) => old.glyph != glyph;
+}
+
+// The route's animation eased in time both ways: going out, `ease` of the
+// time gone (1 − ease(1 − t)), so the close runs the same curve as the
+// open, from its own start.
+class _EasedInTime extends Animation<double>
+    with AnimationWithParentMixin<double> {
+  _EasedInTime(this.parent);
+
+  @override
+  final Animation<double> parent;
+
+  @override
+  double get value {
+    final t = parent.value;
+    return switch (parent.status) {
+      AnimationStatus.reverse => 1 - Curves.ease.transform(1 - t),
+      _ => Curves.ease.transform(t),
+    };
+  }
 }
