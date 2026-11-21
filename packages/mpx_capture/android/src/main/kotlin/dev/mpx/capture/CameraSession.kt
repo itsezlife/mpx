@@ -142,17 +142,49 @@ class CameraSession(
         val next = if (facing == "front") "back" else "front"
         if (!provider.hasCamera(selector(next))) return facing
         facing = next
+        // A new camera starts at its own 1x.
+        zoomRatio = 1f
         awaitFrames()
         bind()
         return facing
     }
 
-    // Linear zoom, 0 to 1 over the camera's range; kept across rebinds.
-    private var zoom = 0f
+    // The zoom ratio (1 = the main camera's own view); kept across rebinds
+    // of the same camera.
+    private var zoomRatio = 1f
 
-    fun setZoom(value: Double) {
-        zoom = value.toFloat().coerceIn(0f, 1f)
-        camera?.cameraControl?.setLinearZoom(zoom)
+    private fun zoomRange(): Pair<Float, Float> {
+        val state = camera?.cameraInfo?.zoomState?.value ?: return 1f to 1f
+        return state.minZoomRatio to state.maxZoomRatio
+    }
+
+    /** Zooms to the ratio [value], clamped to the camera's range. */
+    fun setZoomFactor(value: Double) {
+        val (min, max) = zoomRange()
+        zoomRatio = value.toFloat().coerceIn(min, max)
+        camera?.cameraControl?.setZoomRatio(zoomRatio)
+    }
+
+    /**
+     * Sets the exposure compensation from -1 (darkest) to 1 (brightest)
+     * over the camera's range; nothing where the camera has none.
+     */
+    fun setExposure(value: Double) {
+        val camera = camera ?: return
+        val state = camera.cameraInfo.exposureState
+        if (!state.isExposureCompensationSupported) return
+        val range = state.exposureCompensationRange
+        val v = value.coerceIn(-1.0, 1.0)
+        val index = if (v >= 0) Math.round(v * range.upper).toInt() else Math.round(-v * range.lower).toInt()
+        camera.cameraControl.setExposureCompensationIndex(index)
+    }
+
+    // Preset ratios: the wide lens when the camera reaches below 1x, 1x, and
+    // 2x when it reaches that far.
+    private fun lenses(min: Float, max: Float): List<Double> = buildList {
+        if (min < 0.95f) add(Math.round(min * 10) / 10.0)
+        add(1.0)
+        if (max >= 2f) add(2.0)
     }
 
     /**
@@ -294,7 +326,7 @@ class CameraSession(
             return failOpen()
         }
         setFlash(flash)
-        camera?.cameraControl?.setLinearZoom(zoom)
+        setZoomFactor(zoomRatio.toDouble())
         applyFrameRate()
         emitState()
     }
@@ -462,7 +494,18 @@ class CameraSession(
         "hasFlash" to (camera?.cameraInfo?.hasFlashUnit() ?: false),
         "canSwitch" to canSwitch(),
         "microphone" to microphoneAccess(context),
-    )
+    ) + zoomFacts()
+
+    private fun zoomFacts(): Map<String, Any?> {
+        val (min, max) = zoomRange()
+        return mapOf(
+            "minZoom" to min.toDouble(),
+            "maxZoom" to max.toDouble(),
+            "zoomFactor" to zoomRatio.coerceIn(min, max).toDouble(),
+            "lenses" to lenses(min, max),
+            "hasExposure" to (camera?.cameraInfo?.exposureState?.isExposureCompensationSupported ?: false),
+        )
+    }
 
     private fun canSwitch(): Boolean {
         val provider = provider ?: return false

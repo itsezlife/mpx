@@ -147,9 +147,13 @@ final class _PlatformCameraSession implements CameraSession {
     try {
       final facing = await _channel.invoke<String>('cameraSwitch', _args());
       if (_now.state == CameraSessionState.closed) return _now.facing;
-      if (facing != null) {
+      if (facing != null && facing != before.name) {
+        // A new camera starts at its own 1x, with its own exposure.
         _value.value = _now.copyWith(
           facing: CameraFacing.values.byName(facing),
+          zoomFactor: 1,
+          zoom: CameraZoom.zoomOf(1, _now.minZoomFactor, _now.maxZoomFactor),
+          exposure: 0,
         );
       }
     } on Object {
@@ -195,8 +199,34 @@ final class _PlatformCameraSession implements CameraSession {
   Future<void> setZoom(double zoom) async {
     _open();
     final clamped = zoom.clamp(0.0, 1.0);
-    await _channel.invoke<void>('cameraZoom', _args({'zoom': clamped}));
-    _value.value = _now.copyWith(zoom: clamped);
+    final factor = CameraZoom.factorOf(
+      clamped,
+      _now.minZoomFactor,
+      _now.maxZoomFactor,
+    );
+    await _channel.invoke<void>('cameraZoomFactor', _args({'factor': factor}));
+    _value.value = _now.copyWith(zoom: clamped, zoomFactor: factor);
+  }
+
+  @override
+  Future<void> setZoomFactor(double factor) async {
+    _open();
+    final now = _now;
+    final clamped = factor.clamp(now.minZoomFactor, now.maxZoomFactor);
+    await _channel.invoke<void>('cameraZoomFactor', _args({'factor': clamped}));
+    _value.value = _now.copyWith(
+      zoomFactor: clamped,
+      zoom: CameraZoom.zoomOf(clamped, now.minZoomFactor, now.maxZoomFactor),
+    );
+  }
+
+  @override
+  Future<void> setExposure(double value) async {
+    _open();
+    if (!_now.hasExposure) return;
+    final clamped = value.clamp(-1.0, 1.0);
+    await _channel.invoke<void>('cameraExposure', _args({'value': clamped}));
+    _value.value = _now.copyWith(exposure: clamped);
   }
 
   @override
@@ -334,8 +364,28 @@ final class _PlatformCameraSession implements CameraSession {
       microphone: map.containsKey('microphone')
           ? _microphoneOf(map['microphone'])
           : null,
+      minZoomFactor: (map['minZoom'] as num?)?.toDouble(),
+      maxZoomFactor: (map['maxZoom'] as num?)?.toDouble(),
+      zoomFactor: (map['zoomFactor'] as num?)?.toDouble(),
+      lenses: switch (map['lenses']) {
+        final List<Object?> list => [
+          for (final lens in list) (lens! as num).toDouble(),
+        ],
+        _ => null,
+      },
+      hasExposure: map['hasExposure'] as bool?,
       isRecording: state == CameraSessionState.available ? null : false,
     );
+    if (map.containsKey('zoomFactor')) {
+      final now = _now;
+      _value.value = now.copyWith(
+        zoom: CameraZoom.zoomOf(
+          now.zoomFactor,
+          now.minZoomFactor,
+          now.maxZoomFactor,
+        ),
+      );
+    }
     if (map['firstFrame'] == true) _switched();
   }
 

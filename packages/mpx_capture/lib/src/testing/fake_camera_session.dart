@@ -27,9 +27,25 @@ final class FakeCameraSessions implements CameraSessions {
     this.textureId,
     this.holdsSwitchFrames = false,
     this.microphone = MicrophoneAccess.granted,
+    this.minZoomFactor = 1,
+    this.maxZoomFactor = 10,
+    this.lenses = const [1, 2],
+    this.hasExposure = true,
     this.microphoneOnRequest = MicrophoneAccess.granted,
     FakeCamera? camera,
   }) : camera = camera ?? FakeCamera();
+
+  /// The zoom factors the cameras reach.
+  final double minZoomFactor;
+
+  /// See [minZoomFactor].
+  final double maxZoomFactor;
+
+  /// The lenses' factors.
+  final List<double> lenses;
+
+  /// Whether the cameras take an exposure bias.
+  final bool hasExposure;
 
   /// The microphone access sessions open with.
   MicrophoneAccess microphone;
@@ -86,6 +102,12 @@ final class FakeCameraSessions implements CameraSessions {
         canSwitchCamera: cameras > 1,
         frameRateCap: frameRateCap,
         microphone: microphone,
+        zoomFactor: 1,
+        zoom: CameraZoom.zoomOf(1, minZoomFactor, maxZoomFactor),
+        minZoomFactor: minZoomFactor,
+        maxZoomFactor: maxZoomFactor,
+        lenses: lenses,
+        hasExposure: hasExposure,
       ),
     );
     camera.take(session, session._close);
@@ -142,6 +164,9 @@ final class FakeCameraSession implements CameraSession {
     _value.value = _now.copyWith(
       facing: next,
       isSwitching: _owner.holdsSwitchFrames,
+      zoomFactor: 1,
+      zoom: CameraZoom.zoomOf(1, _now.minZoomFactor, _now.maxZoomFactor),
+      exposure: 0,
     );
     return next;
   }
@@ -169,7 +194,33 @@ final class FakeCameraSession implements CameraSession {
   @override
   Future<void> setZoom(double zoom) async {
     _open();
-    _value.value = _now.copyWith(zoom: zoom.clamp(0.0, 1.0));
+    final z = zoom.clamp(0.0, 1.0);
+    _value.value = _now.copyWith(
+      zoom: z,
+      zoomFactor: CameraZoom.factorOf(
+        z,
+        _now.minZoomFactor,
+        _now.maxZoomFactor,
+      ),
+    );
+  }
+
+  @override
+  Future<void> setZoomFactor(double factor) async {
+    _open();
+    final now = _now;
+    final f = factor.clamp(now.minZoomFactor, now.maxZoomFactor);
+    _value.value = now.copyWith(
+      zoomFactor: f,
+      zoom: CameraZoom.zoomOf(f, now.minZoomFactor, now.maxZoomFactor),
+    );
+  }
+
+  @override
+  Future<void> setExposure(double value) async {
+    _open();
+    if (!_now.hasExposure) return;
+    _value.value = _now.copyWith(exposure: value.clamp(-1.0, 1.0));
   }
 
   @override

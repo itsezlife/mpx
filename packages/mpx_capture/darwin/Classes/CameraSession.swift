@@ -160,18 +160,100 @@ final class CameraSession: NSObject, FlutterTexture,
     queue.async { self.flash = mode }
   }
 
-  /// Linear zoom, 0 to 1 over the device's factors (capped at 10x).
-  func setZoom(_ value: Double) {
+  /// The camera for [facing]: on the back of an iPhone, the virtual device
+  /// that joins its lenses (triple, dual wide, dual) when there is one, so
+  /// zooming moves across them; otherwise the wide camera.
+  static func camera(_ facing: String, exact: Bool) -> AVCaptureDevice? {
     #if os(iOS)
-    queue.async {
-      guard let device = self.cameraInput?.device,
-        (try? device.lockForConfiguration()) != nil
-      else { return }
+      if facing == "back" {
+        for type in [AVCaptureDevice.DeviceType.builtInTripleCamera, .builtInDualWideCamera, .builtInDualCamera] {
+          if let device = AVCaptureDevice.default(type, for: .video, position: .back) { return device }
+        }
+      }
+    #endif
+    return RoundVideoRecorder.camera(facing, exact: exact)
+  }
+
+  // The device zoom factor that shows as 1x: the first switch-over factor
+  // of a virtual device that starts with the ultra wide lens, 1 otherwise.
+  private func zoomBase(_ device: AVCaptureDevice) -> CGFloat {
+    #if os(iOS)
+      if device.isVirtualDevice,
+        device.constituentDevices.first?.deviceType == .builtInUltraWideCamera,
+        let first = device.virtualDeviceSwitchOverVideoZoomFactors.first
+      {
+        return CGFloat(truncating: first)
+      }
+    #endif
+    return 1
+  }
+
+  /// The zoom facts as shown: 1x the main lens's own view.
+  private func zoomFacts() -> [String: Any] {
+    #if os(iOS)
+      guard let device = cameraInput?.device else { return [:] }
+      let base = zoomBase(device)
+      let low = device.minAvailableVideoZoomFactor / base
+      let high = min(device.maxAvailableVideoZoomFactor, 16 * base) / base
+      var lenses: [Double] = []
+      if base > 1 { lenses.append(Double(1 / base)) }
+      lenses.append(1)
+      if device.isVirtualDevice,
+        device.constituentDevices.last?.deviceType == .builtInTelephotoCamera,
+        let last = device.virtualDeviceSwitchOverVideoZoomFactors.last
+      {
+        lenses.append(Double(CGFloat(truncating: last) / base))
+      }
+      return [
+        "minZoom": Double(low), "maxZoom": Double(high),
+        "zoomFactor": Double(device.videoZoomFactor / base), "lenses": lenses,
+        "hasExposure": device.maxExposureTargetBias > device.minExposureTargetBias,
+      ]
+    #else
+      return ["minZoom": 1.0, "maxZoom": 1.0, "zoomFactor": 1.0, "lenses": [1.0], "hasExposure": false]
+    #endif
+  }
+
+  /// Zooms to the shown factor [value] (1x the main lens), clamped.
+  func setZoomFactor(_ value: Double) {
+    #if os(iOS)
+      queue.async {
+        guard let device = self.cameraInput?.device,
+          (try? device.lockForConfiguration()) != nil
+        else { return }
+        defer { device.unlockForConfiguration() }
+        let factor = CGFloat(value) * self.zoomBase(device)
+        device.videoZoomFactor = max(
+          device.minAvailableVideoZoomFactor,
+          min(min(device.maxAvailableVideoZoomFactor, 16 * self.zoomBase(device)), factor))
+      }
+    #endif
+  }
+
+  /// Sets the exposure from -1 (darkest) to 1 (brightest): a target bias of
+  /// that share of the device's extreme, at most 85 % of it.
+  func setExposure(_ value: Double) {
+    #if os(iOS)
+      queue.async {
+        guard let device = self.cameraInput?.device,
+          (try? device.lockForConfiguration()) != nil
+        else { return }
+        defer { device.unlockForConfiguration() }
+        let v = max(-1, min(1, value))
+        let extreme = v >= 0 ? device.maxExposureTargetBias : device.minExposureTargetBias
+        device.setExposureTargetBias(Float(abs(v)) * extreme * 0.85, completionHandler: nil)
+      }
+    #endif
+  }
+
+  // A camera just put in starts at 1x.
+  private func resetZoom() {
+    #if os(iOS)
+      guard let device = cameraInput?.device, (try? device.lockForConfiguration()) != nil else {
+        return
+      }
       defer { device.unlockForConfiguration() }
-      let low = device.minAvailableVideoZoomFactor
-      let high = min(device.maxAvailableVideoZoomFactor, 10)
-      device.videoZoomFactor = low + (high - low) * CGFloat(max(0, min(1, value)))
-    }
+      device.videoZoomFactor = max(device.minAvailableVideoZoomFactor, zoomBase(device))
     #endif
   }
 
@@ -218,7 +300,7 @@ final class CameraSession: NSObject, FlutterTexture,
   func switchCamera(_ done: @escaping (String) -> Void) {
     queue.async {
       let next = self.facing == "front" ? "back" : "front"
-      guard !self.closed, self.writer == nil, let device = RoundVideoRecorder.camera(next, exact: true),
+      guard !self.closed, self.writer == nil, let device = Self.camera(next, exact: true),
         let input = try? AVCaptureDeviceInput(device: device)
       else { return done(self.facing) }
       self.session.beginConfiguration()
@@ -232,6 +314,7 @@ final class CameraSession: NSObject, FlutterTexture,
       }
       self.configureConnections()
       self.session.commitConfiguration()
+      self.resetZoom()
       self.applyFrameRate()
       self.previewWidth = 0  // re-read from the next frame
       self.awaitingFirstFrame = true
@@ -373,7 +456,7 @@ final class CameraSession: NSObject, FlutterTexture,
     session.beginConfiguration()
     defer { session.commitConfiguration() }
     if session.canSetSessionPreset(.high) { session.sessionPreset = .high }
-    guard let device = RoundVideoRecorder.camera(facing, exact: false) else {
+    guard let device = Self.camera(facing, exact: false) else {
       throw CaptureError.failed("no camera")
     }
     #if os(iOS)
@@ -385,6 +468,7 @@ final class CameraSession: NSObject, FlutterTexture,
     guard session.canAddInput(input) else { throw CaptureError.failed("cannot open the camera") }
     session.addInput(input)
     cameraInput = input
+    resetZoom()
     addMicrophone()
     videoOutput.videoSettings = [
       kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
@@ -582,12 +666,13 @@ final class CameraSession: NSObject, FlutterTexture,
   }
 
   private func state(_ name: String) -> [String: Any] {
-    [
+    let base: [String: Any] = [
       "state": name, "textureId": Int(textureId ?? -1), "previewWidth": previewWidth,
       "previewHeight": previewHeight, "quarterTurns": 0, "facing": facing,
       "hasFlash": hasFlash, "canSwitch": canSwitch,
       "microphone": Self.microphoneAccess(),
     ]
+    return base.merging(zoomFacts()) { _, new in new }
   }
 
   // MARK: - FlutterTexture

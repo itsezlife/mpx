@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Zoom factors, lenses and exposure on the camera session:
+  `CameraSessionValue.zoomFactor` / `minZoomFactor` / `maxZoomFactor` /
+  `lenses` / `exposure` / `hasExposure`, `CameraSession.setZoomFactor` and
+  `setExposure`; `CameraZoom` relates the 0..1 zoom to factors. On iPhone the
+  back camera is the virtual device that joins its lenses (1x the main
+  lens); on Android the zoom is CameraX's ratio. A switch starts the new
+  camera at 1x.
 - The capture surface's zoom slider: 50 high, 126 above the bottom, shown
   (180 ms fade) whenever the zoom is used and hidden 2 s after; its knob
   drags the zoom, a tap on its track jumps there, minus and plus step a

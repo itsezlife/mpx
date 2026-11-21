@@ -31,6 +31,29 @@ void main() {
     );
   });
 
+  group('zoom', () {
+    test('a 0..1 zoom moves the crop evenly between the factors', () {
+      expect(CameraZoom.factorOf(0, 1, 10), 1);
+      expect(CameraZoom.factorOf(1, 1, 10), closeTo(10, 1e-9));
+      // Halfway in crop width: 1 / ((1 + 0.1) / 2).
+      expect(CameraZoom.factorOf(0.5, 1, 10), closeTo(1 / 0.55, 1e-9));
+      expect(CameraZoom.zoomOf(1 / 0.55, 1, 10), closeTo(0.5, 1e-9));
+      expect(CameraZoom.zoomOf(3, 2, 2), 0);
+    });
+
+    test(
+      'a switch starts the new camera at 1x with no exposure bias',
+      () async {
+        final session = await FakeCameraSessions(minZoomFactor: 0.5).open();
+        await session.setZoomFactor(4);
+        await session.setExposure(0.5);
+        await session.switchCamera();
+        expect(session.value.value.zoomFactor, 1);
+        expect(session.value.value.exposure, 0);
+      },
+    );
+  });
+
   group('the app in the background', () {
     late TestWidgetsFlutterBinding binding;
     setUp(() {

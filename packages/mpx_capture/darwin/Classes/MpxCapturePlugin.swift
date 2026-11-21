@@ -80,7 +80,7 @@ public class MpxCapturePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         }
       }
     case "cameraOpen", "cameraClose", "cameraCap", "cameraSwitch", "cameraFlash",
-      "cameraZoom", "cameraFocus", "cameraMicrophone",
+      "cameraZoomFactor", "cameraExposure", "cameraFocus", "cameraMicrophone",
       "cameraPause", "cameraResume", "cameraPhoto", "cameraRecordStart", "cameraRecordStop":
       onCamera(call.method, args, result: result)
     case "stillProbe":
@@ -171,8 +171,11 @@ public class MpxCapturePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       session.microphone(request: args["request"] as? Bool ?? false) { access in
         DispatchQueue.main.async { result(access) }
       }
-    case "cameraZoom":
-      session.setZoom(args["zoom"] as? Double ?? 0)
+    case "cameraZoomFactor":
+      session.setZoomFactor(args["factor"] as? Double ?? 1)
+      result(nil)
+    case "cameraExposure":
+      session.setExposure(args["value"] as? Double ?? 0)
       result(nil)
     case "cameraFocus":
       session.focusAt(x: args["x"] as? Double ?? 0.5, y: args["y"] as? Double ?? 0.5)

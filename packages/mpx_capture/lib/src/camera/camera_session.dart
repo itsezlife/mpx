@@ -56,6 +56,12 @@ final class CameraSessionValue {
     this.awaitingFrames = false,
     this.zoom = 0,
     this.microphone = MicrophoneAccess.notDetermined,
+    this.zoomFactor = 1,
+    this.minZoomFactor = 1,
+    this.maxZoomFactor = 1,
+    this.lenses = const [1],
+    this.exposure = 0,
+    this.hasExposure = false,
   });
 
   /// Where the session stands.
@@ -109,6 +115,28 @@ final class CameraSessionValue {
   /// Whether a recording may take sound: the platform's microphone access.
   final MicrophoneAccess microphone;
 
+  /// The zoom as a factor of the main lens's view (1x; 0.5 on an ultra
+  /// wide lens). [zoom] is the same zoom on a 0..1 scale over
+  /// [minZoomFactor]..[maxZoomFactor] (`CameraZoom`).
+  final double zoomFactor;
+
+  /// The widest factor the camera reaches.
+  final double minZoomFactor;
+
+  /// The longest factor the camera reaches.
+  final double maxZoomFactor;
+
+  /// The factors of the camera's lenses (or preset steps), ascending; 1
+  /// among them.
+  final List<double> lenses;
+
+  /// The exposure bias, -1 (darkest) to 1 (brightest); 0 is the camera's
+  /// own.
+  final double exposure;
+
+  /// Whether the camera takes an exposure bias.
+  final bool hasExposure;
+
   /// Whether the preview is drawn mirrored, as a front camera's is. The
   /// frames and the captures are not mirrored; only the preview is.
   bool get mirrored => facing == CameraFacing.front;
@@ -135,6 +163,12 @@ final class CameraSessionValue {
     bool? awaitingFrames,
     double? zoom,
     MicrophoneAccess? microphone,
+    double? zoomFactor,
+    double? minZoomFactor,
+    double? maxZoomFactor,
+    List<double>? lenses,
+    double? exposure,
+    bool? hasExposure,
   }) => CameraSessionValue(
     state: state ?? this.state,
     facing: facing ?? this.facing,
@@ -151,6 +185,12 @@ final class CameraSessionValue {
     awaitingFrames: awaitingFrames ?? this.awaitingFrames,
     zoom: zoom ?? this.zoom,
     microphone: microphone ?? this.microphone,
+    zoomFactor: zoomFactor ?? this.zoomFactor,
+    minZoomFactor: minZoomFactor ?? this.minZoomFactor,
+    maxZoomFactor: maxZoomFactor ?? this.maxZoomFactor,
+    lenses: lenses ?? this.lenses,
+    exposure: exposure ?? this.exposure,
+    hasExposure: hasExposure ?? this.hasExposure,
   );
 
   @override
@@ -170,10 +210,16 @@ final class CameraSessionValue {
       other.isSwitching == isSwitching &&
       other.awaitingFrames == awaitingFrames &&
       other.zoom == zoom &&
-      other.microphone == microphone;
+      other.microphone == microphone &&
+      other.zoomFactor == zoomFactor &&
+      other.minZoomFactor == minZoomFactor &&
+      other.maxZoomFactor == maxZoomFactor &&
+      listEquals(other.lenses, lenses) &&
+      other.exposure == exposure &&
+      other.hasExposure == hasExposure;
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     state,
     facing,
     flash,
@@ -189,7 +235,13 @@ final class CameraSessionValue {
     awaitingFrames,
     zoom,
     microphone,
-  );
+    zoomFactor,
+    minZoomFactor,
+    maxZoomFactor,
+    Object.hashAll(lenses),
+    exposure,
+    hasExposure,
+  ]);
 
   @override
   String toString() =>
@@ -241,6 +293,15 @@ abstract interface class CameraSession {
   /// Zooms to [zoom], 0 (the widest) to 1 (the longest the camera has),
   /// linear; clamped.
   Future<void> setZoom(double zoom);
+
+  /// Zooms to [factor] of the main lens's view, clamped to
+  /// [CameraSessionValue.minZoomFactor]..[CameraSessionValue.maxZoomFactor];
+  /// past a lens's factor the camera moves to that lens.
+  Future<void> setZoomFactor(double factor);
+
+  /// Sets the exposure bias, -1 (darkest) to 1 (brightest), clamped; a
+  /// camera without one ([CameraSessionValue.hasExposure] false) keeps 0.
+  Future<void> setExposure(double value);
 
   /// Focuses (and meters) at [point] of the preview as it shows, from
   /// (0, 0) at its top left to (1, 1) at its bottom right. Throws an
@@ -318,4 +379,23 @@ enum MicrophoneAccess {
   /// Refused; asking again may show nothing (the platform's settings are the
   /// way back).
   denied,
+}
+
+/// The two zoom scales of a [CameraSessionValue]: a 0..1 zoom moves the
+/// crop's width evenly between the widest and the longest factor (as a
+/// slider feels even), a factor is the lens's magnification.
+abstract final class CameraZoom {
+  /// The factor of [zoom] (0..1) between [min] and [max].
+  static double factorOf(double zoom, double min, double max) {
+    if (max <= min) return min;
+    final z = zoom.clamp(0.0, 1.0);
+    return 1 / (1 / min + z * (1 / max - 1 / min));
+  }
+
+  /// The 0..1 zoom of [factor] between [min] and [max].
+  static double zoomOf(double factor, double min, double max) {
+    if (max <= min) return 0;
+    final f = factor.clamp(min, max);
+    return ((1 / f - 1 / min) / (1 / max - 1 / min)).clamp(0.0, 1.0);
+  }
 }

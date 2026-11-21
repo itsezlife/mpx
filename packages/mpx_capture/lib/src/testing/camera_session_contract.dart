@@ -146,6 +146,39 @@ abstract final class CameraSessionContract {
         expect(session.value.value.microphone, access);
       });
 
+      test('zoom factors: 1 among the lenses, within the range; a factor '
+          'is clamped and the 0..1 zoom follows', () async {
+        final session = await open();
+        final value = session.value.value;
+        expect(value.lenses, contains(1));
+        for (final lens in value.lenses) {
+          expect(
+            lens,
+            inInclusiveRange(value.minZoomFactor, value.maxZoomFactor),
+          );
+        }
+        await session.setZoomFactor(value.maxZoomFactor + 100);
+        expect(session.value.value.zoomFactor, value.maxZoomFactor);
+        if (value.maxZoomFactor > value.minZoomFactor) {
+          expect(session.value.value.zoom, closeTo(1, 1e-9));
+        }
+        await session.setZoomFactor(0);
+        expect(session.value.value.zoomFactor, value.minZoomFactor);
+        expect(session.value.value.zoom, closeTo(0, 1e-9));
+      });
+
+      test(
+        'the exposure is clamped to -1..1, and stays 0 without one',
+        () async {
+          final session = await open();
+          await session.setExposure(5);
+          expect(
+            session.value.value.exposure,
+            session.value.value.hasExposure ? 1 : 0,
+          );
+        },
+      );
+
       test('focusing at a point of the preview is taken', () async {
         final session = await open();
         await session.focusAt(const Offset(0.25, 0.75));
