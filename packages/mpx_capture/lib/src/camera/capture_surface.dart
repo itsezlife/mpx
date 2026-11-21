@@ -1243,11 +1243,28 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     return false;
   }
 
+  // A recording asked for and not started yet, and whether its hold was let
+  // go meanwhile: it stops as soon as it has started.
+  bool _starting = false;
+  bool _stopWhenStarted = false;
+
   Future<void> _startVideo() async {
-    if (_busy || !_value.isAvailable || _value.isRecording) return;
+    if (_busy || _starting || !_value.isAvailable || _value.isRecording) {
+      return;
+    }
     if (!await _mayRecord()) return;
     if (!mounted || _busy || !_value.isAvailable || _value.isRecording) return;
-    await _quietly(() => _session.startRecording(outputPath: _output('mp4')));
+    _starting = true;
+    _stopWhenStarted = false;
+    try {
+      await _quietly(() => _session.startRecording(outputPath: _output('mp4')));
+    } finally {
+      _starting = false;
+    }
+    if (_stopWhenStarted && mounted) {
+      _stopWhenStarted = false;
+      await _stopVideo();
+    }
   }
 
   Future<void> _stopVideo() async {
@@ -1285,7 +1302,13 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
   }
 
   void _holdEnd() {
-    if (widget.kinds.videos) unawaited(_stopVideo());
+    if (!widget.kinds.videos) return;
+    // Let go before the recording has started: it stops once it has.
+    if (_starting) {
+      _stopWhenStarted = true;
+      return;
+    }
+    unawaited(_stopVideo());
   }
 
   // The camera switch: ignored while a photo is taken, and (in the session)

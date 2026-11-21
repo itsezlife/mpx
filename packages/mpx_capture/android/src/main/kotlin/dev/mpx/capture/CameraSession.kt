@@ -23,14 +23,6 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.core.UseCase
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.video.FallbackStrategy
-import androidx.camera.video.FileOutputOptions
-import androidx.camera.video.Quality
-import androidx.camera.video.QualitySelector
-import androidx.camera.video.Recorder
-import androidx.camera.video.Recording
-import androidx.camera.video.VideoCapture
-import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -41,8 +33,9 @@ import java.util.concurrent.Executor
 
 /**
  * One live camera for the Dart `CameraSession`: CameraX Preview into a
- * Flutter surface producer, ImageCapture for photos and VideoCapture (a
- * Recorder writing H.264 and AAC into an MP4) for videos, bound to a
+ * [CameraPipe], whose GL thread draws the frames into a Flutter surface
+ * producer and, while recording, into a video encoder (so recording never
+ * changes the camera's session); ImageCapture for photos; bound to a
  * lifecycle of its own. Pause moves the lifecycle to CREATED (the camera
  * closes, the use cases stay bound); resume moves it back to STARTED.
  *
@@ -68,10 +61,22 @@ class CameraSession(
     private var camera: Camera? = null
     private var preview: Preview? = null
     private var imageCapture: ImageCapture? = null
-    private var videoCapture: VideoCapture<Recorder>? = null
-    private var recording: Recording? = null
-    private var recordingPath: String? = null
-    private var recordingDone: ((Result<Map<String, Any?>>) -> Unit)? = null
+    private var recording = false
+    private val pipe = CameraPipe(producer) { width, height ->
+        if (closed) return@CameraPipe
+        previewWidth = width
+        previewHeight = height
+        reportOpen()
+    }
+
+    // The camera's transformation: what turns the drawn frame upright.
+    private var rotationDegrees = 0
+    private var cameraTransform = false
+    private var sensorDegrees = 0
+
+    // Quarter turns the SurfaceTexture's matrix applies (a camera that writes
+    // its orientation into the buffer).
+    private fun matrixTurns() = if (cameraTransform) sensorDegrees / 90 else 0
     private var flash = "off"
     private var quarterTurns = 0
 
@@ -91,14 +96,15 @@ class CameraSession(
         lifecycleRegistry.currentState = Lifecycle.State.CREATED
         producer.setCallback(object : TextureRegistry.SurfaceProducer.Callback {
             override fun onSurfaceAvailable() {
-                // The engine made a new surface (the app came back): hand it
-                // to the camera through a fresh surface request.
+                // The engine made a new surface (the app came back): the
+                // pipe draws into it.
                 trace("surface available")
-                if (!closed) preview?.setSurfaceProvider(executor, ::provideSurface)
+                if (!closed) pipe.attachPreview()
             }
 
             override fun onSurfaceCleanup() {
                 trace("surface cleanup")
+                pipe.detachPreview()
             }
         })
     }
@@ -260,40 +266,53 @@ class CameraSession(
         )
     }
 
-    @SuppressLint("MissingPermission")
-    fun startRecording(output: String): Result<Unit> {
-        if (recording != null) return Result.failure(CaptureException.failed("already recording"))
-        val capture = videoCapture ?: bindVideo()
-            ?: return Result.failure(CaptureException.failed("video not available on this camera"))
-        val file = File(output).apply { delete() }
-        recordingPath = output
-        var pending = capture.output.prepareRecording(context, FileOutputOptions.Builder(file).build())
-        if (audio && hasMicrophone(context)) pending = pending.withAudioEnabled()
-        if (flash == "on") camera?.cameraControl?.enableTorch(true)
-        recording = pending.start(executor) { event ->
-            if (event is VideoRecordEvent.Finalize) finishRecording(event)
+    /**
+     * Starts recording the preview's frames into [output]: H.264 at the
+     * preview's size (3.5 Mbit/s from 720 lines up, 1.8 below) and AAC from
+     * the microphone when allowed, turned upright by its orientation hint.
+     */
+    fun startRecording(output: String, done: (Result<Unit>) -> Unit) {
+        if (recording) return done(Result.failure(CaptureException.failed("already recording")))
+        if (closed || previewWidth == 0) {
+            return done(Result.failure(CaptureException.failed("camera not available")))
         }
-        return Result.success(Unit)
+        trace("record")
+        recording = true
+        val bitrate = if (minOf(previewWidth, previewHeight) >= 720) 3_500_000 else 1_800_000
+        if (flash == "on") camera?.cameraControl?.enableTorch(true)
+        pipe.startRecording(
+            output,
+            bitrate,
+            audio && hasMicrophone(context),
+            quarterTurns * 90,
+        ) { result ->
+            if (result.isFailure) {
+                recording = false
+                camera?.cameraControl?.enableTorch(false)
+            }
+            done(result)
+        }
     }
 
     fun stopRecording(done: (Result<Map<String, Any?>>) -> Unit) {
-        val current = recording
-            ?: return done(Result.failure(CaptureException.failed("not recording")))
-        recordingDone = done
-        current.stop()
+        if (!recording) return done(Result.failure(CaptureException.failed("not recording")))
+        trace("record stop")
+        pipe.stopRecording { result ->
+            recording = false
+            camera?.cameraControl?.enableTorch(false)
+            done(result.mapCatching { (path, durationUs) -> videoFacts(path, durationUs) })
+        }
     }
 
     fun close() {
         trace("close")
         if (closed) return
         closed = true
-        recording?.close()
-        recording = null
-        recordingDone?.invoke(Result.failure(CaptureException.failed("camera session closed")))
-        recordingDone = null
+        recording = false
         opened = null
-        provider?.unbind(*listOfNotNull<UseCase>(preview, imageCapture, videoCapture).toTypedArray())
+        provider?.unbind(*listOfNotNull<UseCase>(preview, imageCapture).toTypedArray())
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
+        pipe.release()
         producer.release()
     }
 
@@ -309,92 +328,32 @@ class CameraSession(
             facing = if (facing == "front") "back" else "front"
             if (!provider.hasCamera(selector(facing))) return failOpen()
         }
-        provider.unbind(*listOfNotNull<UseCase>(preview, imageCapture, videoCapture).toTypedArray())
-        videoCapture = null
+        provider.unbind(*listOfNotNull<UseCase>(preview, imageCapture).toTypedArray())
         val preview = previewBuilder().build().also { this.preview = it }
         val imageCapture = ImageCapture.Builder()
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
             .setResolutionSelector(photoResolution())
             .build()
             .also { this.imageCapture = it }
-        preview.setSurfaceProvider(executor, ::provideSurface)
-        // Preview and photos only: the video use case (its encoder, its
-        // recorder) joins when a recording starts and leaves when it ends,
-        // so browsing never builds an encoder.
-        // A rebind (a camera switch) keeps a prepared video use case, in the
-        // same session.
-        val video = if (videoReady) newVideoCapture() else null
+        preview.setSurfaceProvider(pipe.executor, ::provideSurface)
+        // Preview and photos: a recording draws the preview's frames into
+        // its encoder, so no video use case ever joins the session.
         camera = try {
-            provider.bindToLifecycle(
-                this,
-                selector(facing),
-                *listOfNotNull<UseCase>(preview, imageCapture, video).toTypedArray(),
-            )
+            provider.bindToLifecycle(this, selector(facing), preview, imageCapture)
         } catch (error: Exception) {
-            try {
-                provider.bindToLifecycle(this, selector(facing), preview, imageCapture)
-            } catch (error: Exception) {
-                return failOpen()
-            }
+            return failOpen()
         }
-        if (video != null && camera != null && provider.isBound(video)) videoCapture = video
+        sensorDegrees = camera?.cameraInfo?.sensorRotationDegrees ?: 0
         setFlash(flash)
         setZoomFactor(zoomRatio.toDouble())
         applyFrameRate()
         emitState()
     }
 
-    // The video use case for one recording, beside the bound preview and
-    // photos; null when the camera cannot stream the three at once.
-    private fun newVideoCapture(): VideoCapture<Recorder> = VideoCapture.withOutput(
-        Recorder.Builder()
-            .setQualitySelector(
-                QualitySelector.from(
-                    Quality.FHD,
-                    FallbackStrategy.lowerQualityOrHigherThan(Quality.SD),
-                ),
-            )
-            .build(),
-    )
+    /** Nothing to set up: a recording takes the running frames. */
+    fun prepareVideo() {}
 
-    private fun bindVideo(): VideoCapture<Recorder>? {
-        val provider = provider ?: return null
-        trace("bind video")
-        val capture = newVideoCapture()
-        return try {
-            camera = provider.bindToLifecycle(this, selector(facing), capture)
-            videoCapture = capture
-            applyFrameRate()
-            capture
-        } catch (error: IllegalArgumentException) {
-            null
-        }
-    }
-
-    // While a full camera page shows, the video use case stays bound with
-    // the preview and photos, so a recording starts on the running session:
-    // binding it at the start closes and reopens the camera's session (the
-    // preview stalls). A camera slot in a grid never holds it.
-    private var videoReady = false
-
-    /** Keeps the video use case bound until [releaseVideo]. */
-    fun prepareVideo() {
-        videoReady = true
-        if (videoCapture == null && !closed) bindVideo()
-    }
-
-    /** Lets the video use case go once no recording runs. */
-    fun releaseVideo() {
-        videoReady = false
-        if (recording == null) unbindVideo()
-    }
-
-    private fun unbindVideo() {
-        val capture = videoCapture ?: return
-        trace("unbind video")
-        videoCapture = null
-        provider?.unbind(capture)
-    }
+    fun releaseVideo() {}
 
     // A preview whose first completed capture after a switch tells Dart the
     // new camera's frames have started.
@@ -468,23 +427,24 @@ class CameraSession(
         return builder
     }
 
+    // On the pipe's GL thread: the camera draws into the pipe.
     private fun provideSurface(request: androidx.camera.core.SurfaceRequest) {
         trace("surface request ${request.resolution}")
-        if (closed) {
-            request.willNotProvideSurface()
-            return
-        }
-        previewWidth = request.resolution.width
-        previewHeight = request.resolution.height
-        producer.setSize(previewWidth, previewHeight)
         request.setTransformationInfoListener(executor) { info ->
-            val turns = if (producer.handlesCropAndRotation()) 0 else info.rotationDegrees / 90
+            rotationDegrees = info.rotationDegrees
+            cameraTransform = info.hasCameraTransform()
+            val turns = ((rotationDegrees - matrixTurns() * 90 + 360) % 360) / 90
             if (turns != quarterTurns) {
                 quarterTurns = turns
                 emitState()
             }
         }
-        request.provideSurface(producer.surface, executor) {}
+        pipe.provide(request) { matrixTurns() }
+    }
+
+    // The first size of the pipe's frames opens the session; a later one
+    // (a switch) tells Dart.
+    private fun reportOpen() {
         val waiting = opened
         if (waiting != null) {
             opened = null
@@ -520,25 +480,6 @@ class CameraSession(
     }
 
     // --- Recording ---
-
-    private fun finishRecording(event: VideoRecordEvent.Finalize) {
-        camera?.cameraControl?.enableTorch(false)
-        recording = null
-        if (!videoReady) unbindVideo()
-        val path = recordingPath
-        recordingPath = null
-        val done = recordingDone
-        recordingDone = null
-        val failed = event.error != VideoRecordEvent.Finalize.ERROR_NONE &&
-            event.error != VideoRecordEvent.Finalize.ERROR_DURATION_LIMIT_REACHED &&
-            event.error != VideoRecordEvent.Finalize.ERROR_FILE_SIZE_LIMIT_REACHED
-        if (path == null || done == null) return
-        if (failed || !File(path).isFile) {
-            File(path).delete()
-            return done(Result.failure(CaptureException.failed("recording failed (${event.error})")))
-        }
-        done(runCatching { videoFacts(path, event.recordingStats.recordedDurationNanos / 1000) })
-    }
 
     // The first frame as a small JPEG beside the video (320 on its long
     // side), upright: what a thumbnail of the recording shows. Null when the

@@ -554,8 +554,10 @@ class RoundVideoRecorder(
  * MediaMuxer that starts once both tracks are known, holding samples that
  * arrive earlier. Called from the GL and the audio thread.
  */
-private class Mp4Writer(path: String) {
-    private val muxer = MediaMuxer(path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+internal class Mp4Writer(path: String, orientationHint: Int = 0) {
+    private val muxer = MediaMuxer(path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4).apply {
+        if (orientationHint != 0) setOrientationHint(orientationHint)
+    }
     private var videoTrack = -1
     private var audioTrack = -1
     private var started = false

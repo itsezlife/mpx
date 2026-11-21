@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Android records the preview's own frames: a GL thread draws each camera
+  frame into the Flutter surface and, while recording, into an H.264
+  encoder (3.5 Mbit/s from 720 lines, 1.8 below; AAC 32 kbit/s), so a
+  recording never changes the camera's session and the preview never
+  stalls; the VideoCapture use case is gone and `prepareVideo` /
+  `releaseVideo` have nothing to do there. A hold let go while its
+  recording is still starting stops the recording once it has started.
 - `CameraShot.thumbnailPath`: a lasting picture of each shot (a recording's
   poster, a photo's 240 wide PNG written beside it), so a camera page opened
   again draws the kept shots of an earlier one.

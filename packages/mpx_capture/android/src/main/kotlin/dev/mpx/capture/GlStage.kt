@@ -129,6 +129,35 @@ class GlStage {
         EGL14.eglSwapBuffers(display, target)
     }
 
+    /**
+     * Draws [texture] whole into [target] at [width] × [height], through the
+     * SurfaceTexture's [surfaceMatrix] only: the frame as a SurfaceTexture
+     * consumer would show it. With [presentationNs] the frame gets that
+     * timestamp (an encoder's surface).
+     */
+    fun drawWhole(
+        target: EGLSurface,
+        width: Int,
+        height: Int,
+        texture: Int,
+        surfaceMatrix: FloatArray,
+        presentationNs: Long? = null,
+    ) {
+        makeCurrent(target)
+        GLES20.glViewport(0, 0, width, height)
+        GLES20.glUseProgram(program)
+        GLES20.glUniformMatrix4fv(texMatrixLocation, 1, false, surfaceMatrix, 0)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, texture)
+        GLES20.glEnableVertexAttribArray(positionLocation)
+        GLES20.glVertexAttribPointer(positionLocation, 2, GLES20.GL_FLOAT, false, 0, quad)
+        GLES20.glEnableVertexAttribArray(texCoordLocation)
+        GLES20.glVertexAttribPointer(texCoordLocation, 2, GLES20.GL_FLOAT, false, 0, texCoords)
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        if (presentationNs != null) EGLExt.eglPresentationTimeANDROID(display, target, presentationNs)
+        EGL14.eglSwapBuffers(display, target)
+    }
+
     // Maps a coordinate of the upright output square to the camera texture:
     // texture = surfaceMatrix · (centre + rotate(t) · mirror · crop · (d − centre)).
     // The crop keeps the centre square of the upright frame (its shape set by

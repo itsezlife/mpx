@@ -32,6 +32,7 @@ final class FakeCameraSessions implements CameraSessions {
     this.lenses = const [1, 2],
     this.hasExposure = true,
     this.photoTakes = Duration.zero,
+    this.recordingStartTakes = Duration.zero,
     this.microphoneOnRequest = MicrophoneAccess.granted,
     FakeCamera? camera,
   }) : camera = camera ?? FakeCamera();
@@ -50,6 +51,9 @@ final class FakeCameraSessions implements CameraSessions {
 
   /// How long a photo takes before it completes.
   final Duration photoTakes;
+
+  /// How long a recording takes to start.
+  final Duration recordingStartTakes;
 
   /// The microphone access sessions open with.
   MicrophoneAccess microphone;
@@ -340,6 +344,9 @@ final class FakeCameraSession implements CameraSession {
   Future<void> startRecording({required String outputPath}) async {
     _available();
     if (_now.isRecording) throw const CaptureFailed('already recording');
+    if (_owner.recordingStartTakes > Duration.zero) {
+      await Future<void>.delayed(_owner.recordingStartTakes);
+    }
     _recordingPath = outputPath;
     _recording
       ..reset()

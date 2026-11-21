@@ -217,10 +217,12 @@ class MpxCapturePlugin :
                 call.argument<Boolean>("mirrorFront") ?: false,
                 ::reply,
             )
-            "cameraRecordStart" -> session.startRecording(call.argument<String>("output") ?: "").fold(
-                onSuccess = { result.success(null) },
-                onFailure = { error -> result.error("failed", error.message, null) },
-            )
+            "cameraRecordStart" -> session.startRecording(call.argument<String>("output") ?: "") { outcome ->
+                outcome.fold(
+                    onSuccess = { result.success(null) },
+                    onFailure = { error -> result.error("failed", error.message, null) },
+                )
+            }
             "cameraRecordStop" -> session.stopRecording(::reply)
             else -> result.notImplemented()
         }

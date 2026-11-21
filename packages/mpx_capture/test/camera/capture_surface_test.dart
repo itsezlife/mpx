@@ -489,6 +489,28 @@ void main() {
     });
   });
 
+  testWidgets('a hold let go while the recording is still starting stops it '
+      'once it has started', (tester) async {
+    final slow = FakeCameraSessions(
+      textureId: 7,
+      recordingStartTakes: const Duration(milliseconds: 300),
+    );
+    final session = await pumpSurface(tester, from: slow);
+    final hold = await tester.startGesture(tester.getCenter(shutter()));
+    await tester.pump(
+      CameraCaptureSurface.holdToRecord + const Duration(milliseconds: 20),
+    );
+    await hold.up();
+    await tester.pump();
+    expect(session.value.value.isRecording, isFalse, reason: 'not started yet');
+    await tester.pump(const Duration(milliseconds: 400));
+    for (var i = 0; i < 3 && shots.isEmpty; i++) {
+      await settle(tester);
+    }
+    expect(session.value.value.isRecording, isFalse);
+    expect(shots.single.isVideo, isTrue);
+  });
+
   testWidgets('a hold records a video until released', (tester) async {
     final session = await pumpSurface(tester);
     final gesture = await tester.startGesture(tester.getCenter(shutter()));
