@@ -236,4 +236,43 @@ void main() {
     expect(find.byType(MediaViewer), findsNothing);
     expect(closed, 1);
   });
+
+  testWidgets('the viewer over the camera takes no dismiss drag, and closes '
+      'by sliding the picture off downwards over 200 ms', (tester) async {
+    final h = PickerHarness();
+    final captures = ValueNotifier([_capture(1)]);
+    addTearDown(captures.dispose);
+    final picker = GlobalKey<LibraryPickerState>();
+    await h.pump(
+      tester,
+      captures: captures,
+      viewerSlot: true,
+      opensFirstCapture: false,
+      pickerKey: picker,
+    );
+    picker.currentState!.openCaptures().ignore();
+    await _frames(tester);
+    final viewer = find.byType(MediaViewer);
+    final morph = find.byKey(const ValueKey('mpx-viewer-morph'));
+    final drag = await tester.startGesture(tester.getCenter(viewer));
+    for (var i = 0; i < 10; i++) {
+      await drag.moveBy(const Offset(0, 40));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await drag.up();
+    await _frames(tester);
+    expect(viewer, findsOneWidget, reason: 'no dismiss drag');
+    final rest = tester.getRect(find.byType(ViewerPhotoPage).first);
+    tester.state<MediaViewerState>(viewer).close().ignore();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.getRect(morph).top, greaterThan(rest.top + 100));
+    expect(
+      tester.getSize(morph).width,
+      greaterThan(rest.width * 0.95),
+      reason: 'it slides, it does not shrink',
+    );
+    await _frames(tester);
+    expect(viewer, findsNothing);
+  });
 }

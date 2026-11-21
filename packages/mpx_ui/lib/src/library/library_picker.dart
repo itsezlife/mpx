@@ -224,17 +224,20 @@ class LibraryPickerState extends State<LibraryPicker> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final asset = _gallery?.assetAt(0);
       if (!mounted || asset == null || _viewerOpen) return;
-      unawaited(_open(asset, 0));
+      // A capture opens the viewer over the camera.
+      unawaited(_open(asset, 0, overCamera: true));
     });
   }
 
   /// Opens the viewer on the newest capture, paging the captures and then
   /// the album (a camera's shots counter); nothing without captures or
-  /// while a viewer is open.
+  /// while a viewer is open. Like the viewer a capture opens, it stands over
+  /// the camera: no dismiss drag, and a close slides the picture off
+  /// downwards (no grid cell to return to).
   Future<void> openCaptures() async {
     final asset = _gallery?.assetAt(0);
     if (asset == null || (widget.captures?.value.isEmpty ?? true)) return;
-    await _open(asset, 0);
+    await _open(asset, 0, overCamera: true);
   }
 
   /// The album shown, or null before the albums load.
@@ -371,7 +374,11 @@ class LibraryPickerState extends State<LibraryPicker> {
 
   void _choose(LibraryAlbum album) => setState(() => _bind(album));
 
-  Future<void> _open(LibraryAsset asset, int index) async {
+  Future<void> _open(
+    LibraryAsset asset,
+    int index, {
+    bool overCamera = false,
+  }) async {
     if (widget.onOpen case final open?) return open(asset, index);
     // One viewer at a time: taps while it opens, shows or closes do nothing.
     if (_viewerOpen) return;
@@ -393,6 +400,7 @@ class LibraryPickerState extends State<LibraryPicker> {
       title: widget.viewerTitle,
       bottomSlotHoldsKeyboard: widget.viewerBottomSlotHoldsKeyboard,
       subtitleOf: widget.viewerSubtitleOf,
+      overCamera: overCamera,
       bridge: _origins.currentState?.bridgeFor(gallery),
     );
     if (mounted) setState(() => _viewerOpen = false);

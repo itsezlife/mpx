@@ -578,7 +578,8 @@ class LibraryGridState extends State<LibraryGrid>
     final box = context.findRenderObject() as RenderBox?;
     if (box == null) return;
     final edge = widget.policy.autoScrollEdge;
-    final near = local.dy < edge || local.dy > box.size.height - edge;
+    final bottom = _visibleBottom(box);
+    final near = local.dy < edge || local.dy > bottom - edge;
     if (near && !_autoScroll.isActive) {
       unawaited(_autoScroll.start());
     } else if (!near && _autoScroll.isActive) {
@@ -587,12 +588,23 @@ class LibraryGridState extends State<LibraryGrid>
     }
   }
 
+  // Where the grid's part on screen ends, in its own coordinates: its
+  // height, or less when it reaches below the screen (a sheet not raised
+  // lays it out past the bottom). The bottom band sits there, at the
+  // screen's bottom, as on a list that spans the screen.
+  double _visibleBottom(RenderBox box) {
+    final screen = MediaQuery.maybeSizeOf(context)?.height;
+    if (screen == null) return box.size.height;
+    final top = box.localToGlobal(Offset.zero).dy;
+    return math.min(box.size.height, screen - top);
+  }
+
   void _onAutoScroll(Duration _) {
     final pointer = _pointer;
     final box = context.findRenderObject() as RenderBox?;
     if (pointer == null || box == null || !_controller.hasClients) return;
     final edge = widget.policy.autoScrollEdge;
-    final height = box.size.height;
+    final height = _visibleBottom(box);
     // Faster the deeper the pointer is in the edge band, up to 16 px a frame.
     final depth = pointer.dy < edge
         ? -(edge - pointer.dy) / edge

@@ -58,6 +58,7 @@ void main() {
     bool highQuality = false,
     LibraryGridLookup? lookup,
     double bottomInset = 0,
+    double? gridHeight,
   }) async {
     tester.view
       ..physicalSize = const Size(390, 800)
@@ -74,18 +75,21 @@ void main() {
                 data: MediaQuery.of(
                   context,
                 ).copyWith(padding: EdgeInsets.only(bottom: bottomInset)),
-                child: LibraryGrid(
-                  library: library,
-                  album: album,
-                  selection: picker ?? selection,
-                  labels: _labels,
-                  policy: policy,
-                  cameraSlotBuilder: camera,
-                  controller: controller,
-                  lookup: lookup,
-                  onRefused: (key, reason) => refusals.add((key, reason)),
-                  onOpen: (asset, index) => opened.add(index),
-                  highQuality: highQuality,
+                child: _Tall(
+                  height: gridHeight,
+                  child: LibraryGrid(
+                    library: library,
+                    album: album,
+                    selection: picker ?? selection,
+                    labels: _labels,
+                    policy: policy,
+                    cameraSlotBuilder: camera,
+                    controller: controller,
+                    lookup: lookup,
+                    onRefused: (key, reason) => refusals.add((key, reason)),
+                    onOpen: (asset, index) => opened.add(index),
+                    highQuality: highQuality,
+                  ),
                 ),
               ),
             ),
@@ -244,6 +248,26 @@ void main() {
       ScrollDirection.idle,
       reason: 'the scroll ends with the swipe',
     );
+  });
+
+  testWidgets('the edge bands are on the grid\'s part on screen: a grid '
+      'reaching below the screen auto-scrolls at the screen\'s bottom', (
+    tester,
+  ) async {
+    final controller = _RecordingController();
+    addTearDown(controller.dispose);
+    // 800 high screen, a 1400 high grid from its top (a sheet not raised).
+    await pumpGrid(tester, controller: controller, gridHeight: 1400);
+    final gesture = await tester.startGesture(tester.getCenter(cell(0)));
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 20));
+    await gesture.moveTo(const Offset(100, 798));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(controller.offsets, isNotEmpty);
+    expect(controller.offsets.every((dy) => dy < 0), isTrue);
+    await gesture.up();
+    await tester.pump();
   });
 
   testWidgets(r'$Android swipe: dragging back gives the cells left behind '
@@ -629,4 +653,24 @@ class _RecordingPosition extends ScrollPositionWithSingleContext {
     offsets.add(delta);
     super.applyUserOffset(delta);
   }
+}
+
+// The grid at [height] from the top of the screen, past its bottom when
+// taller; the screen's height when null.
+class _Tall extends StatelessWidget {
+  const _Tall({required this.height, required this.child});
+
+  final double? height;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => switch (height) {
+    null => child,
+    final height => OverflowBox(
+      alignment: Alignment.topCenter,
+      minHeight: height,
+      maxHeight: height,
+      child: child,
+    ),
+  };
 }

@@ -211,6 +211,10 @@ abstract final class PickerViewer {
   /// Shows the viewer over [source] at [initialIndex]; completes when it
   /// closed. [bridge] is the grid's origins; by default the closest
   /// `ViewerOriginScope` above [context].
+  ///
+  /// With [overCamera] (a viewer over the camera's shots) no grid origin is
+  /// used, no vertical drag dismisses, and a close slides the picture off
+  /// downwards, fading.
   static Future<void> show(
     BuildContext context, {
     required LibraryGallerySource source,
@@ -230,16 +234,24 @@ abstract final class PickerViewer {
     String? Function(LibraryAsset asset)? subtitleOf,
     ValueChanged<int>? onIndexChanged,
     OriginBridge? bridge,
+    bool overCamera = false,
   }) {
     final scope = AssetCacheProvider.of(context);
-    final origins =
-        bridge ?? ViewerOriginScope.maybeOf(context)?.bridgeFor(source);
+    // Over a camera the pictures have no place on screen to come from or
+    // return to.
+    final origins = overCamera
+        ? null
+        : bridge ?? ViewerOriginScope.maybeOf(context)?.bridgeFor(source);
     final resolved = ViewerPolicyScope.resolve(context, policy: policy);
     // The picker's chrome never hides by itself: only a tap or the close
     // takes it away.
     final rules = resolved.copyWith(
       // A dismiss drag let go short of the close brings the chrome back.
       controlsReturnOnSpringBack: true,
+      // Over a camera no drag dismisses, and a close slides the picture
+      // off downwards.
+      dismissDrag: overCamera ? false : null,
+      plainCloseSlides: overCamera ? true : null,
       // A tap on a video plays or pauses it; never the chrome.
       video: resolved.video.copyWith(
         autoHides: false,

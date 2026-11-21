@@ -1166,10 +1166,11 @@ class MediaViewerState extends State<MediaViewer>
           clip: origin.clip,
         );
         _transition.duration = policy.closeDuration;
-      } else if (_drag != 0) {
-        // The origin is gone: the picture leaves the way it was dragged.
+      } else if (_drag != 0 || policy.plainCloseSlides) {
+        // The origin is gone: the picture leaves the way it was dragged
+        // (down when it was not).
         _to = _Frame(
-          from.shift(Offset(0, _drag.sign * _size.height)),
+          from.shift(Offset(0, (_drag < 0 ? -1 : 1) * _size.height)),
           opacity: 0,
         );
         _transition.duration = policy.slideOffDuration;

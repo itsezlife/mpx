@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The viewer over the camera (`PickerViewer.show(overCamera:)`, used by
+  `openCaptures` and the first capture): no grid origin, no dismiss drag,
+  and a close slides the picture off downwards, fading
+  (`ViewerPolicy.plainCloseSlides`). The swipe selection's edge bands sit
+  on the grid's part on screen, so a grid reaching below the screen
+  auto-scrolls at the screen's bottom.
 - The swipe selection's edge auto-scroll drags the list
   (`ScrollPosition.drag`, a step of up to 16 a frame) instead of jumping
   it: a host's position takes it as a user scroll (a sheet rises first, and

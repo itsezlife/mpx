@@ -891,6 +891,7 @@ final class ViewerPolicy {
     this.pictureClickCloses = false,
     this.doubleTapEdgeInset = 0,
     this.desktopInput = false,
+    this.plainCloseSlides = false,
   });
 
   /// The reference policy of [platform]: [$IOS] on iOS, [$Desktop] on
@@ -1207,6 +1208,12 @@ final class ViewerPolicy {
   /// without a drag and without an origin.
   final double plainCloseScale;
 
+  /// Whether a close without an origin and without a drag slides the
+  /// picture off downwards by the height, fading (over [slideOffDuration]),
+  /// instead of shrinking to [plainCloseScale]: a viewer over a camera,
+  /// whose pictures have no place to return to.
+  final bool plainCloseSlides;
+
   /// How far a picture zooms in.
   final ViewerZoomRule zoomRule;
 
@@ -1409,6 +1416,7 @@ final class ViewerPolicy {
     Curve? settleCurve,
     Duration? slideOffDuration,
     double? plainCloseScale,
+    bool? plainCloseSlides,
     ViewerZoomRule? zoomRule,
     double? doubleTapZoom,
     double? minZoom,
@@ -1458,6 +1466,7 @@ final class ViewerPolicy {
     settleCurve: settleCurve ?? this.settleCurve,
     slideOffDuration: slideOffDuration ?? this.slideOffDuration,
     plainCloseScale: plainCloseScale ?? this.plainCloseScale,
+    plainCloseSlides: plainCloseSlides ?? this.plainCloseSlides,
     zoomRule: zoomRule ?? this.zoomRule,
     doubleTapZoom: doubleTapZoom ?? this.doubleTapZoom,
     minZoom: minZoom ?? this.minZoom,
