@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' show Offset;
 
 import 'package:flutter/foundation.dart';
+import 'package:mpx_capture/src/camera/camera_background.dart';
 import 'package:mpx_capture/src/camera/camera_session.dart';
 import 'package:mpx_capture/src/camera/camera_snapshots.dart';
 import 'package:mpx_capture/src/job/capture_job.dart';
@@ -86,7 +88,12 @@ final class FakeCameraSessions implements CameraSessions {
 /// 1080 x 1920 whose duration is the time it recorded.
 final class FakeCameraSession implements CameraSession {
   FakeCameraSession._(this._owner, CameraSessionValue initial)
-    : _value = ValueNotifier(initial);
+    : _value = ValueNotifier(initial) {
+    _background = CameraBackground(
+      onHide: () => unawaited(_release()),
+      onShow: _reopen,
+    );
+  }
 
   final FakeCameraSessions _owner;
   final ValueNotifier<CameraSessionValue> _value;
@@ -160,7 +167,7 @@ final class FakeCameraSession implements CameraSession {
   Future<void> pause() async {
     _open();
     if (_now.isRecording) await stopRecording();
-    await CameraSnapshots.takeAll(this, switching: false);
+    if (!_hidden) await CameraSnapshots.takeAll(this, switching: false);
     _value.value = _now.copyWith(isPaused: true, awaitingFrames: true);
   }
 
@@ -169,8 +176,35 @@ final class FakeCameraSession implements CameraSession {
     _open();
     _value.value = _now.copyWith(
       isPaused: false,
-      awaitingFrames: _owner.holdsSwitchFrames,
+      awaitingFrames: _hidden || _owner.holdsSwitchFrames,
     );
+  }
+
+  // --- The app in the background ---
+
+  late final CameraBackground _background;
+  bool _hidden = false;
+
+  /// Whether the camera is let go now: paused by the host, or the app is
+  /// hidden.
+  bool get isReleased =>
+      _now.state != CameraSessionState.closed && (_now.isPaused || _hidden);
+
+  Future<void> _release() async {
+    if (_hidden || _now.state == CameraSessionState.closed) return;
+    _hidden = true;
+    if (_now.isPaused) return;
+    if (_now.isRecording) await stopRecording();
+    await CameraSnapshots.takeAll(this, switching: false);
+    if (_now.state == CameraSessionState.closed) return;
+    _value.value = _now.copyWith(awaitingFrames: true);
+  }
+
+  void _reopen() {
+    if (!_hidden) return;
+    _hidden = false;
+    if (_now.state == CameraSessionState.closed || _now.isPaused) return;
+    _value.value = _now.copyWith(awaitingFrames: _owner.holdsSwitchFrames);
   }
 
   /// Whether each photo taken was saved mirrored, in order.
@@ -237,6 +271,7 @@ final class FakeCameraSession implements CameraSession {
   }
 
   void _close() {
+    _background.dispose();
     if (_now.state == CameraSessionState.closed) return;
     _recording.stop();
     _value.value = const CameraSessionValue(state: CameraSessionState.closed);

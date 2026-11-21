@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_capture/src/camera/camera_session.dart';
 import 'package:mpx_capture/src/job/capture_job.dart';
@@ -149,6 +150,27 @@ abstract final class CameraSessionContract {
         );
       });
 
+      test('a hidden app lets the camera go and the preview waits for '
+          'frames; shown again, it opens', () async {
+        final binding = TestWidgetsFlutterBinding.ensureInitialized();
+        addTearDown(() => _show(binding));
+        _show(binding);
+        final session = await open();
+        _hide(binding);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(session.value.value.awaitingFrames, isTrue);
+        expect(
+          session.value.value.isPaused,
+          isFalse,
+          reason:
+              'the host did '
+              'not pause it',
+        );
+        _show(binding);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(session.value.value.state, CameraSessionState.available);
+      });
+
       test('a second open takes the camera over', () async {
         final first = await open();
         final second = await open();
@@ -172,4 +194,23 @@ abstract final class CameraSessionContract {
       });
     });
   }
+}
+
+// The app's lifecycle moves a step at a time.
+void _hide(TestWidgetsFlutterBinding binding) {
+  if (binding.lifecycleState == AppLifecycleState.hidden) return;
+  binding
+    ..handleAppLifecycleStateChanged(AppLifecycleState.inactive)
+    ..handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+}
+
+void _show(TestWidgetsFlutterBinding binding) {
+  switch (binding.lifecycleState) {
+    case AppLifecycleState.resumed:
+      return;
+    case AppLifecycleState.hidden:
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    case _:
+  }
+  binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
 }

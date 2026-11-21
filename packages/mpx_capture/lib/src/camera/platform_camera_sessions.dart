@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' show Offset;
 
 import 'package:flutter/foundation.dart';
+import 'package:mpx_capture/src/camera/camera_background.dart';
 import 'package:mpx_capture/src/camera/camera_claim.dart';
 import 'package:mpx_capture/src/camera/camera_session.dart';
 import 'package:mpx_capture/src/camera/camera_snapshots.dart';
@@ -59,7 +60,50 @@ final class PlatformCameraSessions implements CameraSessions {
 
 final class _PlatformCameraSession implements CameraSession {
   _PlatformCameraSession(this._id, CameraSessionValue initial)
-    : _value = ValueNotifier(initial);
+    : _value = ValueNotifier(initial) {
+    _background = CameraBackground(
+      onHide: () => unawaited(_release()),
+      onShow: () => unawaited(_reopen()),
+    );
+  }
+
+  // --- The app in the background ---
+
+  // While the app is hidden the camera is let go (another app may want
+  // it), whatever the host asked; the previews hold their last frame, and
+  // the camera opens again when the app shows, unless the host paused it.
+  late final CameraBackground _background;
+  bool _hidden = false;
+
+  Future<void> _release() async {
+    if (_hidden || _now.state == CameraSessionState.closed) return;
+    _hidden = true;
+    if (_now.isPaused) return;
+    _switchTimer?.cancel();
+    if (_now.isRecording) await _quietly(stopRecording);
+    await CameraSnapshots.takeAll(this, switching: false);
+    if (!_hidden || _now.state == CameraSessionState.closed) return;
+    await _quietly(() => _channel.invoke<void>('cameraPause', _args()));
+    if (_now.state == CameraSessionState.closed) return;
+    _value.value = _now.copyWith(awaitingFrames: true);
+  }
+
+  Future<void> _reopen() async {
+    if (!_hidden) return;
+    _hidden = false;
+    if (_now.state == CameraSessionState.closed || _now.isPaused) return;
+    await _quietly(() => _channel.invoke<void>('cameraResume', _args()));
+    _switchTimer?.cancel();
+    _switchTimer = Timer(_switchWait, _switched);
+  }
+
+  static Future<void> _quietly(Future<Object?> Function() call) async {
+    try {
+      await call();
+    } on Object {
+      // The session closed meanwhile.
+    }
+  }
 
   final int _id;
   final ValueNotifier<CameraSessionValue> _value;
@@ -156,8 +200,11 @@ final class _PlatformCameraSession implements CameraSession {
     _open();
     if (_now.isPaused) return;
     if (_now.isRecording) await stopRecording();
-    await CameraSnapshots.takeAll(this, switching: false);
-    await _channel.invoke<void>('cameraPause', _args());
+    // Hidden, the camera is let go already.
+    if (!_hidden) {
+      await CameraSnapshots.takeAll(this, switching: false);
+      await _channel.invoke<void>('cameraPause', _args());
+    }
     _value.value = _now.copyWith(isPaused: true, awaitingFrames: true);
   }
 
@@ -165,6 +212,11 @@ final class _PlatformCameraSession implements CameraSession {
   Future<void> resume() async {
     _open();
     if (!_now.isPaused) return;
+    // Hidden, the camera opens again when the app shows.
+    if (_hidden) {
+      _value.value = _now.copyWith(isPaused: false);
+      return;
+    }
     await _channel.invoke<void>('cameraResume', _args());
     _value.value = _now.copyWith(isPaused: false);
     // Waits for the first frame after the resume, as after a switch.
@@ -225,6 +277,7 @@ final class _PlatformCameraSession implements CameraSession {
 
   void _closedHere() {
     _switchTimer?.cancel();
+    _background.dispose();
     _channel.unlisten(_id);
     if (_now.state != CameraSessionState.closed) {
       _value.value = const CameraSessionValue(state: CameraSessionState.closed);

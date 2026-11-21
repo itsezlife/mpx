@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A camera session lets the camera go while the app is hidden (another
+  app may take it) and opens it again when the app shows, unless the host
+  paused it meanwhile; a recording stops first, and the previews hold
+  their last frame, blurred, until frames return.
 - `CameraSession.capturePhoto(mirrorFront:)` saves a front camera's photo
   mirrored, as its preview shows it; `CameraCaptureSurface` does so by
   default (`mirrorFrontPhotos`). Videos stay unmirrored. While recording,

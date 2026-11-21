@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_capture/mpx_capture.dart';
 import 'package:mpx_capture/testing.dart';
@@ -29,4 +30,81 @@ void main() {
       throwsA(isA<CaptureFailed>()),
     );
   });
+
+  group('the app in the background', () {
+    late TestWidgetsFlutterBinding binding;
+    setUp(() {
+      binding = TestWidgetsFlutterBinding.ensureInitialized();
+      _show(binding);
+    });
+    tearDown(() => _show(binding));
+    Future<void> settle() => Future<void>.delayed(Duration.zero);
+
+    test('hidden, the camera is let go; shown, it is taken back', () async {
+      final session = await FakeCameraSessions().open() as FakeCameraSession;
+      expect(session.isReleased, isFalse);
+      _hide(binding);
+      await settle();
+      expect(session.isReleased, isTrue);
+      _show(binding);
+      await settle();
+      expect(session.isReleased, isFalse);
+      expect(session.value.value.awaitingFrames, isFalse);
+    });
+
+    test('a recording stops when the app hides', () async {
+      final session = await FakeCameraSessions().open();
+      await session.startRecording(outputPath: '${directory.path}/v.mp4');
+      _hide(binding);
+      await settle();
+      expect(session.value.value.isRecording, isFalse);
+    });
+
+    test('paused by the host meanwhile, it stays let go when shown', () async {
+      final session = await FakeCameraSessions().open() as FakeCameraSession;
+      _hide(binding);
+      await settle();
+      await session.pause();
+      _show(binding);
+      await settle();
+      expect(session.isReleased, isTrue);
+      await session.resume();
+      expect(session.isReleased, isFalse);
+    });
+
+    test(
+      'resumed by the host while hidden, it opens only when shown',
+      () async {
+        final session = await FakeCameraSessions().open() as FakeCameraSession;
+        await session.pause();
+        _hide(binding);
+        await settle();
+        await session.resume();
+        expect(session.isReleased, isTrue);
+        expect(session.value.value.awaitingFrames, isTrue);
+        _show(binding);
+        await settle();
+        expect(session.isReleased, isFalse);
+      },
+    );
+  });
+}
+
+// The app's lifecycle moves a step at a time.
+void _hide(TestWidgetsFlutterBinding binding) {
+  if (binding.lifecycleState == AppLifecycleState.hidden) return;
+  binding
+    ..handleAppLifecycleStateChanged(AppLifecycleState.inactive)
+    ..handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+}
+
+void _show(TestWidgetsFlutterBinding binding) {
+  switch (binding.lifecycleState) {
+    case AppLifecycleState.resumed:
+      return;
+    case AppLifecycleState.hidden:
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    case _:
+  }
+  binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
 }
