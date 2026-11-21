@@ -169,4 +169,70 @@ void main() {
     expect(turned, isEmpty, reason: 'no turn plays');
     expect(find.byKey(const ValueKey('mpx-camera-stub')), findsNothing);
   });
+
+  for (final toFront in [true, false]) {
+    testWidgets(
+      'while the card turns ${toFront ? 'to the front' : 'to the '
+                'back'} camera it is the only layer, filling what the preview filled',
+      (tester) async {
+        final sessions = FakeCameraSessions(
+          textureId: 3,
+          holdsSwitchFrames: true,
+        );
+        final session = await tester.runAsync(
+          () => sessions.open(
+            facing: toFront ? CameraFacing.back : CameraFacing.front,
+          ),
+        );
+        await tester.pumpWidget(
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: Center(
+              child: SizedBox(
+                width: 180,
+                height: 390,
+                child: CameraPreview(session: session!),
+              ),
+            ),
+          ),
+        );
+        final box = tester.getRect(find.byType(CameraPreview));
+        await tester.runAsync(session.switchCamera);
+        await tester.pump();
+        final stub = find.byKey(const ValueKey('mpx-camera-stub'));
+        for (var ms = 50; ms < 500; ms += 50) {
+          await tester.pump(const Duration(milliseconds: 50));
+          expect(
+            find
+                .byType(Texture)
+                .evaluate()
+                .where(
+                  (e) =>
+                      e.findAncestorWidgetOfExactType<Offstage>()?.offstage !=
+                      true,
+                ),
+            isEmpty,
+            reason: 'no live frames drawn at $ms ms',
+          );
+          expect(stub, findsOneWidget, reason: 'one card at $ms ms');
+          // Untransformed, the card is the preview's own box.
+          expect(tester.renderObject<RenderBox>(stub).size, box.size);
+        }
+        sessions.current!.deliverSwitchFrames();
+        await tester.pump(const Duration(milliseconds: 600));
+        expect(
+          find
+              .byType(Texture)
+              .evaluate()
+              .where(
+                (e) =>
+                    e.findAncestorWidgetOfExactType<Offstage>()?.offstage !=
+                    true,
+              ),
+          hasLength(1),
+          reason: 'the live frames are back',
+        );
+      },
+    );
+  }
 }

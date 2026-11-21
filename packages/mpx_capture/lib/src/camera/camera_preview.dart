@@ -243,6 +243,11 @@ class _CameraPreviewState extends State<CameraPreview>
         builder: (context, child) {
           var shown = child!;
           final stub = _stub;
+          // The first half turns the old picture away to the edge, the
+          // second brings it back from the other side.
+          final t = Curves.ease.transform(_turn.value);
+          final angle = (t < 0.5 ? t : t - 1) * math.pi;
+          final turning = _turn.isAnimating && angle != 0;
           if (stub != null && _clear.value < 1) {
             final sample = _switch ? _switchSample : _pauseSample;
             final radius = _switch ? _switchRadius : _pauseRadius;
@@ -251,7 +256,10 @@ class _CameraPreviewState extends State<CameraPreview>
             shown = Stack(
               fit: StackFit.expand,
               children: [
-                shown,
+                // While the card turns it is the only layer: the live
+                // frames under it (the new camera's, mirrored and shaped
+                // differently) would turn with it and show at its edges.
+                Offstage(offstage: turning, child: shown),
                 Opacity(
                   opacity: 1 - _clear.value,
                   child: ClipRect(
@@ -281,11 +289,7 @@ class _CameraPreviewState extends State<CameraPreview>
               ),
             );
           }
-          // The first half turns the old picture away to the edge, the
-          // second brings the preview back from the other side.
-          final t = Curves.ease.transform(_turn.value);
-          final angle = (t < 0.5 ? t : t - 1) * math.pi;
-          if (_turn.isAnimating && angle != 0) {
+          if (turning) {
             shown = Transform(
               alignment: Alignment.center,
               transform: Matrix4.identity()

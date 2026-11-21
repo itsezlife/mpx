@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A camera switch turns one card: while it turns, only the snapshot is
+  drawn (the live frames under it, mirrored and shaped differently, no
+  longer show at its edges).
 - The kept shots under `$Android` (`shotsCounter`): with
   `CameraCaptureSurface(shots:, onShotsTap:)` and
   `CaptureSurfaceLabels.shotsCount`, a strip of 80 tiles at the bottom
