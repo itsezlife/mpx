@@ -270,6 +270,7 @@ class LibraryGridState extends State<LibraryGrid>
   EdgeAutoScroll get _autoScroll => _edgeScroll ??= EdgeAutoScroll(
     vsync: this,
     edge: widget.policy.autoScrollEdge,
+    maxStep: widget.policy.autoScrollMaxStep,
     position: () => _controller.hasClients ? _controller.position : null,
     viewport: _visibleRect,
     onStep: (global) {

@@ -73,6 +73,7 @@ final class LibraryGridPolicy {
     this.swipeVerticalSlop = 5,
     this.swipeHorizontalSlop = 8,
     this.autoScrollEdge = 60,
+    this.autoScrollMaxStep = 16,
     this.tabletShortestSide = 600,
     this.gifBadge = true,
     this.liveCornerMark = false,
@@ -104,6 +105,10 @@ final class LibraryGridPolicy {
     liveCornerMark: true,
     videoPlayMark: true,
     swipeRule: SwipeSelectRule.longPressDrag,
+    // The reference's range selector: 80 hotspots, each step half as far
+    // as the finger is into one (up to 40 at the end).
+    autoScrollEdge: 80,
+    autoScrollMaxStep: 40,
     cameraPlacement: CameraSlotPlacement.allMediaAlbum,
     defersChangesWhileViewerOpen: true,
     errorHaptic: false,
@@ -242,6 +247,10 @@ final class LibraryGridPolicy {
 
   /// How close to the top or bottom edge a swipe auto-scrolls.
   final double autoScrollEdge;
+
+  /// How far a swipe's auto-scroll moves a frame with the finger at the very
+  /// edge; less the shallower it is in the band, linearly.
+  final double autoScrollMaxStep;
 
   /// Whether an animated picture says GIF in its badge (`$IOS`); `$Android`
   /// shows it as a photo.

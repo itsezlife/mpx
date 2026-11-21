@@ -8,7 +8,9 @@
   goes on raising the sheet to its top and then scrolls the grid, where it
   used to stop after a few steps as the grid moved under the finger. Swipe
   moves are read against the grid where it is now (an event's own local
-  position is through its place at the down).
+  position is through its place at the down). `$Android` takes the
+  reference's speed: 80 bands, a step half as deep as the finger is in one
+  (`LibraryGridPolicy.autoScrollMaxStep`).
 - `PickerSelectionPreview`'s list fills the preview, so the area past the
   picks takes drags too.
 - The picker-mode viewer's videos neither autoplay nor loop: a page shown

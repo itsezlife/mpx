@@ -215,7 +215,8 @@ void main() {
     await pumpGrid(tester, controller: controller);
     final gesture = await tester.startGesture(tester.getCenter(cell(0)));
     await tester.pump(kLongPressTimeout + const Duration(milliseconds: 20));
-    // Deep in the bottom edge band: forward steps of up to 16.
+    // Deep in the bottom edge band: forward steps of up to 40 ($Android: half
+    // the finger's depth in the 80 band).
     await gesture.moveTo(const Offset(100, 795));
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 16));
@@ -224,7 +225,7 @@ void main() {
     expect(forward, isNotEmpty);
     for (final dy in forward) {
       // A drag's offset: the content moves up for a forward scroll.
-      expect(dy, inInclusiveRange(-16, 0));
+      expect(dy, inInclusiveRange(-40, 0));
     }
     expect(controller.position.pixels, -forward.reduce((a, b) => a + b));
     // Back at the top edge: steps back, past the start as well.
