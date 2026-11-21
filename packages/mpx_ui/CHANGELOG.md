@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `PickerCapture.thumbnail`: a still (a recording's first frame) that
+  stands for a capture in the grid's cells.
 - The viewer over the camera (`PickerViewer.show(overCamera:)`, used by
   `openCaptures` and the first capture): no grid origin, no dismiss drag,
   and a close slides the picture off downwards, fading

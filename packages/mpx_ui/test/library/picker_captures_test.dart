@@ -47,6 +47,25 @@ void main() {
       expect(PickerCaptureKeys.keyOf(library), key(0));
     });
 
+    test("a recording's thumbnail stands for it in cells; its key is still "
+        "the recording's", () {
+      final poster = MediaKey$Local('00000000-0000-4000-8000-0000000000aa');
+      final video = PickerCapture(
+        key: _capture(5).key,
+        kind: LibraryAssetKind.video,
+        thumbnail: poster,
+      );
+      expect(PickerCaptureKeys.keyOf(video.asset), video.key);
+      expect(PickerCaptureKeys.thumbnailKeyOf(video.asset, 100), poster);
+      final descriptor = PickerCaptureKeys.thumbnailDescriptorOf(
+        video.asset,
+        100,
+      );
+      expect(descriptor.key, poster);
+      expect(descriptor.kind, MediaKind.still);
+      expect(PickerCaptureKeys.descriptorOf(video.asset).kind, MediaKind.video);
+    });
+
     test('a capture describes itself as what it is', () {
       final video = _capture(2, kind: LibraryAssetKind.video);
       final descriptor = PickerCaptureKeys.descriptorOf(video.asset);

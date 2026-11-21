@@ -21,6 +21,7 @@ final class PickerCapture {
     this.duration,
     this.byteSize,
     this.created,
+    this.thumbnail,
   });
 
   /// Where the capture's bytes resolve (the host's capture cache).
@@ -41,12 +42,19 @@ final class PickerCapture {
   /// When it was taken, when known.
   final DateTime? created;
 
+  /// A still that stands for it in the grid and the strips (a recording's
+  /// first frame, stored in the same cache); null to show the capture
+  /// itself (a photo).
+  final MediaKey$Local? thumbnail;
+
   static const String _prefix = 'mpx-capture:';
 
   /// The capture as the grid and the viewer read an item: an asset whose id
   /// names [key] (`PickerCaptureKeys.isCapture` tells it apart).
   LibraryAsset get asset => LibraryAsset(
-    id: LibraryAssetId('$_prefix${key.uuid}'),
+    id: LibraryAssetId(
+      '$_prefix${key.uuid}${thumbnail == null ? '' : '/${thumbnail!.uuid}'}',
+    ),
     kind: kind,
     dimensions: dimensions,
     duration: duration,
@@ -71,11 +79,19 @@ final class PickerCapture {
       other.dimensions == dimensions &&
       other.duration == duration &&
       other.byteSize == byteSize &&
-      other.created == created;
+      other.created == created &&
+      other.thumbnail == thumbnail;
 
   @override
-  int get hashCode =>
-      Object.hash(key, kind, dimensions, duration, byteSize, created);
+  int get hashCode => Object.hash(
+    key,
+    kind,
+    dimensions,
+    duration,
+    byteSize,
+    created,
+    thumbnail,
+  );
 
   @override
   String toString() => 'PickerCapture(${key.uuid}, ${kind.name})';
@@ -91,23 +107,35 @@ abstract final class PickerCaptureKeys {
   /// The key the selection holds for [asset]: the capture's own key, or the
   /// library key.
   static MediaKey keyOf(LibraryAsset asset) => isCapture(asset)
-      ? MediaKey$Local(asset.id.value.substring(PickerCapture._prefix.length))
+      ? MediaKey$Local(_parts(asset).first)
       : LibraryKeys.libraryKeyOf(asset);
 
-  /// What a cell of [pixels] shows for [asset]: the capture itself, or the
-  /// library thumbnail.
+  // The capture's uuid, then its thumbnail's when it has one.
+  static List<String> _parts(LibraryAsset asset) =>
+      asset.id.value.substring(PickerCapture._prefix.length).split('/');
+
+  static MediaKey$Local? _thumbnailOf(LibraryAsset asset) {
+    final parts = _parts(asset);
+    return parts.length > 1 ? MediaKey$Local(parts[1]) : null;
+  }
+
+  /// What a cell of [pixels] shows for [asset]: a capture's thumbnail (or
+  /// the capture itself), or the library thumbnail.
   static MediaKey thumbnailKeyOf(LibraryAsset asset, int pixels) =>
       isCapture(asset)
-      ? keyOf(asset)
+      ? _thumbnailOf(asset) ?? keyOf(asset)
       : LibraryKeys.thumbnailKeyOf(asset, pixels);
 
   /// The descriptor of [thumbnailKeyOf].
-  static MediaDescriptor thumbnailDescriptorOf(
-    LibraryAsset asset,
-    int pixels,
-  ) => isCapture(asset)
-      ? _captureDescriptor(asset)
-      : LibraryKeys.thumbnailDescriptorOf(asset, pixels);
+  static MediaDescriptor thumbnailDescriptorOf(LibraryAsset asset, int pixels) {
+    if (!isCapture(asset)) {
+      return LibraryKeys.thumbnailDescriptorOf(asset, pixels);
+    }
+    if (_thumbnailOf(asset) case final still?) {
+      return MediaDescriptor(key: still, kind: MediaKind.still);
+    }
+    return _captureDescriptor(asset);
+  }
 
   /// The descriptor of [asset]'s original, with a library thumbnail of
   /// [thumbnailPixels] as its stand-in.
