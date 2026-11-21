@@ -55,6 +55,7 @@ final class CameraSessionValue {
     this.isSwitching = false,
     this.awaitingFrames = false,
     this.zoom = 0,
+    this.microphone = MicrophoneAccess.notDetermined,
   });
 
   /// Where the session stands.
@@ -105,6 +106,9 @@ final class CameraSessionValue {
   /// The zoom, 0 (the widest) to 1 (the camera's longest), linear.
   final double zoom;
 
+  /// Whether a recording may take sound: the platform's microphone access.
+  final MicrophoneAccess microphone;
+
   /// Whether the preview is drawn mirrored, as a front camera's is. The
   /// frames and the captures are not mirrored; only the preview is.
   bool get mirrored => facing == CameraFacing.front;
@@ -130,6 +134,7 @@ final class CameraSessionValue {
     bool? isSwitching,
     bool? awaitingFrames,
     double? zoom,
+    MicrophoneAccess? microphone,
   }) => CameraSessionValue(
     state: state ?? this.state,
     facing: facing ?? this.facing,
@@ -145,6 +150,7 @@ final class CameraSessionValue {
     isSwitching: isSwitching ?? this.isSwitching,
     awaitingFrames: awaitingFrames ?? this.awaitingFrames,
     zoom: zoom ?? this.zoom,
+    microphone: microphone ?? this.microphone,
   );
 
   @override
@@ -163,7 +169,8 @@ final class CameraSessionValue {
       other.frameRateCap == frameRateCap &&
       other.isSwitching == isSwitching &&
       other.awaitingFrames == awaitingFrames &&
-      other.zoom == zoom;
+      other.zoom == zoom &&
+      other.microphone == microphone;
 
   @override
   int get hashCode => Object.hash(
@@ -181,6 +188,7 @@ final class CameraSessionValue {
     isSwitching,
     awaitingFrames,
     zoom,
+    microphone,
   );
 
   @override
@@ -239,6 +247,12 @@ abstract interface class CameraSession {
   /// [ArgumentError] for a point outside.
   Future<void> focusAt(Offset point);
 
+  /// Asks for microphone access when it is not granted, and completes with
+  /// the access after the answer (at once when granted, or when the
+  /// platform will not ask again). [CameraSessionValue.microphone] follows.
+  /// A recording started after a grant takes sound.
+  Future<MicrophoneAccess> requestMicrophone();
+
   /// Stops frames until [resume].
   Future<void> pause();
 
@@ -290,4 +304,18 @@ abstract final class CameraFocus {
       throw ArgumentError.value(point, 'point', 'outside the preview');
     }
   }
+}
+
+/// The platform's microphone access, as a camera session reports it.
+enum MicrophoneAccess {
+  /// Granted: recordings take sound.
+  granted,
+
+  /// Not asked yet (on Android: not granted, and not refused since the app
+  /// started); [CameraSession.requestMicrophone] shows the platform's prompt.
+  notDetermined,
+
+  /// Refused; asking again may show nothing (the platform's settings are the
+  /// way back).
+  denied,
 }

@@ -115,6 +115,47 @@ final class CameraSession: NSObject, FlutterTexture,
     }
   }
 
+  /// "granted", "denied" (refused or restricted) or "notDetermined".
+  static func microphoneAccess() -> String {
+    switch AVCaptureDevice.authorizationStatus(for: .audio) {
+    case .authorized: return "granted"
+    case .notDetermined: return "notDetermined"
+    default: return "denied"
+    }
+  }
+
+  /// Answers the microphone access, asking for it first with [request]; a
+  /// grant adds the microphone to the running session.
+  func microphone(request: Bool, _ done: @escaping (String) -> Void) {
+    guard request, AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined else {
+      return done(Self.microphoneAccess())
+    }
+    AVCaptureDevice.requestAccess(for: .audio) { granted in
+      guard granted else { return done(Self.microphoneAccess()) }
+      self.queue.async {
+        if !self.closed {
+          self.session.beginConfiguration()
+          self.addMicrophone()
+          self.session.commitConfiguration()
+        }
+        done(Self.microphoneAccess())
+      }
+    }
+  }
+
+  // Adds the microphone (when allowed, asked for, and no call holds it)
+  // unless it is in already. On the session queue, in a configuration.
+  private func addMicrophone() {
+    guard audio, !Self.callActive, AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
+      !session.inputs.contains(where: { ($0 as? AVCaptureDeviceInput)?.device.hasMediaType(.audio) == true }),
+      let mic = AVCaptureDevice.default(for: .audio),
+      let micInput = try? AVCaptureDeviceInput(device: mic), session.canAddInput(micInput)
+    else { return }
+    session.addInput(micInput)
+    audioOutput.setSampleBufferDelegate(self, queue: queue)
+    if session.canAddOutput(audioOutput) { session.addOutput(audioOutput) }
+  }
+
   func setFlash(_ mode: String) {
     queue.async { self.flash = mode }
   }
@@ -344,14 +385,7 @@ final class CameraSession: NSObject, FlutterTexture,
     guard session.canAddInput(input) else { throw CaptureError.failed("cannot open the camera") }
     session.addInput(input)
     cameraInput = input
-    if audio, !Self.callActive, AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
-      let mic = AVCaptureDevice.default(for: .audio),
-      let micInput = try? AVCaptureDeviceInput(device: mic), session.canAddInput(micInput)
-    {
-      session.addInput(micInput)
-      audioOutput.setSampleBufferDelegate(self, queue: queue)
-      if session.canAddOutput(audioOutput) { session.addOutput(audioOutput) }
-    }
+    addMicrophone()
     videoOutput.videoSettings = [
       kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
     ]
@@ -552,6 +586,7 @@ final class CameraSession: NSObject, FlutterTexture,
       "state": name, "textureId": Int(textureId ?? -1), "previewWidth": previewWidth,
       "previewHeight": previewHeight, "quarterTurns": 0, "facing": facing,
       "hasFlash": hasFlash, "canSwitch": canSwitch,
+      "microphone": Self.microphoneAccess(),
     ]
   }
 

@@ -26,8 +26,19 @@ final class FakeCameraSessions implements CameraSessions {
     this.hasFlash = true,
     this.textureId,
     this.holdsSwitchFrames = false,
+    this.microphone = MicrophoneAccess.granted,
+    this.microphoneOnRequest = MicrophoneAccess.granted,
     FakeCamera? camera,
   }) : camera = camera ?? FakeCamera();
+
+  /// The microphone access sessions open with.
+  MicrophoneAccess microphone;
+
+  /// What a microphone request answers when not granted.
+  MicrophoneAccess microphoneOnRequest;
+
+  /// How many microphone requests asked (not counting granted ones).
+  int microphoneRequests = 0;
 
   /// The camera the sessions own in turn.
   final FakeCamera camera;
@@ -74,6 +85,7 @@ final class FakeCameraSessions implements CameraSessions {
         hasFlash: hasFlash,
         canSwitchCamera: cameras > 1,
         frameRateCap: frameRateCap,
+        microphone: microphone,
       ),
     );
     camera.take(session, session._close);
@@ -143,6 +155,16 @@ final class FakeCameraSession implements CameraSession {
 
   /// The points focused at, in order.
   final List<Offset> focusedAt = [];
+
+  @override
+  Future<MicrophoneAccess> requestMicrophone() async {
+    _open();
+    if (_now.microphone == MicrophoneAccess.granted) return _now.microphone;
+    _owner.microphoneRequests++;
+    _owner.microphone = _owner.microphoneOnRequest;
+    _value.value = _now.copyWith(microphone: _owner.microphoneOnRequest);
+    return _now.microphone;
+  }
 
   @override
   Future<void> setZoom(double zoom) async {

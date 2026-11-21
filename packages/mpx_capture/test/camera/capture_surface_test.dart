@@ -16,6 +16,8 @@ const _labels = CaptureSurfaceLabels(
 void main() {
   late Directory directory;
   late FakeCameraSessions sessions;
+  final refusals = <CaptureVideoRefusal>[];
+  setUp(refusals.clear);
   late List<CameraShot> shots;
   late int closes;
 
@@ -32,6 +34,7 @@ void main() {
     CaptureKinds kinds = CaptureKinds.photoAndVideo,
     CaptureCache? cache,
     FakeCameraSessions? from,
+    bool videoNeedsMicrophone = true,
   }) async {
     final session = await tester.runAsync(
       () => (from ?? sessions).open(frameRateCap: 30),
@@ -47,6 +50,8 @@ void main() {
           onClose: () => closes++,
           kinds: kinds,
           cache: cache,
+          onVideoRefused: refusals.add,
+          videoNeedsMicrophone: videoNeedsMicrophone,
         ),
       ),
     );
@@ -259,6 +264,62 @@ void main() {
     await tester.pump(const Duration(milliseconds: 120));
     expect(scale(), closeTo(1, 1e-9));
     await settle(tester);
+  });
+
+  group('video refused', () {
+    Future<void> hold(WidgetTester tester) async {
+      final press = await tester.startGesture(tester.getCenter(shutter()));
+      await tester.pump(
+        CameraCaptureSurface.holdToRecord + const Duration(milliseconds: 50),
+      );
+      await settle(tester);
+      await press.up();
+      await settle(tester);
+    }
+
+    testWidgets('a hold where only photos are allowed is refused, and '
+        'records nothing', (tester) async {
+      final session = await pumpSurface(tester, kinds: CaptureKinds.photo);
+      await hold(tester);
+      expect(refusals, [CaptureVideoRefusal.notAllowed]);
+      expect(shots, isEmpty);
+      expect(session.value.value.isRecording, isFalse);
+    });
+
+    testWidgets('without the microphone a hold asks for it and records '
+        'nothing; granted, the next hold records', (tester) async {
+      sessions
+        ..microphone = MicrophoneAccess.notDetermined
+        ..microphoneOnRequest = MicrophoneAccess.granted;
+      final session = await pumpSurface(tester);
+      await hold(tester);
+      expect(sessions.microphoneRequests, 1);
+      expect(refusals, isEmpty);
+      expect(shots, isEmpty);
+      expect(session.value.value.microphone, MicrophoneAccess.granted);
+      await hold(tester);
+      expect(shots.single.isVideo, isTrue);
+    });
+
+    testWidgets('a refused microphone tells the host', (tester) async {
+      sessions
+        ..microphone = MicrophoneAccess.notDetermined
+        ..microphoneOnRequest = MicrophoneAccess.denied;
+      await pumpSurface(tester);
+      await hold(tester);
+      expect(refusals, [CaptureVideoRefusal.microphone]);
+      expect(shots, isEmpty);
+    });
+
+    testWidgets('a surface that records without sound does not ask', (
+      tester,
+    ) async {
+      sessions.microphone = MicrophoneAccess.denied;
+      await pumpSurface(tester, videoNeedsMicrophone: false);
+      await hold(tester);
+      expect(sessions.microphoneRequests, 0);
+      expect(shots.single.isVideo, isTrue);
+    });
   });
 
   testWidgets('a hold records a video until released', (tester) async {

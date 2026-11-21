@@ -3,6 +3,7 @@ package dev.mpx.capture
 import android.Manifest
 import android.app.Activity
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -35,6 +36,7 @@ class MpxCapturePlugin :
     // One camera session per process (ADR 0011); a new open takes it over.
     private var camera: CameraSession? = null
     private val cameraWaiters = mutableListOf<() -> Unit>()
+    private val microphoneReplies = mutableListOf<MethodChannel.Result>()
     private lateinit var methods: MethodChannel
     private lateinit var events: EventChannel
     private var sink: EventChannel.EventSink? = null
@@ -84,6 +86,8 @@ class MpxCapturePlugin :
         permissionReplies.clear()
         cameraWaiters.toList().forEach { it() }
         cameraWaiters.clear()
+        microphoneReplies.forEach { it.success(CameraSession.microphoneAccess(context)) }
+        microphoneReplies.clear()
     }
 
     override fun onRequestPermissionsResult(
@@ -91,6 +95,18 @@ class MpxCapturePlugin :
         permissions: Array<out String>,
         grantResults: IntArray,
     ): Boolean {
+        val askedMicrophone = permissions.indexOf(Manifest.permission.RECORD_AUDIO)
+        if (askedMicrophone >= 0 &&
+            grantResults.getOrNull(askedMicrophone) != PackageManager.PERMISSION_GRANTED
+        ) {
+            CameraSession.microphoneRefused = true
+        }
+        if (requestCode == MICROPHONE_REQUEST) {
+            val access = CameraSession.microphoneAccess(context)
+            microphoneReplies.forEach { it.success(access) }
+            microphoneReplies.clear()
+            return true
+        }
         if (requestCode == CAMERA_REQUEST) {
             cameraWaiters.toList().forEach { it() }
             cameraWaiters.clear()
@@ -115,6 +131,16 @@ class MpxCapturePlugin :
     }
 
     // --- Camera session ---
+
+    /** Answers the microphone access, asking for it first with `request`. */
+    private fun microphone(request: Boolean, result: MethodChannel.Result) {
+        val access = CameraSession.microphoneAccess(context)
+        if (!request || access == "granted") return result.success(access)
+        val host: Activity = activity?.activity ?: return result.success(access)
+        microphoneReplies += result
+        if (microphoneReplies.size > 1) return
+        host.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), MICROPHONE_REQUEST)
+    }
 
     /** Asks for the camera (and the microphone with [audio]) when not yet granted, then runs [then]. */
     private fun askCamera(audio: Boolean, then: () -> Unit) {
@@ -175,6 +201,7 @@ class MpxCapturePlugin :
             "cameraCap" -> session.setFrameRateCap(call.argument<Int>("fps")).also { result.success(null) }
             "cameraSwitch" -> result.success(session.switchCamera())
             "cameraFlash" -> session.setFlash(call.argument<String>("mode") ?: "off").also { result.success(null) }
+            "cameraMicrophone" -> microphone(call.argument<Boolean>("request") ?: false, result)
             "cameraZoom" -> session.setZoom(call.argument<Double>("zoom") ?: 0.0).also { result.success(null) }
             "cameraFocus" -> session.focusAt(
                 call.argument<Double>("x") ?: 0.5,
@@ -322,7 +349,7 @@ class MpxCapturePlugin :
             }
             "permissions" -> requestPermissions(result)
             "cameraOpen", "cameraClose", "cameraCap", "cameraSwitch", "cameraFlash",
-            "cameraZoom", "cameraFocus",
+            "cameraZoom", "cameraFocus", "cameraMicrophone",
             "cameraPause", "cameraResume", "cameraPhoto", "cameraRecordStart",
             "cameraRecordStop" -> onCamera(call, result)
             "roundStart" -> startRound(call, result)
@@ -349,6 +376,7 @@ class MpxCapturePlugin :
 
 private const val PERMISSION_REQUEST = 0x6d70
 private const val CAMERA_REQUEST = 0x6d71
+private const val MICROPHONE_REQUEST = 0x6d72
 
 /** An error that crosses the channel; [code] picks the Dart exception. */
 class CaptureException(val code: String, override val message: String) : Exception(message) {

@@ -140,6 +140,12 @@ abstract final class CameraSessionContract {
         expect(session.value.value.zoom, 0);
       });
 
+      test('a microphone request answers what the value then shows', () async {
+        final session = await open();
+        final access = await session.requestMicrophone();
+        expect(session.value.value.microphone, access);
+      });
+
       test('focusing at a point of the preview is taken', () async {
         final session = await open();
         await session.focusAt(const Offset(0.25, 0.75));

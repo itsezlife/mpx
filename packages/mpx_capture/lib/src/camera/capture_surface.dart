@@ -28,6 +28,16 @@ enum CaptureKinds {
   bool get videos => this != photo;
 }
 
+/// Why the shutter did not record a video.
+enum CaptureVideoRefusal {
+  /// The surface takes photos only ([CaptureKinds.photo]).
+  notAllowed,
+
+  /// The microphone is refused (the platform's prompt was declined, or will
+  /// not show again).
+  microphone,
+}
+
 /// The host's words for the capture surface's controls, read by screen
 /// readers.
 @immutable
@@ -103,6 +113,8 @@ class CameraCaptureSurface extends StatefulWidget {
     this.expansion,
     this.controlsReveal,
     this.mirrorFrontPhotos = true,
+    this.onVideoRefused,
+    this.videoNeedsMicrophone = true,
     super.key,
   });
 
@@ -120,6 +132,8 @@ class CameraCaptureSurface extends StatefulWidget {
     CaptureCache? cache,
     Rect? from,
     bool mirrorFrontPhotos = true,
+    ValueChanged<CaptureVideoRefusal>? onVideoRefused,
+    bool videoNeedsMicrophone = true,
     Duration transition = const Duration(milliseconds: 350),
     Duration closeTransition = const Duration(milliseconds: 220),
   }) =>
@@ -144,6 +158,8 @@ class CameraCaptureSurface extends StatefulWidget {
               expansion: from == null ? null : progress,
               controlsReveal: from == null ? null : progress,
               mirrorFrontPhotos: mirrorFrontPhotos,
+              onVideoRefused: onVideoRefused,
+              videoNeedsMicrophone: videoNeedsMicrophone,
             );
           },
           transitionsBuilder: (context, animation, _, child) {
@@ -201,6 +217,16 @@ class CameraCaptureSurface extends StatefulWidget {
   /// Whether a front camera's photos are saved mirrored, as the preview
   /// shows them (a chat's camera does); videos never are.
   final bool mirrorFrontPhotos;
+
+  /// Called when the shutter would record a video but may not: a hold on a
+  /// surface for photos only, or a microphone refused. The host shows its
+  /// notice; nothing is recorded.
+  final ValueChanged<CaptureVideoRefusal>? onVideoRefused;
+
+  /// Whether a video needs the microphone. Without access, a hold asks for
+  /// it (the platform's prompt) and records nothing: the next hold records
+  /// once it is granted, and a refusal goes to [onVideoRefused].
+  final bool videoNeedsMicrophone;
 
   @override
   State<CameraCaptureSurface> createState() => _CameraCaptureSurfaceState();
@@ -475,8 +501,26 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     }
   }
 
+  // Whether a recording may start now: with the microphone, when videos
+  // need it, asked for first (that press records nothing).
+  Future<bool> _mayRecord() async {
+    if (!widget.videoNeedsMicrophone) return true;
+    if (_value.microphone == MicrophoneAccess.granted) return true;
+    try {
+      final access = await _session.requestMicrophone();
+      if (access != MicrophoneAccess.granted && mounted) {
+        widget.onVideoRefused?.call(CaptureVideoRefusal.microphone);
+      }
+    } on CaptureException {
+      // The session closed meanwhile.
+    }
+    return false;
+  }
+
   Future<void> _startVideo() async {
     if (_busy || !_value.isAvailable || _value.isRecording) return;
+    if (!await _mayRecord()) return;
+    if (!mounted || _busy || !_value.isAvailable || _value.isRecording) return;
     await _quietly(() => _session.startRecording(outputPath: _output('mp4')));
   }
 
@@ -505,7 +549,8 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
   }
 
   void _holdStart() {
-    if (widget.kinds.videos) unawaited(_startVideo());
+    if (widget.kinds.videos) return unawaited(_startVideo());
+    widget.onVideoRefused?.call(CaptureVideoRefusal.notAllowed);
   }
 
   void _holdEnd() {

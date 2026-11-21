@@ -461,6 +461,7 @@ class CameraSession(
         "facing" to facing,
         "hasFlash" to (camera?.cameraInfo?.hasFlashUnit() ?: false),
         "canSwitch" to canSwitch(),
+        "microphone" to microphoneAccess(context),
     )
 
     private fun canSwitch(): Boolean {
@@ -488,5 +489,15 @@ class CameraSession(
         fun hasMicrophone(context: Context) =
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
                 PackageManager.PERMISSION_GRANTED
+
+        /** Set when the user refused the microphone since the app started. */
+        @Volatile var microphoneRefused = false
+
+        /** "granted", "denied" (refused since the app started) or "notDetermined". */
+        fun microphoneAccess(context: Context) = when {
+            hasMicrophone(context) -> "granted"
+            microphoneRefused -> "denied"
+            else -> "notDetermined"
+        }
     }
 }

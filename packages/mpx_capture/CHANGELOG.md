@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `CameraSession.requestMicrophone` and `CameraSessionValue.microphone`
+  (`MicrophoneAccess`): a grant mid-session gives the next recording sound.
+  `CameraCaptureSurface.onVideoRefused` (`CaptureVideoRefusal`) tells the
+  host of a hold on a surface for photos only and of a refused microphone;
+  with `videoNeedsMicrophone` (default) a hold without the microphone asks
+  for it and records nothing.
 - A camera session lets the camera go while the app is hidden (another
   app may take it) and opens it again when the app shows, unless the host
   paused it meanwhile; a recording stops first, and the previews hold

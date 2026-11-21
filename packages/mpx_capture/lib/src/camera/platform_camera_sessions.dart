@@ -171,6 +171,27 @@ final class _PlatformCameraSession implements CameraSession {
   }
 
   @override
+  Future<MicrophoneAccess> requestMicrophone() async {
+    _open();
+    if (_now.microphone == MicrophoneAccess.granted) return _now.microphone;
+    final name = await _channel.invoke<String>(
+      'cameraMicrophone',
+      _args({'request': true}),
+    );
+    final access = _microphoneOf(name);
+    if (_now.state != CameraSessionState.closed) {
+      _value.value = _now.copyWith(microphone: access);
+    }
+    return access;
+  }
+
+  static MicrophoneAccess _microphoneOf(Object? name) => switch (name) {
+    'granted' => MicrophoneAccess.granted,
+    'denied' => MicrophoneAccess.denied,
+    _ => MicrophoneAccess.notDetermined,
+  };
+
+  @override
   Future<void> setZoom(double zoom) async {
     _open();
     final clamped = zoom.clamp(0.0, 1.0);
@@ -310,6 +331,9 @@ final class _PlatformCameraSession implements CameraSession {
       },
       hasFlash: map['hasFlash'] as bool?,
       canSwitchCamera: map['canSwitch'] as bool?,
+      microphone: map.containsKey('microphone')
+          ? _microphoneOf(map['microphone'])
+          : null,
       isRecording: state == CameraSessionState.available ? null : false,
     );
     if (map['firstFrame'] == true) _switched();
