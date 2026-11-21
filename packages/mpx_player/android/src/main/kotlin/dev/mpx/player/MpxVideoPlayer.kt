@@ -18,6 +18,7 @@ import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultLoadControl.DEFAULT_VIDEO_BUFFER_SIZE as DEFAULT_VIDEO_BUFFER_BYTES
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.analytics.AnalyticsListener
@@ -173,6 +174,11 @@ internal class MpxVideoPlayer(
     // link from stalling again every few frames. The buffer it keeps
     // ahead is unchanged once it has played; before that it is capped
     // ([PreparedLoadControl]).
+    //
+    // The bytes it keeps are capped at a quarter of the Java heap: Media3's
+    // default for a video (about 131 MB, 50 s of a high-bitrate recording)
+    // outgrows an app without a large heap (256 MB) and ends in an
+    // OutOfMemoryError; the cap applies before the duration targets.
     private fun loadControl() =
         DefaultLoadControl.Builder()
             .setBufferDurationsMs(
@@ -181,7 +187,14 @@ internal class MpxVideoPlayer(
                 START_BUFFER_MS,
                 RESTART_BUFFER_MS,
             )
+            .setTargetBufferBytes(bufferBytes())
+            .setPrioritizeTimeOverSizeThresholds(false)
             .build()
+
+    private fun bufferBytes(): Int {
+        val quarter = Runtime.getRuntime().maxMemory() / 4
+        return minOf(quarter, DEFAULT_VIDEO_BUFFER_BYTES.toLong()).toInt()
+    }
 
     private fun mediaSourceOf(
         context: Context,

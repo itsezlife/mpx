@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android: a player keeps at most a quarter of the Java heap buffered
+  (Media3's video default, about 131 MB, outgrew a 256 MB heap on a long
+  high-bitrate recording and ended in an OutOfMemoryError).
 - `PlayerAudioFocus` (`exclusive`, `duck`, `mix`) on `NativePlayerBackend`:
   how an audible video takes the sound from other apps. By default Android
   plays over the music that plays (`mix`) and Apple platforms take the
