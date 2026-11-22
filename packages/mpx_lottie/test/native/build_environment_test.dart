@@ -12,6 +12,7 @@ import '../../hook/src/targets.dart';
 
 const _bin = '/n/toolchains/llvm/prebuilt/darwin-x86_64/bin';
 const _pageFlag = '-C\x1flink-arg=-Wl,-z,max-page-size=16384';
+const _headerPad = '-C\x1flink-arg=-Wl,-headerpad_max_install_names';
 
 AndroidNdk _ndk() => findAndroidNdk(
   environment: {'ANDROID_NDK_HOME': '/n'},
@@ -134,7 +135,10 @@ void main() {
         environment: const {},
       );
 
-      expect(env, {'IPHONEOS_DEPLOYMENT_TARGET': '13.0'});
+      expect(env, {
+        'IPHONEOS_DEPLOYMENT_TARGET': '13.0',
+        'CARGO_ENCODED_RUSTFLAGS': _headerPad,
+      });
     });
 
     test('iOS without a configured version leaves the default', () {
@@ -147,16 +151,27 @@ void main() {
         environment: const {},
       );
 
-      expect(env, isEmpty);
+      expect(env, {'CARGO_ENCODED_RUSTFLAGS': _headerPad});
     });
 
-    test('macOS needs nothing', () {
+    // The Flutter tool rewrites a bundled dylib's install name to a path in
+    // the app's build folder, which install_name_tool refuses without room
+    // in the load commands: a long checkout path broke `flutter test`.
+    test('macOS leaves room to rewrite install names, after the app\'s own '
+        'flags', () {
       expect(
         cargoBuildEnvironment(
           target: const LottieNativeTarget(OS.macOS, Architecture.arm64),
           environment: const {},
         ),
-        isEmpty,
+        {'CARGO_ENCODED_RUSTFLAGS': _headerPad},
+      );
+      expect(
+        cargoBuildEnvironment(
+          target: const LottieNativeTarget(OS.macOS, Architecture.arm64),
+          environment: const {'RUSTFLAGS': '-C opt-level=3'},
+        )['CARGO_ENCODED_RUSTFLAGS'],
+        '-C\x1fopt-level=3\x1f$_headerPad',
       );
     });
   });

@@ -19,6 +19,20 @@ const _defaultAndroidApi = 21;
 /// library aligned to 16 KB also loads on a 4 KB device.
 const _androidPageFlags = ['-C', 'link-arg=-Wl,-z,max-page-size=16384'];
 
+/// Room in the Mach-O load commands: the Flutter tool rewrites a bundled
+/// dylib's install name to a path in the app's build folder with
+/// install_name_tool, which fails when the new name does not fit (a long
+/// checkout path is enough). Always on for macOS and iOS.
+const _appleHeaderPadFlags = [
+  '-C',
+  'link-arg=-Wl,-headerpad_max_install_names',
+];
+
+String _appleFlags(Map<String, String> environment) => [
+  ..._userRustFlags(environment),
+  ..._appleHeaderPadFlags,
+].join(_flagSeparator);
+
 /// The variables to add to the process environment for building [target].
 ///
 /// [environment] is the process environment, read only for flags the app
@@ -54,7 +68,10 @@ Map<String, String> cargoBuildEnvironment({
       return {
         if (target.iosVersion case final version?)
           'IPHONEOS_DEPLOYMENT_TARGET': '$version.0',
+        'CARGO_ENCODED_RUSTFLAGS': _appleFlags(environment),
       };
+    case OS.macOS:
+      return {'CARGO_ENCODED_RUSTFLAGS': _appleFlags(environment)};
     default:
       return const {};
   }

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The macOS and iOS library is linked with room to rewrite its install name
+  (`-headerpad_max_install_names`). Before this, the Flutter tool's
+  `install_name_tool` failed when the app's build folder had a long path.
 - A prebuilt download is ended by a stall (no bytes for a minute), not by
   its length, so a slow link still gets the library. A whole fetch is
   capped at 15 minutes. Before this, a megabyte at about 10 KB/s timed out
