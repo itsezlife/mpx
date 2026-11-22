@@ -5,10 +5,30 @@ import 'package:mpx_core/src/asset/asset_cache_scope.dart';
 import 'package:mpx_core/src/asset/asset_preset.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_transfer.dart';
+import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 import 'package:mpx_core/src/pipeline/auto_download.dart';
 import 'package:mpx_core/src/widget/asset_cache_provider.dart';
 import 'package:mpx_core/src/widget/media_status.dart';
+
+/// What a download's arc shows while its measure is not known yet (no byte
+/// has arrived, or no total).
+enum MediaProgressLook {
+  /// The measured arc, from nothing: the reference's GIF cell, whose arc
+  /// stands at its least sweep and turns until the bytes come.
+  measured,
+
+  /// The indeterminate spinner: a video's loading.
+  spinner;
+
+  /// The stock choice for [media]: a GIF (an animated image, or a GIF sent
+  /// as a silent video loop) keeps its measured arc; anything else spins.
+  static MediaProgressLook stockFor(MediaDescriptor? media) =>
+      media != null &&
+          (media.kind == MediaKind.animatedImage || media.silentLoop)
+      ? measured
+      : spinner;
+}
 
 /// Where one piece of media is in its loading, as a value: the best stage it
 /// shows and its download. What the stock chrome of an [AssetView] reads, for
@@ -52,9 +72,25 @@ final class AssetLoadState {
   /// Whether the media shows its content (its first frame or more).
   bool get shown => stage.index >= AssetStage.firstFrame.index;
 
-  /// What the stock status control shows for it.
-  MediaStatus status({bool playAction = false}) =>
-      MediaStatus.forTransfer(transfer, stage, playAction: playAction);
+  /// What the stock status control shows for it; with [look]
+  /// [MediaProgressLook.measured], a download not measured yet shows its arc
+  /// at nothing rather than the spinner.
+  MediaStatus status({
+    bool playAction = false,
+    MediaProgressLook look = MediaProgressLook.spinner,
+  }) {
+    final status = MediaStatus.forTransfer(
+      transfer,
+      stage,
+      playAction: playAction,
+    );
+    return look == MediaProgressLook.measured &&
+            transfer.isActive &&
+            status.arc &&
+            status.progress == null
+        ? MediaStatus(icon: status.icon, arc: true, progress: 0)
+        : status;
+  }
 
   @override
   bool operator ==(Object other) =>
@@ -86,7 +122,7 @@ typedef AssetSkinBuilder =
 @immutable
 final class AssetViewSkin {
   /// Creates a skin; null builders keep the stock parts.
-  const AssetViewSkin({this.status, this.badge, this.reveal});
+  const AssetViewSkin({this.status, this.badge, this.reveal, this.progress});
 
   /// The reference look: every part stock.
   static const AssetViewSkin stock = AssetViewSkin();
@@ -101,6 +137,15 @@ final class AssetViewSkin {
   /// Builds the picture's entrance over the stock fades.
   final AssetSkinBuilder? reveal;
 
+  /// Per kind of media, what its download arc shows before its measure is
+  /// known; null for [MediaProgressLook.stockFor] (a GIF's measured arc, a
+  /// video's spinner).
+  final MediaProgressLook Function(MediaDescriptor? media)? progress;
+
+  /// The progress look of [media] under this skin.
+  MediaProgressLook progressOf(MediaDescriptor? media) =>
+      (progress ?? MediaProgressLook.stockFor)(media);
+
   /// This skin, with [other]'s builders where it has none.
   AssetViewSkin over(AssetViewSkin? other) => other == null
       ? this
@@ -108,10 +153,12 @@ final class AssetViewSkin {
           status: status ?? other.status,
           badge: badge ?? other.badge,
           reveal: reveal ?? other.reveal,
+          progress: progress ?? other.progress,
         );
 
   /// Whether every part is stock.
-  bool get isStock => status == null && badge == null && reveal == null;
+  bool get isStock =>
+      status == null && badge == null && reveal == null && progress == null;
 }
 
 /// Rebuilds with the [AssetLoadState] of [content] decoded as [preset]: a

@@ -127,12 +127,22 @@ class _AssetStatusOverlayState extends State<AssetStatusOverlay> {
   void _bindingChanged() {
     final streaming = _readStreaming();
     final picture = _readPicture();
-    if (streaming == _streaming && picture == _picture) return;
+    // What the media is decides its progress look (a GIF's arc, a video's
+    // spinner): a descriptor that arrives later changes it.
+    final descriptor = widget.binding.descriptor;
+    if (streaming == _streaming &&
+        picture == _picture &&
+        descriptor == _descriptor) {
+      return;
+    }
     setState(() {
       _streaming = streaming;
       _picture = picture;
+      _descriptor = descriptor;
     });
   }
+
+  MediaDescriptor? _descriptor;
 
   // A skin's part, rebuilt with the binding's state; the stock part
   // repaints itself and needs no rebuild.
@@ -155,6 +165,12 @@ class _AssetStatusOverlayState extends State<AssetStatusOverlay> {
     final style = MediaLoadingStyleScope.resolve(context);
     final binding = widget.binding;
     final corner = style.status.compactOffset;
+    // A GIF's arc stands from nothing until its bytes are measured; a
+    // video's spins (the skin's choice per kind).
+    final look = MediaLoadingStyleScope.resolveSkin(
+      context,
+      skin: widget.skin,
+    ).progressOf(binding.descriptor);
     final centre = widget.round ? style.status.roundVideoDiameter : null;
     Widget compact() => Positioned.fill(
       child: CustomSingleChildLayout(
@@ -163,7 +179,13 @@ class _AssetStatusOverlayState extends State<AssetStatusOverlay> {
           picture: _picture,
           offset: corner,
         ),
-        child: _control(MediaStatusControl.binding(binding, compact: true)),
+        child: _control(
+          MediaStatusControl.binding(
+            binding,
+            compact: true,
+            progressLook: look,
+          ),
+        ),
       ),
     );
     final controls = <Widget>[
@@ -181,6 +203,7 @@ class _AssetStatusOverlayState extends State<AssetStatusOverlay> {
               child: _control(
                 MediaStatusControl.binding(
                   binding,
+                  progressLook: look,
                   arcOnly: true,
                   diameter: 2 * radius,
                 ),
@@ -220,6 +243,7 @@ class _AssetStatusOverlayState extends State<AssetStatusOverlay> {
               child: _control(
                 MediaStatusControl.binding(
                   binding,
+                  progressLook: look,
                   playAction: playAction,
                   onPlay: widget.onPlay,
                   diameter: centre,

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- A GIF's download arc is its measured arc again: before its bytes are
+  measured it stands at nothing and turns, as the reference's GIF cell, and
+  never swings as the video loading's spinner, which the shared status
+  control had given it. The choice is per kind of media in the skin
+  (`MediaProgressLook`, `AssetViewSkin.progress`; stock: a GIF, an animated
+  image or a GIF sent as a silent video loop, keeps the measured arc, a
+  video spins).
 - **Breaking:** the loading state is headless and the look a skin.
   `AssetLoadState` (the stage and the download, with `loading`, `fraction`,
   `failed`, `shown`, `status()`) is what the stock chrome reads;

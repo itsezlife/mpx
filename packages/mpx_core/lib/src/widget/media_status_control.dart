@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:mpx_core/src/asset/asset_binding.dart';
-import 'package:mpx_core/src/asset/asset_readiness.dart';
+import 'package:mpx_core/src/widget/asset_load_state.dart';
 import 'package:mpx_core/src/widget/media_loading_style.dart';
 import 'package:mpx_core/src/widget/media_status.dart';
 import 'package:mpx_core/src/widget/media_status_motion.dart';
@@ -38,7 +38,8 @@ class MediaStatusControl extends StatefulWidget {
   }) : binding = null,
        playAction = false,
        onPlay = null,
-       arcOnly = false;
+       arcOnly = false,
+       progressLook = MediaProgressLook.spinner;
 
   /// Shows the download of [binding] (`MediaStatus.forTransfer`): cancel and
   /// an arc while it downloads, download while it waits for the user or
@@ -54,6 +55,7 @@ class MediaStatusControl extends StatefulWidget {
     this.playAction = false,
     this.onPlay,
     this.arcOnly = false,
+    this.progressLook = MediaProgressLook.spinner,
     this.compact = false,
     this.diameter,
     this.style,
@@ -76,6 +78,10 @@ class MediaStatusControl extends StatefulWidget {
 
   /// Whether a [binding]'s control is a bare arc, without icon or taps.
   final bool arcOnly;
+
+  /// What a [binding]'s arc shows before its download is measured: its arc
+  /// at nothing, or the spinner.
+  final MediaProgressLook progressLook;
 
   /// Called on a tap on a plain [status] that shows an icon.
   final VoidCallback? onTap;
@@ -113,17 +119,18 @@ class _MediaStatusControlState extends State<MediaStatusControl>
   MediaStatus _read() {
     final binding = widget.binding;
     if (binding == null) return widget.status ?? MediaStatus.none;
-    final stage = binding.readiness.stage;
-    final transfer = binding.transfer;
+    final state = AssetLoadState.of(binding);
     if (widget.arcOnly) {
-      return transfer.isActive && stage.index < AssetStage.firstFrame.index
-          ? MediaStatus.progress(transfer.fraction, icon: MediaStatusIcon.none)
-          : MediaStatus.none;
+      if (!state.loading) return MediaStatus.none;
+      final measured = widget.progressLook == MediaProgressLook.measured;
+      return MediaStatus.progress(
+        state.fraction ?? (measured ? 0 : null),
+        icon: MediaStatusIcon.none,
+      );
     }
-    return MediaStatus.forTransfer(
-      transfer,
-      stage,
+    return state.status(
       playAction: widget.playAction,
+      look: widget.progressLook,
     );
   }
 

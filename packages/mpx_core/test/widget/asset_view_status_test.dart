@@ -299,6 +299,89 @@ void main() {
     expect(thumbnail.paints.last.context.opacity, 1);
   });
 
+  group('a download not measured yet', () {
+    test("a GIF's arc stands at nothing, a video spins", () {
+      const waiting = AssetLoadState(
+        stage: AssetStage.none,
+        transfer: AssetTransfer.waiting(),
+      );
+      expect(
+        waiting.status(look: MediaProgressLook.measured),
+        const MediaStatus(icon: MediaStatusIcon.cancel, arc: true, progress: 0),
+      );
+      expect(waiting.status().progress, isNull, reason: 'the spinner');
+      expect(
+        MediaProgressLook.stockFor(
+          const MediaDescriptor(key: _key, kind: MediaKind.animatedImage),
+        ),
+        MediaProgressLook.measured,
+      );
+      expect(
+        MediaProgressLook.stockFor(
+          const MediaDescriptor(
+            key: _key,
+            kind: MediaKind.video,
+            silentLoop: true,
+          ),
+        ),
+        MediaProgressLook.measured,
+        reason: 'a GIF sent as video',
+      );
+      expect(
+        MediaProgressLook.stockFor(
+          const MediaDescriptor(key: _key, kind: MediaKind.video),
+        ),
+        MediaProgressLook.spinner,
+      );
+    });
+
+    MediaProgressLook lookShown(WidgetTester tester) => tester
+        .widget<MediaStatusControl>(find.byType(MediaStatusControl))
+        .progressLook;
+
+    testWidgets("an arc over a GIF clip is its measured arc; a video's "
+        'spins; a skin chooses per kind', (tester) async {
+      await tester.pumpWidget(
+        host(
+          const AssetView(
+            content: _key,
+            preset: _preset,
+            status: MediaStatusMode.arc(12),
+          ),
+        ),
+      );
+      producer.last
+        ..describe(
+          const MediaDescriptor(
+            key: _key,
+            kind: MediaKind.video,
+            silentLoop: true,
+          ),
+        )
+        ..waiting();
+      await tester.pump();
+      expect(lookShown(tester), MediaProgressLook.measured);
+
+      producer.last.describe(
+        const MediaDescriptor(key: _key, kind: MediaKind.video),
+      );
+      await tester.pump();
+      expect(lookShown(tester), MediaProgressLook.spinner);
+
+      await tester.pumpWidget(
+        host(
+          const AssetView(
+            content: _key,
+            preset: _preset,
+            status: MediaStatusMode.arc(12),
+          ),
+          skin: AssetViewSkin(progress: (media) => MediaProgressLook.measured),
+        ),
+      );
+      expect(lookShown(tester), MediaProgressLook.measured);
+    });
+  });
+
   testWidgets("a skin's status gets the headless state and the stock "
       'control; it follows the download, the picture is not rebuilt', (
     tester,
