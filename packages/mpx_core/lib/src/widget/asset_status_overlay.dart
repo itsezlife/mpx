@@ -4,6 +4,7 @@ import 'package:mpx_core/src/asset/asset_profile.dart';
 import 'package:mpx_core/src/asset/asset_readiness.dart';
 import 'package:mpx_core/src/asset/asset_transfer.dart';
 import 'package:mpx_core/src/identity/media_descriptor.dart';
+import 'package:mpx_core/src/widget/asset_load_state.dart';
 import 'package:mpx_core/src/widget/media_badge.dart';
 import 'package:mpx_core/src/widget/media_loading_style.dart';
 import 'package:mpx_core/src/widget/media_status.dart';
@@ -24,7 +25,8 @@ import 'package:mpx_core/src/widget/media_status_mode.dart';
 /// corner control while one shows. Both follow the binding's one transfer
 /// and repaint themselves; the overlay rebuilds only when their layout
 /// changes. The look comes from the closest `MediaLoadingStyleScope`; a
-/// [statusBuilder] (else the scope's) may replace the control.
+/// [skin] (over the scope's) may replace the control and the badge, given
+/// the binding's [AssetLoadState] and the stock widget.
 class AssetStatusOverlay extends StatefulWidget {
   /// Lays [binding]'s status control and badge over [child].
   const AssetStatusOverlay({
@@ -33,7 +35,7 @@ class AssetStatusOverlay extends StatefulWidget {
     this.status = const MediaStatusMode.control(),
     this.badge = false,
     this.onPlay,
-    this.statusBuilder,
+    this.skin,
     this.width,
     this.round = false,
     super.key,
@@ -52,8 +54,8 @@ class AssetStatusOverlay extends StatefulWidget {
   /// or with `MediaStatusMode.control(playAction: true)`.
   final VoidCallback? onPlay;
 
-  /// Replaces the status control, instead of the scope's builder.
-  final MediaStatusBuilder? statusBuilder;
+  /// The parts of the look this overlay replaces, over the scope's.
+  final AssetViewSkin? skin;
 
   /// The width of the box, for the badge's narrow forms; null for a wide
   /// one.
@@ -132,11 +134,21 @@ class _AssetStatusOverlayState extends State<AssetStatusOverlay> {
     });
   }
 
-  Widget _control(MediaStatusControl control) {
-    final builder =
-        widget.statusBuilder ?? MediaLoadingStyleScope.statusBuilderOf(context);
-    return builder == null ? control : builder(context, control);
+  // A skin's part, rebuilt with the binding's state; the stock part
+  // repaints itself and needs no rebuild.
+  Widget _skinned(AssetSkinBuilder? builder, Widget stock) {
+    if (builder == null) return stock;
+    return AssetLoadStateBuilder.binding(
+      widget.binding,
+      child: stock,
+      builder: (context, state, stock) => builder(context, state, stock!),
+    );
   }
+
+  Widget _control(MediaStatusControl control) => _skinned(
+    MediaLoadingStyleScope.resolveSkin(context, skin: widget.skin).status,
+    control,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -238,9 +250,15 @@ class _AssetStatusOverlayState extends State<AssetStatusOverlay> {
                   badge.dy,
                 ),
               ),
-              child: MediaBadge.binding(
-                binding,
-                width: widget.width ?? double.infinity,
+              child: _skinned(
+                MediaLoadingStyleScope.resolveSkin(
+                  context,
+                  skin: widget.skin,
+                ).badge,
+                MediaBadge.binding(
+                  binding,
+                  width: widget.width ?? double.infinity,
+                ),
               ),
             ),
           ),

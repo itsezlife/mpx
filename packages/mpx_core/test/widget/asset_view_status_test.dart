@@ -38,12 +38,12 @@ void main() {
     addTearDown(scope.dispose);
   });
 
-  Widget host(Widget child, {MediaStatusBuilder? statusBuilder}) => MaterialApp(
+  Widget host(Widget child, {AssetViewSkin? skin}) => MaterialApp(
     theme: ThemeData(platform: TargetPlatform.android),
     home: AssetCacheProvider(
       scope: scope,
       child: MediaLoadingStyleScope(
-        statusBuilder: statusBuilder,
+        skin: skin,
         child: Center(child: child),
       ),
     ),
@@ -299,9 +299,11 @@ void main() {
     expect(thumbnail.paints.last.context.opacity, 1);
   });
 
-  testWidgets('a host builder replaces the control; byte reports do not '
-      'rebuild the view', (tester) async {
-    var builds = 0;
+  testWidgets("a skin's status gets the headless state and the stock "
+      'control; it follows the download, the picture is not rebuilt', (
+    tester,
+  ) async {
+    final states = <AssetLoadState>[];
     await tester.pumpWidget(
       host(
         const AssetView(
@@ -309,40 +311,108 @@ void main() {
           preset: _preset,
           status: MediaStatusMode.control(),
         ),
-        statusBuilder: (context, control) {
-          builds++;
-          return const Text('host control');
-        },
+        skin: AssetViewSkin(
+          status: (context, state, stock) {
+            states.add(state);
+            expect(stock, isA<MediaStatusControl>());
+            return Text('host ${state.fraction ?? '-'}');
+          },
+        ),
       ),
     );
-    expect(find.text('host control'), findsOneWidget);
     expect(find.byType(MediaStatusControl), findsNothing);
-    final before = builds;
-
-    producer.last
-      ..transfer(10, 100)
-      ..transfer(20, 100);
-    await tester.pump();
     producer.last.transfer(30, 100);
     await tester.pump();
-
-    expect(builds, before);
+    expect(find.text('host 0.3'), findsOneWidget);
+    expect(states.last.loading, isTrue);
+    expect(states.last.transfer, const AssetTransfer.receiving(30, 100));
   });
 
-  testWidgets("the view's own builder wins over the scope's", (tester) async {
+  testWidgets("the view's own skin wins over the scope's, part by part", (
+    tester,
+  ) async {
     await tester.pumpWidget(
       host(
         AssetView(
           content: _key,
           preset: _preset,
           status: MediaStatusMode.compact,
-          statusBuilder: (context, control) => Text('mine ${control.compact}'),
+          badge: true,
+          skin: AssetViewSkin(
+            status: (context, state, stock) =>
+                Text('mine ${(stock as MediaStatusControl).compact}'),
+          ),
         ),
-        statusBuilder: (context, control) => const Text('scope'),
+        skin: AssetViewSkin(
+          status: (context, state, stock) => const Text('scope'),
+          badge: (context, state, stock) => const Text('scope badge'),
+        ),
       ),
     );
 
     expect(find.text('mine true'), findsOneWidget);
+    expect(find.text('scope'), findsNothing);
+    expect(find.text('scope badge'), findsOneWidget);
+  });
+
+  testWidgets("a skin's reveal wraps the picture with its state, and keeps "
+      'it in place as the stage rises', (tester) async {
+    final shown = <bool>[];
+    await tester.pumpWidget(
+      host(
+        AssetView(
+          content: _key,
+          preset: _preset,
+          skin: AssetViewSkin(
+            reveal: (context, state, picture) {
+              shown.add(state.shown);
+              return Opacity(
+                key: const ValueKey('reveal'),
+                opacity: state.shown ? 1 : 0,
+                child: picture,
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    double opacity() =>
+        tester.widget<Opacity>(find.byKey(const ValueKey('reveal'))).opacity;
+    expect(opacity(), 0);
+    Element picture() {
+      late Element child;
+      tester
+          .element(find.byKey(const ValueKey('reveal')))
+          .visitChildren((e) => child = e);
+      return child;
+    }
+
+    final before = picture();
+    producer.last.advance(AssetStage.full);
+    await tester.pump();
+    expect(opacity(), 1);
+    expect(shown.last, isTrue);
+    expect(identical(picture(), before), isTrue);
+  });
+
+  testWidgets('AssetLoadStateBuilder: a host UI from the same entry, with '
+      'no view of its own', (tester) async {
+    await tester.pumpWidget(
+      host(
+        AssetLoadStateBuilder(
+          content: _key,
+          preset: _preset,
+          builder: (context, state, _) =>
+              Text('${state.stage.name} ${state.loading} ${state.fraction}'),
+        ),
+      ),
+    );
+    producer.last.transfer(50, 200);
+    await tester.pump();
+    expect(find.text('none true 0.25'), findsOneWidget);
+    producer.last.advance(AssetStage.full);
+    await tester.pump();
+    expect(find.textContaining('full'), findsOneWidget);
   });
 
   testWidgets('the control keeps its style size over a large tile', (

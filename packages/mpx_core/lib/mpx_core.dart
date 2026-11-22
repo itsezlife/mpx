@@ -73,6 +73,7 @@ export 'src/texture/platform/frame_texture_natives.dart';
 export 'src/texture/platform/platform_frame_texture_host.dart';
 export 'src/texture/texture_frame_writer.dart';
 export 'src/widget/asset_cache_provider.dart';
+export 'src/widget/asset_load_state.dart';
 export 'src/widget/asset_status_overlay.dart';
 export 'src/widget/asset_view.dart';
 export 'src/widget/media_badge.dart';

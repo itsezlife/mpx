@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mpx_core/src/asset/outline_paintable.dart';
+import 'package:mpx_core/src/widget/asset_load_state.dart';
 import 'package:mpx_core/src/widget/media_badge_style.dart';
-import 'package:mpx_core/src/widget/media_status_control.dart';
 import 'package:mpx_core/src/widget/media_status_style.dart';
 
 /// How a media item rises through its stages (nothing, a preview, a
@@ -246,32 +246,27 @@ final class MediaLoadingStyle {
   String toString() => 'MediaLoadingStyle($stages)';
 }
 
-/// Builds the status control of a surface in place of the default one: the
-/// host's own widget for the [control] mpx would build (its status, or the
-/// binding it maps, and its taps).
-typedef MediaStatusBuilder =
-    Widget Function(BuildContext context, MediaStatusControl control);
-
 /// Changes the loading style of the media below it: [style] is applied to
 /// the style of the theme's platform, so `(platform) => platform.copyWith(...)`
 /// changes a field and keeps the platform's other values.
 ///
-/// [statusBuilder] replaces the status control of every surface below that
-/// names none of its own.
+/// [skin] replaces parts of the look (the status control, the badge, the
+/// reveal) of every surface below, under the parts a surface's own skin
+/// names.
 class MediaLoadingStyleScope extends InheritedWidget {
-  /// Applies [style] and [statusBuilder] below.
+  /// Applies [style] and [skin] below.
   const MediaLoadingStyleScope({
     required super.child,
     this.style,
-    this.statusBuilder,
+    this.skin,
     super.key,
   });
 
   /// The style below, from the platform's default; null keeps it.
   final MediaLoadingStyle Function(MediaLoadingStyle platform)? style;
 
-  /// The host's status control, or null for the default one.
-  final MediaStatusBuilder? statusBuilder;
+  /// The host's parts of the look, or null for the stock ones.
+  final AssetViewSkin? skin;
 
   /// The style a surface at [context] uses: its own [style] when given, else
   /// the closest scope's function applied to the style of the theme's
@@ -287,13 +282,19 @@ class MediaLoadingStyleScope extends InheritedWidget {
     return scope?.style?.call(platform) ?? platform;
   }
 
-  /// The host's status control of the closest scope, or null.
-  static MediaStatusBuilder? statusBuilderOf(BuildContext context) => context
+  /// The skin of the closest scope, or null.
+  static AssetViewSkin? skinOf(BuildContext context) => context
       .dependOnInheritedWidgetOfExactType<MediaLoadingStyleScope>()
-      ?.statusBuilder;
+      ?.skin;
+
+  /// The skin a surface at [context] uses: its own [skin]'s parts, else the
+  /// closest scope's, else the stock ones.
+  static AssetViewSkin resolveSkin(
+    BuildContext context, {
+    AssetViewSkin? skin,
+  }) => (skin ?? AssetViewSkin.stock).over(skinOf(context));
 
   @override
   bool updateShouldNotify(MediaLoadingStyleScope oldWidget) =>
-      !identical(style, oldWidget.style) ||
-      !identical(statusBuilder, oldWidget.statusBuilder);
+      !identical(style, oldWidget.style) || !identical(skin, oldWidget.skin);
 }

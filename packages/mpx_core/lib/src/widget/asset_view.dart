@@ -18,6 +18,7 @@ import 'package:mpx_core/src/identity/media_key.dart';
 import 'package:mpx_core/src/pipeline/auto_download.dart';
 import 'package:mpx_core/src/playback/playback_clock.dart';
 import 'package:mpx_core/src/widget/asset_cache_provider.dart';
+import 'package:mpx_core/src/widget/asset_load_state.dart';
 import 'package:mpx_core/src/widget/asset_status_overlay.dart';
 import 'package:mpx_core/src/widget/media_loading_style.dart';
 import 'package:mpx_core/src/widget/media_status_mode.dart';
@@ -118,9 +119,18 @@ import 'package:mpx_core/src/widget/viewport_visibility.dart';
 /// bare arc, the full control or a compact one, which download, cancel and
 /// play through the binding and [onPlay]. [badge] lays the media badge
 /// (duration, size) at the top-left. Both live in the view's box with their
-/// own tickers; the content's paint stays repaint-only. A host replaces the
-/// control with [statusBuilder], or for every view below a
-/// `MediaLoadingStyleScope`.
+/// own tickers; the content's paint stays repaint-only.
+///
+/// ## Skin and state
+///
+/// The loading state is headless: an [AssetLoadState] (the stage, the
+/// download) that the stock chrome reads, a [skin]'s builders get, and an
+/// [AssetLoadStateBuilder] hands any widget. A host replaces the status
+/// control, the badge or the picture's entrance with a [skin] (or for every
+/// view below a `MediaLoadingStyleScope`), each builder given the state and
+/// the stock part; its look otherwise comes from the platform's
+/// `MediaLoadingStyle` preset. With no [status] and no [badge] (the default)
+/// the view is the bare picture, for a host that lays its own UI over it.
 ///
 /// ## Scope
 ///
@@ -138,7 +148,7 @@ class AssetView extends StatefulWidget {
     this.status = MediaStatusMode.none,
     this.badge = false,
     this.onPlay,
-    this.statusBuilder,
+    this.skin,
     this.placeholder,
     this.placeholderUntil = AssetStage.none,
     this.placeholderTint,
@@ -189,9 +199,11 @@ class AssetView extends StatefulWidget {
   /// play, or it is streamable video that is not local yet.
   final VoidCallback? onPlay;
 
-  /// Builds the status control in place of the default one, or null for the
-  /// closest `MediaLoadingStyleScope`'s builder, else the default.
-  final MediaStatusBuilder? statusBuilder;
+  /// The parts of the look this view replaces (the status control, the
+  /// badge, the picture's entrance), over the closest
+  /// `MediaLoadingStyleScope`'s skin; null keeps that skin's, else the stock
+  /// parts.
+  final AssetViewSkin? skin;
 
   /// What the view paints before the content has a stage, and fades out
   /// under arriving content, instead of the scope's placeholder; null paints
@@ -631,6 +643,15 @@ class _AssetViewState extends State<AssetView> {
           ? _paintedUnseen
           : null,
     );
+    // A skin's own entrance around the picture, rebuilt with its state.
+    if (MediaLoadingStyleScope.resolveSkin(context, skin: widget.skin).reveal
+        case final reveal?) {
+      view = AssetLoadStateBuilder.binding(
+        _binding!,
+        child: view,
+        builder: (context, state, picture) => reveal(context, state, picture!),
+      );
+    }
     final overlays = widget.status is! MediaStatusMode$None || widget.badge;
     // Every frame repaints an animated picture; a picture under chrome is
     // read without it (AssetView.pictureIn).
@@ -643,7 +664,7 @@ class _AssetViewState extends State<AssetView> {
         status: widget.status,
         badge: widget.badge,
         onPlay: widget.onPlay,
-        statusBuilder: widget.statusBuilder,
+        skin: widget.skin,
         width: preset.size.width,
         round: preset.isRound,
         child: view,

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Breaking:** the loading state is headless and the look a skin.
+  `AssetLoadState` (the stage and the download, with `loading`, `fraction`,
+  `failed`, `shown`, `status()`) is what the stock chrome reads;
+  `AssetViewSkin` replaces the status control, the badge or the picture's
+  entrance, each builder given the state and the stock part
+  (`AssetView.skin`, `AssetStatusOverlay.skin`,
+  `MediaLoadingStyleScope.skin`, the view's parts over the scope's);
+  `AssetLoadStateBuilder` hands the state of any media (or of a binding a
+  caller holds) to a host's own widget. `statusBuilder` and
+  `MediaStatusBuilder` are gone: a status builder is
+  `AssetViewSkin(status: (context, state, stock) => ...)`.
 - **Breaking:** `ContentView` is `AssetView`, and its helpers follow:
   `AssetFrame` (with `AssetFrame$Picture`, `$StandIn`, `$Surface`),
   `AssetPicture`, `AssetStatusOverlay`. The view of one asset cache binding
