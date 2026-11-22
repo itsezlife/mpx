@@ -1,11 +1,11 @@
-import 'dart:io';
-
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_ui/mpx_ui.dart';
+
+import '../golden_baseline.dart';
 
 const _labels = LibraryGridLabels(
   photo: 'Photo',
@@ -32,20 +32,7 @@ const _gif = LibraryAsset(
 );
 
 void main() {
-  // The baselines sit beside this file, whether it runs alone or inside
-  // unit_test.dart (whose comparator would look beside that file). The
-  // previous comparator comes back after: the files share the process.
-  late GoldenFileComparator previous;
-  setUpAll(() {
-    previous = goldenFileComparator;
-    goldenFileComparator = LocalFileComparator(
-      Uri.file(
-        '${Directory.current.path}/test/library/'
-        'library_grid_cell_golden_test.dart',
-      ),
-    );
-  });
-  tearDownAll(() => goldenFileComparator = previous);
+  useGoldenBaselines('test/library/library_grid_cell_golden_test.dart');
 
   for (final (name, policy) in [
     ('android', LibraryGridPolicy.$Android),

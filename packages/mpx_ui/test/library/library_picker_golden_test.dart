@@ -1,25 +1,13 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_ui/mpx_ui.dart';
 
+import '../golden_baseline.dart';
+
 import 'library_picker_test.dart';
 
 void main() {
-  // The baselines sit beside this file, whether it runs alone or inside
-  // unit_test.dart; the previous comparator comes back after.
-  late GoldenFileComparator previous;
-  setUpAll(() {
-    previous = goldenFileComparator;
-    goldenFileComparator = LocalFileComparator(
-      Uri.file(
-        '${Directory.current.path}/test/library/'
-        'library_picker_golden_test.dart',
-      ),
-    );
-  });
-  tearDownAll(() => goldenFileComparator = previous);
+  useGoldenBaselines('test/library/library_picker_golden_test.dart');
 
   for (final (platform, policy) in [
     ('android', LibraryGridPolicy.$Android),
