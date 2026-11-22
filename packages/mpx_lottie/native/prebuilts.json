@@ -2,7 +2,7 @@
   "schema": 1,
   "crateVersion": "0.1.0",
   "sourceHash": "01e1374f686f4746d2bc8cee8056a0e8d8dee81f4386a3a2240ec8be00409b30",
-  "baseUrl": "https://github.com/itsezlife/mpx/releases/download/natives-eb3357f/",
+  "baseUrl": "https://github.com/itsezlife/mpx/releases/download/natives-284eaee/",
   "artifacts": {
     "android-arm": {
       "file": "libmpx_lottie-android-arm.so",

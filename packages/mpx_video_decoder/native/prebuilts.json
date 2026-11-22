@@ -1,14 +1,14 @@
 {
   "schema": 1,
-  "sourceHash": "cd52f913d6d8b4450536775db792303c7639121174b24e0f4e35f17813493303",
-  "baseUrl": "https://github.com/itsezlife/mpx/releases/download/natives-1886963/",
+  "sourceHash": "e9daf0576d74e315f1fb79bb8426d04323b4d3eb5ae36fa62524d2efebcdf96f",
+  "baseUrl": "https://github.com/itsezlife/mpx/releases/download/natives-284eaee/",
   "targets": {
     "macos-arm64": [
       {
         "name": "libmpx_video.dylib",
         "file": "mpx_video-macos-arm64-libmpx_video.dylib",
-        "sha256": "47c43026bf254cdc418490b2526cd8da14641e774ffeb58e990a8adaabcd1dcc",
-        "size": 53696
+        "sha256": "76265092b3f920b7b1a4736b31dab6ea8bc11ea081f56011fa896e1fcf2f7734",
+        "size": 53920
       },
       {
         "name": "libavutil.61.dylib",
@@ -39,8 +39,8 @@
       {
         "name": "libmpx_video.dylib",
         "file": "mpx_video-macos-x64-libmpx_video.dylib",
-        "sha256": "ca59ad03f21561625b00a85e9d65c03214fa19013f23f05f5d04a7f5b046a9e1",
-        "size": 28576
+        "sha256": "f42e9270ba8c673c650d19887b96721ebae481e2773d5a42d49903195bd24e46",
+        "size": 28760
       },
       {
         "name": "libavutil.61.dylib",
@@ -71,8 +71,8 @@
       {
         "name": "libmpx_video.dylib",
         "file": "mpx_video-ios-arm64-libmpx_video.dylib",
-        "sha256": "1cd221d4b897cbfb4d19eb5d641ad26706bb2a9cbfba5fb53a90aff1cd90179f",
-        "size": 69552
+        "sha256": "8f5f04e3e8c1b8c121d593cbbe7c6b5c101599927b0fa21be49baf81015dd19d",
+        "size": 69736
       },
       {
         "name": "libavutil.61.dylib",
@@ -103,8 +103,8 @@
       {
         "name": "libmpx_video.dylib",
         "file": "mpx_video-ios-arm64-simulator-libmpx_video.dylib",
-        "sha256": "5d9d27464159589a7ecfc69122963e6b003b55dec4277e8b7ff7a6dd22f0f475",
-        "size": 53696
+        "sha256": "b84e447f966f382c1f601e5c3f8f234ae0562322e96bca736356c16d14d5674f",
+        "size": 53920
       },
       {
         "name": "libavutil.61.dylib",
@@ -135,8 +135,8 @@
       {
         "name": "libmpx_video.so",
         "file": "mpx_video-android-arm64-libmpx_video.so",
-        "sha256": "2bbd0759d5db6655a7eca7a2410762e96e07c0315230e3479ea0ec03e050e1da",
-        "size": 22088
+        "sha256": "eb3d45360d6085c564143f593b9cc4c0ec41165a4285358bfb9d38789d8c860f",
+        "size": 22984
       },
       {
         "name": "libavutil.so",
@@ -167,8 +167,8 @@
       {
         "name": "libmpx_video.so",
         "file": "mpx_video-android-arm-libmpx_video.so",
-        "sha256": "58fb934d992943f6dcf3bb34cd1a415caf0e89d2e7c789b47ba4ea9167bb93f7",
-        "size": 20112
+        "sha256": "cae889b47982228579e06a9f2458e1caeb1b81792028601e4f5ad1d7577d73ea",
+        "size": 21028
       },
       {
         "name": "libavutil.so",
@@ -199,8 +199,8 @@
       {
         "name": "libmpx_video.so",
         "file": "mpx_video-android-x64-libmpx_video.so",
-        "sha256": "ae1a9a68a39dab9c7390429e04fa44579fb527902a00dba20941d36ed91837bc",
-        "size": 18736
+        "sha256": "84ef52fa234cdd388f47feb86a2d82c4a29bd458af43426eed4a43f9a7b6354a",
+        "size": 19904
       },
       {
         "name": "libavutil.so",
