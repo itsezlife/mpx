@@ -63,12 +63,14 @@ void main() {
     PrebuiltArtifact? artifact,
     LottieNativeTarget target = _target,
     Duration timeout = const Duration(seconds: 5),
+    Duration maxDuration = const Duration(seconds: 30),
   }) => fetchPrebuilt(
     artifact: artifact ?? _artifact(),
     url: url,
     cacheDir: cache,
     target: target,
     timeout: timeout,
+    maxDuration: maxDuration,
   );
 
   /// Serves [bytes] and returns the artifact that pins them.
@@ -173,6 +175,34 @@ void main() {
       expect((result as PrebuiltUnavailable).reason, contains('timed out'));
       expect(watch.elapsed, lessThan(const Duration(seconds: 4)));
       expect(leftovers(), isEmpty);
+    });
+
+    test('a slow but steady download is not cut off: the timeout is for a '
+        'stall, not the whole transfer', () async {
+      handler = (request) async {
+        request.response
+          ..bufferOutput = false
+          ..contentLength = _payload.length;
+        // Four slices, each well inside the timeout, together past it.
+        final slice = (_payload.length / 4).ceil();
+        for (var at = 0; at < _payload.length; at += slice) {
+          final end = at + slice < _payload.length
+              ? at + slice
+              : _payload.length;
+          request.response.add(_payload.sublist(at, end));
+          await request.response.flush();
+          await Future<void>.delayed(const Duration(milliseconds: 150));
+        }
+        await request.response.close();
+      };
+
+      final result = await fetch(timeout: const Duration(milliseconds: 300));
+
+      expect(
+        result,
+        isA<PrebuiltReady>(),
+        reason: '$result ${result is PrebuiltUnavailable ? result.reason : ''}',
+      );
     });
 
     test('an unreachable server is unavailable, not an exception', () async {
@@ -346,7 +376,11 @@ void main() {
       });
       url = Uri.parse('http://127.0.0.1:${raw.port}/libmpx_lottie.dylib');
 
-      final result = await fetch(timeout: const Duration(milliseconds: 300));
+      // The trickle never stalls, so the ceiling on the whole fetch ends it.
+      final result = await fetch(
+        timeout: const Duration(milliseconds: 300),
+        maxDuration: const Duration(milliseconds: 600),
+      );
 
       expect((result as PrebuiltUnavailable).reason, contains('timed out'));
       expect(leftovers(), isEmpty);

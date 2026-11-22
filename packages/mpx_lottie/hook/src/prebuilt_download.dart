@@ -59,9 +59,13 @@ final class PrebuiltUnavailable extends PrebuiltFetch {
 ///
 /// The download goes to a temporary `.part` file that is verified and then
 /// renamed, so a crash or a concurrent build never leaves the final path
-/// holding half a library. [timeout] bounds the whole fetch and really ends
-/// it: the connection is closed and the transfer has stopped before the
-/// partial file is touched. A redirect is followed only to an HTTPS URL.
+/// holding half a library. [timeout] bounds a stall, not the whole fetch: it
+/// runs again whenever bytes arrive, so a slow but steady link (a library of
+/// a megabyte at a few kilobytes a second) finishes, and a stalled one is
+/// ended. Ending really ends it: the connection is closed and the transfer
+/// has stopped before the partial file is touched. [maxDuration] bounds the
+/// whole fetch all the same, so a server that trickles a byte at a time
+/// cannot hold a build for hours. A redirect is followed only to an HTTPS URL.
 ///
 /// Cleanup never decides the outcome: a file that cannot be deleted is a
 /// note in the reason, not an exception and not a different verdict.
@@ -71,6 +75,7 @@ Future<PrebuiltFetch> fetchPrebuilt({
   required Directory cacheDir,
   required LottieNativeTarget target,
   Duration timeout = const Duration(seconds: 60),
+  Duration maxDuration = const Duration(minutes: 15),
 }) async {
   final dir = Directory('${cacheDir.path}/${artifact.sha256}');
   final file = File('${dir.path}/${artifact.file}');
@@ -83,6 +88,20 @@ Future<PrebuiltFetch> fetchPrebuilt({
   );
   final client = HttpClient()..connectionTimeout = timeout;
   var aborted = false;
+  // The stall watchdog: armed now, and again on every byte that arrives.
+  final stalled = Completer<PrebuiltFetch>();
+  Timer? watchdog;
+  void progressed() {
+    watchdog?.cancel();
+    watchdog = Timer(timeout, () {
+      if (!stalled.isCompleted) stalled.completeError(TimeoutException(null));
+    });
+  }
+
+  progressed();
+  final ceiling = Timer(maxDuration, () {
+    if (!stalled.isCompleted) stalled.completeError(TimeoutException(null));
+  });
   final transfer = _download(
     client,
     url,
@@ -91,10 +110,11 @@ Future<PrebuiltFetch> fetchPrebuilt({
     part,
     file,
     isAborted: () => aborted,
+    onProgress: progressed,
   );
   PrebuiltFetch result;
   try {
-    result = await transfer.timeout(timeout);
+    result = await Future.any([transfer, stalled.future]);
   } on TimeoutException {
     aborted = true;
     client.close(force: true);
@@ -111,6 +131,8 @@ Future<PrebuiltFetch> fetchPrebuilt({
     // connection, a full disk) the build goes on without it.
     result = PrebuiltUnavailable('downloading $url failed: $error');
   } finally {
+    watchdog?.cancel();
+    ceiling.cancel();
     client.close(force: true);
   }
   final leftover = _discard(part);
@@ -183,6 +205,7 @@ Future<PrebuiltFetch> _download(
   File part,
   File destination, {
   required bool Function() isAborted,
+  required void Function() onProgress,
 }) async {
   // Redirects are followed by hand: dart:io would follow one to plain HTTP,
   // which would hand a MITM the choice of bytes (the hash still refuses
@@ -193,6 +216,7 @@ Future<PrebuiltFetch> _download(
     final request = await client.getUrl(current);
     request.followRedirects = false;
     response = await request.close();
+    onProgress();
     if (!response.isRedirect) break;
     await response.drain<void>();
     final location = response.headers.value(HttpHeaders.locationHeader);
@@ -229,6 +253,7 @@ Future<PrebuiltFetch> _download(
         return PrebuiltUnavailable('$current: the transfer was aborted');
       }
       received += chunk.length;
+      onProgress();
       // Stop at the declared size: a wrong or hostile server cannot fill the
       // disk before the check at the end.
       if (received > artifact.size) {

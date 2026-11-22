@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A prebuilt download is ended by a stall (no bytes for a minute), not by
+  its length, so a slow link still gets the library. A whole fetch is
+  capped at 15 minutes. Before this, a megabyte at about 10 KB/s timed out
+  after 60 s, and the build fell back to cargo, or to no library at all on a
+  machine without Rust.
 - Prebuilt libraries are published (`native/prebuilts.json`). Android
   armeabi-v7a (`android-arm`) is a target, and the header check reads ELF32.
 - `native/tool/build_prebuilts.dart` builds the libraries this host can, as
