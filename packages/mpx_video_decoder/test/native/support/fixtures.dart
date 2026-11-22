@@ -60,6 +60,18 @@ const gif = Fixture(
 
 const fixtures = [mp4, webm, gif];
 
+/// A 320x240 picture whose container turns it a quarter clockwise to show:
+/// red top-left quarter on blue, so shown upright the red is top-right. Not
+/// in [fixtures]: its size is the shown one.
+const rotated = Fixture(
+  'h264_320x240_rot90_30fps_1s.mp4',
+  width: 240,
+  height: 320,
+  frames: 30,
+  frameRate: 30,
+  hasAlpha: false,
+);
+
 /// Why the native tests cannot run here, or null when they can.
 String? nativeSkipReason(VideoBinding binding) => binding.isAvailable
     ? null

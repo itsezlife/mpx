@@ -3,6 +3,7 @@
 
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <libavutil/display.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/pixdesc.h>
 #include <libswscale/swscale.h>
@@ -78,6 +79,12 @@ struct MpxVideo {
 
   uint32_t target_w, target_h;
   MpxVideoInfo info;
+  /* Quarter turns clockwise the container asks for to show the picture
+   * (its display matrix). The info and the frames are the turned ones; a
+   * turned frame is scaled into `turn` first, then turned into the
+   * caller's slot. */
+  int turns;
+  uint8_t *turn;
 
   State state;
   int64_t packets; /* read since the last rewind */
@@ -157,6 +164,7 @@ static int64_t seek_source(void *opaque, int64_t offset, int whence) {
 void mpx_video_free(MpxVideo *h) {
   if (!h) return;
   sws_freeContext(h->sws);
+  free(h->turn);
   av_frame_free(&h->frame);
   av_frame_free(&h->held);
   av_packet_free(&h->pkt);
@@ -181,6 +189,41 @@ static void quiet_ffmpeg_once(void) {
 static int has_alpha_format(int format) {
   const AVPixFmtDescriptor *d = format >= 0 ? av_pix_fmt_desc_get(format) : NULL;
   return d && (d->flags & AV_PIX_FMT_FLAG_ALPHA);
+}
+
+/* Quarter turns clockwise (0 to 3) the stream's display matrix asks for, 0
+ * without one or for an angle off the quarters. A mirrored matrix shows
+ * unmirrored. */
+static int turns_of(const AVCodecParameters *par) {
+  const AVPacketSideData *sd = av_packet_side_data_get(
+      par->coded_side_data, par->nb_coded_side_data, AV_PKT_DATA_DISPLAYMATRIX);
+  if (!sd || sd->size < 9 * sizeof(int32_t)) return 0;
+  /* The matrix's angle is counter-clockwise. */
+  double ccw = av_display_rotation_get((const int32_t *)sd->data);
+  if (ccw != ccw) return 0; /* NaN: a degenerate matrix */
+  double cw = -ccw / 90.0;
+  long quarters = (long)(cw < 0 ? cw - 0.5 : cw + 0.5);
+  double off = cw - (double)quarters;
+  if (off > 0.01 || off < -0.01) return 0;
+  return (int)(((quarters % 4) + 4) % 4);
+}
+
+/* Turns the w x h BGRA picture `src` (rows w * 4 bytes apart) `turns`
+ * quarters clockwise into dst (rows stride bytes apart). */
+static void turn_into(const uint8_t *src, uint32_t w, uint32_t h, int turns, uint8_t *dst,
+                      size_t stride) {
+  for (uint32_t y = 0; y < h; y++) {
+    const uint32_t *row = (const uint32_t *)(src + (size_t)y * w * 4);
+    for (uint32_t x = 0; x < w; x++) {
+      uint32_t dx, dy;
+      switch (turns) {
+        case 1: dx = h - 1 - y; dy = x; break;
+        case 2: dx = w - 1 - x; dy = h - 1 - y; break;
+        default: dx = y; dy = w - 1 - x; break;
+      }
+      memcpy(dst + (size_t)dy * stride + (size_t)dx * 4, &row[x], 4);
+    }
+  }
 }
 
 static int32_t open_decoder(MpxVideo *h) {
@@ -239,8 +282,9 @@ static int32_t open_decoder(MpxVideo *h) {
 
   AVRational rate = av_guess_frame_rate(h->fmt, st, NULL);
   const AVDictionaryEntry *alpha_mode = av_dict_get(st->metadata, "alpha_mode", NULL, 0);
-  h->info.width = (uint32_t)par->width;
-  h->info.height = (uint32_t)par->height;
+  h->turns = turns_of(par);
+  h->info.width = (uint32_t)(h->turns % 2 ? par->height : par->width);
+  h->info.height = (uint32_t)(h->turns % 2 ? par->width : par->height);
   h->info.duration_ms = h->fmt->duration != AV_NOPTS_VALUE ? h->fmt->duration / 1000 : -1;
   h->info.frame_rate = rate.den > 0 && rate.num > 0 ? (float)av_q2d(rate) : 0.0f;
   /* GIF always decodes to BGRA whatever the file holds, so its pixel format
@@ -402,14 +446,19 @@ static int32_t convert(MpxVideo *h, uint8_t *dst, size_t stride) {
       f->height > MPX_VIDEO_MAX_SOURCE_EDGE ||
       (int64_t)f->width * f->height > MPX_VIDEO_MAX_SOURCE_PIXELS)
     return MPX_VIDEO_LIMIT_EXCEEDED;
-  h->sws = sws_getCachedContext(h->sws, f->width, f->height, f->format, (int)h->target_w,
-                                (int)h->target_h, AV_PIX_FMT_BGRA, SWS_BILINEAR, NULL, NULL, NULL);
+  /* The picture as the stream holds it: the target turned back. */
+  uint32_t w = h->turns % 2 ? h->target_h : h->target_w;
+  uint32_t ht = h->turns % 2 ? h->target_w : h->target_h;
+  h->sws = sws_getCachedContext(h->sws, f->width, f->height, f->format, (int)w, (int)ht,
+                                AV_PIX_FMT_BGRA, SWS_BILINEAR, NULL, NULL, NULL);
   if (!h->sws) return MPX_VIDEO_DECODE_FAILED; /* a format swscale cannot read */
-  uint8_t *planes[4] = {dst, NULL, NULL, NULL};
-  int strides[4] = {(int)stride, 0, 0, 0};
+  if (h->turns && !h->turn && !(h->turn = malloc((size_t)w * ht * 4))) return MPX_VIDEO_INTERNAL;
+  uint8_t *planes[4] = {h->turns ? h->turn : dst, NULL, NULL, NULL};
+  int strides[4] = {h->turns ? (int)(w * 4) : (int)stride, 0, 0, 0};
   if (sws_scale(h->sws, (const uint8_t *const *)f->data, f->linesize, 0, f->height, planes,
-                strides) != (int)h->target_h)
+                strides) != (int)ht)
     return MPX_VIDEO_DECODE_FAILED;
+  if (h->turns) turn_into(h->turn, w, ht, h->turns, dst, stride);
   if (has_alpha_format(f->format)) premultiply(dst, stride, h->target_w, h->target_h);
   return MPX_VIDEO_OK;
 }

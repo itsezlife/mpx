@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A clip whose container turns it (a phone's portrait recording: a display
+  matrix of a quarter turn) decodes as shown: the info gives the turned
+  size and every frame comes turned. Such a clip showed sideways.
 - A clip larger than the software path decodes (past 3840 a side, an 8K
   recording) fails as `DecodeFailure.unsupported`, like a codec the build
   lacks: the host's fallback (the platform's still) draws it instead of

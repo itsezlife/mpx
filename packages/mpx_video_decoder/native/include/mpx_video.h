@@ -68,8 +68,8 @@ enum { MPX_VIDEO_ABI_VERSION = 3 };
 typedef struct MpxVideo MpxVideo; /* opaque */
 
 typedef struct {
-  uint32_t width;       /* source size */
-  uint32_t height;
+  uint32_t width;       /* the size shown: the source's, turned by quarters as the */
+  uint32_t height;      /* container's display matrix asks; frames come turned too */
   int64_t duration_ms;  /* -1 when the container declares none */
   float frame_rate;     /* 0 when unknown */
   uint32_t has_alpha;   /* 1 when the stream declares alpha (WebM alpha_mode, or an alpha pixel format; never for GIF) */

@@ -70,6 +70,33 @@ void main() {
     });
   });
 
+  group('rotation', skip: nativeSkipReason(binding), () {
+    test('a clip the container turns is described and drawn as shown', () {
+      final opened =
+          binding.open(VideoSource.bytes(rotated.bytes), width: 24, height: 32)
+              as VideoOpened;
+      binding.dispose(opened.handle);
+      expect(opened.info.width, rotated.width);
+      expect(opened.info.height, rotated.height);
+
+      final decoded = _decodeAll(binding, rotated, width: 24, height: 32);
+      expect(decoded.frames.length, rotated.frames);
+      final pixels = decoded.frames.first.pixels;
+      // BGRA at (x, y) of the 24x32 frame.
+      List<int> at(int x, int y) {
+        final i = (y * 24 + x) * 4;
+        return pixels.sublist(i, i + 3);
+      }
+
+      bool red(List<int> bgr) => bgr[2] > 200 && bgr[0] < 60;
+      bool blue(List<int> bgr) => bgr[0] > 200 && bgr[2] < 60;
+      expect(red(at(20, 3)), isTrue, reason: 'top right ${at(20, 3)}');
+      expect(blue(at(3, 3)), isTrue, reason: 'top left ${at(3, 3)}');
+      expect(blue(at(3, 28)), isTrue, reason: 'bottom left ${at(3, 28)}');
+      expect(blue(at(20, 28)), isTrue, reason: 'bottom right ${at(20, 28)}');
+    });
+  });
+
   group('pixels', skip: nativeSkipReason(binding), () {
     test('are premultiplied BGRA, and only the webm has alpha', () {
       final withAlpha = _decodeAll(binding, webm, width: 64, height: 64);
