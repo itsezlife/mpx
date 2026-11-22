@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A video the viewer leaves paused shows its first frame only once the open
+  morph has landed: the morph flies the picture it opened from, and a first
+  frame of another moment swapped in midway flashed.
 - `GalleryItem.standIn`: a sharp still (a recording's first frame) a viewer
   page draws under its picture when it has no frame of its own to stand in,
   so paging back to a video whose player was let go never shows black while

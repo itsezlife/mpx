@@ -1817,7 +1817,10 @@ class MediaViewerState extends State<MediaViewer>
                 shown: identical(_movingSession, session),
                 onMoving: () => _movingSession = session,
                 rules: _policy.loading,
-                showsPaused: !_video.autoplay,
+                // Only once the open morph has landed: the morph flies the
+                // cell's picture, and a first frame of another moment
+                // swapped in midway reads as a flash.
+                showsPaused: !_video.autoplay && _phase == _Phase.open,
               ),
       ),
     );

@@ -256,6 +256,27 @@ void main() {
       expect(harness.engine(1).state.value.playing, isFalse);
     });
 
+    testWidgets('the open morph flies the picture it opened from; the '
+        'paused first frame shows only once the morph has landed', (
+      tester,
+    ) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 10),
+      );
+      await harness.pump(tester, policy: picker, open: false);
+      await tester.pump();
+      // The player has its first frame at once (autoFirstFrame), mid-morph.
+      for (final ms in [50, 50, 50]) {
+        await tester.pump(Duration(milliseconds: ms));
+        expect(_playerShows(tester), isFalse, reason: 'during the morph');
+      }
+      await tester.pump(const Duration(milliseconds: 60));
+      await _settle(tester);
+      expect(harness.state(tester).isOpen, isTrue);
+      expect(_playerShows(tester), isTrue, reason: 'after it landed');
+    });
+
     testWidgets('played to its end it stops back at the start, play shown, '
         'with no new pass; play then plays it from the start', (tester) async {
       final harness = ViewerHarness(
