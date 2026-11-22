@@ -136,6 +136,13 @@ expansion of 500 000 elements, 5 s, and no embedded images. Every refusal is
 a permanent failure, so the surface keeps its placeholder. Compiled forms
 are kept per media key, so another size skips the parse.
 
+SVG described as a plain still reaches it too. The engine's image decoder
+reports undecodable data whose head is an SVG document as
+`DecodeFailure.unsupported`, and a host registers `SvgDecoder` as the still
+kind's fallback. A still is handed to its fallback even when it has a stored
+derived preview: a preview stands in for a moving clip's still, but never for
+a still's own picture.
+
 Rejected:
 
 - Keeping the vector picture and replaying it at paint. It has no honest

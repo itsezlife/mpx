@@ -49,6 +49,17 @@ ContentView(
 );
 ```
 
+A host that cannot tell SVG from raster images (an image URL with no
+type) also registers it as the still kind's fallback. The engine's image
+decoder reports SVG it is handed as unsupported, and the fallback draws it:
+
+```dart
+MpxStack.create(
+  // ...
+  fallbackDecoders: {MediaKind.still: SvgDecoder()},
+);
+```
+
 For a one-colour icon, pass `decodeMode: AssetDecodeMode.template` to the
 preset and a `tint` to the view. The icon is then one cache entry in every
 colour.

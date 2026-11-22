@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -266,6 +267,57 @@ void main() {
 
       expect(progress.advances, isEmpty);
       expect(progress.error, isNull);
+    });
+  });
+
+  group('SVG it cannot read', () {
+    final svg = Uint8List.fromList(
+      utf8.encode(
+        '\uFEFF<?xml version="1.0"?>\n<!-- drawn by hand -->\n'
+        '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>',
+      ),
+    );
+
+    test('is reported unsupported, so the still kind\'s fallback reads '
+        'it', () async {
+      final progress = await _decode(_request(svg));
+
+      expect(progress.error, isA<DecodeFailure>());
+    });
+
+    test('in a file too, and the file is released once', () async {
+      final directory = Directory.systemTemp.createTempSync('mpx_core_svg');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final file = File('${directory.path}/a.svg')..writeAsBytesSync(svg);
+      var releases = 0;
+      final progress = _Progress();
+
+      const ImageCodecDecoder().decode(
+        DecodeRequest(
+          descriptor: _descriptor,
+          spec: const AssetSpec(pixelWidth: 64, pixelHeight: 64),
+          part: FetchPart.content,
+          content: FetchedContent.file(file.path, onRelease: () => releases++),
+        ),
+        progress,
+      );
+      await progress.ended;
+
+      expect(progress.error, isA<DecodeFailure>());
+      expect(releases, 1);
+    });
+
+    test('other data it cannot read stays an ordinary failure', () async {
+      final progress = await _decode(
+        _request(
+          Uint8List.fromList(
+            '<html><body>not an image</body></html>'.codeUnits,
+          ),
+        ),
+      );
+
+      expect(progress.error, isNotNull);
+      expect(progress.error, isNot(isA<DecodeFailure>()));
     });
   });
 

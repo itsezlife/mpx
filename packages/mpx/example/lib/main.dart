@@ -128,6 +128,9 @@ Future<void> main() async {
     // still gets a first-frame still, drawn once by the platform.
     fallbackDecoders: {
       if (_hasPlatformStill) MediaKind.video: PlatformStillDecoder(),
+      // An image that turns out to be SVG (the engine's codecs report it
+      // unsupported) is drawn as one.
+      MediaKind.still: SvgDecoder(),
     },
     // The example's origin answers from the app bundle so it runs offline; a
     // real host leaves `client` out and gets the network. A lab run on a

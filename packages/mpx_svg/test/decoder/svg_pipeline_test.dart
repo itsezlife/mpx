@@ -104,4 +104,48 @@ void main() {
     );
     binding.detach();
   });
+
+  test('an SVG known only as a still is drawn by the still kind\'s SVG '
+      'fallback', () async {
+    final stillFetcher = FakeFetcher();
+    final stills = AssetPipeline(
+      fetcher: stillFetcher,
+      decoders: DecoderRegistry()
+        ..register(MediaKind.still, const ImageCodecDecoder())
+        ..registerFallback(MediaKind.still, SvgDecoder()),
+    );
+    final stillScope = AssetCacheScope(
+      producer: stills,
+      clock: PlaybackClock(ticks: ManualPlaybackTickSource()),
+    );
+    addTearDown(() {
+      stillScope.dispose();
+      stills.dispose();
+    });
+    const image = MediaDescriptor(
+      key: MediaKey.external('https://host/image'),
+      kind: MediaKind.still,
+    );
+    stills.know(image);
+    stillFetcher.serve(
+      image.key,
+      FetchedContent.bytes(
+        _utf8(
+          '<?xml version="1.0"?> '
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"> '
+          '<rect width="8" height="8"/></svg>',
+        ),
+      ),
+    );
+
+    final binding = stillScope.attach(
+      image.key,
+      const AssetSpec(pixelWidth: 32, pixelHeight: 32),
+      const AssetProfile(),
+    );
+    await _until(() => binding.readiness.isFinal);
+
+    expect(binding.readiness.stage, AssetStage.full);
+    binding.detach();
+  });
 }

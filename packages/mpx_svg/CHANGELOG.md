@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Registered as the still kind's fallback, `SvgDecoder` draws SVG the host
+  described as a plain image.
 - `SvgDecoder`: draws SVG as stills of the asset cache under
   `MediaKind.vectorImage`. The picture covers the spec and the view places
   it by its fit; its long edge is capped, and template specs are tinted at

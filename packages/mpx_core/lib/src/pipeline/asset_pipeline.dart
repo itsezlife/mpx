@@ -134,8 +134,10 @@ final class AssetPipelineError implements Exception {
 ///   (`DecoderRegistry.registerFallback`), once per attempt. A fallback that
 ///   draws only a still ends the entry at `AssetStage.firstFrame`, final for
 ///   its spec, and the still becomes the content's derived preview. Content
-///   that already has a stored derived preview is not handed to the fallback
-///   again: its still was drawn once, and the preview stands for it.
+///   that moves and already has a stored derived preview is not handed to
+///   the fallback again: its still was drawn once, and the preview stands for
+///   it. A still always is (an SVG the image codecs report as unsupported,
+///   drawn by a vector fallback): no preview stands for its own picture.
 /// - **Downloads.** Content the fetcher reports missing
 ///   (`ContentFetcher.needsDownload`) is announced from the start of the
 ///   attempt (`AssetProgress.waiting`), and the bytes of its transfer are
@@ -737,9 +739,10 @@ final class _Job implements AssetTask {
   /// it) and decoded by the fallback. False when there is none to try.
   bool fallBack(_Work work) {
     final known = descriptor;
-    if (_ended || work.isFallback || known == null || _derivedPreview) {
-      return false;
-    }
+    if (_ended || work.isFallback || known == null) return false;
+    // A stored preview stands for the still a fallback draws of content that
+    // moves (paid for once), never for a still's own picture.
+    if (_derivedPreview && known.kind != MediaKind.still) return false;
     final fallback = pipeline._decoders.fallbackFor(known.kind);
     if (fallback == null) return false;
     final retry = _content = _Work(this, FetchPart.content, fallback)

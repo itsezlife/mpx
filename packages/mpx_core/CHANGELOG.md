@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `ImageCodecDecoder` reports data it cannot decode whose first bytes are an
+  SVG document as `DecodeFailure.unsupported`, so a vector decoder
+  registered as the still kind's fallback draws it. A still is handed to its
+  fallback even when it has a stored derived preview.
 - `MediaKind.vectorImage`: a resolution-independent still (SVG), decoded by
   the decoder a host registers for it (`mpx_svg`); the pipeline treats it as
   a still.

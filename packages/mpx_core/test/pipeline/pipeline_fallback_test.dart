@@ -199,6 +199,47 @@ void main() {
       expect(harness.fallback.decodes, isEmpty);
       expect(binding.readiness.stage, AssetStage.preview);
     });
+
+    test('a still is handed to its fallback even with a stored derived '
+        'preview: a preview never stands for a still\'s own picture', () async {
+      const drawing = MediaDescriptor(
+        key: MediaKey.remote('drawing'),
+        kind: MediaKind.still,
+      );
+      final store = FakePreviewStore()..write(drawing.key, await _png());
+      final fetcher = FakeFetcher()
+        ..serve(drawing.key, FetchedContent.bytes(Uint8List(4)));
+      final primary = FakeDecoder(autoRespond: false);
+      final fallback = FakeDecoder();
+      final pipeline = AssetPipeline(
+        fetcher: fetcher,
+        decoders: DecoderRegistry()
+          ..register(MediaKind.still, primary)
+          ..registerFallback(MediaKind.still, fallback),
+        previews: store,
+      )..know(drawing);
+      final scope = AssetCacheScope(
+        producer: pipeline,
+        clock: PlaybackClock(ticks: ManualPlaybackTickSource()),
+      );
+      addTearDown(() {
+        scope.dispose();
+        pipeline.dispose();
+      });
+      final binding = scope.attach(drawing.key, spec, profile);
+      await _untilPreview(binding);
+      for (var i = 0; i < 200 && primary.decodes.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+
+      primary.decodes.single.fail(const DecodeFailure.unsupported());
+      for (var i = 0; i < 200 && !binding.readiness.isFinal; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+
+      expect(fallback.decodes, hasLength(1));
+      expect(binding.readiness.stage, AssetStage.full);
+    });
   });
 }
 

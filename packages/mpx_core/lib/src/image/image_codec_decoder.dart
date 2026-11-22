@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/src/image/image_head.dart';
 import 'package:mpx_core/src/image/image_paintable.dart';
 
 /// When a fetched thumbnail is blurred: one whose longer edge is below
@@ -95,6 +96,14 @@ final class ThumbnailBlurRule {
 /// There is no frame report before the full stage: the first frame and the
 /// playing image exist at the same moment.
 ///
+/// ## SVG it is handed
+///
+/// Data it cannot decode whose first bytes are an SVG document (a host that
+/// could not tell an SVG from a raster image, an `image/*` URL with no type)
+/// fails with `DecodeFailure.unsupported`, so a vector decoder the host
+/// registered as the still kind's fallback draws it. Other undecodable data
+/// is an ordinary, permanent failure.
+///
 /// ## Not covered
 ///
 /// Vector animations and video codecs are other media forms with adapters of
@@ -130,6 +139,10 @@ final class _DecodeTask implements AssetTask {
   final ThumbnailBlurRule _thumbnailBlur;
   bool _cancelled = false;
 
+  // The content's first bytes, read before it is released, for a decode that
+  // fails: SVG is then told apart from damaged data.
+  Future<Uint8List?>? _head;
+
   @override
   void cancel() => _cancelled = true;
 
@@ -155,8 +168,11 @@ final class _DecodeTask implements AssetTask {
           ),
         };
       } finally {
-        // The buffer holds the bytes now; the file may go.
-        _request.content.release();
+        // The buffer holds the bytes now; the file may go once its head is
+        // read, which a decode that fails looks at.
+        final content = _request.content;
+        final head = _head = ImageHead.read(content);
+        unawaited(head.whenComplete(content.release));
       }
       encodedBytes = buffer.length;
       // Cancelled while the data was read: no codec, no decoded frame.
@@ -181,10 +197,18 @@ final class _DecodeTask implements AssetTask {
       codec = decoding;
     } on Object catch (error, stackTrace) {
       decoding?.dispose();
+      if (_cancelled) return;
+      // SVG is for a vector decoder: the still kind's fallback, if any.
+      final head = await _head;
+      if (_cancelled) return;
       // Undecodable data stays undecodable, whatever the network does.
-      if (!_cancelled) {
-        _progress.fail(error, stackTrace, AssetFailureKind.permanent);
-      }
+      _progress.fail(
+        head != null && ImageHead.isSvg(head)
+            ? DecodeFailure.unsupported(error)
+            : error,
+        stackTrace,
+        AssetFailureKind.permanent,
+      );
       return;
     }
     if (_cancelled) {
