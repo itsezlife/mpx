@@ -54,15 +54,25 @@ final class OutlineShimmer {
   String toString() => 'OutlineShimmer($sweep, $curve, wait: $wait)';
 }
 
-/// How a surface wants an outline preview drawn: its [fill], and where the
-/// shimmer's highlight is ([highlight], 0 to 1 across, or null for none).
+/// How a surface wants an outline preview drawn: its [fill], where the
+/// shimmer's highlight is ([highlight], 0 to 1 across, or null for none) and
+/// across what it travels ([sweep]).
 ///
-/// The surface resolves both from its loading style and its clock, so the
-/// outline keeps no time of its own and costs nothing while nobody shows it.
+/// The surface resolves them from its loading style, its clock and its place
+/// on the screen, so the outline keeps no time of its own and costs nothing
+/// while nobody shows it.
+///
+/// ## One band across the screen
+///
+/// Every outline of a scope reads one clock, so they share the [highlight]
+/// phase. With a [sweep] of the screen (in the coordinates the outline is
+/// painted in), that phase is also one place: the band crosses the screen
+/// once, and outlines side by side each draw the part of it over them, as
+/// one band. Without one, each outline is crossed on its own, in step.
 @immutable
 final class OutlineLook {
   /// Creates a look.
-  const OutlineLook({required this.fill, this.highlight});
+  const OutlineLook({required this.fill, this.highlight, this.sweep});
 
   /// The colour the outline is filled with.
   final Color fill;
@@ -70,17 +80,25 @@ final class OutlineLook {
   /// Where the highlight crosses, 0 (entering) to 1 (leaving), or null.
   final double? highlight;
 
+  /// What the highlight crosses, in the coordinates of the paint: the
+  /// screen, for one band across every outline on it. Null crosses the
+  /// outline's own box.
+  final Rect? sweep;
+
   @override
   bool operator ==(Object other) =>
       other is OutlineLook &&
       other.fill == fill &&
-      other.highlight == highlight;
+      other.highlight == highlight &&
+      other.sweep == sweep;
 
   @override
-  int get hashCode => Object.hash(fill, highlight);
+  int get hashCode => Object.hash(fill, highlight, sweep);
 
   @override
-  String toString() => 'OutlineLook($fill, highlight: $highlight)';
+  String toString() =>
+      'OutlineLook($fill, highlight: $highlight'
+      '${sweep == null ? '' : ', sweep: $sweep'})';
 }
 
 /// An outline preview: the vector shape of a piece of media (a sticker, an
@@ -133,11 +151,12 @@ final class OutlinePaintable extends AssetPaintable {
     );
     final highlight = look?.highlight;
     if (highlight == null) return;
-    // A band a third of the width wide crosses from before the left edge
-    // to past the right one.
-    final band = destination.width / 3;
-    final centre =
-        destination.left - band + highlight * (destination.width + 2 * band);
+    // A band a third of the span wide crosses from before its left edge to
+    // past its right one: the screen's, so neighbours draw one band, else
+    // the outline's own.
+    final span = look?.sweep ?? destination;
+    final band = span.width / 3;
+    final centre = span.left - band + highlight * (span.width + 2 * band);
     final glow = Color.fromRGBO(255, 255, 255, 0.35 * context.opacity);
     final clear = glow.withValues(alpha: 0);
     canvas.drawPath(

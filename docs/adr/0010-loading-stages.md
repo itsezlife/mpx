@@ -52,6 +52,11 @@ fetched, and a failure left the arc on.
 
 - The entry keeps the stand-in each rise replaced (preview, then thumbnail),
   so a binding fades from the stand-in it last showed.
+- An outline's shimmer is one band across the screen (amended 2026-11-22).
+  Every outline reads the scope's clock, so all share one phase. The surface
+  passes the screen, in its paint's coordinates, as the span the band crosses
+  (`OutlineLook.sweep`), so outlines side by side each draw their part of one
+  band, not a band each.
 - A raster stand-in stays opaque under content that fades in. An outline, or
   a stand-in under content that may be transparent, fades out as the content
   rises.

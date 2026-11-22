@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- One shimmer band across the screen: `OutlineLook.sweep` is the span the
+  highlight crosses, in the paint's coordinates. `ContentView` passes the
+  screen, so outline previews side by side draw one band, not one per cell.
+  A surface that paints outlines itself passes its own screen span.
 - `ImageCodecDecoder` reports data it cannot decode whose first bytes are an
   SVG document as `DecodeFailure.unsupported`, so a vector decoder
   registered as the still kind's fallback draws it. A still is handed to its

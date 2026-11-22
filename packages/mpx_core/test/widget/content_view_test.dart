@@ -1530,6 +1530,34 @@ void main() {
       expect(outline.paints.last.context.outline!.highlight, isNotNull);
     });
 
+    testWidgets('the shimmer sweeps the screen, not the view, so views side '
+        'by side draw one band', (tester) async {
+      await tester.pumpWidget(
+        on(
+          TargetPlatform.iOS,
+          Align(
+            alignment: Alignment.topLeft,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 100, top: 50),
+              child: ContentView(content: _sticker, preset: _still),
+            ),
+          ),
+        ),
+      );
+      producer.last.describe(outlined);
+      final outline = producer.last.advance(AssetStage.preview);
+      await tester.pump();
+
+      final (:rect, :context) = outline.paints.last;
+      final sweep = context.outline!.sweep!;
+      // The screen, in the coordinates the view paints in.
+      expect(rect.topLeft - sweep.topLeft, const Offset(100, 50));
+      expect(
+        sweep.size,
+        tester.view.physicalSize / tester.view.devicePixelRatio,
+      );
+    });
+
     testWidgets('Android: no shimmer, no frames', (tester) async {
       final outline = await shown(tester, TargetPlatform.android);
 

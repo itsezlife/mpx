@@ -74,6 +74,39 @@ void main() {
       expect(canvas.drawn.last.paint.shader, isNotNull);
     });
 
+    test('outlines side by side under one sweep span draw one band across '
+        'them, not one per cell', () async {
+      final square = OutlinePaintable(
+        SvgPathData.parse('M0 0H100V100H0Z')!,
+        const Size(100, 100),
+      );
+      // Only the highlight shows; the band is centred on the span's middle,
+      // the line between the cells.
+      const look = OutlineLook(
+        fill: Color(0x00000000),
+        highlight: 0.5,
+        sweep: Rect.fromLTWH(0, 0, 200, 100),
+      );
+      final recorder = PictureRecorder();
+      final canvas = Canvas(recorder);
+      for (final left in [0.0, 100.0]) {
+        square.paint(
+          canvas,
+          Rect.fromLTWH(left, 0, 100, 100),
+          const AssetPaintContext(outline: look),
+        );
+      }
+      final image = await recorder.endRecording().toImage(200, 100);
+      final pixels = (await image.toByteData())!;
+      int alphaAt(int x) => pixels.getUint8((50 * 200 + x) * 4 + 3);
+
+      expect(alphaAt(98), greaterThan(60));
+      expect(alphaAt(102), greaterThan(60));
+      // A cell's own middle is outside the band.
+      expect(alphaAt(50), 0);
+      expect(alphaAt(150), 0);
+    });
+
     test('is a still with the view box as its proportion', () {
       expect(outline.isAnimated, isFalse);
       expect(outline.pictureSize, const Size(100, 100));

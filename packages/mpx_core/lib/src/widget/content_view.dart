@@ -56,8 +56,10 @@ import 'package:mpx_core/src/widget/viewport_visibility.dart';
 /// view built again over loaded content does not flicker. A raster preview
 /// gets the style's wash (`previewWash`). An outline preview is filled with
 /// the style's `outlineFill`, or the [placeholderTint] (else [tint]) at
-/// `outlineTintOpacity`, and its shimmer (`outlineShimmer`) runs only while
-/// the view is shown and the scope's clock is not paused.
+/// `outlineTintOpacity`, and its shimmer (`outlineShimmer`) crosses the
+/// screen, not the view (`OutlineLook.sweep`): every outline on it draws its
+/// part of one band. It runs only while the view is shown and the scope's
+/// clock is not paused.
 ///
 /// ## Playback
 ///
@@ -1060,7 +1062,7 @@ class _RenderContent extends RenderBox {
           box,
           tint: _tint,
           opacity: _opacity,
-          outline: _outlineLook(),
+          outline: _outlineLook(box),
         );
       }
       _placeholder.paint(
@@ -1071,7 +1073,7 @@ class _RenderContent extends RenderBox {
       return;
     }
     final fade = _fade.opacityAt(_frameTime, _riseLength);
-    final outline = _outlineLook();
+    final outline = _outlineLook(box);
     if (fade < 1) _paintUnderContent(context.canvas, box, fade, outline);
     final opacity = _opacity * fade;
     if (AssetTextureLayer.composite(context, _binding, box, opacity: opacity)) {
@@ -1173,7 +1175,7 @@ class _RenderContent extends RenderBox {
   // shimmer's highlight while the outline shows, the view is shown and the
   // clock runs. The highlight moves with the frame time, so the next frame
   // is asked for, as for the indicator.
-  OutlineLook? _outlineLook() {
+  OutlineLook? _outlineLook(Rect box) {
     if (_binding.descriptor?.preview is! MediaPreview$Outline) return null;
     final tint = _placeholderTint ?? _tint;
     final fill = tint == null
@@ -1189,7 +1191,20 @@ class _RenderContent extends RenderBox {
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (attached) markNeedsPaint();
     });
-    return OutlineLook(fill: fill, highlight: shimmer.phaseAt(_frameTime));
+    return OutlineLook(
+      fill: fill,
+      highlight: shimmer.phaseAt(_frameTime),
+      sweep: _screenAround(box),
+    );
+  }
+
+  // The screen (the view this box is in), in the coordinates [box] is
+  // painted in: every outline crossed over it draws its part of one band.
+  Rect? _screenAround(Rect box) {
+    final root = owner?.rootNode;
+    if (root is! RenderView) return null;
+    final origin = localToGlobal(Offset.zero);
+    return (box.topLeft - origin) & root.size;
   }
 
   // The wash over a raster preview; an outline is drawn in its own fill.
