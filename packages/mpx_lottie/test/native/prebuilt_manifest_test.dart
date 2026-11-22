@@ -228,13 +228,26 @@ void main() {
   });
 
   group('the committed native/prebuilts.json', () {
-    test('parses, and lists no artifact until one is published', () {
+    test('parses, names a release of this repository, and lists every '
+        'Apple and Android target', () {
       final source = File('native/prebuilts.json').readAsStringSync();
 
       final manifest = PrebuiltManifest.parse(source);
 
-      expect(manifest.artifacts, isEmpty);
-      expect(manifest.baseUrl, isNull);
+      expect(
+        manifest.baseUrl.toString(),
+        startsWith('https://github.com/itsezlife/mpx/releases/download/'),
+      );
+      expect(manifest.artifacts.keys.toSet(), {
+        'macos-arm64',
+        'macos-x64',
+        'ios-arm64',
+        'ios-arm64-simulator',
+        'ios-x64-simulator',
+        'android-arm64',
+        'android-arm',
+        'android-x64',
+      });
     });
   });
 }

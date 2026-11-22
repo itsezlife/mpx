@@ -265,4 +265,34 @@ void main() {
       expect(result, isA<VideoPrebuiltsUnavailable>());
     });
   });
+
+  test('the committed manifest names a release of this repository: the '
+      'wrapper and four FFmpeg libraries for every target the recipe '
+      'builds', () {
+    final manifest = VideoPrebuiltManifest.parse(
+      File('native/prebuilts.json').readAsStringSync(),
+    );
+
+    expect(
+      manifest.baseUrl.toString(),
+      startsWith('https://github.com/itsezlife/mpx/releases/download/'),
+    );
+    expect(manifest.targets.keys.toSet(), {
+      'macos-arm64',
+      'macos-x64',
+      'ios-arm64',
+      'ios-arm64-simulator',
+      'android-arm64',
+      'android-arm',
+      'android-x64',
+    });
+    for (final MapEntry(:key, value: files) in manifest.targets.entries) {
+      final names = files.map((f) => f.name).toList();
+      expect(names, hasLength(5), reason: key);
+      expect(names.where((n) => n.startsWith('libmpx_video.')), hasLength(1));
+      for (final library in ['avcodec', 'avformat', 'avutil', 'swscale']) {
+        expect(names.where((n) => n.startsWith('lib$library.')), hasLength(1));
+      }
+    }
+  });
 }
