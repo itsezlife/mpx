@@ -270,6 +270,22 @@ final class PlayerPool {
     }
   }
 
+  // Lets go of the engine of every player no view shows, but [except]:
+  // what a player on screen does when no decoder is free. A player that
+  // plays off screen (sound in the background) keeps its engine.
+  void _releaseUnshown({required _Player except}) {
+    for (final player in [..._players.values]) {
+      if (identical(player, except) ||
+          player.views > 0 ||
+          player.isPlaying ||
+          player._engine == null) {
+        continue;
+      }
+      player.releaseEngine();
+      if (player.leases == 0) _forget(player);
+    }
+  }
+
   // --- Sound owner ----------------------------------------------------------
 
   // Called whenever [player]'s audibility may have changed: a command, an
@@ -516,6 +532,52 @@ final class _Player {
   void _mirror() {
     final engine = _engine;
     if (engine == null || disposed) return;
+    final next = engine.state.value;
+    if (next.phase == PlayerPhase.failed && next.error is PlayerDecoderBusy) {
+      // Handled after the engine's own notification: the engine may go.
+      scheduleMicrotask(() {
+        if (!disposed && identical(_engine, engine)) _decoderBusy();
+      });
+      return;
+    }
+    if (next.phase == PlayerPhase.ready) _busyRetried = false;
+    state.value = next;
+    pool._soundChanged(this);
+  }
+
+  // Whether this player already started again after its decoder was busy:
+  // once, until it is ready.
+  bool _busyRetried = false;
+
+  // No decoder was free for this player. One on screen gets the decoders of
+  // the players off screen and starts again, once; one off screen (a page
+  // prepared ahead) lets its engine go and waits, unprepared, until it is
+  // shown. Neither shows the failure: the device plays the video.
+  void _decoderBusy() {
+    final engine = _engine;
+    if (engine == null) return;
+    if (views > 0 && !_busyRetried) {
+      _busyRetried = true;
+      PlayerDiagnostics.log(
+        'pool: no decoder free for $key on screen; the players off screen '
+        'let theirs go and it starts again',
+      );
+      pool._releaseUnshown(except: this);
+      _resumeAt = engine.position;
+      _dropEngine(engine);
+      _ensureEngine();
+      return;
+    }
+    if (views == 0) {
+      PlayerDiagnostics.log(
+        'pool: no decoder free for $key off screen; it waits to be shown',
+      );
+      _resumeAt = engine.position;
+      _dropEngine(engine);
+      if (!disposed) state.value = state.value.released();
+      return;
+    }
+    // On screen and started again already: it does fail.
     state.value = engine.state.value;
     pool._soundChanged(this);
   }

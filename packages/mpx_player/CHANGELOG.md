@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- No free decoder is no failure of the video. Android no longer remembers
+  a codec as failed when its decoder would not start for a format the
+  device plays (other players held the decoders; an 8K session can take
+  the whole decoder): the engine fails with `PlayerDecoderBusy`. The pool
+  then gives a player on screen the decoders of the players off screen and
+  starts it again, once; one off screen lets its engine go and waits to be
+  shown, never failed.
+- A player prepared ahead (paused, not played yet) loads past its buffer
+  cap until its first frame shows: an 8K clip filled the 2 MiB cap before
+  its first picture was decoded and never became ready, spinning until a
+  play lifted the cap.
 - Android: a player keeps at most a quarter of the Java heap buffered
   (Media3's video default, about 131 MB, outgrew a 256 MB heap on a long
   high-bitrate recording and ended in an OutOfMemoryError).

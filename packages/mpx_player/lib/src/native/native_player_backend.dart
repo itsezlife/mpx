@@ -794,6 +794,9 @@ final class _NativePlayerEngine implements PlayerEngine {
     }
   }
 
+  // The platform's name of a decoder that failed to start.
+  static const String _decoderInitFailed = 'ERROR_CODE_DECODER_INIT_FAILED';
+
   void _apply(NativePlayerSnapshot snapshot) {
     if (_disposed) return;
     final failedCodec = snapshot.failedCodec;
@@ -853,9 +856,12 @@ final class _NativePlayerEngine implements PlayerEngine {
     _advancing = snapshot.advancing;
     _phase = phase;
     if (_phase == PlayerPhase.failed) {
-      _error =
-          'The platform player failed playing $key: '
-          '${snapshot.error ?? 'it gave no reason'}';
+      final reason = snapshot.error ?? 'it gave no reason';
+      // A decoder that would not start for a format the device handles (the
+      // platform names no failed codec): no decoder was free.
+      _error = failedCodec == null && reason.startsWith(_decoderInitFailed)
+          ? PlayerDecoderBusy('$key: $reason')
+          : 'The platform player failed playing $key: $reason';
       _log('$_error');
       _advancing = false;
       _closeNative('the platform player failed');

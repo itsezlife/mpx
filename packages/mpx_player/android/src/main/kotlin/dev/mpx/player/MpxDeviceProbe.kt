@@ -5,8 +5,10 @@ import android.content.Context
 import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.os.Build
+import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.mediacodec.MediaCodecDecoderException
 import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
 
@@ -29,8 +31,21 @@ internal class MpxDeviceProbe(private val context: Context) {
     /**
      * The video MIME type whose decoder [error] says failed, remembered for
      * good; null when [error] is not a video decoder failure.
+     *
+     * A decoder that failed to start for a format the device reports it
+     * handles is no failed codec: the hardware had no instance free (other
+     * players hold the decoders, an 8K session takes the whole decoder), and
+     * the same codec plays once they let go. Remembered, it would rule the
+     * codec out for every later video.
      */
     fun failedCodecOf(error: PlaybackException, videoMime: String?): String? {
+        if (error is ExoPlaybackException &&
+            error.type == ExoPlaybackException.TYPE_RENDERER &&
+            error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED &&
+            error.rendererFormatSupport == C.FORMAT_HANDLED
+        ) {
+            return null
+        }
         var cause: Throwable? = error.cause
         var mime: String? = null
         while (cause != null && mime == null) {

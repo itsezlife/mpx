@@ -16,6 +16,14 @@ import androidx.media3.exoplayer.upstream.Allocator
  * frame and a short start. A prepared, paused neighbour would otherwise fill
  * the whole forward buffer for an item nobody may play.
  *
+ * The cap holds only once the player is [ready] (its first frame shown):
+ * before that it loads as [inner] says. A capped player that is not ready
+ * stays not ready (a paused player waits for its renderers, and they wait
+ * for media), so a video whose first frame needs more than the cap (an 8K
+ * clip at 80 Mbit/s fills 2 MiB in a fifth of a second, before its first
+ * picture is decoded) would wait forever, spinning, until a play lifted the
+ * cap. [ready] is read on the playback thread.
+ *
  * The cap lifts for good the first time the player wants to play
  * (`playWhenReady`); ExoPlayer asks again on its next loop and loads as
  * usual from then on. A cap of 0 is none.
@@ -31,6 +39,7 @@ internal class PreparedLoadControl(
     private val inner: LoadControl,
     private val aheadUs: Long,
     private val bytes: Int,
+    private val ready: () -> Boolean = { true },
 ) : LoadControl {
     private var played = aheadUs <= 0 && bytes <= 0
 
@@ -38,7 +47,7 @@ internal class PreparedLoadControl(
 
     override fun shouldContinueLoading(parameters: LoadControl.Parameters): Boolean {
         if (parameters.playWhenReady) played = true
-        if (!played) {
+        if (!played && ready()) {
             if (aheadUs > 0 && parameters.bufferedDurationUs >= aheadUs) return false
             if (bytes > 0 &&
                 inner.getAllocator(parameters.playerId).totalBytesAllocated >= bytes
@@ -54,7 +63,7 @@ internal class PreparedLoadControl(
         bufferedDurationUs: Long,
         playbackSpeed: Float,
     ): Boolean {
-        if (!played && aheadUs > 0 && bufferedDurationUs >= aheadUs) return false
+        if (!played && ready() && aheadUs > 0 && bufferedDurationUs >= aheadUs) return false
         return inner.shouldContinueLoading(playbackPositionUs, bufferedDurationUs, playbackSpeed)
     }
 

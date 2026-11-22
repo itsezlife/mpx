@@ -55,7 +55,9 @@ internal class MpxVideoPlayer(
     private val handler = Handler(Looper.getMainLooper())
     private val exo: ExoPlayer
     private var prepared = false
-    private var firstFrame = false
+    // Written on the main thread, read by the load control on the playback
+    // thread.
+    @Volatile private var firstFrame = false
     private var seekId = settings.seekId
     private var looping = settings.looping
     private var error: String? = null
@@ -126,6 +128,7 @@ internal class MpxVideoPlayer(
                             loadControl(),
                             aheadUs = settings.preparedBufferMs * 1000,
                             bytes = settings.preparedBufferBytes.toInt(),
+                            ready = { firstFrame },
                         ),
                     )
                     .build()

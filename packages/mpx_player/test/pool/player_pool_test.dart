@@ -294,4 +294,84 @@ void main() {
     expect(backend.live, isEmpty);
     expect(() => pool.lease(b), throwsStateError);
   });
+
+  group('no decoder free', () {
+    const busy = PlayerDecoderBusy('decoder init failed');
+
+    test(
+      'a player off screen lets its engine go and waits, not failed',
+      () async {
+        pool.lease(a).prepare();
+        await settle();
+        backend.latestFor(a)!.fail(busy);
+        await settle();
+
+        final lease = pool.lease(a);
+        expect(lease.state.value.phase, isNot(PlayerPhase.failed));
+        expect(backend.latestFor(a)!.isDisposed, isTrue);
+        expect(backend.live.where((e) => e.key == a), isEmpty);
+      },
+    );
+
+    test('a player on screen takes the decoders of the players off screen '
+        'and starts again once', () async {
+      final shown = pool.lease(a);
+      final view = shown.attachView();
+      addTearDown(view.detach);
+      shown.prepare();
+      final ahead = pool.lease(b)..prepare();
+      final playingAway = pool.lease(c)..play();
+      await settle();
+      final first = backend.latestFor(a)!;
+
+      first.fail(busy);
+      await settle();
+
+      expect(first.isDisposed, isTrue);
+      final again = backend.latestFor(a)!;
+      expect(identical(again, first), isFalse, reason: 'started again');
+      expect(again.isDisposed, isFalse);
+      expect(shown.state.value.phase, isNot(PlayerPhase.failed));
+      expect(ahead.state.value.holdsEngine, isFalse, reason: 'let go');
+      expect(
+        backend.latestFor(c)!.isDisposed,
+        isFalse,
+        reason: 'one that plays keeps its decoder',
+      );
+      expect(playingAway.state.value.playing, isTrue);
+    });
+
+    test('on screen and busy again after its second start, it fails', () async {
+      final slow = FakePlayerBackend(autoPrepare: false);
+      final pool = PlayerPool(backend: slow);
+      addTearDown(pool.dispose);
+      final backend = slow;
+      final shown = pool.lease(a);
+      final view = shown.attachView();
+      addTearDown(view.detach);
+      shown.prepare();
+      await settle();
+      backend.latestFor(a)!.fail(busy);
+      await settle();
+      backend.latestFor(a)!.fail(busy);
+      await settle();
+
+      expect(shown.state.value.phase, PlayerPhase.failed);
+      expect(shown.state.value.error, busy);
+    });
+
+    test('ready again, a later busy decoder gets another start', () async {
+      final shown = pool.lease(a);
+      final view = shown.attachView();
+      addTearDown(view.detach);
+      shown.prepare();
+      await settle();
+      backend.latestFor(a)!.fail(busy);
+      await settle();
+      expect(shown.state.value.phase, PlayerPhase.ready);
+      backend.latestFor(a)!.fail(busy);
+      await settle();
+      expect(shown.state.value.phase, isNot(PlayerPhase.failed));
+    });
+  });
 }

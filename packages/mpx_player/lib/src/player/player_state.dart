@@ -237,3 +237,27 @@ final class PlayerState {
       'firstFrameRendered: $firstFrameRendered, speed: $speed, '
       'looping: $looping, volume: $volume, error: $error)';
 }
+
+/// The error of a player whose decoder could not start although the device
+/// plays its format: the hardware had no decoder free, other players holding
+/// them (an 8K session can take the whole decoder). The pool gives a player
+/// on screen its turn by releasing the decoders of players off screen, then
+/// starts it again; one off screen just lets its decoder go.
+@immutable
+final class PlayerDecoderBusy {
+  /// Describes a decoder start that failed for want of a free decoder.
+  const PlayerDecoderBusy(this.detail);
+
+  /// What the platform said.
+  final String detail;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PlayerDecoderBusy && other.detail == detail;
+
+  @override
+  int get hashCode => detail.hashCode;
+
+  @override
+  String toString() => 'PlayerDecoderBusy($detail)';
+}

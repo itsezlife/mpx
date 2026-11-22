@@ -769,6 +769,19 @@ void main() {
       );
     });
 
+    test('a decoder that would not start for a playable format is a busy '
+        'decoder, not a failed codec', () async {
+      backend = backendOver(SimulatedHost(decoderBusy: {'clip'}));
+      addTearDown(backend.dispose);
+      final engine = backend.create(clip)..prepare();
+      for (var i = 0; i < 10; i++) {
+        await settle();
+      }
+
+      expect(engine.state.value.phase, PlayerPhase.failed);
+      expect(engine.state.value.error, isA<PlayerDecoderBusy>());
+    });
+
     test('a platform that cannot make a player fails the engine, saying '
         'so', () async {
       backend = backendOver(

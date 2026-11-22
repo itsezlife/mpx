@@ -12,12 +12,17 @@ import 'package:mpx_player/src/native/player_messages.g.dart';
 final class SimulatedHost implements PlayerHostApi {
   SimulatedHost({
     this.unplayable = const {},
+    this.decoderBusy = const {},
     this.brokenCodecs = const {},
     this.codecOf = const {},
     this.probeResult,
   });
 
   final Set<String> unplayable;
+
+  /// Cache keys whose decoder would not start for want of a free one, the
+  /// format being one the device plays.
+  final Set<String> decoderBusy;
   final Set<String> brokenCodecs;
 
   /// The codec each cache key's bytes are in, as the platform would find.
@@ -174,6 +179,10 @@ final class SimulatedPlayer {
     if (host.unplayable.contains(source.cacheKey)) {
       phase = NativePlayerPhase.failed;
       return report(error: 'cannot open');
+    }
+    if (host.decoderBusy.contains(source.cacheKey)) {
+      phase = NativePlayerPhase.failed;
+      return report(error: 'ERROR_CODE_DECODER_INIT_FAILED: no instance');
     }
     if (codec != null && host.brokenCodecs.contains(codec)) {
       phase = NativePlayerPhase.failed;
