@@ -1,7 +1,48 @@
 {
   "schema": 1,
   "crateVersion": "0.1.0",
-  "sourceHash": "6d7c2951aa831990fe48bea81d72906bc6223434cb79f6e4fbfcad92af25c07a",
-  "baseUrl": "",
-  "artifacts": {}
+  "sourceHash": "01e1374f686f4746d2bc8cee8056a0e8d8dee81f4386a3a2240ec8be00409b30",
+  "baseUrl": "https://github.com/itsezlife/mpx/releases/download/natives-1886963/",
+  "artifacts": {
+    "android-arm": {
+      "file": "libmpx_lottie-android-arm.so",
+      "sha256": "5c9d934990349eb2bdf438066daab30d1ada3997d889813162c43d546e816e76",
+      "size": 891124
+    },
+    "android-arm64": {
+      "file": "libmpx_lottie-android-arm64.so",
+      "sha256": "063a6451294fb39518002a11264219607d8dc93982aa7e58ff9aac54320ed513",
+      "size": 1211488
+    },
+    "android-x64": {
+      "file": "libmpx_lottie-android-x64.so",
+      "sha256": "8fca290ab3d0e543098a407ea823565e667d5a35725e0793430a93a5a0c7b46d",
+      "size": 1305680
+    },
+    "ios-arm64": {
+      "file": "libmpx_lottie-ios-arm64.dylib",
+      "sha256": "f16efc0027fd66081485693f57936fb1665d0fbe8016bc020e044396a0d3c226",
+      "size": 1079728
+    },
+    "ios-arm64-simulator": {
+      "file": "libmpx_lottie-ios-arm64-simulator.dylib",
+      "sha256": "dba0919dd61ad00add449ab1eda78451d35f7126268fc968f74b89be4e01033e",
+      "size": 1071792
+    },
+    "ios-x64-simulator": {
+      "file": "libmpx_lottie-ios-x64-simulator.dylib",
+      "sha256": "c5621bdb0cded1e36cd1162490117637c7b315bd1bf110c384b767a719b15abe",
+      "size": 1153760
+    },
+    "macos-arm64": {
+      "file": "libmpx_lottie-macos-arm64.dylib",
+      "sha256": "c0d60f60a14f532ada30040bd1a8d5cab9a6c8b9df2e1463663b4c008f8e8136",
+      "size": 1088096
+    },
+    "macos-x64": {
+      "file": "libmpx_lottie-macos-x64.dylib",
+      "sha256": "33097f0ef13739dc74a53f2996b2c37c9447e8c13f8d17ed766568d183a3ecfd",
+      "size": 1153776
+    }
+  }
 }
