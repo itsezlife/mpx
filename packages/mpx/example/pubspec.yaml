@@ -32,6 +32,9 @@ dependencies:
     path: ../../mpx_lottie
   mpx_player:
     path: ../../mpx_player
+  # SVG as a media kind: the network, bundled and tinted SVG tiles.
+  mpx_svg:
+    path: ../../mpx_svg
   mpx_ui:
     path: ../../mpx_ui
   mpx_video_decoder:

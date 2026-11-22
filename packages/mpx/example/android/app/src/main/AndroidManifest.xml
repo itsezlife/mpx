@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The SVG demo fetches a public file from the network. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- The device library (mpx_library declares none of these itself). -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />

@@ -19,10 +19,12 @@ import 'package:mpx_example/lab/lab_viewer.dart';
 import 'package:mpx_example/lab/stress_feed.dart';
 import 'package:mpx_example/loading_demo.dart';
 import 'package:mpx_example/picker_page.dart';
+import 'package:mpx_example/svg_demo.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_lottie/mpx_lottie.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_player/native.dart';
+import 'package:mpx_svg/mpx_svg.dart';
 import 'package:mpx_ui/mpx_ui.dart';
 import 'package:mpx_video_decoder/mpx_video_decoder.dart';
 
@@ -113,7 +115,10 @@ Future<void> main() async {
       },
       _ => switch (_fileOf(descriptor.key)) {
         final file? => MediaLocation(_urlOf(file).toString()),
-        null => null,
+        null => switch (SvgDemo.urlOf(descriptor.key)) {
+          final url? => MediaLocation(url),
+          null => null,
+        },
       },
     },
     cacheDirectory: cacheDirectory,
@@ -153,6 +158,7 @@ Future<void> main() async {
       ),
     );
   }
+  SvgDemo.descriptors.forEach(stack.pipeline.know);
   final players = await _players(readers, stack.scope);
   if (kMpxLab) Lab.attach(stack, players);
   runApp(MediaApp(stack: stack, players: players));
@@ -248,7 +254,10 @@ Future<Map<MediaKind, Decoder>> _decoders(
   MpxDecoderContext context,
   FrameCache cache,
 ) async {
-  final decoders = <MediaKind, Decoder>{};
+  final decoders = <MediaKind, Decoder>{
+    // SVG, held to the standard limits for content from anywhere.
+    MediaKind.vectorImage: SvgDecoder(),
+  };
   // Teardowns run last first: the listener goes before the cache.
   context.onDispose(cache.dispose);
   final quota = context.registeredQuotas[BytesQuota.lottieFrames.name];
@@ -324,10 +333,14 @@ Future<Map<MediaKind, Decoder>> _decoders(
 }
 
 /// Serves `https://media.example/<file>` from `assets/media/<file>`,
-/// answering a single-range request with its bytes as a CDN would.
+/// answering a single-range request with its bytes as a CDN would. Any other
+/// host goes out to the network (the SVG demo's public file).
 final class _BundleOrigin extends http.BaseClient {
+  final http.Client _network = http.Client();
+
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (request.url.host != 'media.example') return _network.send(request);
     final Uint8List bytes;
     try {
       final data = await rootBundle.load(
@@ -487,6 +500,8 @@ class _MediaAppState extends State<MediaApp> {
                       ],
                     ),
                   ),
+                  const SizedBox(height: 24),
+                  const SvgDemoRow(),
                   const SizedBox(height: 24),
                   ListTile(
                     title: const Text('Feed list'),
