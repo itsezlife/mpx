@@ -7,6 +7,16 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Golden baselines belong to this runner (linux_x64, the pinned Flutter); a
+  # Mac renders text differently. Run with update_goldens to regenerate them
+  # here: the job uploads every golden PNG as the "goldens-<package>" artifact,
+  # to download and commit (only the PNGs that changed).
+  workflow_dispatch:
+    inputs:
+      update_goldens:
+        description: Regenerate golden baselines and upload them
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -50,12 +60,32 @@ jobs:
 
       # Pure-Dart packages run under `dart test`; the rest under Flutter.
       - name: Test
+        env:
+          UPDATE_GOLDENS: ${{ inputs.update_goldens && '--update-goldens' || '' }}
         run: |
           if grep -q "sdk: flutter" pubspec.yaml; then
-            flutter test --concurrency 40 test/unit_test.dart
+            flutter test --concurrency 40 $UPDATE_GOLDENS test/unit_test.dart
           else
             dart test test/unit_test.dart
           fi
+
+      # A golden that failed leaves its master, test and diff images in a
+      # failures/ directory beside the test.
+      - name: Upload golden failures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-failures-${{ matrix.package }}
+          path: packages/${{ matrix.package }}/test/**/failures/
+          if-no-files-found: ignore
+
+      - name: Upload regenerated goldens
+        if: inputs.update_goldens
+        uses: actions/upload-artifact@v4
+        with:
+          name: goldens-${{ matrix.package }}
+          path: packages/${{ matrix.package }}/test/**/goldens/*.png
+          if-no-files-found: ignore
 
       - name: Analyze
         run: dart analyze --fatal-infos
