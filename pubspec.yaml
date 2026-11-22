@@ -9,6 +9,7 @@ workspace:
   - packages/mpx_core
   - packages/mpx_lottie
   - packages/mpx_video_decoder
+  - packages/mpx_svg
   - packages/mpx_player
   - packages/mpx_player/example
   - packages/mpx_ui

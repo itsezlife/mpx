@@ -1,0 +1,34 @@
+name: mpx_svg
+description: >
+  An SVG decoder for mpx_core: sanitizes untrusted SVG within host limits,
+  compiles it off the UI isolate and draws it at the requested size.
+version: 0.0.1
+homepage: https://github.com/itsezlife/mpx
+repository: https://github.com/itsezlife/mpx/tree/main/packages/mpx_svg
+issue_tracker: https://github.com/itsezlife/mpx/issues
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+  flutter: '>=3.41.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  meta: ^1.17.0
+  # Edges fixed by ADR 0001: the core only.
+  mpx_core:
+    path: ../mpx_core
+  # Draws the compiled form into a picture (the decoder's UI side).
+  vector_graphics: ^1.2.5
+  # Parses SVG into the compiled form on the worker isolate. It pins `xml`
+  # with an exact upper bound, which is why SVG is a package of its own: the
+  # core would hold every host's `xml` back (ADR 0001).
+  vector_graphics_compiler: ^1.3.4
+  # The sanitizer reads the document as events, before the compiler sees it.
+  xml: ">=6.3.0 <=7.0.1"
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
