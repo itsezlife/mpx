@@ -4,3 +4,10 @@ include: ../../../analysis_options.yaml
 linter:
   rules:
     public_member_api_docs: false
+
+analyzer:
+  errors:
+    # `control`'s ControllerScope and `l`'s capture are marked experimental by
+    # their authors, and are the packages' documented way in; the social feed
+    # uses both as the rest of the author's apps do.
+    experimental_member_use: ignore

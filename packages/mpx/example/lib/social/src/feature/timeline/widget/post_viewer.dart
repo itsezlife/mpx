@@ -1,0 +1,94 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
+import 'package:mpx_example/gallery.dart';
+import 'package:mpx_example/social/src/common/media/post_media_facts.dart';
+import 'package:mpx_example/social/src/common/util/time_ago_extension.dart';
+import 'package:mpx_example/social/src/feature/initialization/dependencies.dart';
+import 'package:mpx_example/social/src/feature/timeline/model/post.dart';
+import 'package:mpx_ui/mpx_ui.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+/// Opens a post's media in the fullscreen viewer: its pictures and clips as
+/// one gallery, from the one the reader tapped, with the author, the
+/// description, and share.
+abstract final class PostViewer {
+  /// Shows [post]'s [index]th media over [context]'s surface, flying from the
+  /// tile that is its `ViewerOrigin`. Completes when the viewer closes.
+  static Future<void> open(BuildContext context, Post post, int index) async {
+    final dependencies = Dependencies.of(context);
+    final gallery = ListGallery([
+      for (final media in post.media) PostMediaFacts.galleryItem(media),
+    ]);
+    // The viewer plays a clip's own sound: nothing in the list plays aloud
+    // under it.
+    dependencies.inlineSound.suspend();
+    try {
+      await MediaViewer.show(
+        context,
+        source: gallery,
+        initialIndex: index,
+        players: dependencies.players,
+        chrome: ViewerChrome(
+          title: (context, index, item) => Text(post.author.displayName),
+          subtitle: (context, index, item) => Text(post.createdAt.timeAgo()),
+          caption: (context, index, item) {
+            final alt = post.media[index].alt;
+            final text = alt != null && alt.isNotEmpty ? alt : post.text.plain;
+            return text.isEmpty
+                ? null
+                : Text(text, maxLines: 4, overflow: TextOverflow.ellipsis);
+          },
+          thumbnails: post.media.length > 1,
+          openFile: cachedFiles(dependencies.stack),
+          actions: (index, item) => [
+            ViewerAction(
+              label: 'Share',
+              icon: const Icon(LucideIcons.share_2),
+              inBar: true,
+              onSelected: (request) async {
+                final file = await request.file();
+                if (file == null) return;
+                await SharePlus.instance.share(
+                  ShareParams(
+                    files: [XFile(file.path)],
+                    fileNameOverrides: [
+                      _nameOf(dependencies, post.media[index]),
+                    ],
+                  ),
+                );
+              },
+            ),
+            ViewerAction(
+              label: 'Open on the web',
+              onSelected: (_) async {
+                final uri = Uri.tryParse(post.url);
+                if (uri != null) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              },
+            ),
+          ],
+        ),
+      );
+    } finally {
+      gallery.dispose();
+      dependencies.inlineSound.resume();
+    }
+  }
+
+  // The cache stores bytes without a file name: the share sheet needs one
+  // with an extension the receiver knows.
+  static String _nameOf(Dependencies dependencies, PostMedia media) {
+    final path = dependencies.origins.of(media.key)?.content.path ?? '';
+    final dot = path.lastIndexOf('.');
+    final extension = dot < 0 ? '' : path.substring(dot);
+    return 'post-media-${media.key.encoded.hashCode.toUnsigned(20)}'
+        '${extension.isEmpty ? _defaultExtension(media.kind) : extension}';
+  }
+
+  static String _defaultExtension(PostMediaKind kind) => switch (kind) {
+    PostMediaKind.photo => '.jpg',
+    PostMediaKind.video || PostMediaKind.gif => '.mp4',
+  };
+}

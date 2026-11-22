@@ -11,10 +11,28 @@ environment:
 # the UI that `mpx` itself never depends on. Save and share are the host's:
 # file_selector (save panel) and share_plus (share sheet) live here only.
 dependencies:
+  # State of the social feed: sealed-phase controllers.
+  control: ^1.0.0-dev.1
+  # Value equality of the social feed's domain models.
+  equatable: ^2.0.7
   file_selector: ^1.1.0
   flutter:
     sdk: flutter
+  # Lucide icons; the social feed draws no Material ones.
+  flutter_lucide: ^1.77.0
   http: ^1.6.0
+  # The social feed's post text: Markdown parsed and drawn on a canvas, with
+  # mentions, hashtags and selection. Not on pub.dev: a release tag of the fork.
+  flutter_md:
+    git:
+      url: https://github.com/itsezlife/md.git
+      ref: v0.9.3
+  # Dates and counts of the social feed.
+  intl: ^0.20.2
+  # The social feed's logs: one logger, a buffer, a journal page.
+  l: ^5.0.1
+  # The social feed's DTOs decode through generated code.
+  json_annotation: ^4.12.0
   http_bytes_cache:
     path: ../../http_bytes_cache
   mpx:
@@ -42,8 +60,15 @@ dependencies:
   # 12, not 13: share_plus 13 needs win32 6, and mpx_library's drag and drop
   # (super_drag_and_drop 0.9) needs device_info_plus < 12, which pins win32 5.
   share_plus: ^12.0.2
+  # The social feed's routes: one list of them is the whole navigation.
+  squid: ^0.1.1
+  # "5 minutes ago" labels, over intl's dates.
+  timeago: ^3.7.1
+  # Links of a post's text open in the browser.
+  url_launcher: ^6.3.1
 
 dev_dependencies:
+  build_runner: ^2.4.13
   # The device run of the viewer's gestures (integration_test/) and the
   # driver that saves its screenshots (test_driver/).
   flutter_driver:
@@ -53,6 +78,7 @@ dev_dependencies:
   # Frame-timing benchmarks on a device (integration_test/).
   integration_test:
     sdk: flutter
+  json_serializable: ^6.9.0
   # Writes the clipboard in the clipboard reader's contract run.
   super_clipboard: ^0.9.1
 
