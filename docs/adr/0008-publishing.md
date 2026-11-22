@@ -76,6 +76,39 @@ hosted and SDK dependencies, and forbids unpublishing after 48 hours.
 - The README of every native video package must spell out the host's LGPL
   duties (about-box line, EULA terms, the right to replace the library).
 
+## Settled in implementation (2026-11-22)
+
+- **Release.** One GitHub Release per build, tagged `natives-<sha7>`
+  (`sha7` is the commit the binaries were built from), and published as a
+  full release:
+  - Files are flat: `libmpx_lottie-<key>.<ext>`, and
+    `mpx_video-<key>-<library>` for each library the loader asks for.
+  - The video decoder ships per-file assets, not archives, so the hook needs
+    no archive reader.
+  - The LGPL disclosure (sources, configure lines, recipe, toolchains,
+    licence texts, `SHA256SUMS`) sits beside the files.
+  - Manifests are `native/prebuilts.json`, pinned by size, SHA-256 and the
+    hash of the sources the files were built from.
+  - First releases: `natives-1886963` (both packages) and `natives-eb3357f`
+    (mpx_lottie with Apple header room).
+- **Order and user defines.**
+  - mpx_video_decoder: the app's `ffmpeg_build` first (a dev override, named
+    in the app's pubspec, because the hook runner passes no variable of
+    ours), then the prebuilt, then a recipe build in the package.
+  - mpx_lottie: `build_from_source` forces cargo; otherwise prebuilt, then
+    cargo.
+- **Downloads.** Into the hook's shared output directory. A download ends
+  on a stall, not on its length. Video files are tried three times, because
+  a hook that gives up is cached until `flutter clean`.
+- **Targets built on a Mac:**
+  - macOS arm64 and x86_64;
+  - iOS arm64, plus the arm64 simulator (and the x86_64 simulator for
+    lottie);
+  - Android arm64-v8a, armeabi-v7a and x86_64.
+
+  The video x86_64 builds are plain C. Linux and Windows (lottie) and the
+  video iOS x86_64 simulator are left to `.github/workflows/natives.yml`.
+
 ## Open in implementation
 
 - Hooks 2.x for `http_bytes_cache`: its hook builds the native reader from
@@ -85,8 +118,6 @@ hosted and SDK dependencies, and forbids unpublishing after 48 hours.
   as the default.
 - Whether pana sees `mpx_lottie`'s web path as Wasm-ready.
 - SLSA attestations for the binaries (`sqlite3` does it; not decided).
-- The user-define names and the mirror URL pattern for the hooks.
-- The prebuilt target list beyond arm64 (Android x86_64 emulators, macOS x86_64).
 - App Store LGPL §6(b): legal review.
 - Re-check name availability right before the first publish.
 
