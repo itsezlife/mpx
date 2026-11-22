@@ -76,6 +76,7 @@ mpx_core                      plugin: MediaKey / MediaDescriptor, asset cache, p
                               pause layers, budgets, visibility, texture hosts, image decoder
 mpx_lottie               ---> mpx_core                    (+ build hook: Rust over tlottie)
 mpx_video_decoder        ---> mpx_core                    (+ build hook: FFmpeg + libvpx, decode-only)
+mpx_svg                  ---> mpx_core                    (SVG decoder: sanitizer, limits, worker compile)
 mpx_player               ---> mpx_core, http_bytes_cache  (plugin: pool, Media3 / AVPlayer, feed policies)
 mpx_library              ---> mpx_core                    (plugin: media library, file intake, library fetcher)
 mpx_ui                   ---> mpx_player, mpx_core,       (viewer, feed list and pager widgets,
@@ -187,6 +188,12 @@ Each is a decoder with its native library in one package, built through a
 build hook. They keep their shape and implement the core's `Decoder`. Native
 names: `mpx_lottie_*` / `libmpx_lottie`, `mpx_video_*` / `libmpx_video`, the
 env var `MPX_VIDEO_FFMPEG_DIR`. ADR 0003.
+
+### mpx_svg
+
+The decoder of `MediaKind.vectorImage`: SVG sanitized and compiled under a
+host policy (`SvgLimits`) on a worker isolate, then drawn into an image at
+the spec, so the content views draw it like any still. ADR 0003.
 
 ### mpx_player
 

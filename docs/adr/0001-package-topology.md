@@ -9,7 +9,7 @@ uses it. The umbrella is a composition root that re-exports nothing.
 
 **Status**: Accepted (decided with the maintainer 2026-11-10; package set
 reduced from eighteen to eight on 2026-11-13; `mpx_library` added by ADR 0011
-on 2026-11-20)
+on 2026-11-20; `mpx_svg` added on 2026-11-22)
 **Relates to**: 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0011
 
 ## Context
@@ -40,6 +40,7 @@ version and publish overhead without saving any host a dependency.
 | `mpx_core` | Plugin | `MediaKey`, `MediaDescriptor`; asset cache, pipeline, playback clock and pause layers, budgets, visibility, texture seam and the platform texture hosts, placeholders, the engine image decoder (ADR 0003) |
 | `mpx_lottie` | Flutter + build hook | Vector animation `Decoder`, frame cache, Rust library over tlottie |
 | `mpx_video_decoder` | Flutter + build hook | Software video `Decoder` for silent loops, FFmpeg + libvpx library, decode-only |
+| `mpx_svg` | Flutter | SVG `Decoder` for `MediaKind.vectorImage`: a sanitizer and limits for untrusted SVG, a compile on a worker isolate, a raster at the spec |
 | `mpx_player` | Plugin | Player pool, leases, audio owner (ADR 0004); Media3 ExoPlayer and AVPlayer backends reading through the bytes cache's native reader; feed modes, knobs and preload staging (ADR 0005) |
 | `mpx_ui` | Flutter, optional | Fullscreen viewer with its own tokens (ADR 0006); feed list and pager widgets (ADR 0005) |
 | `mpx_library` | Plugin, optional | The device media library (access, albums, paged assets, changes, originals) and the file intake (system file dialog, system camera, drop, paste); library keys and their fetcher (ADR 0011) |
@@ -53,6 +54,7 @@ Arrows point at the dependency.
 ```
 mpx_lottie         -> mpx_core
 mpx_video_decoder  -> mpx_core
+mpx_svg            -> mpx_core
 mpx_player         -> mpx_core, http_bytes_cache
 mpx_library        -> mpx_core
 mpx_ui             -> mpx_player, mpx_core, mpx_library
@@ -61,7 +63,7 @@ mpx                -> mpx_core, http_bytes_cache
 ```
 
 `mpx_core` and `http_bytes_cache` never depend on each other; `mpx` joins
-them. `mpx` never depends on `mpx_lottie`, `mpx_video_decoder`, `mpx_player`,
+them. `mpx` never depends on `mpx_lottie`, `mpx_video_decoder`, `mpx_svg`, `mpx_player`,
 `mpx_ui`, `mpx_library` or `mpx_capture`: the host passes decoders into the stack and wires
 the optional packages itself, so taking `mpx` never links FFmpeg, Media3 or
 camera code.
@@ -73,6 +75,7 @@ camera code.
 | Heavy native code a host may not want | `mpx_lottie` (Rust), `mpx_video_decoder` (FFmpeg), `mpx_player` (Media3) |
 | Platform permissions | `mpx_capture` (camera, microphone), `mpx_library` (photo library, the camera through the system camera intent) |
 | A standalone pure-Dart library with value outside media | `http_bytes_cache` |
+| A dependency that constrains the host's resolution (an exact upper bound on a common package) | `mpx_svg` (the SVG compiler pins `xml` exactly) |
 | Large optional UI | `mpx_ui` |
 | Wiring that would otherwise force an edge between two of the above | `mpx` |
 

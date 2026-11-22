@@ -33,6 +33,7 @@ A new test file is added there; a test restores any global state it changes.
 | `packages/mpx_core` | Plugin: media identity, asset cache and pipeline, clock, budgets, texture hosts, image decoder | [0003](docs/adr/0003-media-core-and-decoders.md) |
 | `packages/mpx_lottie` | Vector animation decoder + native library (build hook) | [0003](docs/adr/0003-media-core-and-decoders.md) |
 | `packages/mpx_video_decoder` | Software video decoder for silent loops + native library | [0003](docs/adr/0003-media-core-and-decoders.md) |
+| `packages/mpx_svg` | SVG decoder: sanitizer and limits for untrusted SVG, compile off the UI isolate, raster at the spec | [0003](docs/adr/0003-media-core-and-decoders.md) |
 | `packages/mpx_player` | Plugin: player pool, leases, audio owner, feed modes | [0004](docs/adr/0004-player.md), [0005](docs/adr/0005-feed.md) |
 | `packages/mpx_ui` | Optional: fullscreen viewer, feed widgets | [0006](docs/adr/0006-viewer.md) |
 | `packages/mpx_library` | Optional plugin: device media library, file intake, library keys and fetcher | [0011](docs/adr/0011-library-and-picking.md) |
@@ -42,7 +43,7 @@ A new test file is added there; a test restores any global state it changes.
 Dependency direction (arrows point at the dependency; ADR 0001):
 
 ```
-mpx_lottie, mpx_video_decoder -> mpx_core
+mpx_lottie, mpx_video_decoder, mpx_svg -> mpx_core
 mpx_player                    -> mpx_core, http_bytes_cache
 mpx_library                   -> mpx_core
 mpx_ui                        -> mpx_player, mpx_core, mpx_library
@@ -54,7 +55,7 @@ mpx_capture, mpx              -> mpx_core, http_bytes_cache
 There are no workspace lints; review holds these:
 
 - Edges exactly as above. `mpx_core` and `http_bytes_cache` never depend on
-  each other; `mpx` never depends on the decoders, the player, the UI,
+  each other; `mpx` never depends on the decoders (`mpx_svg` included), the player, the UI,
   the library or capture.
 - No package re-exports another package's API, `mpx` included.
 - Fakes and contract suites only from each package's `lib/testing.dart`; every

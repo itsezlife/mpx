@@ -11,7 +11,8 @@ decision adds three inputs to the core.
 **Status**: Accepted (decided with the maintainer 2026-11-10)
 **Relates to**: 0001, 0002, 0004, 0005, 0009, 0010
 **Amended**: 2026-11-13, identity and package folds (ticket 27);
-2026-11-17, loading stages (ADR 0010)
+2026-11-17, loading stages (ADR 0010);
+2026-11-22, vector images (`mpx_svg`)
 
 ## Context
 
@@ -113,6 +114,37 @@ else plays the content; `pictureSizeOf` gives the content's proportion.
 Rejected: a second entry at the viewer's size that takes the thumbnail's
 phase. A forward-only decoder has to decode its way to the phase, so the copy
 showed its first frame or jumped back while it caught up.
+
+### Vector images
+
+`MediaKind.vectorImage` is a resolution-independent still (SVG). It is a kind
+of its own, not a still the image decoder sniffs: the host knows the mime
+type, and the registry picks a decoder per kind. The pipeline treats it as a
+still (one frame, the still budget, a derived preview).
+
+`mpx_svg` decodes it (`SvgDecoder`, which the host registers):
+
+| Step | Where | Rule |
+| --- | --- | --- |
+| Sanitize | worker isolate | `SvgSanitizer` **rejects** (never strips) scripts, embedded documents, SMIL animation, event handlers, references out of the document (`href` / `url()` not `#id`; `data:` images only when allowed), importing or animating CSS, and entity declarations (an external document type is let through: nothing fetches it); caps elements, depth and the element count after `<use>` expansion |
+| Compile | worker isolate | `vector_graphics_compiler` to its binary form; the worker is ended on cancel and past the time cap |
+| Draw | UI isolate, raster thread | The picture fitted inside the spec (up or down, aspect kept, long edge capped) into one image: a `StillImagePaintable` in the still tier, tinted at paint for a template spec |
+
+The caps are a host policy value (`SvgLimits`). `standard` is 1 MiB of
+input, 4096 px on the long edge, 100 000 elements, depth 100, a `<use>`
+expansion of 500 000 elements, 5 s, and no embedded images. Every refusal is
+a permanent failure, so the surface keeps its placeholder. Compiled forms
+are kept per media key, so another size skips the parse.
+
+Rejected:
+
+- Keeping the vector picture and replaying it at paint. It has no honest
+  byte cost, and it replays every path on every frame.
+- Stripping what the sanitizer dislikes. A stripped document draws something
+  its author never drew.
+- Putting the decoder in the core. The compiler would hold every host's
+  `xml` back (ADR 0001).
+- A widget of its own. The content views draw the kind like any other.
 
 ### Unchanged contracts
 
