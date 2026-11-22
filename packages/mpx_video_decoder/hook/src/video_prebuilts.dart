@@ -270,11 +270,19 @@ final class VideoPrebuiltsUnavailable extends VideoPrebuiltFetch {
 /// and hash still match. A download lands in a temporary file and is renamed
 /// in only once verified, so a cut or wrong download leaves nothing behind.
 /// Never throws: any failure is [VideoPrebuiltsUnavailable].
+///
+/// A file whose download fails is tried [attempts] times in all, [retryDelay]
+/// apart: the hook's result is cached like any other, so a build that gave
+/// up on one flaky answer would stay without its library until the next
+/// `flutter clean`. [timeout] ends a download only when it stalls: no bytes
+/// for that long.
 Future<VideoPrebuiltFetch> fetchVideoPrebuilts({
   required List<VideoPrebuiltFile> files,
   required Uri? Function(VideoPrebuiltFile file) urlOf,
   required Directory cacheDir,
   Duration timeout = const Duration(minutes: 2),
+  int attempts = 3,
+  Duration retryDelay = const Duration(seconds: 2),
 }) async {
   final ready = <String, File>{};
   for (final entry in files) {
@@ -288,8 +296,15 @@ Future<VideoPrebuiltFetch> fetchVideoPrebuilts({
       if (url == null) {
         return const VideoPrebuiltsUnavailable('no baseUrl in the manifest');
       }
-      final problem = await _download(url, target, entry, timeout);
-      if (problem != null) return VideoPrebuiltsUnavailable(problem);
+      String? problem;
+      for (var attempt = 1; attempt <= attempts; attempt++) {
+        problem = await _download(url, target, entry, timeout);
+        if (problem == null) break;
+        if (attempt < attempts) await Future<void>.delayed(retryDelay);
+      }
+      if (problem != null) {
+        return VideoPrebuiltsUnavailable('$problem ($attempts attempts)');
+      }
       ready[entry.name] = target;
     } on Object catch (e) {
       return VideoPrebuiltsUnavailable('${entry.file}: $e');

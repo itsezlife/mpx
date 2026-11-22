@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A prebuilt file whose download fails is tried three times before the
+  hook gives up. The hook's result is cached, so one flaky answer used to
+  leave a build without video until `flutter clean`. The warning now says
+  so.
 - Prebuilt libraries: the hook downloads the wrapper and FFmpeg for its
   target from this repository's releases (`native/prebuilts.json`, pinned by
   size, SHA-256 and the hash of the sources), into its shared cache. An app

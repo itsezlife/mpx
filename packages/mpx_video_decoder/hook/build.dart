@@ -134,7 +134,8 @@ void main(List<String> args) async {
     }
     stderr.writeln(
       'warning: mpx_video_decoder has no native video library for $target: '
-      'no prebuilt for these sources and target, and no FFmpeg build. '
+      'no usable prebuilt (see the line above, if any: a failed download is '
+      'tried again after `flutter clean`) and no FFmpeg build. '
       'Build one with ${recipeCommandFor(target)}, or name a recipe build '
       'directory (<dir>/$target/prefix) in the app pubspec under hooks: '
       'user_defines: mpx_video_decoder: $ffmpegBuildDefine. No asset is '

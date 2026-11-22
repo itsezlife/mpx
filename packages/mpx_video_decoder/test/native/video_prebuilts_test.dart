@@ -251,6 +251,36 @@ void main() {
       );
     });
 
+    test('a failed attempt is tried again: one flaky answer does not cost '
+        'the build its library', () async {
+      served['a.so'] = [1, 2, 3];
+      var failures = 1;
+      await server.close(force: true);
+      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((request) {
+        requests++;
+        if (failures-- > 0) {
+          request.response.statusCode = 503;
+        } else {
+          request.response.add(served['a.so']!);
+        }
+        request.response.close();
+      });
+      final manifest = manifestOf([
+        _file('libmpx_video.so', [1, 2, 3], file: 'a.so'),
+      ]);
+
+      final result = await fetchVideoPrebuilts(
+        files: manifest.filesFor('android-arm64')!,
+        urlOf: local,
+        cacheDir: Directory('${temp.path}/cache'),
+        retryDelay: Duration.zero,
+      );
+
+      expect(result, isA<VideoPrebuiltsReady>());
+      expect(requests, 2);
+    });
+
     test('a missing file is unavailable, never a thrown build', () async {
       final manifest = manifestOf([
         _file('libmpx_video.so', [1], file: 'gone.so'),
