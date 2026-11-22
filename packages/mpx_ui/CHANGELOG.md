@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- What a video that cannot be played shows is the policy's
+  (`ViewerVideoRules.failure`): `silent` (a picker's, as the reference's:
+  the page keeps its picture and play tries again), `alert` (Open in
+  another app or Cancel, where the host gives `MediaViewer.onOpenElsewhere`;
+  the card without it), or `card` (the old card with Retry, now
+  `ViewerVideoFailureCard`). A failed video keeps play in its centre.
 - A surface's overlays on the item the viewer shows (a cell's check and
   marks) fade back only once the close has landed, with the picture back
   in its place, not as the close starts.

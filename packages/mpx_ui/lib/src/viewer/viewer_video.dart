@@ -88,6 +88,8 @@ final class ViewerVideoStrings {
     this.quality = 'Quality',
     this.failed = 'This video could not be played',
     this.retry = 'Retry',
+    this.openElsewhere = 'Open',
+    this.cancel = 'Cancel',
   });
 
   /// The play button's semantic label.
@@ -107,6 +109,13 @@ final class ViewerVideoStrings {
 
   /// The button that tries a failed video again.
   final String retry;
+
+  /// The alert's button that opens a video that cannot be played in another
+  /// app.
+  final String openElsewhere;
+
+  /// The alert's button that leaves it.
+  final String cancel;
 }
 
 /// A tap target of at least [kMinInteractiveDimension] on each side around
@@ -176,11 +185,12 @@ class _ViewerTapTargetState extends State<ViewerTapTarget> {
   );
 }
 
-/// What a video that failed to play shows over its picture: [ViewerVideoStrings.failed]
-/// and a retry.
-class ViewerVideoFailure extends StatelessWidget {
+/// What a video that failed to play shows over its picture under
+/// `ViewerVideoFailure.card` (an alert without another app to open it in
+/// too): [ViewerVideoStrings.failed] and a retry.
+class ViewerVideoFailureCard extends StatelessWidget {
   /// Shows the failure, calling [onRetry] for the retry.
-  const ViewerVideoFailure({
+  const ViewerVideoFailureCard({
     required this.strings,
     required this.tokens,
     required this.onRetry,
@@ -230,6 +240,96 @@ class ViewerVideoFailure extends StatelessWidget {
         ],
       ),
     ),
+  );
+}
+
+/// The alert of `ViewerVideoFailure.alert`: [ViewerVideoStrings.failed]
+/// and the choice to open the video in another app ([onOpen]) or leave it
+/// ([onCancel]), which dismisses it for [session] (the page keeps its
+/// picture; play tries again).
+class ViewerVideoFailureAlert extends StatelessWidget {
+  /// Shows the alert of [session] until [dismissed] names it.
+  const ViewerVideoFailureAlert({
+    required this.strings,
+    required this.tokens,
+    required this.onOpen,
+    required this.onCancel,
+    required this.dismissed,
+    required this.session,
+    super.key,
+  });
+
+  /// The texts.
+  final ViewerVideoStrings strings;
+
+  /// The colours and type.
+  final ViewerTokens tokens;
+
+  /// Opens the video elsewhere.
+  final VoidCallback onOpen;
+
+  /// Leaves the alert.
+  final VoidCallback onCancel;
+
+  /// The session whose alert was left, if any.
+  final ValueListenable<Object?> dismissed;
+
+  /// The session the alert is for.
+  final Object session;
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<Object?>(
+    valueListenable: dismissed,
+    builder: (context, left, _) => identical(left, session)
+        ? const SizedBox.shrink()
+        : DecoratedBox(
+            key: const ValueKey('mpx-viewer-video-failed-alert'),
+            decoration: BoxDecoration(
+              color: tokens.menuBackground,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 12, 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Text(strings.failed, style: tokens.subtitle),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final (label, onTap, key) in [
+                        (strings.cancel, onCancel, 'cancel'),
+                        (strings.openElsewhere, onOpen, 'open'),
+                      ])
+                        Semantics(
+                          button: true,
+                          child: ViewerTapTarget(
+                            key: ValueKey('mpx-viewer-video-failed-$key'),
+                            onTap: onTap,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                              child: Text(
+                                label,
+                                style: tokens.subtitle.copyWith(
+                                  color: tokens.link,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
   );
 }
 
@@ -465,9 +565,13 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
   Widget _centre(Widget button, PlayerState state) {
     // A policy without a centre while playing leaves it empty over a
     // playing video: the button stands for play only.
+    // A video that failed keeps play in the centre: a tap tries again
+    // (`ViewerVideoFailure.silent` says nothing else).
+    final failed = state.phase == PlayerPhase.failed;
     final unplayed =
-        !state.firstFrameRendered ||
-            (state.playing && !widget.rules.centreWhilePlaying)
+        !failed &&
+            (!state.firstFrameRendered ||
+                (state.playing && !widget.rules.centreWhilePlaying))
         ? 1.0
         : 0.0;
     Widget faded(double spinner) {

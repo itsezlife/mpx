@@ -122,7 +122,13 @@ typedef AssetSkinBuilder =
 @immutable
 final class AssetViewSkin {
   /// Creates a skin; null builders keep the stock parts.
-  const AssetViewSkin({this.status, this.badge, this.reveal, this.progress});
+  const AssetViewSkin({
+    this.status,
+    this.badge,
+    this.reveal,
+    this.progress,
+    this.failure,
+  });
 
   /// The reference look: every part stock.
   static const AssetViewSkin stock = AssetViewSkin();
@@ -136,6 +142,13 @@ final class AssetViewSkin {
 
   /// Builds the picture's entrance over the stock fades.
   final AssetSkinBuilder? reveal;
+
+  /// Builds what a view shows over its picture while its media failed
+  /// ([AssetLoadState.failed]); its stock part is nothing: the reference
+  /// keeps the picture (no visible failed stage), and the status control
+  /// offers download, which is the retry. A host that wants a mark of its
+  /// own (an icon, a word) builds it here.
+  final AssetSkinBuilder? failure;
 
   /// Per kind of media, what its download arc shows before its measure is
   /// known; null for [MediaProgressLook.stockFor] (a GIF's measured arc, a
@@ -154,11 +167,16 @@ final class AssetViewSkin {
           badge: badge ?? other.badge,
           reveal: reveal ?? other.reveal,
           progress: progress ?? other.progress,
+          failure: failure ?? other.failure,
         );
 
   /// Whether every part is stock.
   bool get isStock =>
-      status == null && badge == null && reveal == null && progress == null;
+      status == null &&
+      badge == null &&
+      reveal == null &&
+      progress == null &&
+      failure == null;
 }
 
 /// Rebuilds with the [AssetLoadState] of [content] decoded as [preset]: a

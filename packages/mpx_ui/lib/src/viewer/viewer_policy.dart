@@ -439,6 +439,23 @@ enum ViewerOriginReturn {
   whereItPaused,
 }
 
+/// What the viewer shows when a video it shows cannot be played.
+enum ViewerVideoFailure {
+  /// Nothing: the page keeps its picture and its play button, which tries
+  /// again. The reference picker's: its viewer offers no other app to open
+  /// the file in, so its error says nothing.
+  silent,
+
+  /// An alert offering to open the file in another app (Open, Cancel), where
+  /// the host can (`MediaViewer.onOpenElsewhere`); a card where it cannot.
+  /// The reference chat's.
+  alert,
+
+  /// A card over the picture saying the video could not be played, with
+  /// Retry.
+  card,
+}
+
 /// What an animation (an animated image, a vector animation, a silent loop)
 /// does as the viewer opens on it from an origin that plays it.
 enum ViewerLoopOpen {
@@ -688,6 +705,7 @@ final class ViewerVideoRules {
     this.centreWhilePlaying = true,
     this.restarts = false,
     this.autoplay = true,
+    this.failure = ViewerVideoFailure.alert,
     this.doubleTapSeek,
     this.doubleTapFullscreen = false,
     this.doubleTapZooms = true,
@@ -742,6 +760,9 @@ final class ViewerVideoRules {
   /// waits paused at its start, the play button shown, as a picker-mode
   /// viewer's do.
   final bool autoplay;
+
+  /// What a video that cannot be played shows.
+  final ViewerVideoFailure failure;
 
   /// The speeds offered and where a choice applies.
   final ViewerSpeedRule speed;
@@ -800,6 +821,7 @@ final class ViewerVideoRules {
     bool? centreWhilePlaying,
     bool? restarts,
     bool? autoplay,
+    ViewerVideoFailure? failure,
     ViewerSpeedRule? speed,
     bool Function(Duration? duration, {required bool hasAudio})? loops,
     ViewerDoubleTapSeek? doubleTapSeek,
@@ -819,6 +841,7 @@ final class ViewerVideoRules {
     centreWhilePlaying: centreWhilePlaying ?? this.centreWhilePlaying,
     restarts: restarts ?? this.restarts,
     autoplay: autoplay ?? this.autoplay,
+    failure: failure ?? this.failure,
     speed: speed ?? this.speed,
     loops: loops ?? this.loops,
     doubleTapSeek: doubleTapSeek ?? this.doubleTapSeek,

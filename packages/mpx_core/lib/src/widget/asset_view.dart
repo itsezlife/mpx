@@ -652,7 +652,14 @@ class _AssetViewState extends State<AssetView> {
         builder: (context, state, picture) => reveal(context, state, picture!),
       );
     }
-    final overlays = widget.status is! MediaStatusMode$None || widget.badge;
+    final overlays =
+        widget.status is! MediaStatusMode$None ||
+        widget.badge ||
+        MediaLoadingStyleScope.resolveSkin(
+              context,
+              skin: widget.skin,
+            ).failure !=
+            null;
     // Every frame repaints an animated picture; a picture under chrome is
     // read without it (AssetView.pictureIn).
     if (preset.profile.animate || overlays) {

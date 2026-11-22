@@ -95,6 +95,7 @@ final class ViewerHarness {
     Duration? Function(int index, GalleryItem item)? videoStartOf,
     void Function(int index, GalleryItem item, Duration position)? onVideoLeft,
     bool backdropScope = false,
+    Future<void> Function(int index, GalleryItem item)? onOpenElsewhere,
   }) async {
     tester.view.physicalSize = viewerSize;
     tester.view.devicePixelRatio = 1;
@@ -133,6 +134,7 @@ final class ViewerHarness {
               controller: controller,
               videoStartOf: videoStartOf,
               onVideoLeft: onVideoLeft,
+              onOpenElsewhere: onOpenElsewhere,
             ),
           ),
         ),

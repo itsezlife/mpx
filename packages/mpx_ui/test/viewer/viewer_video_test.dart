@@ -764,6 +764,65 @@ void main() {
     });
   });
 
+  group('what a video that fails shows, by the policy', () {
+    const strings = ViewerVideoStrings();
+
+    testWidgets('an alert offering another app where the host has one: Open '
+        'opens it, Cancel leaves the picture', (tester) async {
+      final opened = <int>[];
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+      );
+      await harness.pump(
+        tester,
+        onOpenElsewhere: (index, item) async => opened.add(index),
+      );
+      harness.engine(0).fail(StateError('the decoder stopped'));
+      await tester.pump();
+
+      final alert = find.byKey(const ValueKey('mpx-viewer-video-failed-alert'));
+      expect(alert, findsOneWidget);
+      expect(find.text(strings.retry), findsNothing);
+      await tester.tap(find.text(strings.openElsewhere));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(opened, [0]);
+      await tester.tap(find.text(strings.cancel));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(alert, findsNothing);
+    });
+
+    testWidgets("silent (a picker's): nothing over the picture, and play "
+        'tries again', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+      );
+      await harness.pump(
+        tester,
+        policy: ViewerPolicy.$Android.copyWith(
+          video: PickerViewer.videoRules(ViewerPolicy.$Android.video),
+        ),
+      );
+      await _settle(tester);
+      harness.engine(0).fail(StateError('the decoder stopped'));
+      await tester.pump();
+
+      expect(find.text(strings.failed), findsNothing);
+      expect(
+        tester
+            .widget<Opacity>(find.byKey(const ValueKey('mpx-viewer-play-fade')))
+            .opacity,
+        1,
+        reason: 'play stays',
+      );
+      final created = harness.backend!.created.length;
+      await tester.tap(find.byKey(const ValueKey('mpx-viewer-play')));
+      await tester.pump();
+      expect(harness.backend!.created.length, created + 1);
+    });
+  });
+
   group('controls', () {
     late ViewerHarness harness;
 

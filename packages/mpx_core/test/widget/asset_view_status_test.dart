@@ -478,6 +478,34 @@ void main() {
     expect(identical(picture(), before), isTrue);
   });
 
+  testWidgets("a skin's failure marks a view whose media failed, over the "
+      'kept picture; none before, and the stock look shows nothing', (
+    tester,
+  ) async {
+    Widget view({AssetViewSkin? skin}) =>
+        host(AssetView(content: _key, preset: _preset, skin: skin));
+    await tester.pumpWidget(
+      view(
+        skin: AssetViewSkin(
+          failure: (context, state, stock) => const Text('failed'),
+        ),
+      ),
+    );
+    producer.last
+      ..advance(AssetStage.preview)
+      ..transfer(10, 100);
+    await tester.pump();
+    expect(find.text('failed'), findsNothing);
+    producer.last.fail(StateError('gone'));
+    await tester.pump();
+    expect(find.text('failed'), findsOneWidget);
+    expect(find.byType(AssetPicture), findsWidgets, reason: 'the picture');
+
+    await tester.pumpWidget(view());
+    await tester.pump();
+    expect(find.text('failed'), findsNothing);
+  });
+
   testWidgets('AssetLoadStateBuilder: a host UI from the same entry, with '
       'no view of its own', (tester) async {
     await tester.pumpWidget(

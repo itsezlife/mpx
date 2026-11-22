@@ -219,7 +219,9 @@ abstract final class PickerViewer {
   /// - a video keeps no position: back to one, it starts over;
   /// - a video does not play by itself when its page shows, and does not
   ///   loop: at its end it is back at its start, paused, the play button
-  ///   shown, and play plays it again from there.
+  ///   shown, and play plays it again from there;
+  /// - a video that cannot be played says nothing: its page keeps its
+  ///   picture and play tries again ([ViewerVideoFailure.silent]).
   static ViewerVideoRules videoRules(ViewerVideoRules resolved) =>
       resolved.copyWith(
         autoHides: false,
@@ -228,6 +230,7 @@ abstract final class PickerViewer {
         restarts: true,
         autoplay: false,
         loops: ViewerVideoRules.loopNever,
+        failure: ViewerVideoFailure.silent,
       );
 
   /// Shows the viewer over [source] at [initialIndex]; completes when it

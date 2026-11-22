@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `AssetViewSkin.failure`: what a view shows over its picture while its
+  media failed, given the state and the stock part, which is nothing (the
+  reference keeps the picture; the status control's download is the
+  retry).
 - A GIF's download arc is its measured arc again: before its bytes are
   measured it stands at nothing and turns, as the reference's GIF cell, and
   never swings as the video loading's spinner, which the shared status

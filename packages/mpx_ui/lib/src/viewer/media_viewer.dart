@@ -208,6 +208,7 @@ class MediaViewer extends StatefulWidget {
     this.controller,
     this.videoStartOf,
     this.onVideoLeft,
+    this.onOpenElsewhere,
     this.onPictureTap,
   });
 
@@ -280,6 +281,11 @@ class MediaViewer extends StatefulWidget {
   final void Function(int index, GalleryItem item, Duration position)?
   onVideoLeft;
 
+  /// Opens the item at [index] in another app, for a video that cannot be
+  /// played here: the alert of [ViewerVideoFailure.alert] offers it; without
+  /// it the viewer shows its card instead.
+  final Future<void> Function(int index, GalleryItem item)? onOpenElsewhere;
+
   /// A single tap on the picture of an item with no player under it: the
   /// host takes it (a picker toggles the item's selection) in place of the
   /// policy's own (the chrome shows or hides, or the viewer closes). A
@@ -311,6 +317,7 @@ class MediaViewer extends StatefulWidget {
     ValueChanged<bool>? onFullscreenChanged,
     Duration? Function(int index, GalleryItem item)? videoStartOf,
     void Function(int index, GalleryItem item, Duration position)? onVideoLeft,
+    Future<void> Function(int index, GalleryItem item)? onOpenElsewhere,
   }) {
     final cache = scope ?? AssetCacheProvider.of(context);
     final origins =
@@ -341,6 +348,7 @@ class MediaViewer extends StatefulWidget {
             onFullscreenChanged: onFullscreenChanged,
             videoStartOf: videoStartOf,
             onVideoLeft: onVideoLeft,
+            onOpenElsewhere: onOpenElsewhere,
             onClosed: () => Navigator.of(routeContext).pop(),
           ),
         ),
@@ -536,6 +544,7 @@ class MediaViewerState extends State<MediaViewer>
     _pages.dispose();
     _controls.dispose();
     _spinnerShown.dispose();
+    _dismissedFailure.dispose();
     _pageStatusShows.dispose();
     super.dispose();
   }
@@ -1453,13 +1462,7 @@ class MediaViewerState extends State<MediaViewer>
                 builder: (context, state, _) =>
                     state.phase != PlayerPhase.failed
                     ? const SizedBox.shrink()
-                    : Center(
-                        child: ViewerVideoFailure(
-                          strings: widget.videoStrings,
-                          tokens: widget.tokens,
-                          onRetry: session.retry,
-                        ),
-                      ),
+                    : _failure(session),
               ),
             if (widget.chrome case final chrome? when _phase == _Phase.open)
               ViewerChromeOverlay(
@@ -1773,6 +1776,39 @@ class MediaViewerState extends State<MediaViewer>
         : null;
     return _picture(_index, item, size, fit, session: session);
   }
+
+  // What a video that cannot be played shows, by the policy: nothing (its
+  // page keeps its picture and play tries again), the alert offering
+  // another app, or the card with Retry.
+  Widget _failure(ViewerVideoSession session) {
+    final open = widget.onOpenElsewhere;
+    final item = widget.source.itemAt(_index);
+    return switch (_video.failure) {
+      ViewerVideoFailure.silent => const SizedBox.shrink(),
+      ViewerVideoFailure.alert when open != null && item != null => Center(
+        child: ViewerVideoFailureAlert(
+          strings: widget.videoStrings,
+          tokens: widget.tokens,
+          onOpen: () => unawaited(open(_index, item)),
+          onCancel: () => _dismissedFailure.value = session,
+          dismissed: _dismissedFailure,
+          session: session,
+        ),
+      ),
+      _ => Center(
+        child: ViewerVideoFailureCard(
+          strings: widget.videoStrings,
+          tokens: widget.tokens,
+          onRetry: session.retry,
+        ),
+      ),
+    };
+  }
+
+  // The session whose failure alert was dismissed: it shows no more.
+  final ValueNotifier<ViewerVideoSession?> _dismissedFailure = ValueNotifier(
+    null,
+  );
 
   // The picture of [item]: the item's own content, with the origin's frame
   // standing in until the content shows. [size] is the box, kept the same

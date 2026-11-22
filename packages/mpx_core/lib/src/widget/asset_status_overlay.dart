@@ -256,9 +256,24 @@ class _AssetStatusOverlayState extends State<AssetStatusOverlay> {
       },
     ];
     final badge = style.badge.offset;
+    final failure = MediaLoadingStyleScope.resolveSkin(
+      context,
+      skin: widget.skin,
+    ).failure;
     return Stack(
       children: [
         widget.child,
+        // A host's mark of a failure, under the controls (whose download is
+        // the retry); the stock part is nothing, the picture kept.
+        if (failure != null)
+          Positioned.fill(
+            child: AssetLoadStateBuilder.binding(
+              binding,
+              builder: (context, state, _) => state.failed
+                  ? failure(context, state, const SizedBox.shrink())
+                  : const SizedBox.shrink(),
+            ),
+          ),
         ...controls,
         if (widget.badge)
           Positioned.fill(
