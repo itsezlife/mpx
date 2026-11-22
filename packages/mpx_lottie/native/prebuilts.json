@@ -2,7 +2,7 @@
   "schema": 1,
   "crateVersion": "0.1.0",
   "sourceHash": "01e1374f686f4746d2bc8cee8056a0e8d8dee81f4386a3a2240ec8be00409b30",
-  "baseUrl": "https://github.com/itsezlife/mpx/releases/download/natives-1886963/",
+  "baseUrl": "https://github.com/itsezlife/mpx/releases/download/natives-eb3357f/",
   "artifacts": {
     "android-arm": {
       "file": "libmpx_lottie-android-arm.so",
@@ -26,23 +26,23 @@
     },
     "ios-arm64-simulator": {
       "file": "libmpx_lottie-ios-arm64-simulator.dylib",
-      "sha256": "dba0919dd61ad00add449ab1eda78451d35f7126268fc968f74b89be4e01033e",
+      "sha256": "aec09b7ca96a16e81092467dceae2feef8545e344f8e2a94af39835878a1b6c4",
       "size": 1071792
     },
     "ios-x64-simulator": {
       "file": "libmpx_lottie-ios-x64-simulator.dylib",
-      "sha256": "c5621bdb0cded1e36cd1162490117637c7b315bd1bf110c384b767a719b15abe",
-      "size": 1153760
+      "sha256": "be951be024245d314a5585f0197ac798a940c01757c0d594d19b832cfc17debd",
+      "size": 1157856
     },
     "macos-arm64": {
       "file": "libmpx_lottie-macos-arm64.dylib",
-      "sha256": "c0d60f60a14f532ada30040bd1a8d5cab9a6c8b9df2e1463663b4c008f8e8136",
+      "sha256": "9a2a02dad7aaa6ba58785c4ce2d8807e1655ec50df6f58340911cdeb80f0ef1d",
       "size": 1088096
     },
     "macos-x64": {
       "file": "libmpx_lottie-macos-x64.dylib",
-      "sha256": "33097f0ef13739dc74a53f2996b2c37c9447e8c13f8d17ed766568d183a3ecfd",
-      "size": 1153776
+      "sha256": "e1d09c9eff7b8c903627dbd935244634b2e9440953c4846389b8e28aa9e6ac24",
+      "size": 1157872
     }
   }
 }
