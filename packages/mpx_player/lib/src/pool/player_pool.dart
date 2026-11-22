@@ -448,8 +448,9 @@ final class PlayerLease {
     if (!_live) return PlayerViewAttachment._(null);
     final player = _player..touch();
     player.views++;
-    // Shown, a video whose decoder was busy off screen may prepare again.
-    player.pool._busyOffScreen.remove(player.key);
+    // Shown, a video whose decoder was busy off screen may prepare again,
+    // and one asked to prepare before its view attached prepares now.
+    if (player.pool._busyOffScreen.remove(player.key)) player._shown();
     return PlayerViewAttachment._(() {
       player.views--;
       if (player.views == 0 && !player.disposed) player.pool._viewsGone(player);
@@ -596,13 +597,32 @@ final class _Player {
     touch();
     // Prepared ahead (no view shows it), a video whose decoder was busy
     // waits to be shown.
-    if (views == 0 && pool._busyOffScreen.contains(key)) return;
+    if (views == 0 && pool._busyOffScreen.contains(key)) {
+      _preparesWhenShown = true;
+      return;
+    }
     _ensureEngine();
+  }
+
+  // Whether a prepare waited for a view: a page's session prepares as the
+  // page lands, before its view attaches.
+  bool _preparesWhenShown = false;
+
+  // A view shows this player, whose decoder was busy off screen. Deferred:
+  // a view attaches while it builds, and the engine's first state would
+  // rebuild it then.
+  void _shown() {
+    if (!_preparesWhenShown) return;
+    _preparesWhenShown = false;
+    scheduleMicrotask(() {
+      if (!disposed && views > 0 && _engine == null) _ensureEngine();
+    });
   }
 
   void play() {
     touch();
     pool._busyOffScreen.remove(key);
+    _preparesWhenShown = false;
     state.value = state.value.copyWith(playing: true);
     _ensureEngine().play();
     pool

@@ -10,7 +10,9 @@
   starts it again, once; one off screen lets its engine go and waits to be
   shown, never failed, and is not prepared ahead again until a view shows
   it or it plays: a viewer's neighbours no longer ask for a decoder at
-  every page and get refused.
+  every page and get refused. A page asked to prepare before its view
+  attached (a session prepares as its page lands) prepares once the view
+  shows it: such a page stayed without an engine, its play button hidden.
 - A player prepared ahead (paused, not played yet) loads past its buffer
   cap until its first frame shows: an 8K clip filled the 2 MiB cap before
   its first picture was decoded and never became ready, spinning until a

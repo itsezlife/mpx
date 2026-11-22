@@ -339,6 +339,42 @@ void main() {
       expect(backend.created.length, created + 1);
     });
 
+    test('a page prepared before its view attaches prepares once the view '
+        'shows it', () async {
+      pool.lease(a).prepare();
+      await settle();
+      backend.latestFor(a)!.fail(busy);
+      await settle();
+      final created = backend.created.length;
+
+      // A page's session prepares as the page lands; its view attaches in
+      // the frame after.
+      final shown = pool.lease(a)..prepare();
+      await settle();
+      expect(backend.created.length, created, reason: 'not shown yet');
+      final view = shown.attachView();
+      addTearDown(view.detach);
+      await settle();
+
+      expect(backend.created.length, created + 1);
+      expect(shown.state.value.firstFrameRendered, isTrue);
+    });
+
+    test('a view of a player nobody asked to prepare starts nothing', () async {
+      pool.lease(a).prepare();
+      await settle();
+      backend.latestFor(a)!.fail(busy);
+      await settle();
+      final created = backend.created.length;
+
+      final idle = pool.lease(a);
+      final view = idle.attachView();
+      addTearDown(view.detach);
+      await settle();
+
+      expect(backend.created.length, created);
+    });
+
     test('a player on screen takes the decoders of the players off screen '
         'and starts again once', () async {
       final shown = pool.lease(a);
