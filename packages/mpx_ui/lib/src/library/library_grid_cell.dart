@@ -84,7 +84,7 @@ class LibraryGridCell extends StatelessWidget {
   bool get _selected => order != null;
 
   // The check and the marks fade out while the viewer shows this item, and
-  // back as it leaves it or starts closing.
+  // back once it leaves it: paged on, or the close landed in the cell.
   Widget _overUnderViewer(Widget overlay) => switch (originIndex) {
     final index? => ViewerOriginOverlay(
       index: index,

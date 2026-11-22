@@ -1154,10 +1154,8 @@ class MediaViewerState extends State<MediaViewer>
     // Ignored while the viewer opens, as while it closes.
     if (_phase != _Phase.open) return;
     // Every close fades the chrome out with it, as a dismiss drag does: a
-    // back press, a close button, a call from the host. The surface's
-    // overlays come back as it starts.
+    // back press, a close button, a call from the host.
     _controls.value = false;
-    _cover(null);
     // The surface the viewer closes onto gets the decoders back.
     _releaseNeighbours();
     final session = _session;
@@ -1240,6 +1238,9 @@ class MediaViewerState extends State<MediaViewer>
     if (!mounted) return;
     _releaseTransitionHold();
     _hide(_index, hidden: false);
+    // The surface's overlays (a cell's check and marks) come back only once
+    // the picture has landed in its place, as the close ends.
+    _cover(null);
     setState(() => _phase = _Phase.closed);
     _notifyController();
     widget.onClosed?.call();
@@ -1561,7 +1562,7 @@ class MediaViewerState extends State<MediaViewer>
         onDismissEnd: _dragEvents.onEnd,
         onPageChanged: (index) {
           setState(() => _index = index);
-          if (_phase != _Phase.closing) _cover(index);
+          _cover(index);
           _dropOriginFrames(around: index);
           _notifyController();
           _syncVideo();

@@ -100,7 +100,9 @@ void main() {
 
   group('the overlays on the surface', () {
     testWidgets('the item shown is covered as the viewer opens; paging moves '
-        'the cover; the close uncovers it at its start', (tester) async {
+        'the cover; the close uncovers it only once it has landed', (
+      tester,
+    ) async {
       final harness = ViewerHarness();
       await harness.pump(tester, open: false);
       expect(harness.bridge.covered, {0});
@@ -113,8 +115,18 @@ void main() {
       expect(harness.bridge.covered, {1});
       harness.state(tester).close().ignore();
       await tester.pump();
-      expect(harness.bridge.covered, isEmpty, reason: 'at the close start');
-      expect(harness.bridge.hidden, isNotEmpty, reason: 'the picture still');
+      // Through the close morph (200 ms): still covered, frame by frame.
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(harness.bridge.covered, {1}, reason: 'during the morph');
+        expect(harness.bridge.hidden, isNotEmpty);
+      }
+      // The close waited a frame for the surface to reveal the item.
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.pump(const Duration(milliseconds: 60));
+      expect(harness.closed, 1);
+      expect(harness.bridge.covered, isEmpty, reason: 'landed');
+      expect(harness.bridge.hidden, isEmpty);
     });
 
     testWidgets('a ViewerOriginOverlay fades out over 180 ms while covered '

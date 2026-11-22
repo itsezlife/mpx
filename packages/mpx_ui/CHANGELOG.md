@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A surface's overlays on the item the viewer shows (a cell's check and
+  marks) fade back only once the close has landed, with the picture back
+  in its place, not as the close starts.
 - Paging onto a video no longer flashes: its loop is held on the page's own
   picture, not on the origin cell's frame of another moment, which every
   surface of the content (the page under the player included) swapped to

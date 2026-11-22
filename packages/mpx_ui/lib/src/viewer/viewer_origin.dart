@@ -443,8 +443,9 @@ class _ViewerOriginState extends State<ViewerOrigin> {
 
 /// What a surface draws over an item's picture (a selection check, a
 /// duration, a badge), faded out while the viewer shows that item and back
-/// in as the viewer leaves it or starts closing, so none of it stands beside
-/// the viewer's picture or flashes back when the picture lands.
+/// in once the viewer leaves it: paged on, or its close landed with the
+/// picture back in its place, so none of it stands beside the viewer's
+/// picture or rides the close morph.
 ///
 /// It registers like a [ViewerOrigin], by gallery [index] or by [media];
 /// with neither, or under no [ViewerOriginScope], it simply shows [child].

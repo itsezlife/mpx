@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -104,7 +105,9 @@ void main() {
   });
 
   testWidgets("the opened cell's check and marks fade out under the viewer, "
-      'the others stay; they come back as the close starts', (tester) async {
+      'the others stay; they fade back only once the close has landed', (
+    tester,
+  ) async {
     final h = PickerHarness();
     await h.pump(tester, viewerSlot: true);
     List<double> overlays(int index) => [
@@ -124,10 +127,25 @@ void main() {
     // ignore: unawaited_futures
     tester.state<MediaViewerState>(find.byType(MediaViewer)).close();
     await tester.pump();
-    expect(overlays(3), [1, 1], reason: 'back as the close starts');
-    for (var i = 0; i < 20; i++) {
+    double shown() => tester
+        .renderObjectList<RenderAnimatedOpacity>(
+          find.descendant(of: cell(3), matching: find.byType(AnimatedOpacity)),
+        )
+        .map((o) => o.opacity.value)
+        .reduce(math.max);
+    // Hidden through the close morph, frame by frame.
+    for (var i = 0; i < 3; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(shown(), 0, reason: 'during the close morph');
+    }
+    // Landed: they fade in over 180 ms.
+    for (var i = 0; i < 3; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
+    expect(overlays(3), [1, 1]);
+    expect(shown(), inExclusiveRange(0, 1), reason: 'fading in');
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(shown(), 1);
   });
 
   testWidgets('a picture tap opens the viewer on that item', (tester) async {
