@@ -35,9 +35,15 @@ import 'package:vector_graphics/vector_graphics.dart';
 /// frame, and its memory has no honest byte count for the budget. An image
 /// costs one draw and exactly what the budget charges.
 ///
-/// The picture is fitted inside the spec, keeping its aspect ratio, and
-/// scaled up as well as down: a vector has the detail at any size. Its long
-/// edge never passes `SvgLimits.maxPixelEdge`. A template spec keeps the
+/// The picture is drawn to cover the spec, keeping its aspect ratio, scaled
+/// up as well as down: a vector has the detail at any size. Its long edge
+/// never passes `SvgLimits.maxPixelEdge`. The view then places it by its own
+/// fit (`AssetProfile.fit`), as it places any still: a cover view crops it at
+/// one pixel per pixel, a contain view scales it down whole. The fit is the
+/// surface's, not the entry's (one entry serves every profile), so a raster
+/// that covers is the one that is sharp under both. Covering costs pixels a
+/// contain view does not show, up to the aspect ratio of the picture to the
+/// spec, bounded by the edge cap. A template spec keeps the
 /// colours and the surface tints the alpha at paint (`ContentView.tint`), so
 /// a one-colour icon is one entry in every colour it is shown in.
 ///
@@ -190,7 +196,7 @@ final class _SvgDecodeTask implements AssetTask {
           'no size to draw at: $size',
         );
       }
-      final (width, height) = _fitIn(size);
+      final (width, height) = _cover(size);
       final recorder = ui.PictureRecorder();
       ui.Canvas(recorder)
         ..scale(width / size.width, height / size.height)
@@ -219,11 +225,11 @@ final class _SvgDecodeTask implements AssetTask {
     };
   }
 
-  // The pixel size of [size] fitted inside the spec, keeping its aspect
-  // ratio, its long edge at most the limits'.
-  (int, int) _fitIn(ui.Size size) {
+  // The pixel size of [size] covering the spec, keeping its aspect ratio,
+  // its long edge at most the limits'.
+  (int, int) _cover(ui.Size size) {
     final spec = _request.spec;
-    var scale = math.min(
+    var scale = math.max(
       spec.pixelWidth / size.width,
       spec.pixelHeight / size.height,
     );

@@ -93,12 +93,13 @@ Future<ByteData> _pixels(
   int width,
   int height, {
   ui.Color? tint,
+  AssetFit fit = AssetFit.contain,
 }) async {
   final recorder = ui.PictureRecorder();
   paintable.paint(
     ui.Canvas(recorder),
     ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-    AssetPaintContext(tint: tint),
+    AssetPaintContext(tint: tint, fit: fit),
   );
   final picture = recorder.endRecording();
   final image = await picture.toImage(width, height);
@@ -131,35 +132,49 @@ void main() {
     ),
   );
 
-  test('draws the document fitted inside the spec, scaled up as well as '
-      'down, keeping its aspect', () async {
-    final decoder = SvgDecoder();
+  test(
+    'draws the document covering the spec, scaled up as well as down, '
+    'keeping its aspect, so either fit a view paints it in is sharp',
+    () async {
+      final decoder = SvgDecoder();
 
-    final wide = await _decode(
-      decoder,
-      _request(
-        FetchedContent.bytes(_halves(100, 50)),
-        key: const MediaKey.remote('wide'),
-      ),
-    );
-    final small = await _decode(
-      decoder,
-      _request(
-        FetchedContent.bytes(_halves(24, 24)),
-        key: const MediaKey.remote('small'),
-        spec: const AssetSpec(pixelWidth: 96, pixelHeight: 96),
-      ),
-    );
+      final wide = await _decode(
+        decoder,
+        _request(
+          FetchedContent.bytes(_halves(100, 50)),
+          key: const MediaKey.remote('wide'),
+        ),
+      );
+      final small = await _decode(
+        decoder,
+        _request(
+          FetchedContent.bytes(_halves(24, 24)),
+          key: const MediaKey.remote('small'),
+          spec: const AssetSpec(pixelWidth: 96, pixelHeight: 96),
+        ),
+      );
 
-    final (_, widePicture, wideBytes) = wide.advances.single;
-    expect(widePicture.pictureSize, const ui.Size(64, 32));
-    expect(wideBytes, 64 * 32 * 4);
-    final (_, smallPicture, _) = small.advances.single;
-    expect(smallPicture.pictureSize, const ui.Size(96, 96));
-    final pixels = await _pixels(smallPicture, 96, 96);
-    expect(_rgbaAt(pixels, 96, 10, 48), (0, 0, 255, 255));
-    expect(_rgbaAt(pixels, 96, 86, 48), (255, 0, 0, 255));
-  });
+      final (_, widePicture, wideBytes) = wide.advances.single;
+      // 100 x 50 covering 64 x 64: 128 x 64.
+      expect(widePicture.pictureSize, const ui.Size(128, 64));
+      expect(wideBytes, 128 * 64 * 4);
+      // A cover view shows the middle 64 px at one pixel per pixel: the blue
+      // half ends at the centre. A contain view shows it whole, bars above and
+      // below.
+      final cover = await _pixels(widePicture, 64, 64, fit: AssetFit.cover);
+      expect(_rgbaAt(cover, 64, 30, 32), (0, 0, 255, 255));
+      expect(_rgbaAt(cover, 64, 33, 32), (255, 0, 0, 255));
+      expect(_rgbaAt(cover, 64, 32, 0).$4, 255);
+      final contain = await _pixels(widePicture, 64, 64);
+      expect(_rgbaAt(contain, 64, 32, 4).$4, 0);
+      expect(_rgbaAt(contain, 64, 10, 32), (0, 0, 255, 255));
+      final (_, smallPicture, _) = small.advances.single;
+      expect(smallPicture.pictureSize, const ui.Size(96, 96));
+      final pixels = await _pixels(smallPicture, 96, 96);
+      expect(_rgbaAt(pixels, 96, 10, 48), (0, 0, 255, 255));
+      expect(_rgbaAt(pixels, 96, 86, 48), (255, 0, 0, 255));
+    },
+  );
 
   test('a thumbnail is a placeholder; a first-frame spec ends at the first '
       'frame', () async {
