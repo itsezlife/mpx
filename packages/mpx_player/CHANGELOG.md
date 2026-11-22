@@ -8,7 +8,9 @@
   the whole decoder): the engine fails with `PlayerDecoderBusy`. The pool
   then gives a player on screen the decoders of the players off screen and
   starts it again, once; one off screen lets its engine go and waits to be
-  shown, never failed.
+  shown, never failed, and is not prepared ahead again until a view shows
+  it or it plays: a viewer's neighbours no longer ask for a decoder at
+  every page and get refused.
 - A player prepared ahead (paused, not played yet) loads past its buffer
   cap until its first frame shows: an 8K clip filled the 2 MiB cap before
   its first picture was decoded and never became ready, spinning until a

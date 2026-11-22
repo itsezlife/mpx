@@ -270,6 +270,13 @@ final class PlayerPool {
     }
   }
 
+  // Videos whose decoder was busy while they were off screen: not prepared
+  // ahead again until a view shows them or they are played. Without this a
+  // viewer's neighbours would ask the hardware for a decoder at every page,
+  // be refused and let go, over and over (the reference prepares only the
+  // item shown).
+  final Set<MediaKey> _busyOffScreen = {};
+
   // Lets go of the engine of every player no view shows, but [except]:
   // what a player on screen does when no decoder is free. A player that
   // plays off screen (sound in the background) keeps its engine.
@@ -441,6 +448,8 @@ final class PlayerLease {
     if (!_live) return PlayerViewAttachment._(null);
     final player = _player..touch();
     player.views++;
+    // Shown, a video whose decoder was busy off screen may prepare again.
+    player.pool._busyOffScreen.remove(player.key);
     return PlayerViewAttachment._(() {
       player.views--;
       if (player.views == 0 && !player.disposed) player.pool._viewsGone(player);
@@ -572,6 +581,7 @@ final class _Player {
       PlayerDiagnostics.log(
         'pool: no decoder free for $key off screen; it waits to be shown',
       );
+      pool._busyOffScreen.add(key);
       _resumeAt = engine.position;
       _dropEngine(engine);
       if (!disposed) state.value = state.value.released();
@@ -584,11 +594,15 @@ final class _Player {
 
   void prepare() {
     touch();
+    // Prepared ahead (no view shows it), a video whose decoder was busy
+    // waits to be shown.
+    if (views == 0 && pool._busyOffScreen.contains(key)) return;
     _ensureEngine();
   }
 
   void play() {
     touch();
+    pool._busyOffScreen.remove(key);
     state.value = state.value.copyWith(playing: true);
     _ensureEngine().play();
     pool

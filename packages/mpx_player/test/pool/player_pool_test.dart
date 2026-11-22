@@ -313,6 +313,32 @@ void main() {
       },
     );
 
+    test('paging across neighbours whose decoder was busy prepares them '
+        'no more until one is shown', () async {
+      pool.lease(a).prepare();
+      await settle();
+      backend.latestFor(a)!.fail(busy);
+      await settle();
+      final created = backend.created.length;
+
+      // The next pages prepare the neighbour again, and again: nothing.
+      for (var i = 0; i < 3; i++) {
+        final neighbour = pool.lease(a)..prepare();
+        await settle();
+        neighbour.release();
+        await settle();
+      }
+      expect(backend.created.length, created, reason: 'not re-prepared');
+
+      // Shown, it prepares.
+      final shown = pool.lease(a);
+      final view = shown.attachView();
+      addTearDown(view.detach);
+      shown.prepare();
+      await settle();
+      expect(backend.created.length, created + 1);
+    });
+
     test('a player on screen takes the decoders of the players off screen '
         'and starts again once', () async {
       final shown = pool.lease(a);
