@@ -622,6 +622,34 @@ void main() {
       );
     }
 
+    testWidgets("paged to, a video's loop stands on the page's own picture, "
+        "never on the origin's frame of another moment", (tester) async {
+      final harness = ViewerHarness(
+        items: [
+          GalleryItem(photoKey(0), size: const Size(1200, 900)),
+          ...ViewerHarness.videos(2).skip(1),
+        ],
+        videoDuration: const Duration(seconds: 60),
+      );
+      final loop = harness.cardLoop(videoKey(1), seconds);
+      // The grid cell of the video shows another moment of it.
+      final cell = _solid(0xFFFF0000);
+      addTearDown(cell.dispose);
+      harness.bridge.frames[1] = cell;
+
+      await harness.pump(tester);
+      await tester.dragFrom(const Offset(300, 300), const Offset(-300, 0));
+      await _settle(tester);
+      expect(harness.state(tester).index, 1);
+
+      final held = loop.heldPicture;
+      expect(held, isNotNull, reason: 'held on a picture');
+      expect(held!.isCloneOf(cell), isFalse, reason: "not the cell's frame");
+      for (final picture in loop.heldPictures) {
+        picture?.dispose();
+      }
+    });
+
     testWidgets('closing with a restart plays the loop from its first frame', (
       tester,
     ) async {

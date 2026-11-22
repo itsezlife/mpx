@@ -642,7 +642,7 @@ class MediaViewerState extends State<MediaViewer>
     _loopHold = cache?.holdPlayback(
       item.key,
       _loopSpec,
-      picture: _originFrame(_index)?.clone(),
+      picture: _heldPicture(_index),
     );
     _session = ViewerVideoSession(
       players: players,
@@ -1049,6 +1049,26 @@ class MediaViewerState extends State<MediaViewer>
     if (boundary is! RenderRepaintBoundary || !boundary.hasSize) return null;
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
     return boundary.toImageSync(pixelRatio: dpr);
+  }
+
+  // The frame the content's surfaces stand on while the player plays it.
+  // As the viewer opens it is the origin's (the morph flies that picture).
+  // Paged to, the page already shows a frame of its own, painted: held on
+  // the origin's instead (a grid thumbnail of another moment), every surface
+  // of the content, the page under the player included, would swap to it
+  // and back as the player fades in, a flash.
+  ui.Image? _heldPicture(int index) {
+    if (_phase != _Phase.opening) {
+      final boundary = _frameKeys[index]?.currentContext?.findRenderObject();
+      if (boundary is RenderRepaintBoundary &&
+          boundary.attached &&
+          boundary.hasSize &&
+          !(kDebugMode && boundary.debugNeedsPaint)) {
+        final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
+        return boundary.toImageSync(pixelRatio: dpr);
+      }
+    }
+    return _originFrame(index)?.clone();
   }
 
   // Keeps the page's picture as it shows now (the player's frame) as the

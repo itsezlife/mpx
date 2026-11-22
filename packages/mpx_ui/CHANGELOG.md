@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Paging onto a video no longer flashes: its loop is held on the page's own
+  picture, not on the origin cell's frame of another moment, which every
+  surface of the content (the page under the player included) swapped to
+  and back as the player faded in. The open still holds on the origin's
+  frame, the picture the morph flies.
 - `GalleryItem.standIn`: a sharp still (a recording's first frame) a viewer
   page draws under its picture when it has no frame of its own to stand in,
   so paging back to a video whose player was let go never shows black while
