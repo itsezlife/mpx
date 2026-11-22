@@ -74,6 +74,7 @@ final class LibraryGridPolicy {
     this.swipeHorizontalSlop = 8,
     this.autoScrollEdge = 60,
     this.autoScrollMaxStep = 16,
+    this.viewerOverlayFade = const Duration(milliseconds: 180),
     this.tabletShortestSide = 600,
     this.gifBadge = true,
     this.liveCornerMark = false,
@@ -247,6 +248,11 @@ final class LibraryGridPolicy {
 
   /// How close to the top or bottom edge a swipe auto-scrolls.
   final double autoScrollEdge;
+
+  /// How long a cell's check and marks take to fade out as the viewer opens
+  /// on it, and back as the viewer leaves it (the reference's 180 ms,
+  /// decelerating); zero to switch at once.
+  final Duration viewerOverlayFade;
 
   /// How far a swipe's auto-scroll moves a frame with the finger at the very
   /// edge; less the shallower it is in the band, linearly.

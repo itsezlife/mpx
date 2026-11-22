@@ -68,7 +68,9 @@ class ViewerOriginScope extends StatefulWidget {
 class ViewerOriginScopeState extends State<ViewerOriginScope>
     implements OriginBridge {
   final List<_ViewerOriginState> _origins = [];
+  final List<_ViewerOriginOverlayState> _overlays = [];
   final Set<int> _hidden = {};
+  final Set<int> _covered = {};
   // The picture each hidden origin showed as it was hidden (a hidden origin
   // paints nothing to read), by the gallery it was hidden for: two galleries
   // over one scope share indexes, not items. Freed when the origin shows
@@ -176,6 +178,23 @@ class ViewerOriginScopeState extends State<ViewerOriginScope>
     }
   }
 
+  // Whether the viewer shows the item an overlay is drawn over.
+  bool _isCovered(ViewerOriginOverlay overlay, GallerySource? source) {
+    final index = overlay.index;
+    if (index != null && _covered.contains(index)) return true;
+    final media = overlay.media;
+    if (media == null) return false;
+    final items = source ?? widget.source;
+    return _covered.any((covered) => items?.itemAt(covered)?.key == media);
+  }
+
+  void _setCovered(int index, GallerySource? source, {required bool covered}) {
+    if (covered ? !_covered.add(index) : !_covered.remove(index)) return;
+    for (final overlay in [..._overlays]) {
+      overlay._coveredChanged(source);
+    }
+  }
+
   void _handBack(int index, GallerySource? source, Duration position) {
     for (final origin in _of(index, source)) {
       origin.widget.onHandBack?.call(position);
@@ -194,6 +213,10 @@ class ViewerOriginScopeState extends State<ViewerOriginScope>
   @override
   void setHidden(int index, {required bool hidden}) =>
       _setHidden(index, null, hidden: hidden);
+
+  @override
+  void setCovered(int index, {required bool covered}) =>
+      _setCovered(index, null, covered: covered);
 
   @override
   void handBack(int index, Duration position) =>
@@ -221,6 +244,10 @@ final class _SourcedBridge implements OriginBridge {
   @override
   void setHidden(int index, {required bool hidden}) =>
       _scope._setHidden(index, _source, hidden: hidden);
+
+  @override
+  void setCovered(int index, {required bool covered}) =>
+      _scope._setCovered(index, _source, covered: covered);
 
   @override
   void handBack(int index, Duration position) =>
@@ -411,5 +438,90 @@ class _ViewerOriginState extends State<ViewerOrigin> {
     key: _outer,
     opacity: _hidden ? 0 : 1,
     child: RepaintBoundary(key: _boundary, child: widget.child),
+  );
+}
+
+/// What a surface draws over an item's picture (a selection check, a
+/// duration, a badge), faded out while the viewer shows that item and back
+/// in as the viewer leaves it or starts closing, so none of it stands beside
+/// the viewer's picture or flashes back when the picture lands.
+///
+/// It registers like a [ViewerOrigin], by gallery [index] or by [media];
+/// with neither, or under no [ViewerOriginScope], it simply shows [child].
+/// [duration] and [curve] are the surface's (a host's policy); a zero
+/// duration switches at once.
+class ViewerOriginOverlay extends StatefulWidget {
+  /// Fades [child] while the viewer shows [index] or [media].
+  const ViewerOriginOverlay({
+    required this.child,
+    this.index,
+    this.media,
+    this.duration = const Duration(milliseconds: 180),
+    this.curve = Curves.decelerate,
+    super.key,
+  });
+
+  /// The item's gallery index.
+  final int? index;
+
+  /// The item's media, for a surface that does not know gallery indexes.
+  final MediaKey? media;
+
+  /// How long the fade takes, each way.
+  final Duration duration;
+
+  /// The fade's curve.
+  final Curve curve;
+
+  /// The overlay.
+  final Widget child;
+
+  @override
+  State<ViewerOriginOverlay> createState() => _ViewerOriginOverlayState();
+}
+
+class _ViewerOriginOverlayState extends State<ViewerOriginOverlay> {
+  ViewerOriginScopeState? _scope;
+  bool _covered = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final scope = ViewerOriginScope.maybeOf(context);
+    if (!identical(scope, _scope)) {
+      _scope?._overlays.remove(this);
+      _scope = scope?.._overlays.add(this);
+      _covered = scope?._isCovered(widget, null) ?? false;
+    }
+  }
+
+  @override
+  void didUpdateWidget(ViewerOriginOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.index != widget.index || oldWidget.media != widget.media) {
+      _covered = _scope?._isCovered(widget, null) ?? false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _scope?._overlays.remove(this);
+    super.dispose();
+  }
+
+  void _coveredChanged(GallerySource? source) {
+    final covered = _scope?._isCovered(widget, source) ?? false;
+    if (covered != _covered && mounted) setState(() => _covered = covered);
+  }
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+    ignoring: _covered,
+    child: AnimatedOpacity(
+      opacity: _covered ? 0 : 1,
+      duration: widget.duration,
+      curve: widget.curve,
+      child: widget.child,
+    ),
   );
 }

@@ -83,6 +83,18 @@ class LibraryGridCell extends StatelessWidget {
 
   bool get _selected => order != null;
 
+  // The check and the marks fade out while the viewer shows this item, and
+  // back as it leaves it or starts closing.
+  Widget _overUnderViewer(Widget overlay) => switch (originIndex) {
+    final index? => ViewerOriginOverlay(
+      index: index,
+      duration: policy.viewerOverlayFade,
+      curve: Curves.decelerate,
+      child: overlay,
+    ),
+    null => overlay,
+  };
+
   @override
   Widget build(BuildContext context) {
     final asset = this.asset;
@@ -140,12 +152,14 @@ class LibraryGridCell extends StatelessWidget {
           ),
         ),
         ?decoration,
-        LibraryAssetMarks(
-          asset: asset,
-          policy: policy,
-          tokens: tokens,
-          labels: labels,
-          highQuality: highQuality && _selected,
+        _overUnderViewer(
+          LibraryAssetMarks(
+            asset: asset,
+            policy: policy,
+            tokens: tokens,
+            labels: labels,
+            highQuality: highQuality && _selected,
+          ),
         ),
         PositionedDirectional(
           top: 0,
@@ -169,7 +183,9 @@ class LibraryGridCell extends StatelessWidget {
                       (policy.checkHitSize - policy.checkFrame) / 2 - 4,
                     ),
                   ),
-                  child: _Check(policy: policy, tokens: tokens, order: order),
+                  child: _overUnderViewer(
+                    _Check(policy: policy, tokens: tokens, order: order),
+                  ),
                 ),
               ),
             ),

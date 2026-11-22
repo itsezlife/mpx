@@ -17,6 +17,7 @@ import 'package:mpx_ui/src/text/mpx_text_root.dart';
 import 'package:mpx_ui/src/viewer/gallery_source.dart';
 import 'package:mpx_ui/src/viewer/origin_bridge.dart';
 import 'package:mpx_ui/src/viewer/viewer_actions.dart';
+import 'package:mpx_ui/src/viewer/viewer_backdrop.dart';
 import 'package:mpx_ui/src/viewer/viewer_chrome_overlay.dart';
 import 'package:mpx_ui/src/viewer/viewer_loading.dart';
 import 'package:mpx_ui/src/viewer/viewer_origin.dart';
@@ -488,6 +489,7 @@ class MediaViewerState extends State<MediaViewer>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _resolvePolicy();
+    _backdropScale = ViewerBackdropScope.maybeOf(context);
     if (_started) return;
     _started = true;
     _controls.value = _isVideo(_index)
@@ -519,6 +521,14 @@ class MediaViewerState extends State<MediaViewer>
     widget.source.removeListener(_onSource);
     for (final index in _hidden) {
       widget.bridge?.setHidden(index, hidden: false);
+    }
+    // A viewer gone without its close leaves the surfaces behind as they
+    // were; after the frame, as they may rebuild with it.
+    if (_backdropReport case final report?) {
+      SchedulerBinding.instance.addPostFrameCallback((_) => report(1));
+    }
+    if (_covered case final index?) {
+      widget.bridge?.setCovered(index, covered: false);
     }
     _dropOriginFrames();
     _transition.dispose();
@@ -554,6 +564,10 @@ class MediaViewerState extends State<MediaViewer>
       for (final index in _hidden) {
         oldWidget.bridge?.setHidden(index, hidden: false);
         widget.bridge?.setHidden(index, hidden: true);
+      }
+      if (_covered case final index?) {
+        oldWidget.bridge?.setCovered(index, covered: false);
+        widget.bridge?.setCovered(index, covered: true);
       }
       if (widget.bridge == null) _hidden.clear();
       _dropOriginFrames();
@@ -972,6 +986,18 @@ class MediaViewerState extends State<MediaViewer>
     _session?.interacted();
   }
 
+  // The item the viewer shows, whose overlays on the surface fade out; none
+  // once the close starts, so they are back as the picture lands.
+  int? _covered;
+
+  void _cover(int? index) {
+    final bridge = widget.bridge;
+    if (index == _covered) return;
+    if (_covered case final old?) bridge?.setCovered(old, covered: false);
+    _covered = index;
+    if (index != null) bridge?.setCovered(index, covered: true);
+  }
+
   void _hide(int index, {required bool hidden}) {
     final bridge = widget.bridge;
     if (bridge == null) return;
@@ -1080,6 +1106,7 @@ class MediaViewerState extends State<MediaViewer>
     final origin = widget.bridge?.originOf(_index);
     final fitted = _fittedRect(_index, origin);
     _hide(_index, hidden: true);
+    _cover(_index);
     _from = origin == null
         ? _Frame(fitted, opacity: 0)
         : _Frame(
@@ -1107,8 +1134,10 @@ class MediaViewerState extends State<MediaViewer>
     // Ignored while the viewer opens, as while it closes.
     if (_phase != _Phase.open) return;
     // Every close fades the chrome out with it, as a dismiss drag does: a
-    // back press, a close button, a call from the host.
+    // back press, a close button, a call from the host. The surface's
+    // overlays come back as it starts.
     _controls.value = false;
+    _cover(null);
     // The surface the viewer closes onto gets the decoders back.
     _releaseNeighbours();
     final session = _session;
@@ -1240,8 +1269,17 @@ class MediaViewerState extends State<MediaViewer>
     _reportBackdrop();
   }
 
+  // The host's own report, else the scope's shared scale.
+  ValueNotifier<double>? _backdropScale;
+  ValueChanged<double>? get _backdropReport =>
+      widget.onBackdropScale ??
+      switch (_backdropScale) {
+        final scale? => (value) => scale.value = value,
+        null => null,
+      };
+
   void _reportBackdrop() {
-    final report = widget.onBackdropScale;
+    final report = _backdropReport;
     if (report == null || _size.height <= 0) return;
     final opened = switch (_phase) {
       _Phase.opening => _transitionT,
@@ -1503,6 +1541,7 @@ class MediaViewerState extends State<MediaViewer>
         onDismissEnd: _dragEvents.onEnd,
         onPageChanged: (index) {
           setState(() => _index = index);
+          if (_phase != _Phase.closing) _cover(index);
           _dropOriginFrames(around: index);
           _notifyController();
           _syncVideo();

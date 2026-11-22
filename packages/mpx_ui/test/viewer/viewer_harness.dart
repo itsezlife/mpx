@@ -94,6 +94,7 @@ final class ViewerHarness {
     TextStyle? hostTextStyle,
     Duration? Function(int index, GalleryItem item)? videoStartOf,
     void Function(int index, GalleryItem item, Duration position)? onVideoLeft,
+    bool backdropScope = false,
   }) async {
     tester.view.physicalSize = viewerSize;
     tester.view.devicePixelRatio = 1;
@@ -114,22 +115,25 @@ final class ViewerHarness {
         child: _hostStyle(
           // Without a host style: a host that gives no text root.
           hostTextStyle ?? unthemedTextStyle,
-          MediaViewer(
-            source: source,
-            initialIndex: 0,
-            bridge: bridge,
-            policy: policy,
-            scope: scope,
-            onClosed: () => closed++,
-            onBackdropScale: backdrop.add,
-            chrome: chrome,
-            players: players,
-            speeds: speeds,
-            qualitiesOf: qualitiesOf,
-            onFullscreenChanged: fullscreen.add,
-            controller: controller,
-            videoStartOf: videoStartOf,
-            onVideoLeft: onVideoLeft,
+          _behind(
+            backdropScope,
+            MediaViewer(
+              source: source,
+              initialIndex: 0,
+              bridge: bridge,
+              policy: policy,
+              scope: scope,
+              onClosed: () => closed++,
+              onBackdropScale: backdropScope ? null : backdrop.add,
+              chrome: chrome,
+              players: players,
+              speeds: speeds,
+              qualitiesOf: qualitiesOf,
+              onFullscreenChanged: fullscreen.add,
+              controller: controller,
+              videoStartOf: videoStartOf,
+              onVideoLeft: onVideoLeft,
+            ),
           ),
         ),
       ),
@@ -140,6 +144,22 @@ final class ViewerHarness {
       await tester.pump(policy.openDuration + const Duration(milliseconds: 1));
     expectThemedText(tester);
   }
+
+  /// The surface a backdrop scope zooms behind the viewer, in the scope's
+  /// tests.
+  static const Key behindKey = ValueKey('harness-behind');
+
+  static Widget _behind(bool scoped, Widget viewer) => !scoped
+      ? viewer
+      : ViewerBackdropScope(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              const ViewerBackdropZoom(child: SizedBox.expand(key: behindKey)),
+              viewer,
+            ],
+          ),
+        );
 
   static Widget _hostStyle(TextStyle? style, Widget child) =>
       style == null ? child : DefaultTextStyle(style: style, child: child);

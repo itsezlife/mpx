@@ -27,6 +27,12 @@ final class FakeOriginBridge implements OriginBridge {
   /// Every hide and show, in order: `(index, hidden)`.
   final List<(int, bool)> hideCalls = [];
 
+  /// The indexes the viewer shows now ([setCovered]).
+  final Set<int> covered = {};
+
+  /// Every cover and uncover, in order: `(index, covered)`.
+  final List<(int, bool)> coverCalls = [];
+
   /// Every index [reveal] was asked for.
   final List<int> revealed = [];
 
@@ -55,6 +61,16 @@ final class FakeOriginBridge implements OriginBridge {
   @override
   void handBack(int index, Duration position) =>
       handedBack.add((index, position));
+
+  @override
+  void setCovered(int index, {required bool covered}) {
+    coverCalls.add((index, covered));
+    if (covered) {
+      this.covered.add(index);
+    } else {
+      this.covered.remove(index);
+    }
+  }
 
   @override
   void setHidden(int index, {required bool hidden}) {

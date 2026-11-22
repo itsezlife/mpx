@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- `ViewerBackdropScope` / `ViewerBackdropZoom`: a viewer with no
+  `onBackdropScale` of its own reports its backdrop scale to the scope
+  above its navigator, and every `ViewerBackdropZoom` under it draws its
+  surface at it (1.1 open on `$Android`, rolled back by a dismiss drag, 1
+  again as the close lands), so a picker's or chat's viewer zooms what it
+  covers with no host code beyond the two widgets.
+- `OriginBridge.setCovered` and `ViewerOriginOverlay`: what a surface draws
+  over an item (the grid cell's check and marks) fades out while the viewer
+  shows that item and back as it pages away or starts closing
+  (`LibraryGridPolicy.viewerOverlayFade`, 180 ms decelerating). An
+  `OriginBridge` implementation adds `setCovered`.
 - The swipe selection's edge auto-scroll is `EdgeAutoScroll`, a headless
   session a host can drive under its own list. It keeps the finger on the
   screen: a finger held still at the bottom of a grid in a part-raised sheet

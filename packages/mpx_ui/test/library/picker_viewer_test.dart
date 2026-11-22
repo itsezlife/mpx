@@ -103,6 +103,33 @@ void main() {
     });
   });
 
+  testWidgets("the opened cell's check and marks fade out under the viewer, "
+      'the others stay; they come back as the close starts', (tester) async {
+    final h = PickerHarness();
+    await h.pump(tester, viewerSlot: true);
+    List<double> overlays(int index) => [
+      for (final o in tester.widgetList<AnimatedOpacity>(
+        find.descendant(
+          of: cell(index),
+          matching: find.byType(AnimatedOpacity),
+        ),
+      ))
+        o.opacity,
+    ];
+    expect(overlays(3), [1, 1], reason: 'the marks and the check');
+    await _open(tester, 3);
+    expect(overlays(3), [0, 0]);
+    expect(overlays(2), [1, 1]);
+    // Not awaited: the close runs as the test pumps.
+    // ignore: unawaited_futures
+    tester.state<MediaViewerState>(find.byType(MediaViewer)).close();
+    await tester.pump();
+    expect(overlays(3), [1, 1], reason: 'back as the close starts');
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  });
+
   testWidgets('a picture tap opens the viewer on that item', (tester) async {
     final h = PickerHarness();
     await h.pump(tester, viewerSlot: true);

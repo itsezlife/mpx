@@ -68,6 +68,13 @@ abstract interface class OriginBridge {
   /// it. Completes when the origin can be read.
   Future<void> reveal(int index);
 
+  /// The viewer shows [index] now ([covered]), or stopped showing it (it
+  /// paged on, or started closing): the surface fades the overlays it draws
+  /// over the item (a check, a duration) out while the viewer shows it and
+  /// back in as it leaves it, as the picture itself comes back only when the
+  /// close lands ([setHidden]).
+  void setCovered(int index, {required bool covered});
+
   /// Hides or shows [index]'s picture on the surface: hidden while the
   /// viewer's copy stands over it, so the two are never seen at once.
   void setHidden(int index, {required bool hidden});
