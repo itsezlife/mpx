@@ -621,7 +621,7 @@ class _MediaTile extends StatelessWidget {
               borderRadius: const BorderRadius.all(Radius.circular(_radius)),
               // The tile shows the picture whole, letterboxed in its square.
               fit: BoxFit.contain,
-              child: ContentView(
+              child: AssetView(
                 content: content,
                 preset: preset,
                 downloadContext: downloadContext,

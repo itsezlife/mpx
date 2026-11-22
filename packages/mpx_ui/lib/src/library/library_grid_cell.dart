@@ -111,7 +111,7 @@ class LibraryGridCell extends StatelessWidget {
       devicePixelRatio: dpr,
       profile: const AssetProfile(fit: AssetFit.cover),
     );
-    Widget picture = ContentView(content: thumbnail, preset: preset);
+    Widget picture = AssetView(content: thumbnail, preset: preset);
     if (LibraryGridDiagnostics.enabled) {
       picture = LibraryThumbnailProbe(
         content: thumbnail,

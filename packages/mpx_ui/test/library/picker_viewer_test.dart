@@ -163,8 +163,8 @@ void main() {
     await tester.pump();
     expect(_strip, findsOneWidget, reason: 'the selected strip');
     // The strip's thumbnails are told to the cache, so their keys resolve.
-    final strip = tester.widgetList<ContentView>(
-      find.descendant(of: _strip, matching: find.byType(ContentView)),
+    final strip = tester.widgetList<AssetView>(
+      find.descendant(of: _strip, matching: find.byType(AssetView)),
     );
     expect(strip, hasLength(2));
     final known = h.producer.known.map((d) => d.key).toSet();

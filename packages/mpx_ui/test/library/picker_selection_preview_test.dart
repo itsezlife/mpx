@@ -203,9 +203,9 @@ void main() {
     final keys = producer.known.map((d) => d.key).toSet();
     final thumbnails = find.descendant(
       of: cell(4),
-      matching: find.byType(ContentView),
+      matching: find.byType(AssetView),
     );
-    final key = tester.widget<ContentView>(thumbnails).content;
+    final key = tester.widget<AssetView>(thumbnails).content;
     expect(keys, contains(key));
     expect(producer.attempts.map((a) => a.request.key), contains(key));
   });

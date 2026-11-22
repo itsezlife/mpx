@@ -179,7 +179,7 @@ void main() {
 
     expect(harness.closed, 1);
     expect(find.byKey(const ValueKey('mpx-viewer-morph')), findsNothing);
-    expect(find.byType(ContentView), findsNothing);
+    expect(find.byType(AssetView), findsNothing);
   });
 
   group('origin frames', () {
@@ -268,7 +268,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
 
       final loop = find.byWidgetPredicate(
-        (widget) => widget is ContentView && widget.content == videoKey(1),
+        (widget) => widget is AssetView && widget.content == videoKey(1),
       );
       expect(loop, findsOneWidget);
       expect(tester.renderObject(loop), paintsNothing);
@@ -344,7 +344,7 @@ void main() {
       expect(harness.state(tester).isOpen, isTrue);
       expect(to.width, 400);
       expect(
-        tester.getSize(find.byType(ContentView)).aspectRatio,
+        tester.getSize(find.byType(AssetView)).aspectRatio,
         closeTo(16 / 9, 0.01),
       );
     });
@@ -360,7 +360,7 @@ void main() {
       await harness.pump(tester, open: false);
 
       void sameBox() {
-        final content = tester.getRect(find.byType(ContentView));
+        final content = tester.getRect(find.byType(AssetView));
         final player = tester.getRect(find.byType(PlayerView));
         expect(player.topLeft.dx, closeTo(content.left, 0.01));
         expect(player.topLeft.dy, closeTo(content.top, 0.01));
@@ -390,7 +390,7 @@ void main() {
       final picture = tester.widget<Opacity>(
         find
             .ancestor(
-              of: find.byType(ContentView),
+              of: find.byType(AssetView),
               matching: find.byType(Opacity),
             )
             .first,
@@ -418,9 +418,9 @@ void main() {
       harness.bridge.frames[0] = frame;
       await harness.pump(tester, open: false);
 
-      final box = tester.getSize(find.byType(ContentView));
+      final box = tester.getSize(find.byType(AssetView));
       expect(
-        find.byType(ContentView),
+        find.byType(AssetView),
         paints..something((method, arguments) {
           if (method != #drawImageRect) return false;
           final image = arguments[0] as ui.Image;

@@ -158,7 +158,7 @@ The source-bitrate ceiling of 0007 applies to every row.
 
 | Area | Decision |
 | --- | --- |
-| Grid | A fixed-extent sliver grid over a library album's pages: cells never measure; thumbnails through `ContentView` with a preset per cell pixel size; a screen of prefetch; nothing decoded far off screen; scroll physics from the host |
+| Grid | A fixed-extent sliver grid over a library album's pages: cells never measure; thumbnails through `AssetView` with a preset per cell pixel size; a screen of prefetch; nothing decoded far off screen; scroll physics from the host |
 | Policy | `LibraryGridPolicy.$Android`: 3 columns portrait, 4 landscape or tablet, 2 dp padding and gap, first-row outer corners 16 dp, check 24 in a 26 frame with a 42 hit, selected image scales to 0.787 over 200 ms, video badge bottom-left, disabled alpha 0.3. `$IOS`: 3 portrait, 5 landscape, 1 pt gap, cells `floor((w - (n-1)) / n)`, check 29 with slop 8 and a 0.5 s spring, duration bottom-right, GIF and subtype icons. `forPlatform`; a host may pick either |
 | Picker selection | A seam: `orderOf(key)` (1-based, re-indexed on removal), `toggle(key)`, `toggleRange(keys)` (every key crossed takes the state the first took), a gate that may refuse a key with a typed reason (cap, kind), a change signal. `OrderedPickerSelection` is the default: ordered by selection, a cap the host sets (unbounded when unset), single select. A host with its own selection implements the seam |
 | Swipe select | `$Android`: long-press then drag. `$IOS`: horizontal pan from x > 44 that fails if \|dy\| > 5 before \|dx\| > 8; scrolling off while active. Auto-scroll at the edges |

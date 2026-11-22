@@ -372,7 +372,7 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
                       height: thumb.height,
                       child: item == null
                           ? ColoredBox(color: widget.tokens.placeholder)
-                          : ContentView(
+                          : AssetView(
                               content: item.key,
                               scope: widget.scope,
                               preset: AssetPresets.media(

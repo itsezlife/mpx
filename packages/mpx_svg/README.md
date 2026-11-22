@@ -39,7 +39,7 @@ stack.pipeline.know(
 );
 
 // Anywhere below an AssetCacheProvider:
-ContentView(
+AssetView(
   content: const MediaKey.external('https://example.com/logo.svg'),
   preset: AssetPresets.square(
     extent: 48,

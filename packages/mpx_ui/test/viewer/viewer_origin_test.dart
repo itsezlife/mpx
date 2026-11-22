@@ -358,7 +358,7 @@ void main() {
         alignment: Alignment.topLeft,
         child: ViewerOrigin(
           index: 0,
-          child: ContentView(
+          child: AssetView(
             content: photoKey(0),
             scope: scope,
             preset: AssetPresets.media(
@@ -391,7 +391,7 @@ void main() {
         alignment: Alignment.topLeft,
         child: ViewerOrigin(
           index: 0,
-          child: ContentView(
+          child: AssetView(
             content: photoKey(0),
             scope: scope,
             preset: AssetPresets.media(
@@ -452,7 +452,7 @@ void main() {
             color: const Color(0xFFFF0000),
             child: Padding(
               padding: const EdgeInsets.all(10),
-              child: ContentView(
+              child: AssetView(
                 content: photoKey(0),
                 scope: scope,
                 preset: AssetPresets.media(
@@ -527,7 +527,7 @@ void main() {
               index: 0,
               child: RepaintBoundary(
                 key: tile,
-                child: ContentView(
+                child: AssetView(
                   content: videoKey(0),
                   scope: scope,
                   preset: AssetPresets.animation(
@@ -750,7 +750,7 @@ void main() {
           index: 0,
           borderRadius: const BorderRadius.all(Radius.circular(12)),
           fit: BoxFit.contain,
-          child: ContentView(
+          child: AssetView(
             content: shows ?? photoKey(0),
             scope: scope,
             preset: AssetPresets.square(
@@ -763,10 +763,10 @@ void main() {
       ),
     );
 
-    ContentView page(WidgetTester tester) => tester.widget<ContentView>(
+    AssetView page(WidgetTester tester) => tester.widget<AssetView>(
       find.descendant(
         of: find.byType(ViewerPhotoPage),
-        matching: find.byType(ContentView),
+        matching: find.byType(AssetView),
       ),
     );
 
@@ -847,7 +847,7 @@ void main() {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               // A player's picture over its view, letterboxed 16:9.
-              child: const ContentPicture(
+              child: const AssetPicture(
                 child: Center(
                   child: SizedBox(
                     width: 160,
@@ -881,7 +881,7 @@ void main() {
           index: 0,
           borderRadius: const BorderRadius.all(Radius.circular(12)),
           fit: BoxFit.contain,
-          child: ContentView(
+          child: AssetView(
             content: photoKey(0),
             scope: scope,
             preset: AssetPresets.square(
@@ -972,7 +972,7 @@ void main() {
                 child: Builder(
                   builder: (context) => opening(
                     context,
-                    ContentView(
+                    AssetView(
                       content: photoKey(0),
                       scope: scope,
                       preset: preset(const AssetProfile()),

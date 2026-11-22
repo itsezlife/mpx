@@ -153,7 +153,7 @@ and the engine image decoder folded in. No networking.
   server knows it. Hosts with their own identity (the chat's `ContentKey`) map
   onto it.
 - Asset cache, fetch + decode pipeline, playback clock and pause layers,
-  budgets, visibility, texture seam, placeholders, `ContentView`.
+  budgets, visibility, texture seam, placeholders, `AssetView`.
 - Texture hosts implementing `FrameTextureHost` (Android `SurfaceProducer`,
   Apple `FlutterTexture` over a `CVPixelBuffer` ring), channel
   `dev.mpx.frame_texture`.
@@ -162,7 +162,7 @@ and the engine image decoder folded in. No networking.
 - Existing seams: `ContentFetcher` (`fetch(FetchRequest) -> FetchedContent`,
   sync `needsDownload`), `FetchedBytes` / `FetchedFile`, `CancellationToken`,
   `Decoder`, `AssetPipeline`, `AssetBinding`, `PlaybackPauseLayer`,
-  `FrameTextureHost`, `AssetCacheProvider`, `ContentView`.
+  `FrameTextureHost`, `AssetCacheProvider`, `AssetView`.
 - Additions from the feed decision: a visible fraction on bindings, staged
   preload requests with priority and cancel, network and power inputs on the
   pause layers. ADR 0003.

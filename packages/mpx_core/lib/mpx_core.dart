@@ -13,7 +13,7 @@
 /// `PlaybackClock` advances every animation, gated per binding and by
 /// host-set pause layers.
 ///
-/// Surfaces draw through `ContentView`, with the scope handed down by
+/// Surfaces draw through `AssetView`, with the scope handed down by
 /// `AssetCacheProvider`. `AssetPresets` builds the size, spec and profile of
 /// a surface; a host names its own surfaces' presets.
 ///
@@ -73,8 +73,8 @@ export 'src/texture/platform/frame_texture_natives.dart';
 export 'src/texture/platform/platform_frame_texture_host.dart';
 export 'src/texture/texture_frame_writer.dart';
 export 'src/widget/asset_cache_provider.dart';
-export 'src/widget/content_status_overlay.dart';
-export 'src/widget/content_view.dart';
+export 'src/widget/asset_status_overlay.dart';
+export 'src/widget/asset_view.dart';
 export 'src/widget/media_badge.dart';
 export 'src/widget/media_badge_style.dart';
 export 'src/widget/media_loading_style.dart';

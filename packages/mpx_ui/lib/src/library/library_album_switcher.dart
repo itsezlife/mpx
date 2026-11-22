@@ -172,7 +172,7 @@ class _AlbumMenu extends StatelessWidget {
           borderRadius: BorderRadius.circular(ios ? 4 : 6),
           child: asset == null
               ? ColoredBox(color: tokens.cellPlaceholder)
-              : ContentView(
+              : AssetView(
                   content: LibraryKeys.thumbnailKeyOf(asset, pixels),
                   preset: AssetPresets.square(
                     extent: cover,

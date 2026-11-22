@@ -1102,7 +1102,7 @@ class _SelectedStripState extends State<_SelectedStrip> {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
-                child: ContentView(
+                child: AssetView(
                   content: thumbnail,
                   preset: AssetPresets.square(
                     extent: side,

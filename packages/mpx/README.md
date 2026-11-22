@@ -59,7 +59,7 @@ final stack = await MpxStack.create(
 runApp(
   AssetCacheProvider(
     scope: stack.scope,
-    child: ContentView(content: const MediaKey.remote('42'), preset: preset),
+    child: AssetView(content: const MediaKey.remote('42'), preset: preset),
   ),
 );
 // ...

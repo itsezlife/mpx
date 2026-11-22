@@ -24,7 +24,7 @@ import 'package:mpx_ui/src/text/mpx_text_root.dart';
 /// back are the host's.
 ///
 /// Library items show their library thumbnail; any other key (a capture, a
-/// file the host counts in the same order) shows through `ContentView` by
+/// file the host counts in the same order) shows through `AssetView` by
 /// the key itself.
 class PickerSelectionPreview extends StatefulWidget {
   /// Creates the preview of [selection].
@@ -456,7 +456,7 @@ class _PreviewItem extends StatelessWidget {
                   children: [
                     ColoredBox(
                       color: tokens.cellPlaceholder,
-                      child: ContentView(
+                      child: AssetView(
                         content: thumbnail,
                         preset: AssetPresets.square(
                           extent: extent,

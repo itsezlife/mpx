@@ -431,7 +431,7 @@ void main() {
       final cover = find.descendant(
         of: row,
         matching: find.byWidgetPredicate(
-          (widget) => widget is ContentView && widget.content == key,
+          (widget) => widget is AssetView && widget.content == key,
         ),
       );
       expect(cover, findsOneWidget);
@@ -545,8 +545,8 @@ void main() {
       await PickerHarness.settle(tester);
       final row = find.byKey(const ValueKey('mpx-album-camera'));
       final covers = tester
-          .widgetList<ContentView>(
-            find.descendant(of: row, matching: find.byType(ContentView)),
+          .widgetList<AssetView>(
+            find.descendant(of: row, matching: find.byType(AssetView)),
           )
           .map((v) => v.content);
       expect(covers, [LibraryKeys.thumbnailKeyOf(next, 40)]);

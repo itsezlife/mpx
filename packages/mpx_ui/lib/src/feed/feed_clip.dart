@@ -30,7 +30,7 @@ import 'package:mpx_ui/src/viewer/viewer_policy_scope.dart';
 /// `AssetCacheProvider`. Without a preset or a cache it shows the poster.
 ///
 /// [status] and [badge] lay the item's status control and media badge over
-/// it as a `ContentView` does (download, the arc and cancel, nothing once
+/// it as a `AssetView` does (download, the arc and cancel, nothing once
 /// downloaded; duration, "GIF", the bytes), whatever draws the picture: the
 /// staged view, the clip, or a player over them. They follow the content's
 /// one transfer, so a download a viewer or a player runs shows on the tile.
@@ -47,10 +47,10 @@ class FeedClip extends StatelessWidget {
     super.key,
   });
 
-  /// The status control over the item (`ContentView.status`).
+  /// The status control over the item (`AssetView.status`).
   final MediaStatusMode status;
 
-  /// Whether the media badge shows over the item (`ContentView.badge`).
+  /// Whether the media badge shows over the item (`AssetView.badge`).
   final bool badge;
 
   /// The size and decode of the item's media under a profile.
@@ -93,7 +93,7 @@ class FeedClip extends StatelessWidget {
               scope == null) {
             return const SizedBox.expand();
           }
-          return ContentView(
+          return AssetView(
             content: item.key,
             preset: presetOf(const AssetProfile()),
             scope: scope,
@@ -143,7 +143,7 @@ class FeedClip extends StatelessWidget {
               scope == null) {
             return still();
           }
-          return ContentView(
+          return AssetView(
             content: item.key,
             preset: presetOf(clip),
             scope: scope,
@@ -177,8 +177,8 @@ class FeedClip extends StatelessWidget {
           children: [
             // The picture a viewer opens from: the player's frame or the
             // view's, never the controls over them.
-            ContentPicture(child: picture()),
-            ContentView(
+            AssetPicture(child: picture()),
+            AssetView(
               key: const ValueKey('mpx-feed-overlays'),
               content: item.key,
               preset: presetOf(AssetProfile(fit: shownFit)),

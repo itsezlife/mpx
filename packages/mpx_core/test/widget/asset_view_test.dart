@@ -69,7 +69,7 @@ void main() {
           SizedBox.fromSize(
             key: key,
             size: size,
-            child: ContentView(content: _sticker, preset: rounded),
+            child: AssetView(content: _sticker, preset: rounded),
           ),
         ),
       );
@@ -87,9 +87,9 @@ void main() {
       await tester.pump();
       await tester.pump(_pastFade);
 
-      final frame = ContentView.frameIn(root, pixelRatio: 2);
-      expect(frame, isA<ContentFrame$Picture>());
-      final image = (frame as ContentFrame$Picture).image;
+      final frame = AssetView.frameIn(root, pixelRatio: 2);
+      expect(frame, isA<AssetFrame$Picture>());
+      final image = (frame as AssetFrame$Picture).image;
       addTearDown(image.dispose);
       // 4:3 covering 40 x 40 at 2x: 107 x 80.
       expect(image.width, 107);
@@ -113,8 +113,8 @@ void main() {
       await tester.pump(_pastFade);
       final painted = content.paints.length;
 
-      final frame = ContentView.frameIn(root, pixelRatio: 1);
-      addTearDown((frame as ContentFrame$Picture).image.dispose);
+      final frame = AssetView.frameIn(root, pixelRatio: 1);
+      addTearDown((frame as AssetFrame$Picture).image.dispose);
 
       expect(content.paints.length, painted + 1);
       expect(content.paints.last.context.animate, isFalse);
@@ -124,20 +124,14 @@ void main() {
       tester,
     ) async {
       final root = await view(tester);
-      expect(
-        ContentView.frameIn(root, pixelRatio: 1),
-        isA<ContentFrame$StandIn>(),
-      );
+      expect(AssetView.frameIn(root, pixelRatio: 1), isA<AssetFrame$StandIn>());
       producer.last.advance(
         AssetStage.preview,
         pictureSize: const Size(40, 30),
         fill: const Color(0xFF00FF00),
       );
       await tester.pump();
-      expect(
-        ContentView.frameIn(root, pixelRatio: 1),
-        isA<ContentFrame$StandIn>(),
-      );
+      expect(AssetView.frameIn(root, pixelRatio: 1), isA<AssetFrame$StandIn>());
       producer.last.advance(
         AssetStage.placeholder,
         pictureSize: const Size(120, 90),
@@ -145,10 +139,7 @@ void main() {
       );
       await tester.pump();
       await tester.pump(_pastFade);
-      expect(
-        ContentView.frameIn(root, pixelRatio: 1),
-        isA<ContentFrame$StandIn>(),
-      );
+      expect(AssetView.frameIn(root, pixelRatio: 1), isA<AssetFrame$StandIn>());
     });
 
     testWidgets('of a texture is its frame alone, at its own proportion', (
@@ -167,9 +158,9 @@ void main() {
       await tester.pump();
       await tester.pump(_pastFade);
 
-      final frame = ContentView.frameIn(root, pixelRatio: 2);
-      expect(frame, isA<ContentFrame$Picture>());
-      final image = (frame as ContentFrame$Picture).image;
+      final frame = AssetView.frameIn(root, pixelRatio: 2);
+      expect(frame, isA<AssetFrame$Picture>());
+      final image = (frame as AssetFrame$Picture).image;
       addTearDown(image.dispose);
       // The 4:3 frame covering 40 x 40 at 2x.
       expect((image.width, image.height), (107, 80));
@@ -184,8 +175,8 @@ void main() {
           SizedBox.fromSize(
             key: key,
             size: size,
-            child: ContentPicture(
-              child: ContentView(
+            child: AssetPicture(
+              child: AssetView(
                 content: _sticker,
                 preset: AssetPreset(
                   size: size,
@@ -209,12 +200,12 @@ void main() {
       await tester.pump();
       await tester.pump(_pastFade);
 
-      final frame = ContentView.frameIn(
+      final frame = AssetView.frameIn(
         tester.renderObject(find.byKey(key)),
         pixelRatio: 2,
       );
-      expect(frame, isA<ContentFrame$Picture>());
-      final image = (frame as ContentFrame$Picture).image;
+      expect(frame, isA<AssetFrame$Picture>());
+      final image = (frame as AssetFrame$Picture).image;
       addTearDown(image.dispose);
       // The 4:3 frame covering 40 x 40 at 2x, not the 2048 square texture.
       expect((image.width, image.height), (107, 80));
@@ -230,7 +221,7 @@ void main() {
             dimension: 40,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: const ContentPicture(
+              child: const AssetPicture(
                 child: OverflowBox(
                   maxWidth: 80,
                   maxHeight: 45,
@@ -245,12 +236,12 @@ void main() {
           ),
         ),
       );
-      final frame = ContentView.frameIn(
+      final frame = AssetView.frameIn(
         tester.renderObject(find.byKey(key)),
         pixelRatio: 2,
       );
-      expect(frame, isA<ContentFrame$Picture>());
-      final image = (frame as ContentFrame$Picture).image;
+      expect(frame, isA<AssetFrame$Picture>());
+      final image = (frame as AssetFrame$Picture).image;
       addTearDown(image.dispose);
       expect((image.width, image.height), (160, 90));
     });
@@ -266,7 +257,7 @@ void main() {
             key: key,
             width: 400,
             height: 200,
-            child: const ContentPicture(
+            child: const AssetPicture(
               child: ClipRect(
                 child: FittedBox(
                   fit: BoxFit.cover,
@@ -281,12 +272,12 @@ void main() {
           ),
         ),
       );
-      final frame = ContentView.frameIn(
+      final frame = AssetView.frameIn(
         tester.renderObject(find.byKey(key)),
         pixelRatio: 2,
       );
-      expect(frame, isA<ContentFrame$Picture>());
-      final image = (frame as ContentFrame$Picture).image;
+      expect(frame, isA<AssetFrame$Picture>());
+      final image = (frame as AssetFrame$Picture).image;
       addTearDown(image.dispose);
       // 16:9 covering 400 x 200: 400 x 225, at 2x; not 1920 x 1080 at 2x.
       expect((image.width, image.height), (800, 450));
@@ -301,29 +292,26 @@ void main() {
           SizedBox.square(
             key: key,
             dimension: 40,
-            child: const ContentPicture(
+            child: const AssetPicture(
               child: ColoredBox(color: Color(0xFF00FF00)),
             ),
           ),
         ),
       );
       expect(
-        ContentView.frameIn(
-          tester.renderObject(find.byKey(key)),
-          pixelRatio: 1,
-        ),
-        isA<ContentFrame$Surface>(),
+        AssetView.frameIn(tester.renderObject(find.byKey(key)), pixelRatio: 1),
+        isA<AssetFrame$Surface>(),
       );
     });
 
     testWidgets('under no view is read from the surface', (tester) async {
       await tester.pumpWidget(host(const SizedBox.square(dimension: 10)));
       expect(
-        ContentView.frameIn(
+        AssetView.frameIn(
           tester.renderObject(find.byType(SizedBox)),
           pixelRatio: 1,
         ),
-        isA<ContentFrame$Surface>(),
+        isA<AssetFrame$Surface>(),
       );
     });
   });
@@ -333,7 +321,7 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _preset)),
+        host(AssetView(content: _sticker, preset: _preset)),
       );
 
       expect(scope.isAttached(_sticker, _preset.spec), isTrue);
@@ -343,7 +331,7 @@ void main() {
     testWidgets('passes its download context to the attach', (tester) async {
       await tester.pumpWidget(
         host(
-          ContentView(
+          AssetView(
             content: _sticker,
             preset: _preset,
             downloadContext: AutoDownloadContext.groups,
@@ -360,15 +348,13 @@ void main() {
     testWidgets('passes its visible fraction to the binding', (tester) async {
       await tester.pumpWidget(
         host(
-          ContentView(content: _sticker, preset: _preset, visibleFraction: 0.3),
+          AssetView(content: _sticker, preset: _preset, visibleFraction: 0.3),
         ),
       );
       expect(producer.last.demand.priority, AssetPriority.visible);
 
       await tester.pumpWidget(
-        host(
-          ContentView(content: _sticker, preset: _preset, visibleFraction: 0),
-        ),
+        host(AssetView(content: _sticker, preset: _preset, visibleFraction: 0)),
       );
       expect(producer.last.demand.priority, AssetPriority.preload);
     });
@@ -383,7 +369,7 @@ void main() {
             valueListenable: opacity,
             builder: (context, value, child) =>
                 Opacity(opacity: value, child: child),
-            child: ContentView(content: _sticker, preset: _preset),
+            child: AssetView(content: _sticker, preset: _preset),
           ),
         ),
       );
@@ -423,7 +409,7 @@ void main() {
             valueListenable: offstage,
             builder: (context, value, child) =>
                 Offstage(offstage: value, child: child),
-            child: ContentView(content: _sticker, preset: _preset),
+            child: AssetView(content: _sticker, preset: _preset),
           ),
         ),
       );
@@ -455,7 +441,7 @@ void main() {
                 Column(
                   children: [
                     for (final key in keys)
-                      ContentView(content: key, preset: _preset),
+                      AssetView(content: key, preset: _preset),
                   ],
                 ),
               ],
@@ -500,7 +486,7 @@ void main() {
                 Column(
                   children: [
                     for (final key in keys)
-                      ContentView(content: key, preset: _preset),
+                      AssetView(content: key, preset: _preset),
                   ],
                 ),
               ],
@@ -528,15 +514,15 @@ void main() {
 
     testWidgets('is as large as the preset', (tester) async {
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _preset)),
+        host(AssetView(content: _sticker, preset: _preset)),
       );
 
-      expect(tester.getSize(find.byType(ContentView)), _preset.size);
+      expect(tester.getSize(find.byType(AssetView)), _preset.size);
     });
 
     testWidgets('detaches when it leaves the tree', (tester) async {
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _preset)),
+        host(AssetView(content: _sticker, preset: _preset)),
       );
 
       await tester.pumpWidget(host(const SizedBox()));
@@ -548,7 +534,7 @@ void main() {
     testWidgets('does not attach again when the parent rebuilds', (
       tester,
     ) async {
-      Widget view() => host(ContentView(content: _sticker, preset: _preset));
+      Widget view() => host(AssetView(content: _sticker, preset: _preset));
 
       await tester.pumpWidget(view());
       await tester.pumpWidget(view());
@@ -560,11 +546,11 @@ void main() {
 
     testWidgets('moves to the new content when it changes', (tester) async {
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _preset)),
+        host(AssetView(content: _sticker, preset: _preset)),
       );
 
       await tester.pumpWidget(
-        host(ContentView(content: _other, preset: _preset)),
+        host(AssetView(content: _other, preset: _preset)),
       );
 
       expect(scope.isAttached(_sticker, _preset.spec), isFalse);
@@ -575,7 +561,7 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _preset)),
+        host(AssetView(content: _sticker, preset: _preset)),
       );
       final bigger = AssetPresets.square(
         extent: 40,
@@ -584,22 +570,22 @@ void main() {
       );
 
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: bigger)),
+        host(AssetView(content: _sticker, preset: bigger)),
       );
 
       expect(scope.isAttached(_sticker, _preset.spec), isFalse);
       expect(scope.isAttached(_sticker, bigger.spec), isTrue);
-      expect(tester.getSize(find.byType(ContentView)), bigger.size);
+      expect(tester.getSize(find.byType(AssetView)), bigger.size);
     });
 
     testWidgets('keeps its attach when only the profile of the preset '
         'differs in a way that does not split the entry', (tester) async {
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _preset)),
+        host(AssetView(content: _sticker, preset: _preset)),
       );
 
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _still)),
+        host(AssetView(content: _sticker, preset: _still)),
       );
 
       expect(producer.attempts, hasLength(1));
@@ -613,7 +599,7 @@ void main() {
       );
       addTearDown(other.dispose);
       Widget view(AssetCacheScope provided) => host(
-        ContentView(content: _sticker, preset: _preset),
+        AssetView(content: _sticker, preset: _preset),
         provided: provided,
       );
       await tester.pumpWidget(view(scope));
@@ -634,7 +620,7 @@ void main() {
       addTearDown(own.dispose);
 
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _preset, scope: own)),
+        host(AssetView(content: _sticker, preset: _preset, scope: own)),
       );
 
       expect(own.isAttached(_sticker, _preset.spec), isTrue);
@@ -645,7 +631,7 @@ void main() {
       await tester.pumpWidget(
         Directionality(
           textDirection: TextDirection.ltr,
-          child: ContentView(content: _sticker, preset: _preset),
+          child: AssetView(content: _sticker, preset: _preset),
         ),
       );
 
@@ -665,7 +651,7 @@ void main() {
 
       await tester.pumpWidget(
         host(
-          ContentView(content: _sticker, preset: _preset),
+          AssetView(content: _sticker, preset: _preset),
           provided: withPlaceholder,
         ),
       );
@@ -693,7 +679,7 @@ void main() {
         final own = FakeAssetPaintable(label: 'own');
         await tester.pumpWidget(
           host(
-            ContentView(
+            AssetView(
               content: _sticker,
               preset: _preset,
               placeholder: own,
@@ -715,7 +701,7 @@ void main() {
         final own = FakeAssetPaintable(label: 'own');
         await tester.pumpWidget(
           host(
-            ContentView(
+            AssetView(
               content: _sticker,
               preset: _preset,
               tint: const Color(0xFF112233),
@@ -738,7 +724,7 @@ void main() {
         );
         await tester.pumpWidget(
           host(
-            ContentView(content: _sticker, preset: waits, placeholder: own),
+            AssetView(content: _sticker, preset: waits, placeholder: own),
             provided: withPlaceholder,
           ),
         );
@@ -748,7 +734,7 @@ void main() {
         final painted = own.paints.length;
 
         await tester.pump(_pastFade);
-        tester.renderObject(find.byType(ContentView)).markNeedsPaint();
+        tester.renderObject(find.byType(AssetView)).markNeedsPaint();
         await tester.pump();
 
         expect(scoped.paints, isEmpty);
@@ -760,7 +746,7 @@ void main() {
         final own = FakeAssetPaintable(label: 'own');
         await tester.pumpWidget(
           host(
-            ContentView(content: _sticker, preset: _preset, placeholder: own),
+            AssetView(content: _sticker, preset: _preset, placeholder: own),
             provided: withPlaceholder,
           ),
         );
@@ -776,7 +762,7 @@ void main() {
         final own = FakeAssetPaintable(label: 'own');
         await tester.pumpWidget(
           host(
-            ContentView(
+            AssetView(
               content: _sticker,
               preset: _still,
               placeholder: own,
@@ -798,14 +784,14 @@ void main() {
 
     group('loading progress', () {
       RenderObject box(WidgetTester tester) =>
-          tester.renderObject(find.byType(ContentView));
+          tester.renderObject(find.byType(AssetView));
 
       testWidgets('is absent while nothing downloads, as for a cache hit', (
         tester,
       ) async {
         await tester.pumpWidget(
           host(
-            ContentView(
+            AssetView(
               content: _sticker,
               preset: _still,
               status: const MediaStatusMode.arc(12),
@@ -826,7 +812,7 @@ void main() {
       ) async {
         await tester.pumpWidget(
           host(
-            ContentView(
+            AssetView(
               content: _sticker,
               preset: _still,
               status: const MediaStatusMode.arc(12),
@@ -865,7 +851,7 @@ void main() {
       ) async {
         await tester.pumpWidget(
           host(
-            ContentView(
+            AssetView(
               content: _sticker,
               preset: _still,
               status: const MediaStatusMode.arc(12),
@@ -909,7 +895,7 @@ void main() {
         });
 
         Widget view() => host(
-          ContentView(
+          AssetView(
             content: gif.key,
             preset: _still,
             status: const MediaStatusMode.arc(12),
@@ -972,7 +958,7 @@ void main() {
 
       testWidgets('is absent unless asked for', (tester) async {
         await tester.pumpWidget(
-          host(ContentView(content: _sticker, preset: _still)),
+          host(AssetView(content: _sticker, preset: _still)),
         );
         producer.last.transfer(5, 10);
         await tester.pump();
@@ -983,7 +969,7 @@ void main() {
       testWidgets('asks for another frame only while it shows', (tester) async {
         await tester.pumpWidget(
           host(
-            ContentView(
+            AssetView(
               content: _sticker,
               preset: _still,
               status: const MediaStatusMode.arc(12),
@@ -1010,7 +996,7 @@ void main() {
 
     testWidgets('paints the canned paintable into its box', (tester) async {
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _preset)),
+        host(AssetView(content: _sticker, preset: _preset)),
       );
 
       final painted = producer.last.advance(AssetStage.full);
@@ -1024,7 +1010,7 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _preset)),
+        host(AssetView(content: _sticker, preset: _preset)),
       );
       final thumbnail = producer.last.advance(AssetStage.placeholder);
       await tester.pump();
@@ -1046,7 +1032,7 @@ void main() {
     testWidgets('passes the tint and opacity on', (tester) async {
       await tester.pumpWidget(
         host(
-          ContentView(
+          AssetView(
             content: _sticker,
             preset: _preset,
             tint: const Color(0xFF112233),
@@ -1066,7 +1052,7 @@ void main() {
 
     testWidgets('repaints when the tint changes', (tester) async {
       Widget view(Color tint) =>
-          host(ContentView(content: _sticker, preset: _preset, tint: tint));
+          host(AssetView(content: _sticker, preset: _preset, tint: tint));
       await tester.pumpWidget(view(const Color(0xFF000000)));
       final painted = producer.last.advance(AssetStage.full);
       await tester.pump();
@@ -1085,7 +1071,7 @@ void main() {
     testWidgets('content that arrives after the attach rises from nothing to '
         'opaque over 150 ms', (tester) async {
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _still)),
+        host(AssetView(content: _sticker, preset: _still)),
       );
       final painted = producer.last.advance(AssetStage.full);
 
@@ -1101,14 +1087,14 @@ void main() {
 
     testWidgets('content there at the attach shows at once', (tester) async {
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _still)),
+        host(AssetView(content: _sticker, preset: _still)),
       );
       final painted = producer.last.advance(AssetStage.full);
       await tester.pump(const Duration(milliseconds: 200));
       await tester.pumpWidget(host(const SizedBox()));
 
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _still)),
+        host(AssetView(content: _sticker, preset: _still)),
       );
 
       expect(painted.paints.last.context.opacity, 1);
@@ -1116,7 +1102,7 @@ void main() {
 
     testWidgets('scales the opacity the view is given', (tester) async {
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _still, opacity: 0.5)),
+        host(AssetView(content: _sticker, preset: _still, opacity: 0.5)),
       );
       final painted = producer.last.advance(AssetStage.full);
       await tester.pump();
@@ -1128,7 +1114,7 @@ void main() {
     testWidgets('rises over the thumbnail, which stays opaque beneath until '
         'the content is', (tester) async {
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _still)),
+        host(AssetView(content: _sticker, preset: _still)),
       );
       final thumbnail = producer.last.advance(AssetStage.placeholder);
       await tester.pump();
@@ -1155,7 +1141,7 @@ void main() {
       addTearDown(withPlaceholder.dispose);
       await tester.pumpWidget(
         host(
-          ContentView(content: _sticker, preset: _still),
+          AssetView(content: _sticker, preset: _still),
           provided: withPlaceholder,
         ),
       );
@@ -1172,7 +1158,7 @@ void main() {
 
     testWidgets('a texture rises under an opacity layer', (tester) async {
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _preset)),
+        host(AssetView(content: _sticker, preset: _preset)),
       );
       producer.last.advance(AssetStage.full, animated: true).textureOnAdvance =
           const AssetTexture(id: 9, width: 64, height: 64);
@@ -1203,7 +1189,7 @@ void main() {
         tester,
       ) async {
         await tester.pumpWidget(
-          on(platform, ContentView(content: _sticker, preset: _still)),
+          on(platform, AssetView(content: _sticker, preset: _still)),
         );
         final painted = producer.last.advance(AssetStage.full);
 
@@ -1222,7 +1208,7 @@ void main() {
       await tester.pumpWidget(
         on(
           TargetPlatform.android,
-          ContentView(content: _sticker, preset: _preset),
+          AssetView(content: _sticker, preset: _preset),
         ),
       );
       final painted = producer.last.advance(AssetStage.full, animated: true);
@@ -1235,10 +1221,7 @@ void main() {
 
     testWidgets('desktop: no frame shows two stages blended', (tester) async {
       await tester.pumpWidget(
-        on(
-          TargetPlatform.macOS,
-          ContentView(content: _sticker, preset: _still),
-        ),
+        on(TargetPlatform.macOS, AssetView(content: _sticker, preset: _still)),
       );
       final preview = producer.last.advance(AssetStage.preview);
       await tester.pump();
@@ -1264,7 +1247,7 @@ void main() {
                 stageFade: const Duration(milliseconds: 100),
               ),
             ),
-            child: host(ContentView(content: _sticker, preset: _still)),
+            child: host(AssetView(content: _sticker, preset: _still)),
           ),
         ),
       );
@@ -1280,7 +1263,7 @@ void main() {
       await tester.pumpWidget(
         on(
           TargetPlatform.android,
-          ContentView(content: _sticker, preset: _still),
+          AssetView(content: _sticker, preset: _still),
         ),
       );
       producer.last.advance(AssetStage.full);
@@ -1288,7 +1271,7 @@ void main() {
       await tester.pump();
 
       expect(
-        tester.renderObject(find.byType(ContentView)),
+        tester.renderObject(find.byType(AssetView)),
         isNot(paints..scale()),
       );
     });
@@ -1303,12 +1286,12 @@ void main() {
             style: (platform) => platform.copyWith(
               stages: platform.stages.copyWith(contentScaleIn: 0.05),
             ),
-            child: host(ContentView(content: _sticker, preset: _still)),
+            child: host(AssetView(content: _sticker, preset: _still)),
           ),
         ),
       );
       producer.last.advance(AssetStage.full);
-      RenderObject box() => tester.renderObject(find.byType(ContentView));
+      RenderObject box() => tester.renderObject(find.byType(AssetView));
 
       await tester.pump();
       expect(box(), paints..scale(x: 1.05, y: 1.05));
@@ -1319,14 +1302,14 @@ void main() {
 
     testWidgets('iOS: the content is not scaled', (tester) async {
       await tester.pumpWidget(
-        on(TargetPlatform.iOS, ContentView(content: _sticker, preset: _still)),
+        on(TargetPlatform.iOS, AssetView(content: _sticker, preset: _still)),
       );
       producer.last.advance(AssetStage.full);
 
       await tester.pump();
 
       expect(
-        tester.renderObject(find.byType(ContentView)),
+        tester.renderObject(find.byType(AssetView)),
         isNot(paints..scale()),
       );
     });
@@ -1337,7 +1320,7 @@ void main() {
       await tester.pumpWidget(
         on(
           TargetPlatform.android,
-          ContentView(content: _sticker, preset: _still),
+          AssetView(content: _sticker, preset: _still),
         ),
       );
       final preview = producer.last.advance(AssetStage.preview);
@@ -1359,7 +1342,7 @@ void main() {
       await tester.pumpWidget(
         on(
           TargetPlatform.android,
-          ContentView(content: _sticker, preset: _still),
+          AssetView(content: _sticker, preset: _still),
         ),
       );
       final preview = producer.last.advance(AssetStage.preview);
@@ -1376,7 +1359,7 @@ void main() {
       await tester.pumpWidget(
         on(
           TargetPlatform.android,
-          ContentView(content: _sticker, preset: _still),
+          AssetView(content: _sticker, preset: _still),
         ),
       );
       producer.last.describe(const MediaDescriptor(key: _sticker));
@@ -1396,7 +1379,7 @@ void main() {
       await tester.pumpWidget(
         on(
           TargetPlatform.android,
-          ContentView(content: _sticker, preset: _still),
+          AssetView(content: _sticker, preset: _still),
         ),
       );
       producer.last.describe(
@@ -1421,7 +1404,7 @@ void main() {
       await tester.pumpWidget(
         on(
           TargetPlatform.android,
-          ContentView(content: _sticker, preset: _still),
+          AssetView(content: _sticker, preset: _still),
         ),
       );
       producer.last.describe(
@@ -1441,14 +1424,11 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        on(
-          TargetPlatform.macOS,
-          ContentView(content: _sticker, preset: _still),
-        ),
+        on(TargetPlatform.macOS, AssetView(content: _sticker, preset: _still)),
       );
       producer.last.advance(AssetStage.preview);
       await tester.pump();
-      RenderObject box() => tester.renderObject(find.byType(ContentView));
+      RenderObject box() => tester.renderObject(find.byType(AssetView));
       expect(box(), paints..rect(color: const Color(0x30000000)));
 
       producer.last.advance(AssetStage.full);
@@ -1476,7 +1456,7 @@ void main() {
       await tester.pumpWidget(
         on(
           platform,
-          ContentView(
+          AssetView(
             content: _sticker,
             preset: _still,
             placeholderTint: placeholderTint,
@@ -1539,7 +1519,7 @@ void main() {
             alignment: Alignment.topLeft,
             child: Padding(
               padding: const EdgeInsets.only(left: 100, top: 50),
-              child: ContentView(content: _sticker, preset: _still),
+              child: AssetView(content: _sticker, preset: _still),
             ),
           ),
         ),
@@ -1620,7 +1600,7 @@ void main() {
     testWidgets('is silent without a label', (tester) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _preset)),
+        host(AssetView(content: _sticker, preset: _preset)),
       );
 
       expect(find.bySemanticsLabel(RegExp('.')), findsNothing);
@@ -1631,7 +1611,7 @@ void main() {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(
         host(
-          ContentView(
+          AssetView(
             content: _sticker,
             preset: _preset,
             semanticLabel: 'thumbs up',
@@ -1650,7 +1630,7 @@ void main() {
   group('playback', () {
     testWidgets('repaints on each tick while it plays', (tester) async {
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _preset)),
+        host(AssetView(content: _sticker, preset: _preset)),
       );
       final painted = producer.last.advance(AssetStage.full, animated: true);
       await tester.pump();
@@ -1665,7 +1645,7 @@ void main() {
 
     testWidgets('does not repaint a still preset on ticks', (tester) async {
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _still)),
+        host(AssetView(content: _sticker, preset: _still)),
       );
       final painted = producer.last.advance(AssetStage.full, animated: true);
       await tester.pump();
@@ -1682,7 +1662,7 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _preset)),
+        host(AssetView(content: _sticker, preset: _preset)),
       );
       final painted = producer.last.advance(AssetStage.full, animated: true);
       await tester.pump();
@@ -1706,7 +1686,7 @@ void main() {
       Widget view({required bool enabled}) => host(
         TickerMode(
           enabled: enabled,
-          child: ContentView(content: _sticker, preset: _preset),
+          child: AssetView(content: _sticker, preset: _preset),
         ),
       );
       await tester.pumpWidget(view(enabled: true));
@@ -1728,7 +1708,7 @@ void main() {
 
     testWidgets('leaves the clock when it leaves the tree', (tester) async {
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _preset)),
+        host(AssetView(content: _sticker, preset: _preset)),
       );
       producer.last.advance(AssetStage.full, animated: true);
       await tester.pump();
@@ -1749,7 +1729,7 @@ void main() {
     testWidgets('a playing asset whose frames go to a texture is a texture '
         'layer at its box, and the view never paints it', (tester) async {
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _preset)),
+        host(AssetView(content: _sticker, preset: _preset)),
       );
       final playing = producer.last.advance(AssetStage.full, animated: true)
         ..textureOnAdvance = const AssetTexture(id: 9, width: 64, height: 64);
@@ -1807,7 +1787,7 @@ void main() {
         profile: const AssetProfile(animate: true, cornerRadius: 6),
       );
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: rounded)),
+        host(AssetView(content: _sticker, preset: rounded)),
       );
       // A landscape frame 64 x 32: letterboxed in the square box. The
       // paintable says nothing of its picture's size, as a video's first
@@ -1850,7 +1830,7 @@ void main() {
         host(
           RepaintBoundary(
             key: boundary,
-            child: ContentView(content: _sticker, preset: rounded),
+            child: AssetView(content: _sticker, preset: rounded),
           ),
         ),
       );
@@ -1930,7 +1910,7 @@ void main() {
         profile: const AssetProfile(animate: true, fit: AssetFit.cover),
       );
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: cover)),
+        host(AssetView(content: _sticker, preset: cover)),
       );
       // A portrait frame of 32 x 64 centred in a square texture of 64.
       producer.last
@@ -1962,7 +1942,7 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        host(ContentView(content: _sticker, preset: _preset)),
+        host(AssetView(content: _sticker, preset: _preset)),
       );
       final playing = producer.last.advance(AssetStage.full, animated: true);
       await tester.pump();

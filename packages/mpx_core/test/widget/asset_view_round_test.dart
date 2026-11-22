@@ -38,7 +38,7 @@ void main() {
   );
 
   RenderObject box(WidgetTester tester) =>
-      tester.renderObject(find.byType(ContentView));
+      tester.renderObject(find.byType(AssetView));
 
   group('AssetPresets.round', () {
     test('is a square whose profile clips a circle', () {
@@ -73,7 +73,7 @@ void main() {
       await tester.pumpWidget(
         host(
           TargetPlatform.android,
-          ContentView(content: _clip, preset: _round, underlay: _bubble),
+          AssetView(content: _clip, preset: _round, underlay: _bubble),
         ),
       );
 
@@ -94,7 +94,7 @@ void main() {
       await tester.pumpWidget(
         host(
           TargetPlatform.android,
-          ContentView(content: _clip, preset: _round, underlay: _bubble),
+          AssetView(content: _clip, preset: _round, underlay: _bubble),
         ),
       );
       producer.last.advance(AssetStage.preview);
@@ -112,10 +112,7 @@ void main() {
 
     testWidgets('content there at the attach shows no fill', (tester) async {
       await tester.pumpWidget(
-        host(
-          TargetPlatform.android,
-          ContentView(content: _clip, preset: _round),
-        ),
+        host(TargetPlatform.android, AssetView(content: _clip, preset: _round)),
       );
       producer.last.advance(AssetStage.full, animated: true);
       await tester.pump(const Duration(milliseconds: 400));
@@ -123,7 +120,7 @@ void main() {
       await tester.pumpWidget(
         host(
           TargetPlatform.android,
-          ContentView(
+          AssetView(
             key: const ValueKey('again'),
             content: _clip,
             preset: _round,
@@ -139,10 +136,7 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        host(
-          TargetPlatform.android,
-          ContentView(content: _clip, preset: _round),
-        ),
+        host(TargetPlatform.android, AssetView(content: _clip, preset: _round)),
       );
       final preview = producer.last.advance(AssetStage.preview);
       await tester.pump();
@@ -169,7 +163,7 @@ void main() {
             style: (platform) => platform.copyWith(
               stages: platform.stages.copyWith(roundPreviewScale: 1.5),
             ),
-            child: ContentView(content: _clip, preset: _round),
+            child: AssetView(content: _clip, preset: _round),
           ),
         ),
       );
@@ -181,7 +175,7 @@ void main() {
 
     testWidgets('draws its content unscaled once it is in', (tester) async {
       await tester.pumpWidget(
-        host(TargetPlatform.iOS, ContentView(content: _clip, preset: _round)),
+        host(TargetPlatform.iOS, AssetView(content: _clip, preset: _round)),
       );
       producer.last.advance(AssetStage.preview);
       await tester.pump();
@@ -196,7 +190,7 @@ void main() {
       await tester.pumpWidget(
         host(
           TargetPlatform.android,
-          ContentView(
+          AssetView(
             content: _clip,
             preset: AssetPresets.square(
               extent: 200,
@@ -222,7 +216,7 @@ void main() {
         await tester.pumpWidget(
           host(
             platform,
-            ContentView(
+            AssetView(
               content: _clip,
               preset: _round,
               status: const MediaStatusMode.control(),

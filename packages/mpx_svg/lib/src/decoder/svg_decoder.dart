@@ -44,7 +44,7 @@ import 'package:vector_graphics/vector_graphics.dart';
 /// that covers is the one that is sharp under both. Covering costs pixels a
 /// contain view does not show, up to the aspect ratio of the picture to the
 /// spec, bounded by the edge cap. A template spec keeps the
-/// colours and the surface tints the alpha at paint (`ContentView.tint`), so
+/// colours and the surface tints the alpha at paint (`AssetView.tint`), so
 /// a one-colour icon is one entry in every colour it is shown in.
 ///
 /// ## Sizes

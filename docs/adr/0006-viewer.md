@@ -182,7 +182,7 @@ or box.
 ### Downloads on a page
 
 - The page shown asks for its content while it shows it
-  (`ContentView.requestsDownload`, ADR 0010): opening the viewer, or paging
+  (`AssetView.requestsDownload`, ADR 0010): opening the viewer, or paging
   to a photo or an animation, is the user's request to see it, whatever the
   auto-download policy said in the list. A video asks only when it is the
   item the viewer opened on, known by its content (`MediaKey`), not by its

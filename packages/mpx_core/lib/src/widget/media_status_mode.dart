@@ -1,6 +1,6 @@
 import 'package:meta/meta.dart';
 
-/// Which status control a `ContentView` shows over its content.
+/// Which status control a `AssetView` shows over its content.
 @immutable
 sealed class MediaStatusMode {
   const MediaStatusMode._();

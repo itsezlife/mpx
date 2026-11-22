@@ -2,7 +2,7 @@ import 'package:flutter/rendering.dart';
 import 'package:mpx_core/src/asset/asset_binding.dart';
 
 /// How a surface that pushes layers shows a binding whose frames go to a
-/// platform texture: `ContentView` composites through it, and so does a
+/// platform texture: `AssetView` composites through it, and so does a
 /// host's own render object that paints a binding (an inline embed in
 /// text), so the two never disagree on fit, clip or fade.
 ///

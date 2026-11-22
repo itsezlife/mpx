@@ -33,7 +33,7 @@ pipeline.know(
 // In the widget tree:
 AssetCacheProvider(
   scope: scope,
-  child: ContentView(
+  child: AssetView(
     content: const MediaKey.remote('42'),
     preset: AssetPresets.square(
       extent: 64,

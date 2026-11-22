@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mpx_core/mpx_core.dart';
 
-/// SVG drawn as one more media kind: the same `ContentView`, locator and
+/// SVG drawn as one more media kind: the same `AssetView`, locator and
 /// descriptor as every other tile, with `SvgDecoder` registered for
 /// `MediaKind.vectorImage`.
 ///
@@ -67,17 +67,11 @@ class SvgDemoRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        tile(
-          'Bundled',
-          ContentView(content: SvgDemo.bundled, preset: preset()),
-        ),
-        tile(
-          'Network',
-          ContentView(content: SvgDemo.network, preset: preset()),
-        ),
+        tile('Bundled', AssetView(content: SvgDemo.bundled, preset: preset())),
+        tile('Network', AssetView(content: SvgDemo.network, preset: preset())),
         tile(
           'Tinted',
-          ContentView(
+          AssetView(
             content: SvgDemo.icon,
             preset: preset(decodeMode: AssetDecodeMode.template),
             tint: Theme.of(context).colorScheme.primary,

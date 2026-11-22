@@ -11,7 +11,7 @@ import 'package:mpx_core/src/widget/media_status_control.dart';
 import 'package:mpx_core/src/widget/media_status_mode.dart';
 
 /// The status control and the media badge of a binding's content over
-/// [child], in its box: what a `ContentView` lays over its picture, for a
+/// [child], in its box: what a `AssetView` lays over its picture, for a
 /// surface that paints the content through a binding of its own (an inline
 /// embed, a sticker cell).
 ///
@@ -25,9 +25,9 @@ import 'package:mpx_core/src/widget/media_status_mode.dart';
 /// and repaint themselves; the overlay rebuilds only when their layout
 /// changes. The look comes from the closest `MediaLoadingStyleScope`; a
 /// [statusBuilder] (else the scope's) may replace the control.
-class ContentStatusOverlay extends StatefulWidget {
+class AssetStatusOverlay extends StatefulWidget {
   /// Lays [binding]'s status control and badge over [child].
-  const ContentStatusOverlay({
+  const AssetStatusOverlay({
     required this.binding,
     required this.child,
     this.status = const MediaStatusMode.control(),
@@ -66,10 +66,10 @@ class ContentStatusOverlay extends StatefulWidget {
   final Widget child;
 
   @override
-  State<ContentStatusOverlay> createState() => _ContentStatusOverlayState();
+  State<AssetStatusOverlay> createState() => _AssetStatusOverlayState();
 }
 
-class _ContentStatusOverlayState extends State<ContentStatusOverlay> {
+class _AssetStatusOverlayState extends State<AssetStatusOverlay> {
   bool _streaming = false;
   // The size of the picture, as far as it is known: the badge and the
   // compact control sit in the picture a contain fit letterboxes, not at the
@@ -85,7 +85,7 @@ class _ContentStatusOverlayState extends State<ContentStatusOverlay> {
   }
 
   @override
-  void didUpdateWidget(ContentStatusOverlay oldWidget) {
+  void didUpdateWidget(AssetStatusOverlay oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.binding, widget.binding)) {
       oldWidget.binding.removeListener(_bindingChanged);

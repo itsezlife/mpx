@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Follows mpx_core's rename: every `ContentView` here is an `AssetView`.
 - `ViewerBackdropScope` / `ViewerBackdropZoom`: a viewer with no
   `onBackdropScale` of its own reports its backdrop scale to the scope
   above its navigator, and every `ViewerBackdropZoom` under it draws its

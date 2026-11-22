@@ -263,13 +263,13 @@ final class _SourcedBridge implements OriginBridge {
 /// scrollable around it; one scrolled out of every viewport has no place,
 /// and the viewer closes without the morph. With [captureFrame] the viewer
 /// starts from the picture it shows now: the content of the first
-/// `ContentView` in it, whole and at its own proportion, unrounded and
-/// uncropped (`ContentView.frameIn`), so it lies exactly on the page's
+/// `AssetView` in it, whole and at its own proportion, unrounded and
+/// uncropped (`AssetView.frameIn`), so it lies exactly on the page's
 /// picture; none while that view shows only a preview or a thumbnail, which
 /// the page has too. A picture in a texture (a video's frames, a player
 /// over its view) is the texture's current frame alone, unclipped. Only a
 /// surface with neither is read as it shows, without the status control
-/// or badge over it (`ContentView.pictureIn`), else the whole thumbnail;
+/// or badge over it (`AssetView.pictureIn`), else the whole thumbnail;
 /// the page's player covers that frame from its first frame.
 class ViewerOrigin extends StatefulWidget {
   /// Marks [child] as the origin of [index] or of [media].
@@ -386,17 +386,17 @@ class _ViewerOriginState extends State<ViewerOrigin> {
     // corners and letterbox, and stand on the page as a second, smaller
     // picture over the page's own. A thumbnail that shows only a stand-in
     // has nothing the page lacks.
-    switch (ContentView.frameIn(box, pixelRatio: dpr)) {
-      case ContentFrame$Picture(:final image):
+    switch (AssetView.frameIn(box, pixelRatio: dpr)) {
+      case AssetFrame$Picture(:final image):
         return image;
-      case ContentFrame$StandIn():
+      case AssetFrame$StandIn():
         return null;
-      case ContentFrame$Surface():
+      case AssetFrame$Surface():
     }
     // The picture alone: a status control or a badge over it would ride the
     // morph and stand in on the page. Without a content view's picture in
     // it, the thumbnail is all picture.
-    final picture = ContentView.pictureIn(box);
+    final picture = AssetView.pictureIn(box);
     if (picture == null ||
         identical(picture, box) ||
         !picture.hasSize ||

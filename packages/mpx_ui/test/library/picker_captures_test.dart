@@ -328,8 +328,8 @@ void main() {
     );
     expect(item, findsOneWidget);
     final shown = tester
-        .widgetList<ContentView>(
-          find.descendant(of: item, matching: find.byType(ContentView)),
+        .widgetList<AssetView>(
+          find.descendant(of: item, matching: find.byType(AssetView)),
         )
         .map((view) => view.content);
     expect(shown, [poster]);
@@ -370,7 +370,7 @@ void main() {
     );
     await tester.pump();
     final shown = tester
-        .widgetList<ContentView>(find.byType(ContentView))
+        .widgetList<AssetView>(find.byType(AssetView))
         .map((view) => view.content);
     expect(shown, [poster]);
   });

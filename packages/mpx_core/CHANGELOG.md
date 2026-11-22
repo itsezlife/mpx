@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Breaking:** `ContentView` is `AssetView`, and its helpers follow:
+  `AssetFrame` (with `AssetFrame$Picture`, `$StandIn`, `$Surface`),
+  `AssetPicture`, `AssetStatusOverlay`. The view of one asset cache binding
+  is named by the core's own vocabulary (`AssetCacheScope`, `AssetPreset`,
+  `AssetBinding`); no alias is kept.
 - One shimmer band across the screen: `OutlineLook.sweep` is the span the
   highlight crosses, in the paint's coordinates. `ContentView` passes the
   screen, so outline previews side by side draw one band, not one per cell.

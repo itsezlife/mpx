@@ -146,7 +146,7 @@ void main() {
       expect(harness.state(tester).videoLease, isNull);
       expect(harness.backend!.created, isEmpty);
       expect(find.byType(ViewerVideoControls), findsNothing);
-      final views = tester.widgetList<ContentView>(find.byType(ContentView));
+      final views = tester.widgetList<AssetView>(find.byType(AssetView));
       expect(views, isNotEmpty);
       for (final view in views) {
         expect(view.preset.profile.animate, isTrue);

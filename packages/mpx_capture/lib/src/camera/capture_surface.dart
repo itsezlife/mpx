@@ -760,7 +760,7 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
             _StripCell(
               picture: switch (assets) {
                 null => null,
-                _ => ContentView(
+                _ => AssetView(
                   content: item.thumbnail.key,
                   preset: AssetPresets.square(
                     extent: 80,

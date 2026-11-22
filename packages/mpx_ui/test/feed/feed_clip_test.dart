@@ -68,7 +68,7 @@ void main() {
       ),
     );
 
-    final clip = find.byType(ContentView);
+    final clip = find.byType(AssetView);
     expect(clip, findsOneWidget);
     expect(tester.renderObject(clip), paintsNothing);
   });
@@ -102,9 +102,7 @@ void main() {
     );
 
     // The first row shows half: both clips play; the rest wait hidden.
-    final views = tester
-        .widgetList<ContentView>(find.byType(ContentView))
-        .toList();
+    final views = tester.widgetList<AssetView>(find.byType(AssetView)).toList();
     expect(views.first.visibleFraction, 0.5);
     expect(views.first.preset.profile.animate, isTrue);
     expect(feed.stateOf(0).value.playing, isTrue);
@@ -203,7 +201,7 @@ void main() {
         ),
       );
 
-      final view = tester.widget<ContentView>(find.byType(ContentView));
+      final view = tester.widget<AssetView>(find.byType(AssetView));
       expect(view.downloadContext, tag);
       final attempt = producer.last;
       final preview = attempt.advance(AssetStage.preview);

@@ -18,7 +18,7 @@ import 'package:mpx_core/src/identity/media_key.dart';
 import 'package:mpx_core/src/pipeline/auto_download.dart';
 import 'package:mpx_core/src/playback/playback_clock.dart';
 import 'package:mpx_core/src/widget/asset_cache_provider.dart';
-import 'package:mpx_core/src/widget/content_status_overlay.dart';
+import 'package:mpx_core/src/widget/asset_status_overlay.dart';
 import 'package:mpx_core/src/widget/media_loading_style.dart';
 import 'package:mpx_core/src/widget/media_status_mode.dart';
 import 'package:mpx_core/src/widget/viewport_visibility.dart';
@@ -126,9 +126,9 @@ import 'package:mpx_core/src/widget/viewport_visibility.dart';
 ///
 /// [scope] if given, otherwise the closest [AssetCacheProvider]; a view with
 /// neither throws a [FlutterError].
-class ContentView extends StatefulWidget {
+class AssetView extends StatefulWidget {
   /// Shows [content] as [preset] says.
-  const ContentView({
+  const AssetView({
     required this.content,
     required this.preset,
     this.tint,
@@ -247,16 +247,16 @@ class ContentView extends StatefulWidget {
   final Color? underlay;
 
   @override
-  State<ContentView> createState() => _ContentViewState();
+  State<AssetView> createState() => _AssetViewState();
 
-  /// The repaint boundary of the picture of the first [ContentView] painted
+  /// The repaint boundary of the picture of the first [AssetView] painted
   /// under [root] (in paint order, [root] included), or null when there is
   /// none: the content alone, without the status control and the badge laid
   /// over it. A surface that reads a view's picture (a viewer's origin
   /// frame) reads it there, so the picture never carries chrome. A view
   /// that plays, or has a status or a badge, has one; a surface that draws
   /// its picture otherwise (a player over a view) marks it with
-  /// [ContentPicture], found first as the outer one.
+  /// [AssetPicture], found first as the outer one.
   static RenderRepaintBoundary? pictureIn(RenderObject root) {
     if (root is _RenderPictureBoundary) return root;
     RenderRepaintBoundary? found;
@@ -266,21 +266,21 @@ class ContentView extends StatefulWidget {
     return found;
   }
 
-  /// The picture the first [ContentView] under [root] shows, read for a
+  /// The picture the first [AssetView] under [root] shows, read for a
   /// surface that takes it over (a viewer opening from it): the whole
   /// picture at its own proportion, unclipped by the view's corners and
   /// uncut by its fit, at [pixelRatio] times the size that covers the view.
   /// A picture in a texture (a video's frames, a player) is the texture's
   /// current frame rendered alone, without the clips around it.
   ///
-  /// Only content is a frame of the view's own ([ContentFrame$Picture]): a
+  /// Only content is a frame of the view's own ([AssetFrame$Picture]): a
   /// view that shows a preview, a thumbnail or nothing yet answers
-  /// [ContentFrame$StandIn], as the surface taking over has the same
-  /// stand-ins. Under a surface's own picture ([ContentPicture] over a
+  /// [AssetFrame$StandIn], as the surface taking over has the same
+  /// stand-ins. Under a surface's own picture ([AssetPicture] over a
   /// player) the frame is its topmost texture's. A view whose picture size
   /// is unknown, a surface's picture with no texture, or no view at all
-  /// answers [ContentFrame$Surface]: read the surface as it shows.
-  static ContentFrame frameIn(RenderObject root, {required double pixelRatio}) {
+  /// answers [AssetFrame$Surface]: read the surface as it shows.
+  static AssetFrame frameIn(RenderObject root, {required double pixelRatio}) {
     var picture = pictureIn(root);
     // A surface that marks a view as its picture (controls laid over it)
     // wraps the view's own mark: the view is the picture, read as a view.
@@ -294,11 +294,11 @@ class ContentView extends StatefulWidget {
       // texture, whole, when it shows one.
       return picture is _RenderPictureBoundary
           ? picture._textureFrame(pixelRatio)
-          : const ContentFrame$Surface._();
+          : const AssetFrame$Surface._();
     }
     final view = _contentIn(picture ?? root);
     return view == null
-        ? const ContentFrame$Surface._()
+        ? const AssetFrame$Surface._()
         : view._frame(pixelRatio);
   }
 
@@ -312,16 +312,16 @@ class ContentView extends StatefulWidget {
   }
 }
 
-/// What [ContentView.frameIn] read of a view.
+/// What [AssetView.frameIn] read of a view.
 @immutable
-sealed class ContentFrame {
-  const ContentFrame._();
+sealed class AssetFrame {
+  const AssetFrame._();
 }
 
 /// The view's content, whole: [image] has the picture's proportion and
 /// belongs to the caller, who disposes it.
-final class ContentFrame$Picture extends ContentFrame {
-  const ContentFrame$Picture._(this.image) : super._();
+final class AssetFrame$Picture extends AssetFrame {
+  const AssetFrame$Picture._(this.image) : super._();
 
   /// The picture.
   final ui.Image image;
@@ -329,21 +329,21 @@ final class ContentFrame$Picture extends ContentFrame {
 
 /// The view shows a stand-in (a preview, a thumbnail) or nothing: no frame
 /// of its own.
-final class ContentFrame$StandIn extends ContentFrame {
-  const ContentFrame$StandIn._() : super._();
+final class AssetFrame$StandIn extends AssetFrame {
+  const AssetFrame$StandIn._() : super._();
 }
 
 /// The picture is to be read from the surface as it shows.
-final class ContentFrame$Surface extends ContentFrame {
-  const ContentFrame$Surface._() : super._();
+final class AssetFrame$Surface extends AssetFrame {
+  const AssetFrame$Surface._() : super._();
 }
 
 /// Marks [child] as a surface's picture, without the chrome laid over it:
-/// what `ContentView.pictureIn` finds, for a surface whose picture is more
+/// what `AssetView.pictureIn` finds, for a surface whose picture is more
 /// than one view (a player fading in over a view). A repaint boundary.
-class ContentPicture extends SingleChildRenderObjectWidget {
+class AssetPicture extends SingleChildRenderObjectWidget {
   /// Marks [child] as the picture.
-  const ContentPicture({required super.child, super.key});
+  const AssetPicture({required super.child, super.key});
 
   @override
   RenderObject createRenderObject(BuildContext context) =>
@@ -359,7 +359,7 @@ class _RenderPictureBoundary extends RenderRepaintBoundary {
   // view: read at the laid-out size the frame was the video's size times the
   // pixel ratio, past what a GPU renders into one image, and the page drew
   // it as a small picture.
-  ContentFrame _textureFrame(double pixelRatio) {
+  AssetFrame _textureFrame(double pixelRatio) {
     TextureLayer? top;
     Matrix4? topTransform;
     void visit(Layer layer, Matrix4 above) {
@@ -402,12 +402,12 @@ class _RenderPictureBoundary extends RenderRepaintBoundary {
     final texture = top;
     final transform = topTransform;
     if (texture == null || transform == null || texture.rect.isEmpty) {
-      return const ContentFrame$Surface._();
+      return const AssetFrame$Surface._();
     }
     final shown = MatrixUtils.transformRect(transform, texture.rect);
-    if (shown.isEmpty) return const ContentFrame$Surface._();
+    if (shown.isEmpty) return const AssetFrame$Surface._();
     final size = shown.size;
-    return ContentFrame$Picture._(
+    return AssetFrame$Picture._(
       _textureImage(
         texture.textureId,
         Offset.zero & size,
@@ -429,7 +429,7 @@ ui.Image _textureImage(int id, Rect rect, Rect bounds, double pixelRatio) {
   }
 }
 
-class _ContentViewState extends State<ContentView> {
+class _AssetViewState extends State<AssetView> {
   AssetBinding? _binding;
   AssetCacheScope? _attachedScope;
   MediaKey? _attachedContent;
@@ -540,7 +540,7 @@ class _ContentViewState extends State<ContentView> {
   }
 
   @override
-  void didUpdateWidget(ContentView oldWidget) {
+  void didUpdateWidget(AssetView oldWidget) {
     super.didUpdateWidget(oldWidget);
     _sync();
     _apply(_binding!);
@@ -633,12 +633,12 @@ class _ContentViewState extends State<ContentView> {
     );
     final overlays = widget.status is! MediaStatusMode$None || widget.badge;
     // Every frame repaints an animated picture; a picture under chrome is
-    // read without it (ContentView.pictureIn).
+    // read without it (AssetView.pictureIn).
     if (preset.profile.animate || overlays) {
-      view = ContentPicture(child: view);
+      view = AssetPicture(child: view);
     }
     if (overlays) {
-      view = ContentStatusOverlay(
+      view = AssetStatusOverlay(
         binding: _binding!,
         status: widget.status,
         badge: widget.badge,
@@ -786,7 +786,7 @@ class _RenderContent extends RenderBox {
   bool _ticking;
 
   // Called the first time the view is painted after its state found a
-  // parent that does not paint it (_ContentViewState._unpainted).
+  // parent that does not paint it (_AssetViewState._unpainted).
   VoidCallback? _onPaintedUnseen;
   bool _armed;
 
@@ -976,10 +976,10 @@ class _RenderContent extends RenderBox {
   }
 
   // The content painted again, whole and unclipped, at its own proportion
-  // covering the box: see [ContentView.frameIn].
-  ContentFrame _frame(double pixelRatio) {
+  // covering the box: see [AssetView.frameIn].
+  AssetFrame _frame(double pixelRatio) {
     if (_binding.readiness.stage.index < AssetStage.firstFrame.index) {
-      return const ContentFrame$StandIn._();
+      return const AssetFrame$StandIn._();
     }
     final paintable = _binding.paintable;
     final texture = paintable.texture;
@@ -992,7 +992,7 @@ class _RenderContent extends RenderBox {
                 texture.frameHeight.toDouble(),
               ));
     if (picture == null || picture.isEmpty || !hasSize || size.isEmpty) {
-      return const ContentFrame$Surface._();
+      return const AssetFrame$Surface._();
     }
     final cover = math.max(
       size.width / picture.width,
@@ -1003,7 +1003,7 @@ class _RenderContent extends RenderBox {
       // texture falls outside them.
       final frame = Offset.zero & picture * cover;
       final scale = frame.width / texture.frameWidth;
-      return ContentFrame$Picture._(
+      return AssetFrame$Picture._(
         _textureImage(
           texture.id,
           Rect.fromCenter(
@@ -1032,7 +1032,7 @@ class _RenderContent extends RenderBox {
     final drawn = recorder.endRecording();
     final image = drawn.toImageSync(width, height);
     drawn.dispose();
-    return ContentFrame$Picture._(image);
+    return AssetFrame$Picture._(image);
   }
 
   void _paintStages(PaintingContext context, Offset offset) {
@@ -1300,7 +1300,7 @@ class _RenderContent extends RenderBox {
   }
 }
 
-/// The one measuring pass of every playing [ContentView], after the frame in
+/// The one measuring pass of every playing [AssetView], after the frame in
 /// which something may have moved one: a scroll position around it changed,
 /// the window changed, it attached. A view nothing moved is not measured, so
 /// a still screen of playing cells costs no ancestor walks at all.
@@ -1311,8 +1311,8 @@ class _RenderContent extends RenderBox {
 /// parent did not paint (a zero opacity, an offstage page) is measured again
 /// in the frame a parent paints it, so a fade-in starts it at once.
 abstract final class _ScreenPass {
-  static final Set<_ContentViewState> _watched = {};
-  static final Set<_ContentViewState> _dirty = {};
+  static final Set<_AssetViewState> _watched = {};
+  static final Set<_AssetViewState> _dirty = {};
   static bool _scheduled = false;
   static bool _counting = false;
   static Duration? _sweptAt;
@@ -1320,7 +1320,7 @@ abstract final class _ScreenPass {
   /// How often every watched view measures again, whatever moved.
   static const Duration _resweep = Duration(seconds: 1);
 
-  static void watch(_ContentViewState view) {
+  static void watch(_AssetViewState view) {
     if (_watched.add(view)) mark(view);
     if (_counting) return;
     _counting = true;
@@ -1329,12 +1329,12 @@ abstract final class _ScreenPass {
     SchedulerBinding.instance.addPersistentFrameCallback(_onFrame);
   }
 
-  static void unwatch(_ContentViewState view) {
+  static void unwatch(_AssetViewState view) {
     _watched.remove(view);
     _dirty.remove(view);
   }
 
-  static void mark(_ContentViewState view) {
+  static void mark(_AssetViewState view) {
     _dirty.add(view);
     if (_scheduled) return;
     _scheduled = true;

@@ -53,7 +53,7 @@ void main() {
       'downloads, the arc grows and the photo arrives', (tester) async {
     await tester.pumpWidget(
       host(
-        const ContentView(
+        const AssetView(
           content: _key,
           preset: _preset,
           status: MediaStatusMode.control(),
@@ -92,7 +92,7 @@ void main() {
       profile: AssetProfile(cornerRadius: 12),
     );
     await tester.pumpWidget(
-      host(const ContentView(content: _key, preset: square, badge: true)),
+      host(const AssetView(content: _key, preset: square, badge: true)),
     );
     // A 2:1 picture: drawn 160 x 80 from y = 40 of the square box.
     producer.last
@@ -109,7 +109,7 @@ void main() {
     await tester.pump();
     await tester.pump(_gone);
 
-    final box = tester.getTopLeft(find.byType(ContentView));
+    final box = tester.getTopLeft(find.byType(AssetView));
     final badge = tester.getTopLeft(find.byType(MediaBadge));
     // Android's offset is 4 x 4.
     expect(badge - box, const Offset(4, 44));
@@ -123,7 +123,7 @@ void main() {
       profile: AssetProfile(cornerRadius: 12, fit: AssetFit.cover),
     );
     await tester.pumpWidget(
-      host(const ContentView(content: _key, preset: square, badge: true)),
+      host(const AssetView(content: _key, preset: square, badge: true)),
     );
     // A 1:2 picture, cut top and bottom to fill the square.
     producer.last
@@ -140,7 +140,7 @@ void main() {
     await tester.pump();
     await tester.pump(_gone);
 
-    final box = tester.getTopLeft(find.byType(ContentView));
+    final box = tester.getTopLeft(find.byType(AssetView));
     final badge = tester.getTopLeft(find.byType(MediaBadge));
     expect(badge - box, const Offset(4, 4));
   });
@@ -154,7 +154,7 @@ void main() {
     );
     await tester.pumpWidget(
       host(
-        const ContentView(
+        const AssetView(
           content: _key,
           preset: square,
           status: MediaStatusMode.compact,
@@ -175,7 +175,7 @@ void main() {
     await tester.pump();
     await tester.pump(_gone);
 
-    final box = tester.getTopLeft(find.byType(ContentView));
+    final box = tester.getTopLeft(find.byType(AssetView));
     final control = tester.getTopLeft(find.byType(MediaStatusControl));
     // Android's compact control is at 8 x 8.
     expect(control - box, const Offset(48, 8));
@@ -184,7 +184,7 @@ void main() {
   testWidgets('a failure turns the control back to download', (tester) async {
     await tester.pumpWidget(
       host(
-        const ContentView(
+        const AssetView(
           content: _key,
           preset: _preset,
           status: MediaStatusMode.control(),
@@ -208,7 +208,7 @@ void main() {
     var plays = 0;
     await tester.pumpWidget(
       host(
-        ContentView(
+        AssetView(
           content: _key,
           preset: _preset,
           status: const MediaStatusMode.control(),
@@ -245,7 +245,7 @@ void main() {
     final own = FakeAssetPaintable(label: 'origin');
     await tester.pumpWidget(
       host(
-        ContentView(
+        AssetView(
           content: _key,
           preset: _preset,
           placeholder: own,
@@ -276,7 +276,7 @@ void main() {
     final own = FakeAssetPaintable(label: 'origin');
     await tester.pumpWidget(
       host(
-        ContentView(
+        AssetView(
           content: _key,
           preset: _preset,
           placeholder: own,
@@ -304,7 +304,7 @@ void main() {
     var builds = 0;
     await tester.pumpWidget(
       host(
-        const ContentView(
+        const AssetView(
           content: _key,
           preset: _preset,
           status: MediaStatusMode.control(),
@@ -332,7 +332,7 @@ void main() {
   testWidgets("the view's own builder wins over the scope's", (tester) async {
     await tester.pumpWidget(
       host(
-        ContentView(
+        AssetView(
           content: _key,
           preset: _preset,
           status: MediaStatusMode.compact,
@@ -355,7 +355,7 @@ void main() {
     );
     await tester.pumpWidget(
       host(
-        const ContentView(
+        const AssetView(
           content: _key,
           preset: tile,
           status: MediaStatusMode.control(),
@@ -366,12 +366,9 @@ void main() {
     await tester.pump(_gone);
 
     final control = find.byType(MediaStatusControl);
-    expect(tester.getSize(find.byType(ContentView)), const Size(300, 300));
+    expect(tester.getSize(find.byType(AssetView)), const Size(300, 300));
     expect(tester.getSize(control), const Size(44, 44));
-    expect(
-      tester.getCenter(control),
-      tester.getCenter(find.byType(ContentView)),
-    );
+    expect(tester.getCenter(control), tester.getCenter(find.byType(AssetView)));
   });
 
   testWidgets('a control alone in tight constraints keeps its size', (
@@ -396,7 +393,7 @@ void main() {
   testWidgets('rebinding a tile mid-download paints the current fraction on '
       'its first frame', (tester) async {
     Widget tile() => host(
-      ContentView(
+      AssetView(
         key: UniqueKey(),
         content: _key,
         preset: _preset,
@@ -434,11 +431,7 @@ void main() {
     addTearDown(scope.dispose);
     await tester.pumpWidget(
       host(
-        const ContentView(
-          content: _key,
-          preset: _preset,
-          requestsDownload: true,
-        ),
+        const AssetView(content: _key, preset: _preset, requestsDownload: true),
       ),
     );
 

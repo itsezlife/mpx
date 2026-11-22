@@ -2,7 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:mpx_core/src/asset/asset_cache_scope.dart';
 
 /// Makes the host's [AssetCacheScope] available to the widgets below, so
-/// `ContentView` finds the cache without it being passed down by hand.
+/// `AssetView` finds the cache without it being passed down by hand.
 ///
 /// The host creates the scope and disposes it; the provider only hands it
 /// out and never disposes it. Surfaces that cannot be below a provider take

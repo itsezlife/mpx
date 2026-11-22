@@ -61,7 +61,7 @@ fetched, and a failure left the arc on.
   a stand-in under content that may be transparent, fades out as the content
   rises.
 - A surface's own placeholder may outrank stand-in stages up to a stage it
-  names (`ContentView.placeholderUntil`). Content rises over it as over a
+  names (`AssetView.placeholderUntil`). Content rises over it as over a
   raster stand-in: the placeholder and the kept stand-in beneath it stay
   opaque while the content fades in, so a cross-fade never lets the
   background through.
@@ -71,7 +71,7 @@ fetched, and a failure left the arc on.
 - A round surface (a round video; `AssetPresets.round`) draws its stand-ins
   enlarged inside its circle (`MediaStageStyle.roundPreviewScale`), its
   control at the round size, and an optional fill in the host's colour
-  under everything until the content has faded in (`ContentView.underlay`).
+  under everything until the content has faded in (`AssetView.underlay`).
 
 ### Transfer
 
@@ -125,7 +125,7 @@ one record per `MediaKey` and derives the transfer there, from:
 
 - **The policy** for the tags attached (above).
 - **A surface that requests its content while it shows it**
-  (`AssetBinding.requestsDownload`, `ContentView.requestsDownload`: a
+  (`AssetBinding.requestsDownload`, `AssetView.requestsDownload`: a
   viewer page the user opened). It downloads whatever the policy says, but
   it is not the user's download: when the surface goes or stops asking, a
   download nothing else wants stops where it is, its bytes kept, and the
@@ -173,8 +173,8 @@ one record per `MediaKey` and derives the transfer there, from:
 - Core widgets driven by plain values: `MediaStatusControl` takes a
   `MediaStatus` (an icon, `MediaStatusIcon` none / download / cancel / play /
   pause, and a progress), and `MediaStatusControl.binding` maps a binding to
-  it. `ContentStatusOverlay` lays a binding's control and badge over any
-  picture, as `ContentView` does; `MediaStatusPainting` draws the control's
+  it. `AssetStatusOverlay` lays a binding's control and badge over any
+  picture, as `AssetView` does; `MediaStatusPainting` draws the control's
   disc, progress arc and spinner on a canvas, for a leaf that paints its
   own cells. `MediaBadge` shows the duration (or "GIF") and, while receiving,
   "received / total".
@@ -232,7 +232,7 @@ again, so the cost is paid once per item.
 - Every comparison over `AssetStage` is audited when `preview` lands; an
   `index <= placeholder` comparison already counts it as a stand-in.
 - `AssetBinding.downloadProgress` gives way to `transfer`;
-  `ContentView.loadingRadius` gives way to a status mode.
+  `AssetView.loadingRadius` gives way to a status mode.
 - `http_bytes_cache` gains a `previews` quota (4 MiB).
 - Hosts that wire the core themselves keep today's download behaviour.
 

@@ -797,8 +797,8 @@ void main() {
     // Only what is on screen (and the list's cache) is asked for.
     expect(gallery.asked.reduce((a, b) => a > b ? a : b), lessThan(20));
     // A picture through the cache, told its descriptor.
-    final picture = tester.widget<ContentView>(
-      find.descendant(of: item(1), matching: find.byType(ContentView)),
+    final picture = tester.widget<AssetView>(
+      find.descendant(of: item(1), matching: find.byType(AssetView)),
     );
     expect(picture.content, _Gallery.thumbnailAt(1, 80));
     expect(producer.known.map((d) => d.key), contains(picture.content));
@@ -826,7 +826,7 @@ void main() {
     await tester.drag(strip, const Offset(-40000, 0));
     await tester.pump();
     expect(gallery.asked.reduce((a, b) => a > b ? a : b), greaterThan(400));
-    expect(find.byType(ContentView), findsWidgets);
+    expect(find.byType(AssetView), findsWidgets);
   });
 
   testWidgets('a camera page opened again shows the kept shots of an earlier '

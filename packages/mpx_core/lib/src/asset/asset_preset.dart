@@ -24,7 +24,7 @@ final class AssetPreset {
   });
 
   /// The logical box the surface shows the asset in: the natural size of a
-  /// `ContentView`.
+  /// `AssetView`.
   final Size size;
 
   /// What is decoded: the pixels [size] takes at the device density.

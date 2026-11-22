@@ -136,9 +136,9 @@ void main() {
       );
       await harness.pump(tester);
 
-      final view = tester.widget<ContentView>(
+      final view = tester.widget<AssetView>(
         find.byWidgetPredicate(
-          (widget) => widget is ContentView && widget.content == photoKey(0),
+          (widget) => widget is AssetView && widget.content == photoKey(0),
         ),
       );
       expect(view.downloadContext, tag);
@@ -161,7 +161,7 @@ void main() {
       harness.bridge.origins.clear();
       await harness.pump(tester);
 
-      expect(tester.getRect(find.byType(ContentView)).size, fittedRect.size);
+      expect(tester.getRect(find.byType(AssetView)).size, fittedRect.size);
     });
 
     testWidgets('keeps the origin\'s frame over the preview and the '
@@ -250,7 +250,7 @@ void main() {
       // preview, until its player is back.
       controller.jumpTo(0);
       await tester.pump();
-      final view = tester.widget<ContentView>(find.byType(ContentView));
+      final view = tester.widget<AssetView>(find.byType(AssetView));
       expect(view.content, videoKey(0));
       expect(view.placeholder, isNotNull);
       expect(view.placeholderUntil, AssetStage.firstFrame);
@@ -279,7 +279,7 @@ void main() {
 
       expect(
         find.byWidgetPredicate(
-          (widget) => widget is ContentView && widget.content == photoKey(1),
+          (widget) => widget is AssetView && widget.content == photoKey(1),
         ),
         findsOneWidget,
       );
@@ -397,7 +397,7 @@ void main() {
       bool asks(MediaKey key) => find
           .byWidgetPredicate(
             (widget) =>
-                widget is ContentView &&
+                widget is AssetView &&
                 widget.content == key &&
                 widget.requestsDownload,
           )
@@ -780,7 +780,7 @@ void main() {
                 builder: (context, setState) {
                   setTile = setState;
                   return tile
-                      ? ContentView(
+                      ? AssetView(
                           content: key,
                           scope: scope,
                           preset: const AssetPreset(

@@ -162,7 +162,7 @@ LibraryGrid(
 );
 ```
 
-- Fixed square cells, never measured; thumbnails through `ContentView`
+- Fixed square cells, never measured; thumbnails through `AssetView`
   under the host's `AssetCacheProvider`, a thumbnail key per cell pixel
   size; pages load around the viewport with one screen of prefetch.
 - Numbered checks; a tap on the check toggles, a tap on the picture opens.

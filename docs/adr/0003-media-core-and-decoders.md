@@ -47,7 +47,7 @@ unattached entries. A feed needs more (ADR 0005).
 | `AssetPipeline`, `ContentFetcher`, `Decoder`, priority lanes | Core; the core has no networking and no dependency on the bytes cache. `mpx` fills `ContentFetcher` from `http_bytes_cache` |
 | Playback clock, `PlaybackPauseLayer`, policy | Core; product-named defaults become host-supplied presets |
 | Texture seam (`FrameTextureHost`), frame pool | Core, with the platform texture hosts of `frame_texture` |
-| `ContentView`, `AssetCacheProvider`, placeholders | Core |
+| `AssetView`, `AssetCacheProvider`, placeholders | Core |
 | Glyph atlas (`src/atlas`, `src/glyph`) | Stays in chat, own package; `AssetCacheScope` has no glyph route (`glyphSource`, `systemFonts`, the glyph placeholder): a host draws glyphs beside the scope |
 | Inline and content embeds | Stay in chat |
 | Emoji, sticker and panel presets and budgets | Stay in chat; the host passes them in |

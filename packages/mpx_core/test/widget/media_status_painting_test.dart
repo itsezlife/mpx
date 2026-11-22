@@ -76,7 +76,7 @@ void main() {
         child: SizedBox(
           width: 120,
           height: 120,
-          child: ContentStatusOverlay(
+          child: AssetStatusOverlay(
             binding: binding,
             badge: true,
             child: const Text('picture'),

@@ -1913,7 +1913,7 @@ class _OriginContentState extends State<_OriginContent> {
       frame == null ? null : _OriginFrame(frame.clone(), fit);
 
   @override
-  Widget build(BuildContext context) => ContentView(
+  Widget build(BuildContext context) => AssetView(
     content: widget.content,
     scope: widget.scope,
     preset: widget.preset,
