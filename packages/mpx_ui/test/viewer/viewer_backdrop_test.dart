@@ -17,6 +17,20 @@ double _scaleBehind(WidgetTester tester) {
 }
 
 void main() {
+  testWidgets('the surface keeps its state through the zoom: the same '
+      'element under it at every scale', (tester) async {
+    final harness = ViewerHarness();
+    await harness.pump(tester, open: false, backdropScope: true);
+    final before = tester.element(find.byKey(ViewerHarness.behindKey));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(
+        identical(tester.element(find.byKey(ViewerHarness.behindKey)), before),
+        isTrue,
+      );
+    }
+  });
+
   testWidgets('the surface behind grows to 1.1 as the viewer opens, frame by '
       'frame, from the scope alone', (tester) async {
     final harness = ViewerHarness();

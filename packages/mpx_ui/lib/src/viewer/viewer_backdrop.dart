@@ -60,11 +60,14 @@ class ViewerBackdropZoom extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = ViewerBackdropScope.maybeOf(context);
     if (scale == null) return child;
+    // Always the same transform, at 1 too: a wrapper that came and went
+    // with the scale would rebuild the surface's whole subtree, its state
+    // with it, each time a viewer opened.
     return ValueListenableBuilder<double>(
       valueListenable: scale,
       child: child,
       builder: (context, value, child) =>
-          value == 1 ? child! : Transform.scale(scale: value, child: child),
+          Transform.scale(scale: value, child: child),
     );
   }
 }
