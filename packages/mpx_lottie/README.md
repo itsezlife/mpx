@@ -15,12 +15,25 @@ dependencies:
       path: packages/mpx_lottie
 ```
 
-No prebuilt library is published yet, so the hook compiles `native/` with
-cargo: install Rust from [rustup.rs](https://rustup.rs) and add the targets
-you build for (`rustup target add aarch64-apple-darwin aarch64-linux-android
-...`). Android needs the NDK; iOS and macOS need a Mac. Without cargo the
-build still succeeds, and `NativeLottieBinding.probe()` reports the library
-as missing.
+The build hook bundles the native library (`libmpx_lottie`). It
+downloads the prebuilt named in `native/prebuilts.json`, a release file of
+this repository pinned by size, SHA-256 and the hash of the crate's sources.
+It downloads it once into its shared cache and checks it before use.
+
+- **Prebuilt targets:** macOS arm64 and x86_64; iOS arm64 and the arm64 and
+  x86_64 simulators; Android arm64-v8a, armeabi-v7a and x86_64.
+- **From source.** Elsewhere, for changed crate sources, or with the
+  `build_from_source` user define (`MPX_LOTTIE_BUILD_FROM_SOURCE=1`), it
+  compiles `native/` with cargo instead. Install Rust from
+  [rustup.rs](https://rustup.rs) and add the target (`rustup target add
+  ...`); Android needs the NDK, iOS and macOS a Mac.
+- **Nothing.** Without either, the build succeeds and
+  `NativeLottieBinding.probe()` reports the library as missing.
+- **Offline.** The first build of a target needs network for the prebuilt;
+  later builds use the cache.
+- **Building prebuilts.** `dart native/tool/build_prebuilts.dart <dir>`
+  builds every key this host can; `native/tool/assemble_manifest.dart` writes
+  the manifest.
 
 ## Usage
 

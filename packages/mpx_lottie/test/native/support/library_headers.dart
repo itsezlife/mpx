@@ -8,6 +8,7 @@ const ptLoad = 1;
 const ptDynamic = 2;
 const elfAarch64 = 0xb7;
 const elfX8664 = 0x3e;
+const elfArm = 0x28;
 const machoArmCpu = 0x0100000c;
 const machoX64Cpu = 0x01000007;
 const peAmd64 = 0x8664;
@@ -36,6 +37,31 @@ Uint8List elfLibrary({
     final at = header + phSize * i;
     bytes.setUint32(at, segments[i].$1, Endian.little);
     bytes.setUint64(at + 0x30, segments[i].$2, Endian.little);
+  }
+  return bytes.buffer.asUint8List();
+}
+
+/// A minimal little-endian ELF32 file, as [elfLibrary] for 32-bit targets:
+/// `e_phoff` at 0x1c, `e_phentsize` at 0x2a, `e_phnum` at 0x2c; a program
+/// header is 32 bytes with `p_align` at 0x1c.
+Uint8List elf32Library({
+  required int machine,
+  required List<(int, int)> segments,
+}) {
+  const header = 52;
+  const phSize = 32;
+  final bytes = ByteData(header + phSize * segments.length);
+  bytes.setUint32(0, 0x464c457f, Endian.little);
+  bytes.setUint8(4, 1); // ELFCLASS32
+  bytes.setUint8(5, 1);
+  bytes.setUint16(0x12, machine, Endian.little);
+  bytes.setUint32(0x1c, header, Endian.little);
+  bytes.setUint16(0x2a, phSize, Endian.little);
+  bytes.setUint16(0x2c, segments.length, Endian.little);
+  for (var i = 0; i < segments.length; i++) {
+    final at = header + phSize * i;
+    bytes.setUint32(at, segments[i].$1, Endian.little);
+    bytes.setUint32(at + 0x1c, segments[i].$2, Endian.little);
   }
   return bytes.buffer.asUint8List();
 }
@@ -85,6 +111,7 @@ Uint8List soundLibraryFor(String key) => switch (key) {
   'macos-x64' || 'ios-x64-simulator' => machoLibrary(machoX64Cpu),
   'android-arm64' || 'linux-arm64' => soundElf(machine: elfAarch64),
   'android-x64' || 'linux-x64' => soundElf(machine: elfX8664),
+  'android-arm' => elf32Library(machine: elfArm, segments: [(ptLoad, 0x4000)]),
   'windows-x64' => peLibrary(machine: peAmd64),
   _ => throw ArgumentError.value(key, 'key', 'not a manifest key'),
 };

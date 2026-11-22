@@ -26,6 +26,7 @@ import 'native/native_video_binding_probe_test.dart'
     as native_video_binding_probe_test;
 import 'native/native_video_binding_test.dart' as native_video_binding_test;
 import 'native/native_video_sources_test.dart' as native_video_sources_test;
+import 'native/video_prebuilts_test.dart' as video_prebuilts_test;
 import 'paint/video_animation_paintable_test.dart'
     as video_animation_paintable_test;
 import 'playback/video_frame_scheduler_test.dart' as video_frame_scheduler_test;
@@ -38,6 +39,7 @@ import 'web/web_compile_test.dart' as web_compile_test;
 import 'web/web_video_engine_test.dart' as web_video_engine_test;
 
 void main() {
+  group('native/video_prebuilts_test.dart', video_prebuilts_test.main);
   group('video_decoder_native_test', video_decoder_native_test.main);
   group('video_decoder_test', video_decoder_test.main);
   group('fake_video_engine_test', fake_video_engine_test.main);

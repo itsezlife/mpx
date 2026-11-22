@@ -16,6 +16,9 @@ environment:
 dependencies:
   # hook/build.dart needs code_assets and hooks; the same span as mpx_lottie.
   code_assets: ">=1.1.0 <3.0.0"
+  # The hook checks the SHA-256 of a downloaded prebuilt and of the sources
+  # the prebuilts were built from.
+  crypto: ^3.0.6
   ffi: ^2.1.0
   flutter:
     sdk: flutter

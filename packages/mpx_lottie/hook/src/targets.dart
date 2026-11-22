@@ -41,6 +41,7 @@ final class LottieNativeTarget {
     LottieNativeTarget(OS.iOS, Architecture.arm64, sdk: IOSSdk.iPhoneSimulator),
     LottieNativeTarget(OS.iOS, Architecture.x64, sdk: IOSSdk.iPhoneSimulator),
     LottieNativeTarget(OS.android, Architecture.arm64),
+    LottieNativeTarget(OS.android, Architecture.arm),
     LottieNativeTarget(OS.android, Architecture.x64),
     LottieNativeTarget(OS.linux, Architecture.x64),
     LottieNativeTarget(OS.linux, Architecture.arm64),
@@ -88,6 +89,7 @@ final class LottieNativeTarget {
       'ios-arm64-simulator',
     (OS.iOS, Architecture.x64, IOSSdk.iPhoneSimulator) => 'ios-x64-simulator',
     (OS.android, Architecture.arm64, _) => 'android-arm64',
+    (OS.android, Architecture.arm, _) => 'android-arm',
     (OS.android, Architecture.x64, _) => 'android-x64',
     (OS.linux, Architecture.x64, _) => 'linux-x64',
     (OS.linux, Architecture.arm64, _) => 'linux-arm64',
@@ -105,6 +107,7 @@ final class LottieNativeTarget {
     'ios-arm64-simulator' => 'aarch64-apple-ios-sim',
     'ios-x64-simulator' => 'x86_64-apple-ios',
     'android-arm64' => 'aarch64-linux-android',
+    'android-arm' => 'armv7-linux-androideabi',
     'android-x64' => 'x86_64-linux-android',
     'linux-x64' => 'x86_64-unknown-linux-gnu',
     'linux-arm64' => 'aarch64-unknown-linux-gnu',
@@ -113,6 +116,15 @@ final class LottieNativeTarget {
   };
 
   /// The file cargo writes for the crate's `cdylib`.
+  /// The prefix of the NDK's clang wrappers for this Android target
+  /// (`<prefix><api>-clang`): the rust triple, except armv7, which the NDK
+  /// spells `armv7a-linux-androideabi`. Null off Android.
+  String? get ndkClangTriple => switch (key) {
+    'android-arm' => 'armv7a-linux-androideabi',
+    final key? when key.startsWith('android-') => rustTriple,
+    _ => null,
+  };
+
   String get libraryFileName => switch (os) {
     OS.macOS || OS.iOS => 'libmpx_lottie.dylib',
     OS.windows => 'mpx_lottie.dll',

@@ -41,7 +41,7 @@ Map<String, String> cargoBuildEnvironment({
       }
       return {
         cargoTargetVariable(triple, 'LINKER'): ndk.linker(
-          triple,
+          target.ndkClangTriple ?? triple,
           target.androidApi ?? _defaultAndroidApi,
         ),
         cargoTargetVariable(triple, 'AR'): ndk.ar,

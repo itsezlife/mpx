@@ -13,6 +13,7 @@ import 'support/library_headers.dart';
 
 const _androidArm64 = LottieNativeTarget(OS.android, Architecture.arm64);
 const _androidX64 = LottieNativeTarget(OS.android, Architecture.x64);
+const _androidArm = LottieNativeTarget(OS.android, Architecture.arm);
 
 void main() {
   group('artifactProblem for Android (ELF)', () {
@@ -88,6 +89,31 @@ void main() {
       expect(
         artifactProblem(bytes.sublist(0, bytes.length - 10), _androidArm64),
         contains('truncated'),
+      );
+    });
+  });
+
+  group('artifactProblem for Android armv7 (ELF32)', () {
+    test('passes a 16 KB aligned ARM library', () {
+      final bytes = elf32Library(
+        machine: elfArm,
+        segments: [(ptLoad, 0x4000), (ptDynamic, 4)],
+      );
+
+      expect(artifactProblem(bytes, _androidArm), isNull);
+    });
+
+    test('fails 4 KB alignment, and a 64-bit file for the 32-bit target', () {
+      expect(
+        artifactProblem(
+          elf32Library(machine: elfArm, segments: [(ptLoad, 0x1000)]),
+          _androidArm,
+        ),
+        contains('0x4000'),
+      );
+      expect(
+        artifactProblem(soundElf(machine: elfAarch64), _androidArm),
+        isNotNull,
       );
     });
   });

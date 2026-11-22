@@ -166,7 +166,16 @@ void main() {
         prefix: '/p',
         output: 'out.dylib',
       );
+      final intel = wrapperCompileArguments(
+        source: 'a.c',
+        includeDir: 'inc',
+        prefix: '/p',
+        output: 'out.dylib',
+        arch: 'x86_64',
+      );
 
+      expect(arguments.join(' '), contains('-arch arm64'));
+      expect(intel.join(' '), contains('-arch x86_64'));
       expect(
         arguments,
         containsAll([
@@ -208,18 +217,48 @@ void main() {
   });
 
   group('recipeTarget', () {
-    test('builds macOS and Android on arm64 only', () {
+    test('builds macOS on arm64 and x86_64, Android on arm64, armv7 and '
+        'x86_64', () {
       expect(recipeTarget(OS.macOS, Architecture.arm64), 'macos-arm64');
+      expect(recipeTarget(OS.macOS, Architecture.x64), 'macos-x64');
       expect(recipeTarget(OS.android, Architecture.arm64), 'android-arm64');
-      for (final architecture in [
-        Architecture.x64,
-        Architecture.arm,
-        Architecture.ia32,
-      ]) {
-        expect(recipeTarget(OS.android, architecture), isNull);
-      }
-      expect(recipeTarget(OS.macOS, Architecture.x64), isNull);
+      expect(recipeTarget(OS.android, Architecture.arm), 'android-arm');
+      expect(recipeTarget(OS.android, Architecture.x64), 'android-x64');
+      expect(recipeTarget(OS.android, Architecture.ia32), isNull);
       expect(recipeTarget(OS.iOS, Architecture.arm64), isNull);
+    });
+
+    test('names each target by the key both native packages publish '
+        'under', () {
+      expect(
+        {
+          for (final recipe in [
+            'macos-arm64',
+            'macos-x64',
+            'ios-arm64',
+            'ios-sim-arm64',
+            'android-arm64',
+            'android-arm',
+            'android-x64',
+          ])
+            recipe: manifestKeyOf(recipe),
+        },
+        {
+          'macos-arm64': 'macos-arm64',
+          'macos-x64': 'macos-x64',
+          'ios-arm64': 'ios-arm64',
+          'ios-sim-arm64': 'ios-arm64-simulator',
+          'android-arm64': 'android-arm64',
+          'android-arm': 'android-arm',
+          'android-x64': 'android-x64',
+        },
+      );
+    });
+
+    test('links Android with the NDK clang of the target', () {
+      expect(androidClangTriple(Architecture.arm64), 'aarch64-linux-android');
+      expect(androidClangTriple(Architecture.arm), 'armv7a-linux-androideabi');
+      expect(androidClangTriple(Architecture.x64), 'x86_64-linux-android');
     });
 
     test('builds iOS arm64 for the device and for the simulator', () {

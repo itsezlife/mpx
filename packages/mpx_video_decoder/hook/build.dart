@@ -2,13 +2,20 @@
 /// `lib/src/native/mpx_video_symbols.dart` binds to, plus the FFmpeg shared
 /// libraries it links.
 ///
-/// macOS arm64, iOS arm64 (device and simulator) and Android arm64-v8a: the
-/// wrapper is compiled (the system C compiler, Xcode's clang for iOS, or the
-/// NDK clang) against the FFmpeg + libvpx prefix built by
-/// `native/recipe/build.sh` for that target (or the one `MPX_VIDEO_FFMPEG_DIR`
-/// names). With no prefix, or on another target, no asset is emitted with a
-/// warning and the probe reports `missingLibrary`; prebuilt delivery is
-/// not built yet.
+/// Targets: macOS arm64 and x86_64, iOS arm64 (device and simulator), Android
+/// arm64-v8a, armeabi-v7a and x86_64. In order (`planVideoDelivery`):
+///
+/// 1. the FFmpeg build the app names in its pubspec (`hooks: user_defines:
+///    mpx_video_decoder: ffmpeg_build: DIR`), compiling the wrapper against
+///    it: a developer's own build, so it can be tried;
+/// 2. the published prebuilt (`native/prebuilts.json`), downloaded once into
+///    the hook's shared cache and verified by size and SHA-256, used only
+///    while its source hash matches these sources;
+/// 3. a recipe build in the package (`native/.build/<target>/prefix`, or
+///    `MPX_VIDEO_FFMPEG_DIR` where the hook sees the environment).
+///
+/// With none, no asset is emitted, the build warns, and the probe reports
+/// `missingLibrary`.
 library;
 
 import 'dart:io';
@@ -18,6 +25,7 @@ import 'package:hooks/hooks.dart';
 
 import 'src/android_ndk.dart';
 import 'src/ffmpeg_prefix.dart';
+import 'src/video_prebuilts.dart';
 import 'src/video_target.dart';
 import 'src/wrapper_compile.dart';
 
@@ -25,11 +33,16 @@ import 'src/wrapper_compile.dart';
 /// the library URI of the file whose `@Native` functions resolve against it.
 const _assetName = 'src/binding/ffi/mpx_video_symbols.dart';
 
-/// The NDK clang that targets arm64 Android at the app's API level.
-String ndkClang(CodeConfig code) => findAndroidNdk(
-  environment: Platform.environment,
-  hostOs: OS.current,
-).linker('aarch64-linux-android', code.android.targetNdkApi);
+/// The NDK clang that targets the app's Android architecture at its API
+/// level.
+String ndkClang(CodeConfig code) =>
+    findAndroidNdk(
+      environment: Platform.environment,
+      hostOs: OS.current,
+    ).linker(
+      androidClangTriple(code.targetArchitecture)!,
+      code.android.targetNdkApi,
+    );
 
 void main(List<String> args) async {
   await build(args, (input, output) async {
@@ -45,62 +58,167 @@ void main(List<String> args) async {
     if (target == null) {
       stderr.writeln(
         'warning: mpx_video_decoder has no native library for '
-        '${code.targetOS} ${code.targetArchitecture}: only macOS arm64, iOS '
-        'arm64 (device and simulator) and Android arm64-v8a are built so far '
-        '(there is no x86_64 simulator build). No asset is bundled.',
+        '${code.targetOS} ${code.targetArchitecture} (built: macOS arm64 '
+        'and x86_64, iOS arm64 device and simulator, Android arm64-v8a, '
+        'armeabi-v7a and x86_64). No asset is bundled.',
       );
       return;
     }
-    final android = code.targetOS == OS.android;
 
     final native = Directory.fromUri(input.packageRoot.resolve('native/'));
     final userBuild = _directory(input.userDefines.path(ffmpegBuildDefine));
-    final prefix = findFfmpegPrefix(
+    final userPrefix = userBuild == null
+        ? null
+        : findFfmpegPrefix(
+            native: Directory('${native.path}/.none'),
+            target: target,
+            environment: const {},
+            userBuild: userBuild,
+          );
+    final localPrefix = findFfmpegPrefix(
       native: native,
       target: target,
       environment: Platform.environment,
-      userBuild: userBuild,
     );
-    if (prefix == null) {
-      // Watch the file the recipe will create, so that building it re-runs
-      // the hook (a hook with no dependencies is never re-run). The
-      // environment variable is not trackable: `flutter clean` after
-      // changing it.
-      output.dependencies.addAll([
-        native.uri.resolve(
-          '.build/$target/prefix/include/libavcodec/avcodec.h',
-        ),
-        ?userBuild?.resolve('$target/prefix/include/libavcodec/avcodec.h'),
-      ]);
-      stderr.writeln(
-        'warning: mpx_video_decoder found no FFmpeg build for $target, so no '
-        'native video library is bundled. Build it with '
-        '${recipeCommandFor(target)}, or name a recipe build directory '
-        '(<dir>/$target/prefix) in the app pubspec under hooks: '
-        'user_defines: mpx_video_decoder: $ffmpegBuildDefine. (Prebuilt '
-        'delivery is not available yet.)',
+    final manifestFile = File('${native.path}/prebuilts.json');
+    output.dependencies.addAll([
+      manifestFile.uri,
+      for (final path in videoSourceFiles) native.uri.resolve(path),
+      // Watch the files a recipe build creates, so that building one re-runs
+      // the hook (the environment variable is not trackable: `flutter clean`
+      // after changing it).
+      native.uri.resolve('.build/$target/prefix/include/libavcodec/avcodec.h'),
+      ?userBuild?.resolve('$target/prefix/include/libavcodec/avcodec.h'),
+    ]);
+    final manifest = _readManifest(manifestFile);
+    final List<VideoPrebuiltFile>? published;
+    if (manifest == null) {
+      published = null;
+    } else if (manifest.sourceHash != videoSourceHash(native)) {
+      stdout.writeln(
+        'mpx_video_decoder: the prebuilts were built from other sources '
+        'than these; not used.',
       );
-      return;
+      published = null;
+    } else {
+      published = manifest.filesFor(manifestKeyOf(target));
     }
 
-    final libraries = bundledLibraries(prefix, os: code.targetOS);
-    // Every input as a file: a directory would miss an edit to a file in it.
-    output.dependencies
-      ..add(native.uri.resolve('src/mpx_video.c'))
-      ..add(native.uri.resolve('include/mpx_video.h'))
-      ..addAll([for (final file in libraries.values) file.uri]);
+    final steps = planVideoDelivery(
+      userPrefix: userPrefix != null,
+      prebuilt: published != null,
+      localPrefix: localPrefix != null,
+    );
+    for (final step in steps) {
+      final bundled = switch (step) {
+        VideoDelivery.userPrefix => await _compileAgainst(
+          input,
+          output,
+          native,
+          userPrefix!,
+        ),
+        VideoDelivery.localPrefix => await _compileAgainst(
+          input,
+          output,
+          native,
+          localPrefix!,
+        ),
+        VideoDelivery.prebuilt => await _usePrebuilt(
+          input,
+          output,
+          manifest!,
+          published!,
+        ),
+      };
+      if (bundled) return;
+    }
+    stderr.writeln(
+      'warning: mpx_video_decoder has no native video library for $target: '
+      'no prebuilt for these sources and target, and no FFmpeg build. '
+      'Build one with ${recipeCommandFor(target)}, or name a recipe build '
+      'directory (<dir>/$target/prefix) in the app pubspec under hooks: '
+      'user_defines: mpx_video_decoder: $ffmpegBuildDefine. No asset is '
+      'bundled; video keeps its placeholder.',
+    );
+  });
+}
 
-    final out = input.outputDirectory;
-    final File wrapper;
-    if (android) {
+/// The manifest, or null when it is absent or unreadable: a broken
+/// manifest is a warning, never a failed build.
+VideoPrebuiltManifest? _readManifest(File file) {
+  if (!file.existsSync()) return null;
+  try {
+    return VideoPrebuiltManifest.parse(file.readAsStringSync());
+  } on FormatException catch (e) {
+    stderr.writeln('warning: mpx_video_decoder ignores prebuilts.json: $e');
+    return null;
+  }
+}
+
+/// Bundles the published [files], fetched into the shared cache. False when
+/// they cannot be had (offline, a changed file): the next way is tried.
+Future<bool> _usePrebuilt(
+  BuildInput input,
+  BuildOutputBuilder output,
+  VideoPrebuiltManifest manifest,
+  List<VideoPrebuiltFile> files,
+) async {
+  final result = await fetchVideoPrebuilts(
+    files: files,
+    urlOf: manifest.urlOf,
+    // Outlives this build and is shared by every app of the machine, so a
+    // library is downloaded once.
+    cacheDir: Directory.fromUri(
+      input.outputDirectoryShared.resolve('mpx_video_prebuilts/'),
+    ),
+  );
+  switch (result) {
+    case VideoPrebuiltsUnavailable(:final reason):
+      stdout.writeln('mpx_video_decoder: prebuilt not used: $reason');
+      return false;
+    case VideoPrebuiltsReady(:final files):
+      for (final MapEntry(key: name, value: file) in files.entries) {
+        output.assets.code.add(
+          CodeAsset(
+            package: input.packageName,
+            name: name.startsWith('libmpx_video.')
+                ? _assetName
+                : 'ffmpeg/$name',
+            linkMode: DynamicLoadingBundled(),
+            file: file.uri,
+          ),
+        );
+      }
+      return true;
+  }
+}
+
+/// Compiles the wrapper against [prefix] and bundles it with the prefix's
+/// FFmpeg libraries. False when the toolchain is missing (the NDK): the
+/// next way is tried.
+Future<bool> _compileAgainst(
+  BuildInput input,
+  BuildOutputBuilder output,
+  Directory native,
+  Directory prefix,
+) async {
+  final code = input.config.code;
+  final libraries = bundledLibraries(prefix, os: code.targetOS);
+  // Every input as a file: a directory would miss an edit to a file in it.
+  output.dependencies.addAll([for (final file in libraries.values) file.uri]);
+
+  final out = input.outputDirectory;
+  final File wrapper;
+  switch (code.targetOS) {
+    case OS.android:
       final String clang;
       try {
         clang = ndkClang(code);
       } on AndroidNdkUnavailable catch (e) {
-        // Not a failed build: an app without the NDK cannot play video, which
-        // the probe reports, and the message says what to install.
-        stderr.writeln('warning: $e No asset is bundled.');
-        return;
+        // Not a failed build: an app without the NDK cannot compile the
+        // wrapper, which the message says how to fix.
+        stderr.writeln('warning: $e');
+        return false;
       }
       wrapper = await compileAndroidWrapper(
         native: native,
@@ -109,7 +227,7 @@ void main(List<String> args) async {
         output: File.fromUri(out.resolve('libmpx_video.so')),
         compiler: clang,
       );
-    } else if (ios) {
+    case OS.iOS:
       wrapper = await compileIosWrapper(
         native: native,
         prefix: prefix,
@@ -117,37 +235,38 @@ void main(List<String> args) async {
         sdk: code.iOS.targetSdk,
         minVersion: code.iOS.targetVersion,
       );
-    } else {
+    default:
       wrapper = await compileWrapper(
         native: native,
         prefix: prefix,
         output: File.fromUri(out.resolve('libmpx_video.dylib')),
+        arch: code.targetArchitecture == Architecture.x64 ? 'x86_64' : 'arm64',
       );
-    }
+  }
+  output.assets.code.add(
+    CodeAsset(
+      package: input.packageName,
+      name: _assetName,
+      linkMode: DynamicLoadingBundled(),
+      file: wrapper.uri,
+    ),
+  );
+
+  // The FFmpeg libraries are bundled under the names the wrapper's install
+  // records (macOS) or sonames (Android) ask for. Nothing binds to them from
+  // Dart.
+  for (final MapEntry(key: name, value: file) in libraries.entries) {
+    final copy = await file.copy(File.fromUri(out.resolve(name)).path);
     output.assets.code.add(
       CodeAsset(
         package: input.packageName,
-        name: _assetName,
+        name: 'ffmpeg/$name',
         linkMode: DynamicLoadingBundled(),
-        file: wrapper.uri,
+        file: copy.uri,
       ),
     );
-
-    // The FFmpeg libraries are bundled under the names the wrapper's install
-    // records (macOS) or sonames (Android) ask for. Nothing binds
-    // to them from Dart.
-    for (final MapEntry(key: name, value: file) in libraries.entries) {
-      final copy = await file.copy(File.fromUri(out.resolve(name)).path);
-      output.assets.code.add(
-        CodeAsset(
-          package: input.packageName,
-          name: 'ffmpeg/$name',
-          linkMode: DynamicLoadingBundled(),
-          file: copy.uri,
-        ),
-      );
-    }
-  });
+  }
+  return true;
 }
 
 // [uri] as a directory: the user define may be written without a trailing

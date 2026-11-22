@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Prebuilt libraries are published (`native/prebuilts.json`). Android
+  armeabi-v7a (`android-arm`) is a target, and the header check reads ELF32.
+- `native/tool/build_prebuilts.dart` builds the libraries this host can, as
+  the hook builds them.
 - `LottieDecoder` releases its fetched content once it is read.
 - The Lottie paintables say their picture size (`pictureSize`).
 - `FrameCache.evict(bytes)`: frees files least recently used first, never one

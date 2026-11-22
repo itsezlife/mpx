@@ -41,6 +41,7 @@ void main() {
         const LottieNativeTarget(OS.android, Architecture.arm64),
         'android-arm64',
       ),
+      (const LottieNativeTarget(OS.android, Architecture.arm), 'android-arm'),
       (const LottieNativeTarget(OS.android, Architecture.x64), 'android-x64'),
       (const LottieNativeTarget(OS.linux, Architecture.x64), 'linux-x64'),
       (const LottieNativeTarget(OS.linux, Architecture.arm64), 'linux-arm64'),
@@ -134,10 +135,10 @@ void main() {
     }
 
     test('is null where no library ships', () {
-      // Android 32-bit ARM is not supported; neither is an iOS target
+      // Android 32-bit x86 is not supported; neither is an iOS target
       // without an SDK, nor an architecture with no key.
       expect(
-        const LottieNativeTarget(OS.android, Architecture.arm).rustTriple,
+        const LottieNativeTarget(OS.android, Architecture.ia32).rustTriple,
         isNull,
       );
       expect(
@@ -197,7 +198,7 @@ void main() {
       'Windows from Windows': (windows, OS.windows, Architecture.x64, true),
       'Windows from Linux': (windows, OS.linux, Architecture.x64, false),
       'no triple': (
-        const LottieNativeTarget(OS.android, Architecture.arm),
+        const LottieNativeTarget(OS.android, Architecture.ia32),
         OS.macOS,
         Architecture.arm64,
         false,

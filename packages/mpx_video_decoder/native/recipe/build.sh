@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Reproducible FFmpeg + libvpx build for the video decoder.
 #
-#   [TARGET=macos-arm64|android-arm64|ios-arm64|ios-sim-arm64] native/recipe/build.sh \
+#   [TARGET=macos-arm64|macos-x64|android-arm64|android-arm|android-x64|ios-arm64|ios-sim-arm64] \
+#       native/recipe/build.sh \
 #       [fetch|libvpx|ffmpeg|probe|check|verify|all]   (default: all)
 #
 # macos-arm64 (the default) builds natively on an arm64 Mac. android-arm64
@@ -18,10 +19,11 @@
 # dl/, sources in src/, the install prefix in prefix/, the probe in probe.
 # Sources are pinned in manifest.env and verified by SHA-256 before use.
 #
-# x86_64 is not built here: libvpx and FFmpeg need nasm (or yasm) for their
-# assembly there, and none is installed. To build x86_64 install nasm, or pass
-# --disable-x86asm to FFmpeg and --disable-... asm via --target=generic-gnu to
-# libvpx (slower decoding).
+# The x86_64 targets (macos-x64 for Intel Macs, android-x64 for emulators)
+# build without assembly: libvpx as generic-gnu and FFmpeg with
+# --disable-x86asm, so no nasm is needed. Decoding there is plain C and
+# slower, which suits an emulator and an older Mac. android-arm (armeabi-v7a)
+# keeps NEON, which every armv7 Android device the NDK supports has.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,7 +51,16 @@ case "$TARGET" in
     LIBVPX_TARGET=arm64-darwin20-gcc
     LIBVPX_EXTRA=()
     ;;
-  android-arm64)
+  macos-x64)
+    [ "$(uname -s)" = Darwin ] || { echo "run on a Mac" >&2; exit 2; }
+    export MACOSX_DEPLOYMENT_TARGET="$MIN_MACOS"
+    # Cross-compiled from either Mac; generic C (no nasm).
+    export CC="clang -arch x86_64" CXX="clang++ -arch x86_64"
+    export LD="$CC" AS="$CC" AR="$(xcrun --find ar)" STRIP="$(xcrun --find strip)"
+    LIBVPX_TARGET=generic-gnu
+    LIBVPX_EXTRA=()
+    ;;
+  android-arm64|android-arm|android-x64)
     [ "$(uname -s)" = Darwin ] || { echo "the Android build is set up for a Mac host" >&2; exit 2; }
     NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-}}"
     if [ -z "$NDK" ]; then
@@ -57,17 +68,28 @@ case "$TARGET" in
       NDK="$(ls -d "$SDK"/ndk/[0-9]* 2>/dev/null | sort -V | tail -n1 || true)"
     fi
     TOOLS="$NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin"
-    [ -x "$TOOLS/aarch64-linux-android$ANDROID_API-clang" ] || {
+    case "$TARGET" in
+      android-arm64) ANDROID_TRIPLE=aarch64-linux-android ;;
+      android-arm) ANDROID_TRIPLE=armv7a-linux-androideabi ;;
+      android-x64) ANDROID_TRIPLE=x86_64-linux-android ;;
+    esac
+    [ -x "$TOOLS/$ANDROID_TRIPLE$ANDROID_API-clang" ] || {
       echo "no Android NDK clang for API $ANDROID_API under '${NDK:-<none>}'; set ANDROID_NDK_HOME" >&2
       exit 2
     }
-    LIBVPX_TARGET=arm64-android-gcc
-    # NEON is part of arm64, so no runtime detection (which on Android would
-    # need the NDK's cpu-features source).
+    case "$TARGET" in
+      android-arm64) LIBVPX_TARGET=arm64-android-gcc ;;
+      android-arm) LIBVPX_TARGET=armv7-android-gcc ;;
+      # No nasm: plain C, cross-compiled with the NDK's clang.
+      android-x64) LIBVPX_TARGET=generic-gnu ;;
+    esac
+    # NEON is part of arm64 and assumed on armv7 (every device the NDK still
+    # supports has it), so no runtime detection (which on Android would need
+    # the NDK's cpu-features source).
     LIBVPX_EXTRA=(--disable-runtime-cpu-detect)
     # libvpx's configure reads the toolchain from these variables.
-    export CC="$TOOLS/aarch64-linux-android$ANDROID_API-clang"
-    export CXX="$TOOLS/aarch64-linux-android$ANDROID_API-clang++"
+    export CC="$TOOLS/$ANDROID_TRIPLE$ANDROID_API-clang"
+    export CXX="$TOOLS/$ANDROID_TRIPLE$ANDROID_API-clang++"
     export AR="$TOOLS/llvm-ar" AS="$CC" LD="$CC" NM="$TOOLS/llvm-nm"
     export RANLIB="$TOOLS/llvm-ranlib" STRIP="$TOOLS/llvm-strip"
     ;;
@@ -110,7 +132,7 @@ WRAP
     export CC="$BUILD/bin/cc" CXX="$BUILD/bin/cxx" LD="$BUILD/bin/cxx" AS="$BUILD/bin/cc"
     export AR="$(xcrun --find ar)" STRIP="$(xcrun --find strip)"
     ;;
-  *) echo "unsupported TARGET $TARGET (macos-arm64, android-arm64, ios-arm64, ios-sim-arm64)" >&2; exit 2 ;;
+  *) echo "unsupported TARGET $TARGET (macos-arm64, macos-x64, android-arm64, android-arm, android-x64, ios-arm64, ios-sim-arm64)" >&2; exit 2 ;;
 esac
 
 fetch_one() { # url sha256 file
@@ -183,13 +205,27 @@ case "$TARGET" in
       # dylibs to longer paths, which install_name_tool refuses without room.
       --extra-ldflags="-L$PREFIX/lib -mmacosx-version-min=$MIN_MACOS -Wl,-headerpad_max_install_names")
     ;;
-  android-arm64)
+  macos-x64)
+    FFMPEG_FLAGS=("${FFMPEG_COMMON[@]}"
+      --enable-cross-compile --arch=x86_64 --target-os=darwin --disable-x86asm
+      --cc="$CC" --cxx="$CXX"
+      --install-name-dir=@rpath
+      --extra-cflags="-I$PREFIX/include -mmacosx-version-min=$MIN_MACOS"
+      --extra-ldflags="-L$PREFIX/lib -mmacosx-version-min=$MIN_MACOS -Wl,-headerpad_max_install_names")
+    export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig"
+    ;;
+  android-arm64|android-arm|android-x64)
     # --enable-jni and --enable-mediacodec stay off (autodetect is off and
     # neither is named): decoding is software, and JNI would tie the library to
     # a JavaVM. The Android target builds unversioned libavcodec.so files with
     # the same string as the soname, which is what the loader matches.
+    case "$TARGET" in
+      android-arm64) ANDROID_ARCH=(--arch=aarch64 --enable-neon) ;;
+      android-arm) ANDROID_ARCH=(--arch=arm --cpu=armv7-a --enable-neon) ;;
+      android-x64) ANDROID_ARCH=(--arch=x86_64 --disable-x86asm) ;;
+    esac
     FFMPEG_FLAGS=("${FFMPEG_COMMON[@]}"
-      --enable-cross-compile --arch=aarch64 --target-os=android --enable-neon
+      --enable-cross-compile --target-os=android "${ANDROID_ARCH[@]}"
       --cc="$CC" --cxx="$CXX" --ar="$AR" --nm="$NM" --ranlib="$RANLIB" --strip="$STRIP"
       --extra-cflags="-I$PREFIX/include"
       --extra-ldflags="-L$PREFIX/lib $ANDROID_LDFLAGS")
@@ -222,10 +258,10 @@ do_ffmpeg() {
   # Stripped copies are what we size and report.
   rm -rf "$BUILD/stripped"; mkdir -p "$BUILD/stripped"
   local pattern='lib{avcodec,avformat,avutil,swscale}.*.*.*.dylib'
-  [ "$TARGET" = android-arm64 ] && pattern='lib{avcodec,avformat,avutil,swscale}.so'
+  case "$TARGET" in android-*) pattern='lib{avcodec,avformat,avutil,swscale}.so' ;; esac
   for f in $(eval echo "$PREFIX/lib/$pattern"); do
     cp "$f" "$BUILD/stripped/"
-    if [ "$TARGET" = android-arm64 ]; then
+    if [[ "$TARGET" == android-* ]]; then
       "$STRIP" --strip-unneeded "$BUILD/stripped/$(basename "$f")"
     else
       strip -x "$BUILD/stripped/$(basename "$f")"
@@ -265,7 +301,7 @@ do_check() {
 
 # Android: what the host can say about the ELF files without running them.
 do_verify() {
-  [ "$TARGET" = android-arm64 ] || { echo "verify is for android-arm64" >&2; exit 2; }
+  [[ "$TARGET" == android-* ]] || { echo "verify is for the android targets" >&2; exit 2; }
   local readelf="$TOOLS/llvm-readelf" fail=0 f
   for f in "$PREFIX"/lib/lib{avcodec,avformat,avutil,swscale}.so; do
     echo "== $(basename "$f") ($(wc -c <"$f") bytes, $(wc -c <"$BUILD/stripped/$(basename "$f")") stripped)"

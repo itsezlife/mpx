@@ -34,8 +34,13 @@ String? artifactProblem(Uint8List bytes, LottieNativeTarget target) =>
 int? _elfMachine(Architecture arch) => switch (arch) {
   Architecture.arm64 => 0xb7,
   Architecture.x64 => 0x3e,
+  Architecture.arm => 0x28,
   _ => null,
 };
+
+// 32-bit targets (armv7) are ELF32: other field offsets, same checks.
+bool _is32Bit(Architecture arch) =>
+    arch == Architecture.arm || arch == Architecture.ia32;
 const _ptLoad = 1;
 const _sixteenKb = 0x4000;
 
@@ -44,16 +49,18 @@ String? _elfProblem(
   Architecture arch, {
   required bool pageAligned,
 }) {
-  const headerSize = 64;
+  final elf32 = _is32Bit(arch);
+  final headerSize = elf32 ? 52 : 64;
   if (bytes.length < headerSize ||
       bytes[0] != 0x7f ||
       bytes[1] != 0x45 || // E
       bytes[2] != 0x4c || // L
       bytes[3] != 0x46 || // F
-      bytes[4] != 2 || // 64-bit
+      bytes[4] != (elf32 ? 1 : 2) || // 32- or 64-bit
       bytes[5] != 1) {
     // little endian
-    return 'the library is not a little-endian ELF64 file';
+    return 'the library is not a little-endian ${elf32 ? 'ELF32' : 'ELF64'} '
+        'file';
   }
   final data = ByteData.sublistView(bytes);
   final machine = data.getUint16(0x12, Endian.little);
@@ -67,18 +74,22 @@ String? _elfProblem(
   // is loaded wherever its linker put it.
   if (!pageAligned) return null;
 
-  final tableOffset = data.getUint64(0x20, Endian.little);
-  final entrySize = data.getUint16(0x36, Endian.little);
-  final count = data.getUint16(0x38, Endian.little);
+  final tableOffset = elf32
+      ? data.getUint32(0x1c, Endian.little)
+      : data.getUint64(0x20, Endian.little);
+  final entrySize = data.getUint16(elf32 ? 0x2a : 0x36, Endian.little);
+  final count = data.getUint16(elf32 ? 0x2c : 0x38, Endian.little);
   var loads = 0;
   for (var i = 0; i < count; i++) {
     final at = tableOffset + entrySize * i;
-    if (entrySize < 0x38 || at + entrySize > bytes.length) {
+    if (entrySize < (elf32 ? 0x20 : 0x38) || at + entrySize > bytes.length) {
       return 'the ELF program header table is truncated';
     }
     if (data.getUint32(at, Endian.little) != _ptLoad) continue;
     loads++;
-    final align = data.getUint64(at + 0x30, Endian.little);
+    final align = elf32
+        ? data.getUint32(at + 0x1c, Endian.little)
+        : data.getUint64(at + 0x30, Endian.little);
     if (align < _sixteenKb) {
       return 'a loadable segment is aligned to 0x${align.toRadixString(16)}, '
           'below 0x4000: Google Play requires 16 KB page alignment '

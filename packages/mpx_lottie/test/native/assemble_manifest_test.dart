@@ -176,7 +176,10 @@ void main() {
       final code = await run(['--require-all']);
 
       expect(code, 0, reason: out.toString());
-      expect(manifestJson()['artifacts'], hasLength(10));
+      expect(
+        manifestJson()['artifacts'],
+        hasLength(LottieNativeTarget.keys.length),
+      );
     });
 
     test('fails naming the one key that is missing', () async {

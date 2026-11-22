@@ -15,28 +15,9 @@ dependencies:
       path: packages/mpx_video_decoder
 ```
 
-The hook compiles a small C wrapper against an FFmpeg + libvpx prefix and
-bundles the FFmpeg libraries. Build the prefix once per target with
-`native/recipe/build.sh` (`TARGET=ios-arm64` or `android-arm64`; macOS arm64
-by default). It lands in the recipe's `native/.build/<target>/prefix`.
-
-An app that takes this package from git builds against a checkout that has
-no such directory, and the hook runner passes a hook none of your
-environment but `PATH`, `HOME` and the NDK's variables. So name the recipe's
-build directory in the app's pubspec (the workspace root's, in a pub
-workspace); a relative path is read from that pubspec's folder:
-
-```yaml
-hooks:
-  user_defines:
-    mpx_video_decoder:
-      ffmpeg_build: ../mpx/packages/mpx_video_decoder/native/.build
-```
-
-`MPX_VIDEO_FFMPEG_DIR` (one prefix) still works where the hook sees the
-environment. Without a prefix the build still succeeds, warns, and
-`NativeVideoBinding.probe()` reports the library as missing: video then has
-no decoder and its content keeps its placeholder.
+The build hook bundles a small C wrapper (`libmpx_video`) and the FFmpeg
+libraries it links. Nothing needs building: see "Native library delivery"
+below.
 
 ## Usage
 
@@ -71,6 +52,63 @@ At shutdown dispose the scheduler, then the engine.
 - macOS arm64, iOS arm64 and Android arm64-v8a.
 - Native names: `libmpx_video`, C symbols `mpx_video_*`.
 - Fakes and contract suites in `testing.dart`.
+
+## Native library delivery
+
+The hook takes the first of these that is there:
+
+1. **Your own FFmpeg build** (for working on the decoder). Build it with the
+   recipe (`TARGET=<target> native/recipe/build.sh`; targets `macos-arm64`,
+   `macos-x64`, `ios-arm64`, `ios-sim-arm64`, `android-arm64`, `android-arm`,
+   `android-x64`) and name the recipe's build directory in the app's pubspec
+   (the workspace root's, in a pub workspace). A relative path is read from
+   that pubspec's folder:
+
+   ```yaml
+   hooks:
+     user_defines:
+       mpx_video_decoder:
+         ffmpeg_build: ../mpx/packages/mpx_video_decoder/native/.build
+   ```
+
+2. **The prebuilt** named in `native/prebuilts.json`: release files of this
+   repository, pinned by size and SHA-256 and by the hash of the sources
+   they were built from (the wrapper and the recipe). The hook downloads
+   each file once into its shared cache and checks it before use. A
+   prebuilt for other sources (a changed wrapper or recipe) is not used.
+3. **A recipe build in the package itself** (`native/.build/<target>`, as in
+   a checkout of this repository), or `MPX_VIDEO_FFMPEG_DIR` where the hook
+   sees the environment. The Flutter tool's hook runner passes a hook only
+   `PATH`, `HOME` and the NDK's variables, which is why (1) is a user define.
+
+With none, the build succeeds and warns, and `NativeVideoBinding.probe()`
+reports `missingLibrary`: video has no decoder and keeps its placeholder.
+
+Prebuilt targets: macOS arm64 and x86_64; iOS arm64 (device and
+Apple-silicon simulator); Android arm64-v8a, armeabi-v7a and x86_64. The
+x86_64 builds are plain C (no assembly) and decode more slowly. The iOS
+x86_64 simulator, Linux and Windows have none.
+
+**Offline and CI.** The first build of a target downloads its files (about
+3.5 MB) from GitHub. Later builds, and every other app on the machine, use
+the shared cache. A CI cache of the Flutter tool's build directory keeps it
+offline after the first run. Without network and without a cache, name an
+FFmpeg build as in (1).
+
+### Licensing
+
+The FFmpeg libraries are LGPL 2.1 or later, built as shared libraries
+from the unmodified FFmpeg 9.0.2. The configure lines enable no GPL,
+nonfree or version-3 component, and the recipe refuses one. libvpx (BSD-3,
+with the WebM patent grant) is linked into libavcodec. The release beside
+the libraries holds the exact sources, the configure line of every target,
+the recipe and the toolchain versions, so the libraries can be rebuilt and
+replaced.
+
+An app that ships them takes on the LGPL's duties. It must say that it uses
+FFmpeg under the LGPL (an about screen or the store notes) and include the
+licence text. It must also let users replace the libraries: they are shared
+libraries, bundled as separate files.
 
 ## Docs
 

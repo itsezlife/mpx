@@ -1,0 +1,86 @@
+name: Natives
+
+# Builds the prebuilt native libraries of mpx_lottie and mpx_video_decoder
+# for every target and uploads them as one artifact, laid out as the release
+# takes them (ADR 0008). Publishing stays a maintainer step: create the
+# release `natives-<sha7>` from the artifact, then commit both
+# native/prebuilts.json files. Run by hand, from the commit whose sources
+# the binaries must match.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apple-android:
+    # One Mac builds every Apple and Android target of both packages: the
+    # recipe and the tools are written for a Mac host.
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.41.7
+          channel: stable
+          cache: true
+      - name: Rust targets
+        run: >
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+          aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+      - name: Android NDK
+        run: |
+          sdkmanager --install "ndk;28.2.13676358"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+      - run: flutter pub get
+      - name: FFmpeg + libvpx, every target
+        working-directory: packages/mpx_video_decoder
+        run: |
+          for t in macos-arm64 macos-x64 ios-arm64 ios-sim-arm64 \
+                   android-arm64 android-arm android-x64; do
+            TARGET=$t native/recipe/build.sh all
+            case $t in android-*|ios-*) TARGET=$t native/recipe/build.sh verify ;; esac
+          done
+      - name: Release files
+        env:
+          RELEASES: https://github.com/${{ github.repository }}/releases/download
+        run: |
+          mkdir -p "$RUNNER_TEMP/natives"
+          (cd packages/mpx_lottie && dart run native/tool/build_prebuilts.dart "$RUNNER_TEMP/natives")
+          (cd packages/mpx_video_decoder && dart run native/tool/build_prebuilts.dart "$RUNNER_TEMP/natives" --base-url "$RELEASES/natives-${GITHUB_SHA::7}/")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: natives-apple-android
+          path: ${{ runner.temp }}/natives
+
+  lottie-desktop:
+    # The Linux and Windows libraries of mpx_lottie: each built on its own
+    # host, as the hook's buildableOn says.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            keys: linux-x64
+          - os: ubuntu-24.04-arm
+            keys: linux-arm64
+          - os: windows-latest
+            keys: windows-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.41.7
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - working-directory: packages/mpx_lottie
+        run: dart run native/tool/build_prebuilts.dart "${{ runner.temp }}/natives" ${{ matrix.keys }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: natives-${{ matrix.keys }}
+          path: ${{ runner.temp }}/natives

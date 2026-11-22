@@ -25,6 +25,7 @@ List<String> wrapperCompileArguments({
   required String prefix,
   required String output,
   String? sysroot,
+  String arch = 'arm64',
 }) => [
   '-dynamiclib',
   '-std=c11',
@@ -34,7 +35,7 @@ List<String> wrapperCompileArguments({
   '-Werror',
   '-fvisibility=hidden',
   '-arch',
-  'arm64',
+  arch,
   '-mmacosx-version-min=11.0',
   if (sysroot != null) ...['-isysroot', sysroot],
   '-I$includeDir',
@@ -180,6 +181,7 @@ Future<File> compileWrapper({
   required File output,
   String compiler = 'cc',
   String? sysroot,
+  String arch = 'arm64',
 }) async => runCompiler(
   compiler,
   wrapperCompileArguments(
@@ -188,6 +190,7 @@ Future<File> compileWrapper({
     prefix: prefix.path,
     output: output.path,
     sysroot: sysroot ?? await macosSdkPath(),
+    arch: arch,
   ),
   output,
 );

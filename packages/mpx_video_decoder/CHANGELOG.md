@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Prebuilt libraries: the hook downloads the wrapper and FFmpeg for its
+  target from this repository's releases (`native/prebuilts.json`, pinned by
+  size, SHA-256 and the hash of the sources), into its shared cache. An app
+  needs no FFmpeg build of its own. The order is: an FFmpeg build the app
+  names (user define), then the prebuilt, then a recipe build in the
+  package.
+- More targets: macOS x86_64, Android armeabi-v7a and Android x86_64 (the
+  x86_64 builds are plain C, with no assembly).
 - The hook finds FFmpeg through the app's pubspec, as
   `hooks: user_defines: mpx_video_decoder: ffmpeg_build: <dir>` (laid out as
   the recipe's `.build`). Before this, an app that took the package from git

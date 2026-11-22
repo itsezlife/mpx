@@ -22,6 +22,7 @@ AndroidNdk _ndk() => findAndroidNdk(
       'llvm-ar',
       for (final api in [21, 24, 35]) ...[
         'aarch64-linux-android$api-clang',
+        'armv7a-linux-androideabi$api-clang',
         'x86_64-linux-android$api-clang',
       ],
     ],
@@ -58,6 +59,17 @@ void main() {
         '$_bin/x86_64-linux-android35-clang',
       );
       expect(env['CARGO_TARGET_X86_64_LINUX_ANDROID_AR'], '$_bin/llvm-ar');
+    });
+
+    test('links armv7 with the clang the NDK names armv7a, under the rust '
+        'triple\'s variable', () {
+      final env = _android(Architecture.arm);
+
+      expect(
+        env['CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER'],
+        '$_bin/armv7a-linux-androideabi24-clang',
+      );
+      expect(env['CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_AR'], '$_bin/llvm-ar');
     });
 
     test('always asks for 16 KB pages', () {
