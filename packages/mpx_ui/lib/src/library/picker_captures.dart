@@ -137,6 +137,16 @@ abstract final class PickerCaptureKeys {
     return _captureDescriptor(asset);
   }
 
+  /// A capture's still (a recording's first frame) as its descriptor, or
+  /// null for a library asset or a capture without one.
+  static MediaDescriptor? standInOf(LibraryAsset asset) {
+    if (!isCapture(asset)) return null;
+    return switch (_thumbnailOf(asset)) {
+      final still? => MediaDescriptor(key: still, kind: MediaKind.still),
+      null => null,
+    };
+  }
+
   /// The descriptor of [asset]'s original, with a library thumbnail of
   /// [thumbnailPixels] as its stand-in.
   static MediaDescriptor descriptorOf(

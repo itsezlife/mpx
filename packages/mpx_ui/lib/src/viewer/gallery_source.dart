@@ -26,6 +26,7 @@ final class GalleryItem {
     this.hasAudio = true,
     this.descriptor,
     this.downloadContext,
+    this.standIn,
   });
 
   /// Which media.
@@ -52,6 +53,12 @@ final class GalleryItem {
   /// tag. Null uses the policy's default.
   final AutoDownloadContext? downloadContext;
 
+  /// A sharp still of the item (a recording's first frame) the page draws
+  /// under its picture until that picture, or a player's first frame,
+  /// shows: a page whose player was let go never shows black while a new
+  /// one starts. Null for none (the descriptor's own thumbnail stands in).
+  final MediaDescriptor? standIn;
+
   @override
   bool operator ==(Object other) =>
       other is GalleryItem &&
@@ -60,11 +67,19 @@ final class GalleryItem {
       other.size == size &&
       other.hasAudio == hasAudio &&
       other.descriptor == descriptor &&
-      other.downloadContext == downloadContext;
+      other.downloadContext == downloadContext &&
+      other.standIn == standIn;
 
   @override
-  int get hashCode =>
-      Object.hash(key, kind, size, hasAudio, descriptor, downloadContext);
+  int get hashCode => Object.hash(
+    key,
+    kind,
+    size,
+    hasAudio,
+    descriptor,
+    downloadContext,
+    standIn,
+  );
 
   @override
   String toString() => 'GalleryItem($key, ${kind.name}, $size)';

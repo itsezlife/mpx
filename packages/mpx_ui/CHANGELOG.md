@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `GalleryItem.standIn`: a sharp still (a recording's first frame) a viewer
+  page draws under its picture when it has no frame of its own to stand in,
+  so paging back to a video whose player was let go never shows black while
+  a new one starts. A picker's captures carry their poster
+  (`PickerCaptureKeys.standInOf`).
 - Follows mpx_core's rename: every `ContentView` here is an `AssetView`.
 - `ViewerBackdropScope` / `ViewerBackdropZoom`: a viewer with no
   `onBackdropScale` of its own reports its backdrop scale to the scope

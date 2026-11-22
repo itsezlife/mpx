@@ -67,6 +67,21 @@ void main() {
       expect(PickerCaptureKeys.descriptorOf(video.asset).kind, MediaKind.video);
     });
 
+    test("a recording's first frame is its viewer page's stand-in; a "
+        'library asset, or a capture without one, has none', () {
+      final poster = MediaKey$Local('00000000-0000-4000-8000-0000000000aa');
+      final video = PickerCapture(
+        key: _capture(5).key,
+        kind: LibraryAssetKind.video,
+        thumbnail: poster,
+      );
+      final standIn = PickerCaptureKeys.standInOf(video.asset)!;
+      expect(standIn.key, poster);
+      expect(standIn.kind, MediaKind.still);
+      expect(PickerCaptureKeys.standInOf(_capture(3).asset), isNull);
+      expect(PickerCaptureKeys.standInOf(FakeMediaLibrary.assetAt(0)), isNull);
+    });
+
     test('a capture describes itself as what it is', () {
       final video = _capture(2, kind: LibraryAssetKind.video);
       final descriptor = PickerCaptureKeys.descriptorOf(video.asset);

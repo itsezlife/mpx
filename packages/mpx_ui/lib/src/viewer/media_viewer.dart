@@ -1770,8 +1770,9 @@ class MediaViewerState extends State<MediaViewer>
   }) {
     final box = _boxOf(size);
     _know(item);
-    final picture = _OriginContent(
-      frame: _originFrame(index),
+    final frame = _originFrame(index);
+    Widget picture = _OriginContent(
+      frame: frame,
       originFit: widget.bridge?.originOf(index)?.fit ?? BoxFit.cover,
       content: item.key,
       scope: widget.scope,
@@ -1779,6 +1780,27 @@ class MediaViewerState extends State<MediaViewer>
       downloadContext: item.downloadContext,
       requestsDownload: _requestsDownload(index, item),
     );
+    // With no frame of its own to stand in (the page left long ago, its
+    // origin not on screen), the item's sharp still lies under the picture,
+    // so a new player's start is never black.
+    if (item.standIn case final still? when frame == null) {
+      picture = Stack(
+        fit: StackFit.expand,
+        children: [
+          AssetView(
+            content: still.key,
+            scope: widget.scope,
+            preset: AssetPresets.square(
+              extent: math.max(box.width, box.height),
+              devicePixelRatio:
+                  MediaQuery.maybeDevicePixelRatioOf(context) ?? 1,
+              profile: const AssetProfile(fit: AssetFit.cover),
+            ),
+          ),
+          picture,
+        ],
+      );
+    }
     return FittedBox(
       fit: fit,
       clipBehavior: Clip.hardEdge,
@@ -1807,7 +1829,10 @@ class MediaViewerState extends State<MediaViewer>
 
   // Tells the cache what the host knows about [item] before a page of it
   // attaches: its preview and thumbnail show though the cache never saw it.
-  void _know(GalleryItem item) => _known.tell(_cache, item.descriptor);
+  void _know(GalleryItem item) {
+    _known.tell(_cache, item.descriptor);
+    _known.tell(_cache, item.standIn);
+  }
 
   // Whether the page of [item] at [index] asks for its content whatever the
   // auto-download policy says: the page shown, which the user opened or

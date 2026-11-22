@@ -172,6 +172,54 @@ void main() {
     });
   });
 
+  group('a stand-in still', () {
+    const still = MediaKey.remote('still-0');
+
+    testWidgets('lies under a video page with no frame of its own until the '
+        "player's first frame, so a page coming back is never black", (
+      tester,
+    ) async {
+      final harness = ViewerHarness(
+        items: [
+          GalleryItem(
+            videoKey(0),
+            kind: GalleryMediaKind.video,
+            size: const Size(1200, 900),
+            standIn: const MediaDescriptor(key: still, kind: MediaKind.still),
+          ),
+        ],
+        videoDuration: const Duration(seconds: 10),
+        autoFirstFrame: false,
+      );
+      await harness.pump(tester);
+      final standIn = find.byWidgetPredicate(
+        (w) => w is AssetView && w.content == still,
+      );
+      expect(standIn, findsOneWidget);
+      expect(_playerShows(tester), isFalse);
+      // The cache was told the still, so its key resolves.
+      expect(harness.producer.known.map((d) => d.key), contains(still));
+      harness.engine(0).renderFirstFrame();
+      await tester.pump();
+      // Playing, it moves past its first frame and shows over the still.
+      harness.engine(0).advance(const Duration(milliseconds: 100));
+      await _settle(tester);
+      expect(_playerShows(tester), isTrue);
+    });
+
+    testWidgets('an item without one draws no extra picture', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 10),
+      );
+      await harness.pump(tester);
+      expect(
+        find.byWidgetPredicate((w) => w is AssetView && w.content == still),
+        findsNothing,
+      );
+    });
+  });
+
   group("a picker's videos", () {
     final picker = ViewerPolicy.$Android.copyWith(
       video: PickerViewer.videoRules(ViewerPolicy.$Android.video),

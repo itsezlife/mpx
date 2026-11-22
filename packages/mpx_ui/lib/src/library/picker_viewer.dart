@@ -83,6 +83,9 @@ final class LibraryGallerySource extends ChangeNotifier
         asset,
         thumbnailPixels: thumbnailPixels,
       ),
+      // A capture's own still (a recording's first frame): a capture has
+      // no library thumbnail to stand in while its player starts.
+      standIn: PickerCaptureKeys.standInOf(asset),
     );
   }
 
