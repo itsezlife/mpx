@@ -41,13 +41,18 @@ const _profile = AssetProfile();
 
 /// A scope over a pipeline that decodes with the engine codecs.
 final class _Stack {
-  _Stack(this.previews, {bool autoFetch = true, Decoder? vectors})
-    : fetcher = FakeFetcher(autoRespond: autoFetch) {
+  _Stack(
+    this.previews, {
+    bool autoFetch = true,
+    Decoder? vectors,
+    Decoder? vectorImages,
+  }) : fetcher = FakeFetcher(autoRespond: autoFetch) {
     pipeline = AssetPipeline(
       fetcher: fetcher,
       decoders: DecoderRegistry()
         ..register(MediaKind.still, const ImageCodecDecoder())
-        ..register(MediaKind.vectorAnimation, vectors ?? FakeDecoder()),
+        ..register(MediaKind.vectorAnimation, vectors ?? FakeDecoder())
+        ..register(MediaKind.vectorImage, vectorImages ?? FakeDecoder()),
       previews: previews,
     );
     scope = AssetCacheScope(
@@ -206,6 +211,27 @@ void main() {
 
     expect(binding.readiness.isFinal, isTrue);
     expect(store.writes, isEmpty);
+  });
+
+  test('a vector image is decoded by its kind\'s decoder and derives a '
+      'preview, as a still does', () async {
+    final store = FakePreviewStore();
+    const drawing = MediaDescriptor(
+      key: MediaKey.remote('drawing'),
+      kind: MediaKind.vectorImage,
+    );
+    // The engine codecs stand in for a vector decoder: what matters is that
+    // the kind's own decoder draws it, and that a still comes out.
+    final stack = _Stack(store, vectorImages: const ImageCodecDecoder())
+      ..pipeline.know(drawing);
+    addTearDown(stack.dispose);
+    stack.fetcher.serve(drawing.key, FetchedContent.bytes(photo));
+
+    final binding = stack.scope.attach(drawing.key, _spec, _profile);
+    await _until(() => store.writes.isNotEmpty);
+
+    expect(binding.readiness.stage, AssetStage.full);
+    expect(store.writes.single.$1, drawing.key);
   });
 
   PreviewStoreContract.run(() {

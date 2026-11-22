@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `MediaKind.vectorImage`: a resolution-independent still (SVG), decoded by
+  the decoder a host registers for it (`mpx_svg`); the pipeline treats it as
+  a still.
 - Content rising over a view's outranking placeholder
   (`ContentView.placeholderUntil`) fades in over it and the kept stand-in,
   both opaque, instead of cross-fading with the placeholder; a viewer that

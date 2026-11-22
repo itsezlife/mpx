@@ -14,6 +14,15 @@ enum MediaKind {
   /// A resolution-independent vector animation.
   vectorAnimation,
 
+  /// A resolution-independent still: an SVG document, drawn into the pixels
+  /// of the spec it is asked at, so every size is sharp.
+  ///
+  /// Not [still]: the engine's image codecs cannot read it, and a host that
+  /// knows its content is SVG registers an SVG decoder for this kind instead
+  /// of hoping a still decoder sniffs it. The pipeline treats it as a still
+  /// otherwise (one frame, the still budget, a derived preview).
+  vectorImage,
+
   /// A sequence of frames in an image format (animated WebP, GIF, APNG),
   /// read by image codecs.
   ///

@@ -96,7 +96,7 @@ final class AutoDownloadLimits {
     required this.animatedImage,
   });
 
-  /// Photos and other still images.
+  /// Photos and other still images, vector images included.
   final AutoDownloadLimit still;
 
   /// Video-coded media.
@@ -115,7 +115,10 @@ final class AutoDownloadLimits {
     ),
     MediaKind.video => video.decide(descriptor.byteSize),
     MediaKind.animatedImage => animatedImage.decide(descriptor.byteSize),
-    MediaKind.still || MediaKind.unknown => still.decide(descriptor.byteSize),
+    // A vector image downloads like a photo: what it costs is its file.
+    MediaKind.still ||
+    MediaKind.vectorImage ||
+    MediaKind.unknown => still.decide(descriptor.byteSize),
   };
 
   /// These limits with the given fields replaced.

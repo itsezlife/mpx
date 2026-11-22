@@ -62,6 +62,29 @@ void main() {
     );
   });
 
+  test('a vector image is weighed as a still', () {
+    const limits = AutoDownloadLimits(
+      still: AutoDownloadLimit.upTo(1 * _mb),
+      video: AutoDownloadLimit.any(),
+      animatedImage: AutoDownloadLimit.any(),
+    );
+    final policy = policyOf(
+      const AutoDownloadPresets(
+        fallback: AutoDownloadNetworkLimits.all(limits),
+      ),
+      NetworkClass.unmetered,
+    );
+
+    expect(
+      policy.decide(_media(MediaKind.vectorImage, 512 * 1024), null),
+      AutoDownload.now,
+    );
+    expect(
+      policy.decide(_media(MediaKind.vectorImage, 2 * _mb), null),
+      AutoDownload.manual,
+    );
+  });
+
   group(r'$Android', () {
     final presets = AutoDownloadPresets.$Android;
 

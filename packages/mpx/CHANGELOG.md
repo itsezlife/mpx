@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The auto-download policy weighs a vector image as a still.
 - `RangedContentPublisher.publish(onProgress:, whole:)`: a published clip
   reports its bytes as they land (the first stretch's and the reads'), so a
   tile's arc and size move while it downloads; with `whole` (a user's
