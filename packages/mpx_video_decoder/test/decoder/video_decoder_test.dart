@@ -100,6 +100,7 @@ void main() {
   final refused = Uint8List.fromList([7]);
   final damaged = Uint8List.fromList([8]);
   final bad = Uint8List.fromList([9]);
+  final huge = Uint8List.fromList([10]);
 
   late FakeVideoEngine fake;
   late GatedVideoEngine engine;
@@ -114,6 +115,7 @@ void main() {
       ..accept(good, _info(64, 64), frameCount: 3)
       ..accept(wide, _info(32, 16), frameCount: 3)
       ..reject(refused, VideoRejection.unsupported)
+      ..reject(huge, VideoRejection.limitExceeded)
       ..reject(damaged, VideoRejection.malformed);
     engine = GatedVideoEngine(fake);
     ticks = ManualPlaybackTickSource();
@@ -291,6 +293,28 @@ void main() {
         ),
       );
       expect(report.advances, isEmpty);
+      expect(fake.openClips, 0);
+    });
+
+    test('a clip past the size this build decodes fails as unsupported too: '
+        'the platform may still draw it', () async {
+      final report = _Report();
+
+      decoder.decode(_request(huge), report);
+      await pumpEventQueue();
+
+      expect(
+        report.failures.single.error,
+        isA<DecodeFailure>().having(
+          (e) => e.cause,
+          'cause',
+          isA<VideoDecodeRejected>().having(
+            (e) => e.reason,
+            'reason',
+            VideoRejection.limitExceeded,
+          ),
+        ),
+      );
       expect(fake.openClips, 0);
     });
 

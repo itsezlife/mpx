@@ -38,8 +38,9 @@ Future<ui.Image> _imageFromPixels(Uint8List pixels, int width, int height) {
 ///
 /// The decode ends with `AssetProgress.fail` carrying this, so a host's
 /// diagnostics can tell why. A file this build cannot play
-/// ([VideoRejection.unsupported]) fails with a `DecodeFailure.unsupported`
-/// whose cause is this instead, so the pipeline tries the kind's fallback
+/// ([VideoRejection.unsupported], or [VideoRejection.limitExceeded]: larger
+/// than it decodes) fails with a `DecodeFailure.unsupported` whose cause is
+/// this instead, so the pipeline tries the kind's fallback
 /// decoder (a platform still). The surface keeps its stage either way.
 final class VideoDecodeRejected implements Exception {
   /// Creates the error for a file refused for [reason].
@@ -357,12 +358,14 @@ final class _VideoDecode implements AssetTask {
         case VideoClipRejected(reason: VideoRejection.stalled):
           _stage('stalled before the open');
           await _untilLanded();
-        // A codec this build was built without: another decoder of the
-        // kind (the host's fallback) may still draw it.
-        case VideoClipRejected(reason: VideoRejection.unsupported):
-          throw const DecodeFailure.unsupported(
-            VideoDecodeRejected(VideoRejection.unsupported),
-          );
+        // A codec this build was built without, or a picture larger than
+        // it decodes (an 8K recording): another decoder of the kind (the
+        // host's fallback, the platform's hardware) may still draw it.
+        case VideoClipRejected(
+          reason: final reason &&
+              (VideoRejection.unsupported || VideoRejection.limitExceeded),
+        ):
+          throw DecodeFailure.unsupported(VideoDecodeRejected(reason));
         case VideoClipRejected(:final reason):
           throw VideoDecodeRejected(reason);
       }

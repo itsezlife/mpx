@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A clip larger than the software path decodes (past 3840 a side, an 8K
+  recording) fails as `DecodeFailure.unsupported`, like a codec the build
+  lacks: the host's fallback (the platform's still) draws it instead of
+  nothing.
 - A prebuilt file whose download fails is tried three times before the
   hook gives up. The hook's result is cached, so one flaky answer used to
   leave a build without video until `flutter clean`. The warning now says
