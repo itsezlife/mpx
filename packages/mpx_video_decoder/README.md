@@ -18,9 +18,25 @@ dependencies:
 The hook compiles a small C wrapper against an FFmpeg + libvpx prefix and
 bundles the FFmpeg libraries. Build the prefix once per target with
 `native/recipe/build.sh` (`TARGET=ios-arm64` or `android-arm64`; macOS arm64
-by default), or point `MPX_VIDEO_FFMPEG_DIR` at one. Without a prefix the
-build still succeeds and `NativeVideoBinding.probe()` reports the library as
-missing.
+by default). It lands in the recipe's `native/.build/<target>/prefix`.
+
+An app that takes this package from git builds against a checkout that has
+no such directory, and the hook runner passes a hook none of your
+environment but `PATH`, `HOME` and the NDK's variables. So name the recipe's
+build directory in the app's pubspec (the workspace root's, in a pub
+workspace); a relative path is read from that pubspec's folder:
+
+```yaml
+hooks:
+  user_defines:
+    mpx_video_decoder:
+      ffmpeg_build: ../mpx/packages/mpx_video_decoder/native/.build
+```
+
+`MPX_VIDEO_FFMPEG_DIR` (one prefix) still works where the hook sees the
+environment. Without a prefix the build still succeeds, warns, and
+`NativeVideoBinding.probe()` reports the library as missing: video then has
+no decoder and its content keeps its placeholder.
 
 ## Usage
 

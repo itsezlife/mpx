@@ -23,24 +23,41 @@ String recipeCommandFor(String target) =>
 /// The libraries the wrapper links, by their short names.
 const ffmpegLibraries = ['avutil', 'avcodec', 'avformat', 'swscale'];
 
-/// The prefix to build against: [variable]'s value when set, else the
-/// recipe's `.build/<target>/prefix` under [native]. Null when that
-/// directory has no `include/` or no `lib/`.
+/// The user define (`hooks.user_defines.mpx_video_decoder` in the app's
+/// pubspec) naming a directory laid out as the recipe's `.build`:
+/// `<dir>/<target>/prefix`. The hook runner hands a hook only a short list
+/// of environment variables (`PATH`, `HOME`, the NDK's), so under
+/// `flutter build` [ffmpegDirVariable] never arrives; a user define does.
+const ffmpegBuildDefine = 'ffmpeg_build';
+
+/// The prefix to build against, the first complete one of:
+///
+/// 1. `<userBuild>/<target>/prefix`, the app's [ffmpegBuildDefine];
+/// 2. [variable]'s value, for a hook run outside the hook runner;
+/// 3. the recipe's `.build/<target>/prefix` under [native] (a path
+///    dependency, or this repository, where the recipe ran).
+///
+/// Null when none has both `include/` and `lib/`.
 Directory? findFfmpegPrefix({
   required Directory native,
   required String target,
   required Map<String, String> environment,
+  Uri? userBuild,
 }) {
   final named = environment[ffmpegDirVariable];
-  final candidate = Directory(
-    named != null && named.isNotEmpty
-        ? named
-        : '${native.path}/.build/$target/prefix',
-  );
-  final complete =
-      Directory('${candidate.path}/include').existsSync() &&
-      Directory('${candidate.path}/lib').existsSync();
-  return complete ? candidate : null;
+  final candidates = [
+    if (userBuild != null)
+      Directory.fromUri(userBuild.resolve('$target/prefix')),
+    if (named != null && named.isNotEmpty) Directory(named),
+    Directory('${native.path}/.build/$target/prefix'),
+  ];
+  for (final candidate in candidates) {
+    final complete =
+        Directory('${candidate.path}/include').existsSync() &&
+        Directory('${candidate.path}/lib').existsSync();
+    if (complete) return candidate;
+  }
+  return null;
 }
 
 /// The shared libraries of [prefix] by the name their dependents load them

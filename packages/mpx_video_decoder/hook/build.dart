@@ -54,26 +54,31 @@ void main(List<String> args) async {
     final android = code.targetOS == OS.android;
 
     final native = Directory.fromUri(input.packageRoot.resolve('native/'));
+    final userBuild = _directory(input.userDefines.path(ffmpegBuildDefine));
     final prefix = findFfmpegPrefix(
       native: native,
       target: target,
       environment: Platform.environment,
+      userBuild: userBuild,
     );
     if (prefix == null) {
       // Watch the file the recipe will create, so that building it re-runs
       // the hook (a hook with no dependencies is never re-run). The
       // environment variable is not trackable: `flutter clean` after
       // changing it.
-      output.dependencies.add(
+      output.dependencies.addAll([
         native.uri.resolve(
           '.build/$target/prefix/include/libavcodec/avcodec.h',
         ),
-      );
+        ?userBuild?.resolve('$target/prefix/include/libavcodec/avcodec.h'),
+      ]);
       stderr.writeln(
         'warning: mpx_video_decoder found no FFmpeg build for $target, so no '
         'native video library is bundled. Build it with '
-        '${recipeCommandFor(target)}, or set $ffmpegDirVariable to a prefix '
-        'holding include/ and lib/. (Prebuilt delivery is not available yet.)',
+        '${recipeCommandFor(target)}, or name a recipe build directory '
+        '(<dir>/$target/prefix) in the app pubspec under hooks: '
+        'user_defines: mpx_video_decoder: $ffmpegBuildDefine. (Prebuilt '
+        'delivery is not available yet.)',
       );
       return;
     }
@@ -144,3 +149,11 @@ void main(List<String> args) async {
     }
   });
 }
+
+// [uri] as a directory: the user define may be written without a trailing
+// slash, and resolving against a file URI would drop its last segment.
+Uri? _directory(Uri? uri) => switch (uri) {
+  null => null,
+  final uri when uri.path.endsWith('/') => uri,
+  final uri => uri.replace(path: '${uri.path}/'),
+};

@@ -58,6 +58,33 @@ void main() {
       expect(found?.path, named.path);
     });
 
+    test('prefers the build directory the app names in its pubspec\'s '
+        'user defines: the hook runner passes no variable of ours', () {
+      // The recipe's layout: <build>/<target>/prefix, as under native/.build.
+      final build = Directory('${temp.path}/shared_build');
+      final built = Directory('${build.path}/android-arm64/prefix')
+        ..createSync(recursive: true);
+      Directory('${built.path}/include').createSync();
+      Directory('${built.path}/lib').createSync();
+      final named = prefixWith('elsewhere');
+
+      final found = findFfmpegPrefix(
+        native: Directory('${temp.path}/native'),
+        target: 'android-arm64',
+        environment: {ffmpegDirVariable: named.path},
+        userBuild: build.uri,
+      );
+      final missingTarget = findFfmpegPrefix(
+        native: Directory('${temp.path}/native'),
+        target: 'macos-arm64',
+        environment: const {},
+        userBuild: build.uri,
+      );
+
+      expect(found?.path, built.path);
+      expect(missingTarget, isNull);
+    });
+
     test('is null when the prefix is absent or incomplete', () {
       final native = Directory('${temp.path}/native')..createSync();
       Directory(

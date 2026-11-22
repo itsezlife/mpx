@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The hook finds FFmpeg through the app's pubspec, as
+  `hooks: user_defines: mpx_video_decoder: ffmpeg_build: <dir>` (laid out as
+  the recipe's `.build`). Before this, an app that took the package from git
+  bundled no video library: its checkout has no recipe build, and the hook
+  runner never passes `MPX_VIDEO_FFMPEG_DIR`. So every video stayed at its
+  placeholder, with only a build warning to show for it.
 - A clip this build cannot play (`VideoRejection.unsupported`) fails with
   `DecodeFailure.unsupported` (its cause the `VideoDecodeRejected`), so the
   pipeline tries the host's fallback for video; other rejections are
