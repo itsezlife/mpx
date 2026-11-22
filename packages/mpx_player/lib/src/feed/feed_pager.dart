@@ -124,7 +124,8 @@ final class FeedPagerPlanner {
 /// says, following the ringer ([FeedConditions.silenced]) until [muted] is
 /// set. An item that ends asks for the next one ([onAdvance]) when the
 /// policy's auto-advance allows; an item the pager comes back to restarts or
-/// resumes as the policy says. While [held] nothing plays.
+/// resumes as the policy says. While [held] or [pausedByPolicy] nothing
+/// plays.
 ///
 /// Listeners hear when the leases or the active page change.
 final class FeedPager extends ChangeNotifier {
@@ -187,6 +188,7 @@ final class FeedPager extends ChangeNotifier {
   // Mute follows the ringer until the host or the user sets it.
   bool _followsRinger;
   bool _held = false;
+  bool _pausedByPolicy = false;
   bool _disposed = false;
   FeedPagerPlan? _plan;
   PlayerLease? _watched;
@@ -205,13 +207,30 @@ final class FeedPager extends ChangeNotifier {
     _setMuted(value);
   }
 
-  /// Whether nothing plays: the page shown pauses and stays leased, and plays
-  /// again when released. The feed holds it while a pausing layer of the
-  /// policy is set.
+  /// Whether the host holds the pager: the page shown pauses and stays
+  /// leased, and plays again when released (a press that holds a video, a
+  /// seek bar being dragged).
+  ///
+  /// The host's alone: the feed never sets it, so a pausing layer clearing
+  /// never lifts it. See [pausedByPolicy] for the other hold.
   bool get held => _held;
   set held(bool value) {
     if (value == _held || _disposed) return;
     _held = value;
+    _apply();
+  }
+
+  /// Whether a pausing layer of the policy holds the pager (the app is in the
+  /// background, the device saves power). Set by the feed from the scope's
+  /// clock.
+  ///
+  /// A hold of its own, apart from [held]: with one flag the feed, which
+  /// writes it on every measure, wiped the host's hold at the next
+  /// measure, and the page played on under a finger that was holding it.
+  bool get pausedByPolicy => _pausedByPolicy;
+  set pausedByPolicy(bool value) {
+    if (value == _pausedByPolicy || _disposed) return;
+    _pausedByPolicy = value;
     _apply();
   }
 
@@ -277,7 +296,7 @@ final class FeedPager extends ChangeNotifier {
       if (arrived && policy.resume == FeedResume.restart) {
         active.seekTo(Duration.zero);
       }
-      if (plan.autoplay == FeedAutoplay.full && !_held) {
+      if (plan.autoplay == FeedAutoplay.full && !_held && !_pausedByPolicy) {
         active.play();
       } else {
         active.pause();

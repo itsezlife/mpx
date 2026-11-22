@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- A host's hold on a pager lasts. `FeedPager.held` was rewritten by the feed
+  on every measure from the policy's pausing layers, so a host that held the
+  page (a press on a video, a seek bar being dragged) saw it play on at the
+  next measure, a frame or two later. The policy's hold is now
+  `FeedPager.pausedByPolicy`, a flag of its own the feed sets and the host
+  does not; the page plays only while neither is set. Code that read `held`
+  to learn whether a layer paused the pager reads `pausedByPolicy`.
 - No free decoder is no failure of the video. Android no longer remembers
   a codec as failed when its decoder would not start for a format the
   device plays (other players held the decoders; an 8K session can take

@@ -288,6 +288,34 @@ void main() {
       expect(controller.inView.value, 2);
     });
 
+    test('a hold of the host\'s survives the next measure', () {
+      final controller = FeedController(
+        policy: const FeedPolicy.pager(),
+        pool: pool,
+        itemCount: 10,
+        itemOf: _item,
+      );
+      addTearDown(controller.dispose);
+      slots(controller, {0: 1});
+      controller.measure();
+      final lease = controller.stateOf(0).value.lease!;
+      expect(lease.state.value.playing, isTrue);
+
+      controller.pager!.held = true;
+      expect(lease.state.value.playing, isFalse);
+
+      // The feed measures after every layout of a slot; it used to write the
+      // pager's hold from the policy's layers each time, lifting the host's.
+      controller.measure();
+      controller.measure();
+
+      expect(controller.pager!.held, isTrue);
+      expect(lease.state.value.playing, isFalse);
+
+      controller.pager!.held = false;
+      expect(lease.state.value.playing, isTrue);
+    });
+
     test('mute reaches every lease; dispose releases them', () {
       final controller = FeedController(
         policy: const FeedPolicy.pager(),

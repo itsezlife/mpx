@@ -255,6 +255,34 @@ void main() {
       expect(pager.leaseOf(4), isNull);
     });
 
+    test('the host\'s hold and the policy\'s are apart: each lifts only its '
+        'own', () async {
+      final pager = makePager(index: 3);
+      await settle();
+      final lease = pager.leaseOf(3)!;
+      expect(lease.state.value.playing, isTrue);
+
+      pager.held = true;
+      await settle();
+      expect(lease.state.value.playing, isFalse);
+
+      // A layer coming and going leaves the host's hold where it was.
+      pager.pausedByPolicy = true;
+      pager.pausedByPolicy = false;
+      await settle();
+      expect(pager.held, isTrue);
+      expect(lease.state.value.playing, isFalse);
+
+      pager.pausedByPolicy = true;
+      pager.held = false;
+      await settle();
+      expect(lease.state.value.playing, isFalse);
+
+      pager.pausedByPolicy = false;
+      await settle();
+      expect(lease.state.value.playing, isTrue);
+    });
+
     test('dispose releases every lease', () async {
       final pager = makePager(index: 3);
       await settle();

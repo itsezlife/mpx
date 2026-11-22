@@ -751,7 +751,7 @@ final class _PagerMode extends _FeedMode {
 
   @override
   int? planFor(Map<int, double> fractions, Map<int, double> centres) {
-    pager.held = feed._paused;
+    pager.pausedByPolicy = feed._paused;
     final picked = policy.activeItem.pick(fractions, centreDistances: centres);
     if (picked != null && picked != pager.index) {
       pager.show(picked);
