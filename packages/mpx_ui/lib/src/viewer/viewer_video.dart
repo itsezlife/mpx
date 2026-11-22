@@ -4,12 +4,12 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show kMinInteractiveDimension;
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_ui/src/text/mpx_text_root.dart';
 import 'package:mpx_ui/src/viewer/viewer_policy.dart';
+import 'package:mpx_ui/src/viewer/viewer_seek.dart';
 import 'package:mpx_ui/src/viewer/viewer_tokens.dart';
 
 /// One quality of a video the host offers: a label ("720p", "Auto") and the
@@ -432,27 +432,37 @@ enum _Panel { none, speed, quality }
 /// tests.
 class ViewerVideoControlsState extends State<ViewerVideoControls>
     with SingleTickerProviderStateMixin {
-  // The playhead is read every frame, never pushed (the player's rule).
-  late final Ticker _ticker = createTicker((_) => _readPlayhead());
-  final ValueNotifier<Duration> _playhead = ValueNotifier(Duration.zero);
-  Duration? _preview;
+  // The playhead and the seek: read every frame, never pushed (the player's
+  // rule), and the bar's drag only moves a preview until the finger leaves.
+  late final ViewerSeekController _seek;
   ui.Image? _previewImage;
   int _previewRequest = 0;
+  // The preview the frame was asked for last.
+  Duration? _previewed;
   _Panel _panel = _Panel.none;
 
   /// Where a seek-bar drag would seek; null while none is in progress.
-  Duration? get preview => _preview;
+  Duration? get preview => _seek.preview;
 
   @override
   void initState() {
     super.initState();
+    _seek = ViewerSeekController(
+      vsync: this,
+      lease: widget.lease,
+      knownDuration: widget.knownDuration,
+      onInteraction: widget.onInteraction,
+    )..addListener(_onSeek);
     widget.lease.state.addListener(_onState);
-    _onState();
   }
 
   @override
   void didUpdateWidget(ViewerVideoControls oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _seek
+      ..knownDuration = widget.knownDuration
+      ..onInteraction = widget.onInteraction
+      ..lease = widget.lease;
     if (!identical(oldWidget.lease, widget.lease)) {
       oldWidget.lease.state.removeListener(_onState);
       widget.lease.state.addListener(_onState);
@@ -464,58 +474,37 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
   @override
   void dispose() {
     widget.lease.state.removeListener(_onState);
-    _ticker.dispose();
-    _playhead.dispose();
+    _seek
+      ..removeListener(_onSeek)
+      ..dispose();
     _previewImage?.dispose();
     super.dispose();
   }
 
   void _onState() {
     if (!mounted) return;
-    final playing = widget.lease.state.value.playing;
-    if (playing && !_ticker.isActive) {
-      _ticker.start();
-    } else if (!playing && _ticker.isActive) {
-      _ticker.stop();
-    }
-    _readPlayhead();
     setState(() {});
   }
 
-  void _readPlayhead() => _playhead.value = widget.lease.position;
-
-  void _togglePlay() {
-    widget.onInteraction();
-    final lease = widget.lease;
-    if (lease.state.value.playing) {
-      lease.pause();
-    } else {
-      lease.play();
+  // The seek controller tells of every frame of the playhead; the controls
+  // act on the preview alone: the frame at it, and the box that shows it.
+  void _onSeek() {
+    final preview = _seek.preview;
+    if (preview == _previewed) return;
+    _previewed = preview;
+    setState(() {});
+    if (preview == null) {
+      _previewRequest++;
+      _previewImage?.dispose();
+      _previewImage = null;
+      return;
     }
-  }
-
-  // --- Seek -----------------------------------------------------------------
-
-  // The player's length, else the item's own, else none.
-  Duration _durationOf(PlayerState state) =>
-      state.duration ?? widget.knownDuration ?? Duration.zero;
-
-  Duration _positionAt(double x, double width) {
-    final duration = _durationOf(widget.lease.state.value);
-    final fraction = width <= 0 ? 0.0 : (x / width).clamp(0.0, 1.0);
-    return duration * fraction;
-  }
-
-  void _previewAt(double x, double width) {
-    widget.onInteraction();
-    final position = _positionAt(x, width);
-    setState(() => _preview = position);
     final frames = widget.previewFrame;
     if (frames == null || widget.rules.seekPreviewBox == null) return;
     final request = ++_previewRequest;
     unawaited(
-      frames(widget.lease.key, position).then((image) {
-        if (!mounted || request != _previewRequest || _preview == null) {
+      frames(widget.lease.key, preview).then((image) {
+        if (!mounted || request != _previewRequest || _seek.preview == null) {
           image?.dispose();
           return;
         }
@@ -527,18 +516,14 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
     );
   }
 
-  void _commitSeek() {
-    final target = _preview;
-    if (target == null) return;
-    widget.lease.seekTo(target);
-    _readPlayhead();
-    setState(() {
-      _preview = null;
-      _previewRequest++;
-      _previewImage?.dispose();
-      _previewImage = null;
-    });
+  void _togglePlay() {
     widget.onInteraction();
+    final lease = widget.lease;
+    if (lease.state.value.playing) {
+      lease.pause();
+    } else {
+      lease.play();
+    }
   }
 
   // --- Build ----------------------------------------------------------------
@@ -633,7 +618,7 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (_preview case final preview?) _previewBox(preview),
+                  if (_seek.preview case final preview?) _previewBox(preview),
                   if (_panel == _Panel.speed) _speedPanel(state.speed),
                   if (_panel == _Panel.quality) _qualityPanel(),
                   _bar(state),
@@ -648,7 +633,7 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
 
   Widget _bar(PlayerState state) {
     final tokens = widget.tokens;
-    final duration = _durationOf(state);
+    final duration = _seek.durationOf(state);
     return ColoredBox(
       key: const ValueKey('mpx-viewer-video-bar'),
       color: tokens.barFill,
@@ -658,34 +643,11 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
           children: [
             const SizedBox(width: 14),
             Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final width = constraints.maxWidth;
-                  return GestureDetector(
-                    key: const ValueKey('mpx-viewer-seek-bar'),
-                    behavior: HitTestBehavior.opaque,
-                    onHorizontalDragStart: (d) =>
-                        _previewAt(d.localPosition.dx, width),
-                    onHorizontalDragUpdate: (d) =>
-                        _previewAt(d.localPosition.dx, width),
-                    onHorizontalDragEnd: (_) => _commitSeek(),
-                    onTapDown: (d) => _previewAt(d.localPosition.dx, width),
-                    onTapUp: (_) => _commitSeek(),
-                    child: ValueListenableBuilder<Duration>(
-                      valueListenable: _playhead,
-                      builder: (context, playhead, _) => CustomPaint(
-                        size: Size(width, ViewerVideoControls.barHeight),
-                        painter: _SeekBarPainter(
-                          duration: duration,
-                          position: _preview ?? playhead,
-                          buffered: state.buffered,
-                          foreground: tokens.foreground,
-                          dragging: _preview != null,
-                        ),
-                      ),
-                    ),
-                  );
-                },
+              child: ViewerSeekBar(
+                key: const ValueKey('mpx-viewer-seek-bar'),
+                controller: _seek,
+                foreground: tokens.foreground,
+                height: ViewerVideoControls.barHeight,
               ),
             ),
             const SizedBox(width: 8),
@@ -697,10 +659,10 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
                 context,
                 '${_digitsOf(duration)} / ${_digitsOf(duration)}',
               ),
-              child: ValueListenableBuilder<Duration>(
-                valueListenable: _playhead,
-                builder: (context, playhead, _) => Text(
-                  '${formatViewerTime(_preview ?? playhead)} / '
+              child: ListenableBuilder(
+                listenable: _seek,
+                builder: (context, _) => Text(
+                  '${formatViewerTime(_seek.shown)} / '
                   '${formatViewerTime(duration)}',
                   key: const ValueKey('mpx-viewer-time'),
                   style: _figures,
@@ -841,7 +803,7 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
         onTapUp: (d) => at(d.localPosition.dx),
         child: CustomPaint(
           size: Size(width, kMinInteractiveDimension),
-          painter: _SeekBarPainter(
+          painter: ViewerSeekBarPainter(
             duration: const Duration(seconds: 1),
             position:
                 const Duration(seconds: 1) *
@@ -1024,57 +986,4 @@ class _PlayGlyph extends CustomPainter {
   @override
   bool shouldRepaint(_PlayGlyph oldDelegate) =>
       oldDelegate.color != color || oldDelegate.paused != paused;
-}
-
-// A 4 px track centred in the bar: the background, the buffered ranges and
-// the progress, with a 6 px thumb that grows to 8 px while dragged.
-class _SeekBarPainter extends CustomPainter {
-  const _SeekBarPainter({
-    required this.duration,
-    required this.position,
-    required this.buffered,
-    required this.foreground,
-    required this.dragging,
-  });
-
-  final Duration duration;
-  final Duration position;
-  final List<PlayerTimeRange> buffered;
-  final Color foreground;
-  final bool dragging;
-
-  static const double _track = 4;
-  static const double _thumb = 6;
-  static const double _thumbPressed = 8;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final y = size.height / 2;
-    final faint = Paint()..color = foreground.withValues(alpha: 0.2);
-    final full = Paint()..color = foreground;
-    final micros = duration.inMicroseconds;
-    double xOf(Duration at) => micros <= 0
-        ? 0
-        : size.width * (at.inMicroseconds / micros).clamp(0.0, 1.0);
-    RRect bar(double from, double to) => RRect.fromRectAndRadius(
-      Rect.fromLTRB(from, y - _track / 2, to, y + _track / 2),
-      const Radius.circular(_track / 2),
-    );
-    canvas.drawRRect(bar(0, size.width), faint);
-    for (final range in buffered) {
-      canvas.drawRRect(bar(xOf(range.start), xOf(range.end)), faint);
-    }
-    final x = xOf(position);
-    canvas
-      ..drawRRect(bar(0, x), full)
-      ..drawCircle(Offset(x, y), dragging ? _thumbPressed : _thumb, full);
-  }
-
-  @override
-  bool shouldRepaint(_SeekBarPainter oldDelegate) =>
-      oldDelegate.duration != duration ||
-      oldDelegate.position != position ||
-      !listEquals(oldDelegate.buffered, buffered) ||
-      oldDelegate.foreground != foreground ||
-      oldDelegate.dragging != dragging;
 }

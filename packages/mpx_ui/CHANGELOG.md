@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The viewer's seek bar is a piece of its own: `ViewerSeekController` (the
+  playhead, the preview a finger moves, the seek made when it leaves) and
+  `ViewerSeekBar`, drawn as a `ViewerSeekBarStyle` says. The viewer looks and
+  behaves as before; a host that draws its own video surface (a reels page)
+  takes the same bar and restyles it instead of copying its rules.
 - What a video that cannot be played shows is the policy's
   (`ViewerVideoRules.failure`): `silent` (a picker's, as the reference's:
   the page keeps its picture and play tries again), `alert` (Open in

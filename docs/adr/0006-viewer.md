@@ -12,7 +12,8 @@ On macOS the viewer is an in-app overlay over the whole app window.
 **Status**: Accepted (decided with the maintainer 2026-11-10)
 **Relates to**: 0001, 0004, 0010
 **Amended**: 2026-11-14, composable pieces (ticket 50); 2026-11-17, loading
-stages (ADR 0010); 2026-11-18, the gallery pager and its gestures
+stages (ADR 0010); 2026-11-18, the gallery pager and its gestures; 2026-11-23,
+the seek bar as a piece of its own
 
 ## Context
 
@@ -381,3 +382,20 @@ sources are read with `git show HEAD:` in the sparse checkout.
 ## Related
 
 ADR 0004 (pool, audio owner, hand-off, PiP plumbing).
+
+## Amendment 2026-11-23: the seek bar as a piece of its own
+
+The seek bar was a private part of `ViewerVideoControls`, and a surface that
+wanted the viewer's bar (a reels page along its bottom edge) had to copy its
+rules. It is now two public pieces in `mpx_ui`, by the headless-behaviour rule
+of the package:
+
+| Piece | Role |
+| --- | --- |
+| `ViewerSeekController` | The rules, with no widget: the playhead read from the lease each frame while it plays, a preview that a finger moves, the seek made once when the finger leaves (not one per touch event), the length from the player else the host's |
+| `ViewerSeekBar` | The skin: the track, the buffered ranges, the progress and the thumb, dragged or tapped, drawn as a `ViewerSeekBarStyle` says (track and thumb sizes, where the track sits in the touch target, how faint the rest is) |
+
+The viewer's controls use both with the default style, which is the bar as it
+was; the time and the preview frame stay the controls', read from the same
+controller. A reels page uses them with a hairline style and holds its pager
+while the preview is set.
