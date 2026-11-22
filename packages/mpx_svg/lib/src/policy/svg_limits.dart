@@ -26,6 +26,7 @@ final class SvgLimits {
     required this.maxDepth,
     required this.maxUseExpansion,
     required this.maxCompileTime,
+    this.maxInflatedBytes = 5 * 1024 * 1024,
     this.allowEmbeddedImages = false,
     this.compiledCacheBytes = 4 * 1024 * 1024,
   }) : assert(
@@ -33,14 +34,16 @@ final class SvgLimits {
              maxPixelEdge > 0 &&
              maxElements > 0 &&
              maxDepth > 0 &&
-             maxUseExpansion > 0,
+             maxUseExpansion > 0 &&
+             maxInflatedBytes > 0,
          'SvgLimits caps must be positive.',
        ),
        assert(compiledCacheBytes >= 0, 'compiledCacheBytes is not negative.');
 
-  /// A 1 MiB document, drawn at most 4096 px on its long edge, of at most
-  /// 100 000 elements nested at most 100 deep, `<use>` expanding to at most
-  /// 500 000 elements, compiled within 5 s; no embedded images.
+  /// A 1 MiB document (5 MiB once inflated, when gzipped), drawn at most
+  /// 4096 px on its long edge, of at most 100 000 elements nested at most
+  /// 100 deep, `<use>` expanding to at most 500 000 elements, compiled within
+  /// 5 s; no embedded images.
   static const SvgLimits standard = SvgLimits(
     maxInputBytes: 1024 * 1024,
     maxPixelEdge: 4096,
@@ -52,6 +55,12 @@ final class SvgLimits {
 
   /// The largest document, in bytes of its file, that is read at all.
   final int maxInputBytes;
+
+  /// The largest a gzipped document (a wallpaper pattern) may inflate to.
+  /// Past it the document is refused, never cut short: a truncated SVG
+  /// draws something its author did not. The inflated text is held to this
+  /// cap instead of [maxInputBytes].
+  final int maxInflatedBytes;
 
   /// The longest edge, in pixels, the picture is drawn at, whatever the spec
   /// asks.
@@ -89,6 +98,7 @@ final class SvgLimits {
     int? maxDepth,
     int? maxUseExpansion,
     Duration? maxCompileTime,
+    int? maxInflatedBytes,
     bool? allowEmbeddedImages,
     int? compiledCacheBytes,
   }) => SvgLimits(
@@ -98,6 +108,7 @@ final class SvgLimits {
     maxDepth: maxDepth ?? this.maxDepth,
     maxUseExpansion: maxUseExpansion ?? this.maxUseExpansion,
     maxCompileTime: maxCompileTime ?? this.maxCompileTime,
+    maxInflatedBytes: maxInflatedBytes ?? this.maxInflatedBytes,
     allowEmbeddedImages: allowEmbeddedImages ?? this.allowEmbeddedImages,
     compiledCacheBytes: compiledCacheBytes ?? this.compiledCacheBytes,
   );
@@ -111,6 +122,7 @@ final class SvgLimits {
       other.maxDepth == maxDepth &&
       other.maxUseExpansion == maxUseExpansion &&
       other.maxCompileTime == maxCompileTime &&
+      other.maxInflatedBytes == maxInflatedBytes &&
       other.allowEmbeddedImages == allowEmbeddedImages &&
       other.compiledCacheBytes == compiledCacheBytes;
 
@@ -122,6 +134,7 @@ final class SvgLimits {
     maxDepth,
     maxUseExpansion,
     maxCompileTime,
+    maxInflatedBytes,
     allowEmbeddedImages,
     compiledCacheBytes,
   );

@@ -126,6 +126,7 @@ still (one frame, the still budget, a derived preview).
 
 | Step | Where | Rule |
 | --- | --- | --- |
+| Inflate | worker isolate | Gzipped input (magic `1f 8b`) is inflated up to `maxInflatedBytes`. Past that cap, or with a trailer length that does not match, it is refused, never truncated. The web refuses gzip |
 | Sanitize | worker isolate | `SvgSanitizer` **rejects** (never strips) scripts, embedded documents, SMIL animation, event handlers, references out of the document (`href` / `url()` not `#id`; `data:` images only when allowed), importing or animating CSS, and entity declarations (an external document type is let through: nothing fetches it); caps elements, depth and the element count after `<use>` expansion |
 | Compile | worker isolate | `vector_graphics_compiler` to its binary form; the worker is ended on cancel and past the time cap |
 | Draw | UI isolate, raster thread | The picture drawn to cover the spec (up or down, aspect kept, long edge capped) into one image, which the view places by its own fit as any still: a `StillImagePaintable` in the still tier, tinted at paint for a template spec |

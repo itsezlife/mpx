@@ -9,19 +9,33 @@ import 'package:vector_graphics_compiler/vector_graphics_compiler.dart';
 /// vector form, or an [SvgRejection].
 ///
 /// Pure and synchronous, so the worker isolate runs it as is and the web
-/// runs it in place.
+/// runs it in place. Gzipped input is inflated by [inflate], which the
+/// platform gives (null where it cannot: the document is then unreadable).
 abstract final class SvgCompileJob {
   /// Compiles [bytes] under [limits]; throws an [SvgRejection].
-  static Uint8List run(Uint8List bytes, SvgLimits limits) {
+  static Uint8List run(
+    Uint8List bytes,
+    SvgLimits limits, {
+    required SvgInflate? inflate,
+  }) {
     if (bytes.length > limits.maxInputBytes) {
       throw SvgRejection(
         SvgRejectionReason.tooLarge,
         '${bytes.length} > ${limits.maxInputBytes} bytes',
       );
     }
+    final document = isGzip(bytes)
+        ? switch (inflate) {
+            final inflate? => inflate(bytes, limits.maxInflatedBytes),
+            null => throw const SvgRejection(
+              SvgRejectionReason.unreadable,
+              'gzip cannot be inflated here',
+            ),
+          }
+        : bytes;
     final String text;
     try {
-      text = const Utf8Decoder().convert(bytes);
+      text = const Utf8Decoder().convert(document);
     } on FormatException catch (error) {
       throw SvgRejection(
         SvgRejectionReason.notSvg,
@@ -49,4 +63,13 @@ abstract final class SvgCompileJob {
       throw SvgRejection(SvgRejectionReason.unreadable, '$error');
     }
   }
+
+  /// Whether [bytes] start with the gzip magic number.
+  static bool isGzip(Uint8List bytes) =>
+      bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b;
 }
+
+/// Inflates gzipped [bytes] to at most [cap] bytes; throws an [SvgRejection]
+/// past the cap ([SvgRejectionReason.tooLarge]) or for damaged data
+/// ([SvgRejectionReason.unreadable]).
+typedef SvgInflate = Uint8List Function(Uint8List bytes, int cap);

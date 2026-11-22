@@ -77,6 +77,8 @@ colour.
 - **Host limits.** `SvgLimits` is a policy value. `SvgLimits.standard` is
   1 MiB of input, a 4096 px long edge and a 5 s compile, and its fields are
   open.
+- **Gzipped SVG.** A gzipped document (a wallpaper pattern) is inflated up
+  to its own cap. Past the cap, or cut short, it is refused.
 - **Off the UI isolate.** `SvgCompiler` runs each compile on a worker. A
   compile past the time cap or cancelled has its worker ended. The web runs it
   in place.

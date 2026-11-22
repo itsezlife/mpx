@@ -111,4 +111,56 @@ void main() {
 
     expect(await compilation.result, isNull);
   });
+
+  group('gzipped SVG (a wallpaper pattern)', () {
+    test('is inflated, then sanitized and compiled as any SVG', () async {
+      final packed = Uint8List.fromList(gzip.encode(_square));
+
+      final compiled = await compiler.compile(SvgSource.bytes(packed)).result;
+
+      expect(compiled, await compiler.compile(SvgSource.bytes(_square)).result);
+    });
+
+    test('that inflates past the cap is refused, not truncated', () async {
+      // Ten megabytes of spaces pack into a few kilobytes.
+      final bomb = Uint8List.fromList(
+        gzip.encode([..._square.take(10), ...List.filled(10 << 20, 0x20)]),
+      );
+
+      expect(bomb.length, lessThan(SvgLimits.standard.maxInputBytes));
+      expect(
+        await _rejectionOf(compiler.compile(SvgSource.bytes(bomb))),
+        SvgRejectionReason.tooLarge,
+      );
+    });
+
+    test('that is cut short is unreadable', () async {
+      final packed = gzip.encode(_square);
+      final cut = Uint8List.fromList(packed.sublist(0, packed.length ~/ 2));
+
+      expect(
+        await _rejectionOf(compiler.compile(SvgSource.bytes(cut))),
+        SvgRejectionReason.unreadable,
+      );
+    });
+
+    test('inflates within its own cap, past the input cap', () async {
+      // A pattern larger as text than the input cap, small packed.
+      final text = Uint8List.fromList([
+        ..._square.sublist(0, _square.length - 6),
+        ...List.filled(4000, 0x20),
+        ..._square.sublist(_square.length - 6),
+      ]);
+      final limited = SvgCompiler(
+        SvgLimits.standard.copyWith(maxInputBytes: 2000),
+      );
+
+      expect(
+        await limited
+            .compile(SvgSource.bytes(Uint8List.fromList(gzip.encode(text))))
+            .result,
+        isNotNull,
+      );
+    });
+  });
 }

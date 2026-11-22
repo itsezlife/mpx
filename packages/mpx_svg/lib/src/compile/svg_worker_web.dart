@@ -19,7 +19,12 @@ final class SvgWorker implements SvgCompilation {
       if (worker._result.isCompleted) return;
       try {
         final compiled = switch (source) {
-          SvgSource$Bytes(:final bytes) => SvgCompileJob.run(bytes, limits),
+          // The browser inflates asynchronously only; gzip is refused here.
+          SvgSource$Bytes(:final bytes) => SvgCompileJob.run(
+            bytes,
+            limits,
+            inflate: null,
+          ),
           SvgSource$File() => throw const SvgRejection(
             SvgRejectionReason.unreadable,
             'no files on the web: the fetcher must hand bytes',

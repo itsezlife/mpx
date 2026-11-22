@@ -106,13 +106,48 @@ final class SvgWorker implements SvgCompilation {
         String() => _read(source, limits),
         _ => throw StateError('unknown source $source'),
       };
-      final compiled = SvgCompileJob.run(bytes, limits);
+      final compiled = SvgCompileJob.run(bytes, limits, inflate: _inflate);
       reply.send(TransferableTypedData.fromList([compiled]));
     } on SvgRejection catch (rejection) {
       reply.send((rejection.reason.index, rejection.detail));
     } on Object catch (error) {
       reply.send((SvgRejectionReason.unreadable.index, '$error'));
     }
+  }
+
+  // Gzip, inflated in slices so a bomb stops at the cap instead of after it
+  // filled memory.
+  static Uint8List _inflate(Uint8List bytes, int cap) {
+    final out = _CappedSink(cap);
+    final input = ZLibDecoder(gzip: true).startChunkedConversion(out);
+    try {
+      const slice = 64 * 1024;
+      for (var at = 0; at < bytes.length; at += slice) {
+        final end = at + slice < bytes.length ? at + slice : bytes.length;
+        input.addSlice(bytes, at, end, false);
+      }
+      input.close();
+    } on SvgRejection {
+      rethrow;
+    } on Object catch (error) {
+      throw SvgRejection(SvgRejectionReason.unreadable, 'gzip: $error');
+    }
+    final inflated = out.takeBytes();
+    // A stream cut short inflates to a prefix without complaint; the
+    // trailer's length (the last four bytes, little end) says whether all
+    // of it came out.
+    if (bytes.length < 18 ||
+        ByteData.sublistView(
+              bytes,
+              bytes.length - 4,
+            ).getUint32(0, Endian.little) !=
+            inflated.length & 0xffffffff) {
+      throw const SvgRejection(
+        SvgRejectionReason.unreadable,
+        'gzip: cut short',
+      );
+    }
+    return inflated;
   }
 
   // The file, checked against the input cap before a byte is read.
@@ -127,4 +162,28 @@ final class SvgWorker implements SvgCompilation {
     }
     return file.readAsBytesSync();
   }
+}
+
+// Collects inflated bytes, refusing more than [cap].
+final class _CappedSink implements Sink<List<int>> {
+  _CappedSink(this._cap);
+
+  final int _cap;
+  final BytesBuilder _bytes = BytesBuilder(copy: false);
+
+  @override
+  void add(List<int> chunk) {
+    if (_bytes.length + chunk.length > _cap) {
+      throw SvgRejection(
+        SvgRejectionReason.tooLarge,
+        'inflates past $_cap bytes',
+      );
+    }
+    _bytes.add(chunk);
+  }
+
+  @override
+  void close() {}
+
+  Uint8List takeBytes() => _bytes.takeBytes();
 }
