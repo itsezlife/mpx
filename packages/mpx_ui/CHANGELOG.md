@@ -4,10 +4,16 @@
 
 - `ViewerSystemBars` is `keep`, `hideStatusBar` (the default: only the status
   bar goes with the controls, as a messenger's viewer does) or `hideAll`.
-- The caption starts at five lines (two in landscape) and a drag up grows it
-  over the picture, then scrolls the text, with its edges fading while there
-  is more text (`ViewerCaptionSheet`). The caption and the video bar hide as
-  one block: they slide by the same amount over the same time.
+- The caption is a scroll view over the room between the top bar and the video
+  controls, as the reference's is (`ViewerCaptionSheet`): its text starts as
+  low as five lines (two in landscape) and a drag up takes it over the picture,
+  the box behind it growing, then scrolls it. It gives under a pull past an end
+  (`BouncingScrollPhysics`, the reference's spring) only when there is text
+  left to scroll, its edges fade while there is more, and the picture above its
+  box takes the touches. The caption and the video bar hide as one block: they
+  slide by the same amount over the same time.
+- The chrome and the video controls fade in with the open morph (as the
+  reference's container does) instead of appearing when it ends.
 - The video's settings button is in the top bar (`ViewerChrome.settingsIcon`),
   and the settings panel closes on a tap outside. The controls do not hide by
   themselves while the settings or the overflow menu is open.
@@ -17,8 +23,6 @@
   `ViewerSpeedRule.presets` speed and the qualities. The slider and the
   panel under the caption are gone; the quality button moved to the
   settings. `ViewerVideoStrings.settings` is the new button's label.
-- The viewer's pictures lie above the navigation bar, which stays clear:
-  a picture, zoomed or not, no longer runs under it.
 - `ViewerSystemBars` (`MediaViewer.systemBars`): by default the system bars
   hide with the viewer's controls and come back, edge to edge, with them and
   when the viewer closes; `keep` leaves them to the host.

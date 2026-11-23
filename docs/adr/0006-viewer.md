@@ -411,11 +411,12 @@ Three decisions from running the viewer in a messenger-like feed:
   are in a settings menu opened from a button under the top bar. No free
   slider: a speed is one of a list.
 - **System bars are the viewer's while it is open.** `MediaViewer.systemBars`
-  (`ViewerSystemBars.hideWithControls` by default) hides the status and
-  navigation bars with the controls and restores them edge to edge when the
-  viewer closes. The pictures lie above the navigation bar (clear, as the
-  viewer's scrim draws over it), at every zoom, and the room is kept while
-  the bars are hidden, so the picture does not move as they go.
+  hides the status bar (`ViewerSystemBars.hideStatusBar`, the default) with
+  the controls and restores it edge to edge when the viewer closes. The
+  navigation bar stays clear and the pictures run under it; the viewer's
+  scrim (the bars' fill) draws over it with the controls, and the picture
+  shows through without them, as in the reference. The controls (the video
+  bar, the caption) sit above it.
 - **The surface's hidden cell follows the page.** The origin of the item on
   show is the one hidden; paging hides the new one and shows the one left, so
   a close onto another item flies from an empty place to its cell, as the
@@ -429,11 +430,17 @@ Read against the reference's viewer:
   default). The reference hides the status bar with its controls and keeps
   the navigation bar (it hides that only in landscape with side insets);
   `hideAll` is for a host that wants the immersive mode.
-- **The caption is a sheet**, not a box with a line limit. It starts at five
-  lines (two in landscape), is bottom-anchored in the room between the top
-  bar and the video controls, and a drag up grows it over the picture before
-  it scrolls the text; its edges fade (12 px) while there is more text. Only
-  the box takes touches.
+- **The caption is a scroll view, as the reference's `CaptionScrollView` is.**
+  It fills the room between the top bar and the video controls; its text
+  starts as low as five lines (two in landscape) and scrolls up over the
+  picture, the box behind it following the text. A pull past an end gives
+  (`BouncingScrollPhysics`: stiffness 100, no bounce of its own) only where
+  there is text to scroll; its edges fade (12 px) while there is more text.
+  Touches above the box fall through to the picture. A first design that grew
+  a box and then scrolled the text, with a hand-made rubber band, bounced
+  texts that all showed and let a pull take the text far up; it is gone.
+- **The chrome fades in with the open morph**, as the reference's container
+  does (alpha 0 to 1 over the 200 ms), not when it ends.
 - **One block hides.** The caption, the strip and the video bar slide by
   `controlsSlide` over the same duration and curve, so there is never a gap
   between their containers while the controls go.

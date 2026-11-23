@@ -1,8 +1,10 @@
 /// What the viewer does with the system bars (the status bar and the
 /// navigation bar) while it is open.
 ///
-/// The pictures lie above the navigation bar whatever this is; it is clear,
-/// and the viewer's own bars draw over it.
+/// The navigation bar is clear whatever this is, and the pictures run under
+/// it; with the controls shown the viewer draws its bar fill over it, as the
+/// top bar's covers the status bar, and without them the picture shows
+/// through.
 enum ViewerSystemBars {
   /// The bars stay as the host has them.
   keep,

@@ -1016,7 +1016,7 @@ void main() {
       testWidgets('the caption and the bar hide as one: the gap between them '
           'never changes', (tester) async {
         await openWithChrome(tester);
-        final caption = find.byKey(const ValueKey('mpx-viewer-caption'));
+        final caption = find.text('A caption');
         final bar = find.byKey(const ValueKey('mpx-viewer-video-bar'));
         double gap() =>
             tester.getRect(bar).top - tester.getRect(caption).bottom;

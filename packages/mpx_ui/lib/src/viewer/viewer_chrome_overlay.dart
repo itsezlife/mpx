@@ -383,7 +383,6 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
         ? math.min(2, metrics.captionMaxLines)
         : metrics.captionMaxLines;
     return ViewerCaptionSheet(
-      boxKey: const ValueKey('mpx-viewer-caption'),
       fill: widget.tokens.barFill,
       padding: metrics.captionPadding,
       collapsedHeight: line * lines + metrics.captionPadding.vertical,

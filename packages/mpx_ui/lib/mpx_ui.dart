@@ -60,6 +60,7 @@ export 'src/viewer/media_viewer.dart';
 export 'src/viewer/origin_bridge.dart';
 export 'src/viewer/viewer_actions.dart';
 export 'src/viewer/viewer_backdrop.dart';
+export 'src/viewer/viewer_caption.dart';
 export 'src/viewer/viewer_chrome_overlay.dart';
 export 'src/viewer/viewer_loading.dart'
     show ViewerBufferingSpinner, ViewerPageStatus;

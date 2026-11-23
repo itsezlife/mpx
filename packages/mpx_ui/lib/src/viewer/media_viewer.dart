@@ -391,10 +391,6 @@ class MediaViewerState extends State<MediaViewer>
 
   _Phase _phase = _Phase.opening;
   Size _size = Size.zero;
-
-  // Where the pictures lie: the viewer above the navigation bar, which is
-  // clear and over the picture's room, not the picture's.
-  Size get _stage => Size(_size.width, math.max(0, _size.height - _navInset));
   // The morph in progress: from and to, in global coordinates.
   _Frame? _from;
   _Frame? _to;
@@ -502,9 +498,6 @@ class MediaViewerState extends State<MediaViewer>
   bool _barsHidden = false;
   // The viewer is closing: the bars are back, and stay.
   bool _closeRequested = false;
-  // The room the navigation bar takes at the bottom, kept while the bars are
-  // hidden: the picture does not move as they go.
-  double _navInset = 0;
 
   void _syncSystemBars() {
     final hide =
@@ -1387,7 +1380,7 @@ class MediaViewerState extends State<MediaViewer>
   // The item's picture fitted into the viewer, in global coordinates (the
   // viewer covers the screen, so local and global agree).
   Rect _fittedRect(int index, GalleryOrigin? origin) {
-    final size = _stage;
+    final size = _size;
     final aspect = _aspectOf(index, origin);
     if (size.isEmpty || aspect <= 0) return Offset.zero & size;
     final fitsWidth = size.width / size.height < aspect;
@@ -1456,11 +1449,26 @@ class MediaViewerState extends State<MediaViewer>
     ),
   );
 
+  // The chrome and the controls come in with the morph, as the reference's
+  // container does (its alpha goes 0 to 1 over the open): faded by how far
+  // the morph is, and no touch while it runs.
+  //
+  // The wrapper stays when the morph is over, so what is under it keeps its
+  // state.
+  Widget _fadingWithMorph(Widget child) {
+    final opening = _phase == _Phase.opening;
+    return IgnorePointer(
+      ignoring: opening,
+      child: Opacity(
+        opacity: opening ? _transition.value.clamp(0.0, 1.0) : 1,
+        child: child,
+      ),
+    );
+  }
+
   Widget _build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       _size = constraints.biggest;
-      final bottom = MediaQuery.paddingOf(context).bottom;
-      if (bottom > 0 || !_barsHidden) _navInset = bottom;
       final background = widget.tokens.background;
       final desktop = _policy.desktopInput;
       Widget viewer = PopScope(
@@ -1484,39 +1492,42 @@ class MediaViewerState extends State<MediaViewer>
             // frames the route takes to go would cover it with a stale one.
             else if (_phase != _Phase.closed)
               _morph(),
-            if (_session case final session? when _phase == _Phase.open)
-              ValueListenableBuilder<bool>(
-                valueListenable: _controls,
-                builder: (context, visible, _) => ViewerVideoControls(
-                  lease: session.lease,
-                  rules: _video,
-                  tokens: widget.tokens,
-                  visible: visible,
-                  showDuration: _policy.controlsDuration,
-                  hideDuration: _policy.controlsHideDuration,
-                  onInteraction: session.interacted,
-                  onSpeed: session.setSpeed,
-                  slide: _policy.controlsSlide,
-                  settingsOpen: _settingsOpen,
-                  settingsButton: widget.chrome == null,
-                  settingsTop:
-                      MediaQuery.paddingOf(context).top +
-                      _policy.chrome.topBarHeight +
-                      (widget.source.count > 1
-                          ? _policy.chrome.counterGap +
-                                _policy.chrome.counterHeight
-                          : 0) +
-                      4,
-                  qualities: _qualities(),
-                  quality: session.quality,
-                  onQuality: session.setQuality,
-                  previewFrame: widget.previewFrame,
-                  strings: widget.videoStrings,
-                  centreTaken: _spinnerShown,
-                  knownDuration: widget.source
-                      .itemAt(_index)
-                      ?.descriptor
-                      ?.duration,
+            if (_session case final session?
+                when _phase == _Phase.open || _phase == _Phase.opening)
+              _fadingWithMorph(
+                ValueListenableBuilder<bool>(
+                  valueListenable: _controls,
+                  builder: (context, visible, _) => ViewerVideoControls(
+                    lease: session.lease,
+                    rules: _video,
+                    tokens: widget.tokens,
+                    visible: visible,
+                    showDuration: _policy.controlsDuration,
+                    hideDuration: _policy.controlsHideDuration,
+                    onInteraction: session.interacted,
+                    onSpeed: session.setSpeed,
+                    slide: _policy.controlsSlide,
+                    settingsOpen: _settingsOpen,
+                    settingsButton: widget.chrome == null,
+                    settingsTop:
+                        MediaQuery.paddingOf(context).top +
+                        _policy.chrome.topBarHeight +
+                        (widget.source.count > 1
+                            ? _policy.chrome.counterGap +
+                                  _policy.chrome.counterHeight
+                            : 0) +
+                        4,
+                    qualities: _qualities(),
+                    quality: session.quality,
+                    onQuality: session.setQuality,
+                    previewFrame: widget.previewFrame,
+                    strings: widget.videoStrings,
+                    centreTaken: _spinnerShown,
+                    knownDuration: widget.source
+                        .itemAt(_index)
+                        ?.descriptor
+                        ?.duration,
+                  ),
                 ),
               ),
             // A player that waits for its media longer than the policy's
@@ -1538,28 +1549,31 @@ class MediaViewerState extends State<MediaViewer>
                     ? const SizedBox.shrink()
                     : _failure(session),
               ),
-            if (widget.chrome case final chrome? when _phase == _Phase.open)
-              ViewerChromeOverlay(
-                chrome: chrome,
-                index: _index,
-                source: widget.source,
-                controls: _controls,
-                tokens: widget.tokens,
-                policy: _policy,
-                scope: widget.scope,
-                bottomInset: _session == null
-                    ? 0
-                    : ViewerVideoControls.barHeight,
-                settingsOpen: _session == null ? null : _settingsOpen,
-                settingsLabel: widget.videoStrings.settings,
-                onMenuChanged: (open) {
-                  _menuOpen = open;
-                  _syncHold();
-                },
-                onBack: () => unawaited(close()),
-                onSelectIndex: _pageTo,
-                onAction: (action, index) =>
-                    unawaited(runAction(action, index)),
+            if (widget.chrome case final chrome?
+                when _phase == _Phase.open || _phase == _Phase.opening)
+              _fadingWithMorph(
+                ViewerChromeOverlay(
+                  chrome: chrome,
+                  index: _index,
+                  source: widget.source,
+                  controls: _controls,
+                  tokens: widget.tokens,
+                  policy: _policy,
+                  scope: widget.scope,
+                  bottomInset: _session == null
+                      ? 0
+                      : ViewerVideoControls.barHeight,
+                  settingsOpen: _session == null ? null : _settingsOpen,
+                  settingsLabel: widget.videoStrings.settings,
+                  onMenuChanged: (open) {
+                    _menuOpen = open;
+                    _syncHold();
+                  },
+                  onBack: () => unawaited(close()),
+                  onSelectIndex: _pageTo,
+                  onAction: (action, index) =>
+                      unawaited(runAction(action, index)),
+                ),
               ),
           ],
         ),
@@ -1627,45 +1641,42 @@ class MediaViewerState extends State<MediaViewer>
     final policy = _policy;
     return Transform.translate(
       offset: Offset(0, _drag),
-      child: Padding(
-        padding: EdgeInsets.only(bottom: _navInset),
-        child: GalleryPager(
-          controller: _pages,
-          count: widget.source.count,
-          gap: policy.pageGap,
-          physics: policy.pager,
-          transition: policy.transition,
-          taps: policy.taps,
-          // The item and its neighbours keep their state (zoom, the origin's
-          // frame); preparation beyond them is the viewer's own.
-          keepAlive: const GalleryKeepAlive.around(1),
-          // The media references never mirror the gallery.
-          textDirection: TextDirection.ltr,
-          dismiss: policy.dismissClaim,
-          onDismissStart: _dragEvents.onStart,
-          onDismissUpdate: _dragEvents.onUpdate,
-          onDismissEnd: _dragEvents.onEnd,
-          onPageChanged: (index) {
-            final previous = _index;
-            setState(() => _index = index);
-            // The surface hides the cell of the item the viewer shows, as the
-            // overlays over it fade: paged on, the cell of the item left shows
-            // again and the new one is empty, so a drag to close shows the
-            // picture over an empty place, not over its own twin.
-            if (_phase == _Phase.open) {
-              _hide(previous, hidden: false);
-              _hide(index, hidden: true);
-            }
-            _cover(index);
-            _dropOriginFrames(around: index);
-            _notifyController();
-            _syncVideo();
-            _syncNeighbours();
-            widget.source.loadAround(index);
-            widget.onIndexChanged?.call(index);
-          },
-          pageBuilder: (context, index) => _page(index),
-        ),
+      child: GalleryPager(
+        controller: _pages,
+        count: widget.source.count,
+        gap: policy.pageGap,
+        physics: policy.pager,
+        transition: policy.transition,
+        taps: policy.taps,
+        // The item and its neighbours keep their state (zoom, the origin's
+        // frame); preparation beyond them is the viewer's own.
+        keepAlive: const GalleryKeepAlive.around(1),
+        // The media references never mirror the gallery.
+        textDirection: TextDirection.ltr,
+        dismiss: policy.dismissClaim,
+        onDismissStart: _dragEvents.onStart,
+        onDismissUpdate: _dragEvents.onUpdate,
+        onDismissEnd: _dragEvents.onEnd,
+        onPageChanged: (index) {
+          final previous = _index;
+          setState(() => _index = index);
+          // The surface hides the cell of the item the viewer shows, as the
+          // overlays over it fade: paged on, the cell of the item left shows
+          // again and the new one is empty, so a drag to close shows the
+          // picture over an empty place, not over its own twin.
+          if (_phase == _Phase.open) {
+            _hide(previous, hidden: false);
+            _hide(index, hidden: true);
+          }
+          _cover(index);
+          _dropOriginFrames(around: index);
+          _notifyController();
+          _syncVideo();
+          _syncNeighbours();
+          widget.source.loadAround(index);
+          widget.onIndexChanged?.call(index);
+        },
+        pageBuilder: (context, index) => _page(index),
       ),
     );
   }
@@ -1691,10 +1702,10 @@ class MediaViewerState extends State<MediaViewer>
       contentSize: fitted,
       policy: policy,
       drag: _dragEvents,
-      maxZoom: policy.maxZoomFor(fitted, _stage, pixels: item.size),
+      maxZoom: policy.maxZoomFor(fitted, _size, pixels: item.size),
       doubleTapZoom: video && !_video.doubleTapZooms
           ? null
-          : policy.doubleTapZoomFor(fitted, _stage, pixels: item.size),
+          : policy.doubleTapZoomFor(fitted, _size, pixels: item.size),
       onTap: switch ((session, policy.pictureClickCloses)) {
         (final playing?, _) when _video.clickPlays => playing.togglePlay,
         (null, _) when widget.onPictureTap != null =>
