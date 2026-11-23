@@ -13,6 +13,7 @@ import 'backend/fake_player_engine_contract_test.dart'
 import 'budget/player_device_test.dart' as player_device_test;
 import 'feed/feed_controller_test.dart' as feed_controller_test;
 import 'feed/feed_list_policy_test.dart' as feed_list_policy_test;
+import 'feed/feed_lite_mode_test.dart' as feed_lite_mode_test;
 import 'feed/feed_pager_test.dart' as feed_pager_test;
 import 'feed/feed_signals_test.dart' as feed_signals_test;
 import 'feed/feed_slot_test.dart' as feed_slot_test;
@@ -33,6 +34,7 @@ void main() {
   group('player_device_test', player_device_test.main);
   group('feed_controller_test', feed_controller_test.main);
   group('feed_list_policy_test', feed_list_policy_test.main);
+  group('feed_lite_mode_test', feed_lite_mode_test.main);
   group('feed_pager_test', feed_pager_test.main);
   group('feed_signals_test', feed_signals_test.main);
   group('feed_slot_test', feed_slot_test.main);

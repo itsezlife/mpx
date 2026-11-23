@@ -121,13 +121,20 @@ final class FeedConditions {
     this.powerSaving = false,
     this.thermal = FeedThermal.nominal,
     this.silenced = false,
+    this.batteryLevel,
   });
 
   /// The network class.
   final FeedNetwork network;
 
-  /// Whether the device saves power.
+  /// Whether the device saves power: the system's battery saver. What stops
+  /// autoplay is the battery level against [FeedLiteMode.powerSaverLevel],
+  /// not this, unless the host's lite mode counts it
+  /// ([FeedLiteMode.osPowerSaverCounts]).
   final bool powerSaving;
+
+  /// The battery, 0 to 100 percent; null when unknown.
+  final int? batteryLevel;
 
   /// How hot the device runs.
   final FeedThermal thermal;
@@ -146,13 +153,16 @@ final class FeedConditions {
       other.network == network &&
       other.powerSaving == powerSaving &&
       other.thermal == thermal &&
-      other.silenced == silenced;
+      other.silenced == silenced &&
+      other.batteryLevel == batteryLevel;
 
   @override
-  int get hashCode => Object.hash(network, powerSaving, thermal, silenced);
+  int get hashCode =>
+      Object.hash(network, powerSaving, thermal, silenced, batteryLevel);
 
   @override
   String toString() =>
       'FeedConditions(${network.name}, powerSaving: $powerSaving, '
-      'thermal: ${thermal.name}, silenced: $silenced)';
+      'thermal: ${thermal.name}, silenced: $silenced, '
+      'battery: $batteryLevel)';
 }

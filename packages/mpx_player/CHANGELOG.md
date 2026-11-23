@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- The feed's power saver is the reference clients' lite mode, not the system's
+  battery saver. `FeedPolicy.lite` (`FeedLiteMode`): videos and GIFs autoplay
+  as the reader's settings say, each kind apart, and nothing autoplays at or
+  under a battery level (10 % by default, 0 never, 100 always), a file on the
+  device included. The system's battery saver counts only when the host says
+  so (`osPowerSaverCounts`). `FeedConditions.batteryLevel` and a
+  `FeedSignals(batteryLevel:)` input carry the level.
+- `FeedPolicy.pausingLayers` no longer holds low power
+  (`FeedPolicy.standardPausingLayers`): a power saver stops autoplay, not a
+  video the reader plays.
 - A host's hold on a pager lasts. `FeedPager.held` was rewritten by the feed
   on every measure from the policy's pausing layers, so a host that held the
   page (a press on a video, a seek bar being dragged) saw it play on at the

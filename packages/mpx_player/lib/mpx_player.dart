@@ -23,6 +23,7 @@ export 'src/budget/player_device.dart';
 export 'src/feed/feed_controller.dart';
 export 'src/feed/feed_item.dart';
 export 'src/feed/feed_list_plan.dart';
+export 'src/feed/feed_lite_mode.dart';
 export 'src/feed/feed_pager.dart';
 export 'src/feed/feed_policy.dart';
 export 'src/feed/feed_signals.dart';

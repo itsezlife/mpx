@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_player/src/feed/feed_item.dart';
+import 'package:mpx_player/src/feed/feed_lite_mode.dart';
 import 'package:mpx_player/src/pool/player_pool.dart';
 
 /// How a scrolling surface plays its clips.
@@ -270,6 +271,7 @@ final class FeedPolicy {
     this.activeItem = const FeedActiveItemRule(),
     this.autoplayGate = referenceAutoplayGate,
     this.sizeLimits = const FeedSizeLimits(),
+    this.lite = const FeedLiteMode(),
     this.mutedAutoplay = true,
     this.initialMute = FeedInitialMute.muted,
     this.autoAdvance = roundsAdvance,
@@ -280,7 +282,7 @@ final class FeedPolicy {
     this.preparedPlayers = 0,
     this.heavyUnloadViewports = 2,
     this.preloadBackOffLayers = AssetCacheScope.standardPreloadPausingLayers,
-    this.pausingLayers = PlaybackPolicy.standardPausingLayers,
+    this.pausingLayers = standardPausingLayers,
     this.resume = FeedResume.resume,
     this.loop = true,
   }) : mode = FeedMode.list;
@@ -290,6 +292,7 @@ final class FeedPolicy {
     this.activeItem = const FeedActiveItemRule(),
     this.autoplayGate = referenceAutoplayGate,
     this.sizeLimits = const FeedSizeLimits(),
+    this.lite = const FeedLiteMode(),
     this.mutedAutoplay = false,
     this.initialMute = FeedInitialMute.followRinger,
     this.autoAdvance = alwaysAdvance,
@@ -300,7 +303,7 @@ final class FeedPolicy {
     this.preparedPlayers = 2,
     this.heavyUnloadViewports = 2,
     this.preloadBackOffLayers = AssetCacheScope.standardPreloadPausingLayers,
-    this.pausingLayers = PlaybackPolicy.standardPausingLayers,
+    this.pausingLayers = standardPausingLayers,
     this.resume = FeedResume.restart,
     this.loop = false,
   }) : mode = FeedMode.pager;
@@ -316,6 +319,10 @@ final class FeedPolicy {
 
   /// 4. The largest file that autoplays in full, per network class.
   final FeedSizeLimits sizeLimits;
+
+  /// The reader's autoplay settings and the power saver: what autoplays by
+  /// kind, and the battery level under which nothing does.
+  final FeedLiteMode lite;
 
   /// 5. Whether clips that play by themselves play muted (an ambient audio
   /// role that takes no audio focus).
@@ -358,7 +365,8 @@ final class FeedPolicy {
 
   /// 21. The pause layers under which nothing of the feed plays, read from
   /// the asset cache scope's clock: no item is `playing` and the pager
-  /// pauses its page.
+  /// pauses its page. Not low power: a power saver stops autoplay
+  /// ([lite]), not a video the reader plays.
   final Set<PlaybackPauseLayer> pausingLayers;
 
   /// 22. Where a clip starts when it plays again.
@@ -366,6 +374,17 @@ final class FeedPolicy {
 
   /// 23. Whether a clip loops.
   final bool loop;
+
+  /// The layers that pause a feed unless the host says otherwise: the
+  /// standard ones but low power, which is the autoplay gate's
+  /// ([FeedLiteMode]).
+  static const Set<PlaybackPauseLayer> standardPausingLayers = {
+    PlaybackPauseLayer.routeMoving,
+    PlaybackPauseLayer.fastScroll,
+    PlaybackPauseLayer.surfaceHidden,
+    PlaybackPauseLayer.appInactive,
+    PlaybackPauseLayer.overlayShown,
+  };
 
   /// The player budget this policy asks the pool for: one playing, and
   /// [preparedPlayers] warm.
@@ -420,21 +439,22 @@ final class FeedPolicy {
 
   /// The reference autoplay gate.
   ///
-  /// An item already on the device plays. Otherwise nothing plays while the
-  /// device saves power or has no network; a file within the size limit of
-  /// the network plays in full; a larger one gets a prefix when prefixes are
-  /// on and the limit is above the prefix cap (a small limit means the user
-  /// saves data); else it does not play. An unknown size counts as within
-  /// the limit.
+  /// The reader's settings come first, as in the reference clients: nothing
+  /// of a kind autoplays when its setting is off, and nothing at all under the
+  /// power saver ([FeedPolicy.lite]), a file on the device included. Then an
+  /// item already on the device plays. Otherwise nothing plays with no
+  /// network; a file within the size limit of the network plays in full; a
+  /// larger one gets a prefix when prefixes are on and the limit is above the
+  /// prefix cap (a small limit means the user saves data); else it does not
+  /// play. An unknown size counts as within the limit.
   static FeedAutoplay referenceAutoplayGate(
     FeedItem item,
     FeedConditions conditions,
     FeedPolicy policy,
   ) {
+    if (!policy.lite.allows(item, conditions)) return FeedAutoplay.none;
     if (item.local) return FeedAutoplay.full;
-    if (conditions.powerSaving || conditions.network == FeedNetwork.none) {
-      return FeedAutoplay.none;
-    }
+    if (conditions.network == FeedNetwork.none) return FeedAutoplay.none;
     final limit = policy.sizeLimits.limitOn(conditions.network);
     final size = item.byteSize;
     if (size == null || size <= limit) return FeedAutoplay.full;

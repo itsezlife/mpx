@@ -141,9 +141,8 @@ void main() {
       expect(autoplay, FeedAutoplay.none);
     });
 
-    test('power saving and no network stop autoplay; local files play', () {
+    test('no network stops autoplay; local files play', () {
       for (final conditions in const [
-        FeedConditions(powerSaving: true),
         FeedConditions(network: FeedNetwork.none),
       ]) {
         expect(
@@ -248,7 +247,7 @@ void main() {
     test('an item that will not autoplay preloads its metadata only', () {
       final result = plan({
         5: 1,
-      }, conditions: const FeedConditions(powerSaving: true));
+      }, conditions: const FeedConditions(batteryLevel: 5));
 
       expect(result.preloads.values.toSet(), {AssetPreloadStage.metadata});
     });
@@ -298,7 +297,13 @@ void main() {
         policy.preloadBackOffLayers,
         AssetCacheScope.standardPreloadPausingLayers,
       );
-      expect(policy.pausingLayers, PlaybackPolicy.standardPausingLayers);
+      expect(policy.pausingLayers, FeedPolicy.standardPausingLayers);
+      expect(
+        policy.pausingLayers,
+        PlaybackPolicy.standardPausingLayers.difference({
+          PlaybackPauseLayer.lowPower,
+        }),
+      );
       expect(policy.loop, isTrue);
       expect(policy.clipProfile().loop, isTrue);
       expect(const FeedPolicy.list(loop: false).clipProfile().loop, isFalse);

@@ -15,16 +15,19 @@ enum HostThermal { nominal, fair, serious, critical }
 void main() {
   late ValueNotifier<FeedNetwork> network;
   late ValueNotifier<bool> powerSaving;
+  late ValueNotifier<int?> battery;
   late ValueNotifier<FeedThermal> thermal;
   late FeedSignals signals;
 
   setUp(() {
     network = ValueNotifier(FeedNetwork.unmetered);
     powerSaving = ValueNotifier(false);
+    battery = ValueNotifier(null);
     thermal = ValueNotifier(FeedThermal.nominal);
     signals = FeedSignals(
       network: network,
       powerSaving: powerSaving,
+      batteryLevel: battery,
       thermal: thermal,
     );
   });
@@ -32,6 +35,7 @@ void main() {
     signals.dispose();
     network.dispose();
     powerSaving.dispose();
+    battery.dispose();
     thermal.dispose();
   });
 
@@ -90,9 +94,25 @@ void main() {
     network.value = FeedNetwork.none;
     expect(autoplay(1024), FeedAutoplay.none);
 
+    // The system's battery saver is not the power saver; the battery is.
     network.value = FeedNetwork.unmetered;
     powerSaving.value = true;
+    expect(autoplay(1024), FeedAutoplay.full);
+    battery.value = 8;
     expect(autoplay(1024), FeedAutoplay.none);
+    battery.value = 80;
+    expect(autoplay(1024), FeedAutoplay.full);
+  });
+
+  test('the battery level is a condition, and a change of it is heard', () {
+    expect(signals.value.batteryLevel, isNull);
+    var heard = 0;
+    signals.addListener(() => heard++);
+
+    battery.value = 42;
+
+    expect(signals.value.batteryLevel, 42);
+    expect(heard, 1);
   });
 
   test('the size limits are host knobs', () {

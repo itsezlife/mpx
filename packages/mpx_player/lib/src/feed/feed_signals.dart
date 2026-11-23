@@ -23,11 +23,13 @@ final class FeedSignals extends ChangeNotifier
     ValueListenable<bool>? powerSaving,
     ValueListenable<FeedThermal>? thermal,
     ValueListenable<bool>? silenced,
+    ValueListenable<int?>? batteryLevel,
   }) : _network = network,
        _powerSaving = powerSaving,
        _thermal = thermal,
        _silenced = silenced,
-       _value = _read(network, powerSaving, thermal, silenced);
+       _battery = batteryLevel,
+       _value = _read(network, powerSaving, thermal, silenced, batteryLevel);
 
   /// Creates a seam over inputs of the host's own types, mapped with
   /// [toNetwork] and [toThermal]: for signals whose enums mirror these (the
@@ -39,6 +41,7 @@ final class FeedSignals extends ChangeNotifier
     ValueListenable<T>? thermal,
     FeedThermal Function(T value)? toThermal,
     ValueListenable<bool>? silenced,
+    ValueListenable<int?>? batteryLevel,
   }) {
     assert(
       network == null || toNetwork != null,
@@ -53,6 +56,7 @@ final class FeedSignals extends ChangeNotifier
       powerSaving: powerSaving,
       thermal: thermal == null ? null : _Mapped(thermal, toThermal!),
       silenced: silenced,
+      batteryLevel: batteryLevel,
     );
   }
 
@@ -60,6 +64,7 @@ final class FeedSignals extends ChangeNotifier
   final ValueListenable<bool>? _powerSaving;
   final ValueListenable<FeedThermal>? _thermal;
   final ValueListenable<bool>? _silenced;
+  final ValueListenable<int?>? _battery;
   FeedConditions _value;
   bool _following = false;
 
@@ -68,18 +73,21 @@ final class FeedSignals extends ChangeNotifier
     ValueListenable<bool>? powerSaving,
     ValueListenable<FeedThermal>? thermal,
     ValueListenable<bool>? silenced,
+    ValueListenable<int?>? battery,
   ) => FeedConditions(
     network: network?.value ?? FeedNetwork.unmetered,
     powerSaving: powerSaving?.value ?? false,
     thermal: thermal?.value ?? FeedThermal.nominal,
     silenced: silenced?.value ?? false,
+    batteryLevel: battery?.value,
   );
 
   /// The conditions now. Read fresh while nobody listens, so a snapshot taken
   /// without a listener is never stale.
   @override
-  FeedConditions get value =>
-      _following ? _value : _read(_network, _powerSaving, _thermal, _silenced);
+  FeedConditions get value => _following
+      ? _value
+      : _read(_network, _powerSaving, _thermal, _silenced, _battery);
 
   /// Whether the network costs the user (metered or roaming), as a listenable
   /// for the core's `meteredNetwork` pause layer.
@@ -123,6 +131,7 @@ final class FeedSignals extends ChangeNotifier
       _powerSaving,
       _thermal,
       _silenced,
+      _battery,
     ]) {
       if (on) {
         input?.addListener(_changed);
@@ -130,11 +139,12 @@ final class FeedSignals extends ChangeNotifier
         input?.removeListener(_changed);
       }
     }
-    if (on) _value = _read(_network, _powerSaving, _thermal, _silenced);
+    if (on)
+      _value = _read(_network, _powerSaving, _thermal, _silenced, _battery);
   }
 
   void _changed() {
-    final next = _read(_network, _powerSaving, _thermal, _silenced);
+    final next = _read(_network, _powerSaving, _thermal, _silenced, _battery);
     if (next == _value) return;
     _value = next;
     notifyListeners();

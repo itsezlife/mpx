@@ -60,7 +60,7 @@ void main() {
     test('items the gate holds back are neither played nor warmed', () {
       const saving = FeedPagerPlanner(
         FeedPolicy.pager(),
-        conditions: FeedConditions(powerSaving: true),
+        conditions: FeedConditions(batteryLevel: 5),
       );
       final plan = saving.plan(index: 3, itemCount: 10, item: itemOf);
 
@@ -228,7 +228,7 @@ void main() {
 
     test('an item the gate holds back from the start holds no player: it '
         'waits for a tap, and a player would fetch its bytes', () async {
-      final saving = ValueNotifier(const FeedConditions(powerSaving: true));
+      final saving = ValueNotifier(const FeedConditions(batteryLevel: 5));
       addTearDown(saving.dispose);
       final pager = makePager(index: 3, conditions: saving);
       await settle();
@@ -242,13 +242,13 @@ void main() {
       expect(pager.leaseOf(3)!.state.value.playing, isTrue);
     });
 
-    test('new conditions re-plan: power saving stops autoplay', () async {
+    test('new conditions re-plan: the power saver stops autoplay', () async {
       final conditions = ValueNotifier(const FeedConditions());
       addTearDown(conditions.dispose);
       final pager = makePager(index: 3, conditions: conditions);
       await settle();
 
-      conditions.value = const FeedConditions(powerSaving: true);
+      conditions.value = const FeedConditions(batteryLevel: 5);
       await settle();
 
       expect(pager.leaseOf(3)!.state.value.playing, isFalse);

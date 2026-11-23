@@ -123,9 +123,9 @@ void main() {
     });
 
     test('the conditions plan again', () {
-      final saving = ValueNotifier(false);
+      final saving = ValueNotifier<int?>(80);
       addTearDown(saving.dispose);
-      final signals = FeedSignals(powerSaving: saving);
+      final signals = FeedSignals(batteryLevel: saving);
       addTearDown(signals.dispose);
       final controller = FeedController(conditions: signals);
       addTearDown(controller.dispose);
@@ -133,7 +133,7 @@ void main() {
       controller.measure();
       expect(controller.stateOf(0).value.playing, isTrue);
 
-      saving.value = true;
+      saving.value = 5;
 
       expect(controller.stateOf(0).value.autoplay, FeedAutoplay.none);
       expect(controller.stateOf(0).value.playing, isFalse);
