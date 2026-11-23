@@ -45,9 +45,9 @@ abstract final class PostViewer {
           caption: (context, index, item) {
             final alt = post.media[index].alt;
             final text = alt != null && alt.isNotEmpty ? alt : post.text.plain;
-            return text.isEmpty
-                ? null
-                : Text(text, maxLines: 4, overflow: TextOverflow.ellipsis);
+            // Whole: the viewer's caption sheet cuts it at its first height and
+            // a drag grows and scrolls it.
+            return text.isEmpty ? null : Text(text);
           },
           thumbnails: post.media.length > 1,
           openFile: cachedFiles(dependencies.stack),
