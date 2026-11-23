@@ -93,7 +93,7 @@ final class _IsolateTransferWorker implements TransferWorker {
     }
     body.onLanded = onLanded;
     worker.add(_Write(head.id, path, offset));
-    return body.done.future;
+    return body.result;
   }
 
   @override
@@ -101,7 +101,7 @@ final class _IsolateTransferWorker implements TransferWorker {
     final body = _bodies.remove(head.id);
     if (body == null || _closed) return;
     _controller?.add(_Abort(head.id));
-    if (!body.done.isCompleted) body.done.complete();
+    body.end();
   }
 
   void _onReply(_Out reply) {
@@ -133,16 +133,14 @@ final class _IsolateTransferWorker implements TransferWorker {
             if (body.failed) return;
             body.failed = true;
             _controller?.add(_Abort(id));
-            if (!body.done.isCompleted) {
-              body.done.completeError(error, stackTrace);
-            }
+            body.end(error, stackTrace);
           },
         );
       case _Done(:final id):
         final body = _bodies.remove(id);
         if (body == null) return;
         body.chain.then((_) {
-          if (!body.done.isCompleted) body.done.complete();
+          body.end();
         }, onError: (Object _) {});
       case _Failed(:final id, :final kind, :final message):
         final failure = TransferFailed(kind, message);
@@ -154,7 +152,7 @@ final class _IsolateTransferWorker implements TransferWorker {
         final body = _bodies.remove(id);
         if (body == null) return;
         body.chain.then((_) {
-          if (!body.done.isCompleted) body.done.completeError(failure);
+          body.end(failure);
         }, onError: (Object _) {});
     }
   }
@@ -165,7 +163,7 @@ final class _IsolateTransferWorker implements TransferWorker {
       if (!head.isCompleted) head.completeError(failure);
     }
     for (final body in _bodies.values) {
-      if (!body.done.isCompleted) body.done.completeError(failure);
+      body.end(failure);
     }
     _heads.clear();
     _bodies.clear();
@@ -190,8 +188,32 @@ final class _Body {
 
   /// The reports, one after the other.
   Future<void> chain = Future<void>.value();
+
+  /// Completes, never with an error, when the body ends; [error] says how.
+  ///
+  /// A transfer aborted between its head and its write (a preload cancelled
+  /// as its item leaves the window) ends with nobody awaiting yet, and a
+  /// future that completes with an error and has no listener is the zone's
+  /// uncaught error. So the failure travels as a value and is thrown to the
+  /// write that comes later, by the future it is given.
   final Completer<void> done = Completer<void>();
+  Object? error;
+  StackTrace? stackTrace;
   bool failed = false;
+
+  void end([Object? error, StackTrace? stackTrace]) {
+    if (done.isCompleted) return;
+    this.error = error;
+    this.stackTrace = stackTrace;
+    done.complete();
+  }
+
+  Future<void> get result => done.future.then((_) {
+    final failure = error;
+    if (failure != null) {
+      Error.throwWithStackTrace(failure, stackTrace ?? StackTrace.current);
+    }
+  });
 }
 
 // --- Protocol (data, not control flow) ---

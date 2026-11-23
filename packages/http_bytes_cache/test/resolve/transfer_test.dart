@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -135,6 +136,52 @@ void main() {
         throwsA(isA<HttpBytesException$Cancelled>()),
       );
     });
+
+    test(
+      'a transfer cancelled before anyone writes it leaves no error behind',
+      () async {
+        // A preload that is cancelled between its head and its write: nobody
+        // awaits the body yet, and its failure must not surface as an
+        // uncaught error of the zone.
+        final uncaught = <Object>[];
+        await runZonedGuarded(() async {
+          final token = CancelToken();
+          await client.transfer(server.url(), cancelToken: token);
+          token.cancel();
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+        }, (error, stackTrace) => uncaught.add(error));
+
+        expect(uncaught, isEmpty);
+      },
+    );
+
+    test(
+      'a transfer cancelled while it is written leaves no error behind',
+      () async {
+        final uncaught = <Object>[];
+        await runZonedGuarded(() async {
+          final token = CancelToken();
+          final transfer = await client.transfer(
+            server.url(),
+            cancelToken: token,
+          );
+          final write = transfer.writeTo(
+            '${dir.path}/exp',
+            offset: 0,
+            onLanded: (_, _) async {
+              await Future<void>.delayed(const Duration(milliseconds: 50));
+            },
+          );
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+          token.cancel();
+          try {
+            await write;
+          } on Object catch (_) {}
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+        }, (error, stackTrace) => uncaught.add(error));
+        expect(uncaught, isEmpty);
+      },
+    );
 
     test('a span report that throws fails the body with its error', () async {
       final transfer = await client.transfer(server.url());

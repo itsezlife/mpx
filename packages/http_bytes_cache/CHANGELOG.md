@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- A transfer aborted before or while its body is written no longer surfaces
+  as an uncaught error. A download cancelled between its head and its write
+  (a preload whose item left the window, a tile scrolled away) failed the
+  worker's body future with `TransferFailed(cancelled)` while nothing listened
+  to it, and the zone reported it, once for each such transfer. The failure
+  now travels as a value and is thrown to the write that asks for it.
 - `BytesQuota.previews` (4 MiB), one of `BytesQuota.standard`, for small
   derived preview pictures.
 - Ranged resources download in parts, several in flight at once: each part
