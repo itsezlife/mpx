@@ -9,9 +9,9 @@ import 'package:flutter/widgets.dart';
 /// the box behind the text growing with it.
 ///
 /// - The text scrolls like any scroll view, and gives under a pull past an end
-///   (`BouncingScrollPhysics`, whose spring is the reference's: stiffness
-///   100, no bounce of its own). Text that all shows has no range to scroll
-///   and gives nothing.
+///   with the reference's resistance and spring (stiffness 100, no bounce of
+///   its own), text that all shows included: there is nothing to scroll and
+///   it still gives, as the reference's does.
 /// - The edges fade while there is more text beyond them.
 /// - Only the box and its text take touches; the room above them is the
 ///   picture's.
@@ -96,7 +96,10 @@ class _ViewerCaptionSheetState extends State<ViewerCaptionSheet> {
                   shaderCallback: (bounds) => _fade(bounds),
                   child: SingleChildScrollView(
                     controller: _scroll,
-                    physics: const BouncingScrollPhysics(),
+                    physics: _CaptionPhysics(
+                      reach: () => _geometry.margin,
+                      parent: const AlwaysScrollableScrollPhysics(),
+                    ),
                     child: _CaptionBody(
                       geometry: _geometry,
                       room: room,
@@ -174,6 +177,51 @@ class _BoxPainter extends CustomPainter {
   @override
   bool shouldRepaint(_BoxPainter oldDelegate) =>
       oldDelegate.color != color || oldDelegate.geometry != geometry;
+}
+
+// The reference's pull past an end: a finger's move past it is followed by
+// the share of the room not yet given (`dy * (1 - |over| / room)`, the room
+// being the space above the text at rest), a move back is followed whole,
+// and the text settles back on `BouncingScrollPhysics`' spring (stiffness
+// 100, no bounce of its own).
+class _CaptionPhysics extends BouncingScrollPhysics {
+  const _CaptionPhysics({required this.reach, super.parent});
+
+  /// The room above the text at rest: the pull's whole reach.
+  final double Function() reach;
+
+  @override
+  _CaptionPhysics applyTo(ScrollPhysics? ancestor) =>
+      _CaptionPhysics(reach: reach, parent: buildParent(ancestor));
+
+  @override
+  double applyPhysicsToUserOffset(ScrollMetrics position, double offset) {
+    final room = reach();
+    if (room <= 0 || offset == 0) return offset;
+    final pixels = position.pixels;
+    final min = position.minScrollExtent;
+    final max = position.maxScrollExtent;
+    // The scroll goes by `pixels -= result`: a negative offset moves on
+    // toward the end, a positive one back toward the start.
+    final forward = offset < 0;
+    final moving = offset.abs();
+    final double over;
+    final double toward;
+    if (forward) {
+      // Past the start, a move forward is a move back: followed whole.
+      if (pixels < min) return offset;
+      over = math.max(0, pixels - max);
+      toward = over > 0 ? 0 : math.min(moving, max - pixels);
+    } else {
+      if (pixels > max) return offset;
+      over = math.max(0, min - pixels);
+      toward = over > 0 ? 0 : math.min(moving, pixels - min);
+    }
+    final pull = moving - toward;
+    if (pull <= 0) return offset;
+    final factor = 1 - ((over + pull / 2) / room).clamp(0, 1);
+    return (forward ? -1 : 1) * (toward + pull * factor);
+  }
 }
 
 // What the body's layout tells the sheet: where its text starts.

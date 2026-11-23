@@ -434,11 +434,15 @@ Read against the reference's viewer:
   It fills the room between the top bar and the video controls; its text
   starts as low as five lines (two in landscape) and scrolls up over the
   picture, the box behind it following the text. A pull past an end gives
-  (`BouncingScrollPhysics`: stiffness 100, no bounce of its own) only where
-  there is text to scroll; its edges fade (12 px) while there is more text.
+  (a finger's move followed by `1 - |over| / room` of itself, the room being
+  the space above the text at rest, as the reference's `dispatchNestedScroll`
+  does; the spring is `BouncingScrollPhysics`': stiffness 100, no bounce of
+  its own) also when
+  all of the text shows and there is nothing to scroll, as the reference's
+  does; its edges fade (12 px) while there is more text.
   Touches above the box fall through to the picture. A first design that grew
-  a box and then scrolled the text, with a hand-made rubber band, bounced
-  texts that all showed and let a pull take the text far up; it is gone.
+  a box and then scrolled the text, with a hand-made rubber band, let a pull
+  take the text far up; it is gone.
 - **The chrome fades in with the open morph**, as the reference's container
   does (alpha 0 to 1 over the 200 ms), not when it ends.
 - **One block hides.** The caption, the strip and the video bar slide by

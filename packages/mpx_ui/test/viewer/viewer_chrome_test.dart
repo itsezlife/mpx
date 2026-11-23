@@ -526,6 +526,31 @@ void main() {
       expect(tester.getTopLeft(text).dy, closeTo(rest, 0.5));
     });
 
+    testWidgets('resists a long pull more the further it goes, as the '
+        'reference does', (tester) async {
+      final harness = ViewerHarness();
+      await harness.pump(tester, chrome: chrome(caption: lines(40)));
+      await tester.dragFrom(onBox(tester), const Offset(0, -3000));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 3));
+      final rest = tester.getTopLeft(text).dy;
+
+      final gesture = await tester.startGesture(onBox(tester));
+      await gesture.moveBy(const Offset(0, -20));
+      // The text follows by the share of its room not yet given: of a pull
+      // of 400 px, the room being 600 px, it goes 600 * (1 - e^(-400 / 600)).
+      for (var i = 0; i < 8; i++) {
+        await gesture.moveBy(const Offset(0, -50));
+      }
+      await tester.pump();
+
+      final given = rest - tester.getTopLeft(text).dy;
+      expect(given, inExclusiveRange(250, 330));
+      await gesture.up();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 3));
+    });
+
     testWidgets('gives under a pull past its start too', (tester) async {
       final harness = ViewerHarness();
       await harness.pump(tester, chrome: chrome(caption: lines(40)));
@@ -543,20 +568,28 @@ void main() {
       expect(tester.getTopLeft(text).dy, closeTo(rest, 0.5));
     });
 
-    testWidgets('a text that all shows gives nothing', (tester) async {
+    testWidgets('a text that all shows gives under a pull too, as the '
+        'reference does, and settles back', (tester) async {
       final harness = ViewerHarness();
       // Under five lines: the box is as tall as the text, nothing is left to
-      // scroll.
+      // scroll, and the feel is the same.
       await harness.pump(tester, chrome: chrome(caption: lines(3)));
       final rest = tester.getTopLeft(text).dy;
+      final boxHeight = box(tester).height;
 
-      await tester.dragFrom(onBox(tester), const Offset(0, -150));
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(tester.getTopLeft(text).dy, rest);
+      for (final dy in [-80.0, 80.0]) {
+        final gesture = await tester.startGesture(onBox(tester));
+        await gesture.moveBy(Offset(0, dy.sign * 20));
+        await gesture.moveBy(Offset(0, dy));
+        await tester.pump();
+        expect((tester.getTopLeft(text).dy - rest).abs(), greaterThan(5));
 
-      await tester.dragFrom(onBox(tester), const Offset(0, 150));
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(tester.getTopLeft(text).dy, rest);
+        await gesture.up();
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 3));
+        expect(tester.getTopLeft(text).dy, closeTo(rest, 0.5));
+        expect(box(tester).height, closeTo(boxHeight, 0.5));
+      }
     });
   });
 

@@ -8,8 +8,9 @@
   controls, as the reference's is (`ViewerCaptionSheet`): its text starts as
   low as five lines (two in landscape) and a drag up takes it over the picture,
   the box behind it growing, then scrolls it. It gives under a pull past an end
-  (`BouncingScrollPhysics`, the reference's spring) only when there is text
-  left to scroll, its edges fade while there is more, and the picture above its
+  (the reference's curve, a move followed by the share of the room not yet
+  given, and its spring) even when all
+  of the text shows (as the reference's does), its edges fade while there is more, and the picture above its
   box takes the touches. The caption and the video bar hide as one block: they
   slide by the same amount over the same time.
 - The chrome and the video controls fade in with the open morph (as the
