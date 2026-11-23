@@ -75,6 +75,7 @@ class _LogJournalPageState extends State<LogJournalPage> {
 
   Future<void> _confirmClear() async {
     final confirmed = await showDialog<bool>(
+      useRootNavigator: false,
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Clear the logs?'),

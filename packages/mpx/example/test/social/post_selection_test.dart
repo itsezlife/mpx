@@ -34,9 +34,6 @@ void main() {
   setUp(() => selection = PostSelection());
   tearDown(() => selection.dispose());
 
-  String copied() =>
-      selection.controller.getText(MarkdownSelectionFormatter.plain);
-
   test('a post is parsed once: its widget and the selection share a model', () {
     final post = _post('1', 'hello');
     expect(selection.markdownOf(post), same(selection.markdownOf(post)));
@@ -49,49 +46,51 @@ void main() {
     expect(selection.markdownOf(post), isNot(same(before)));
   });
 
-  test('the posts shown are the documents, in reading order', () {
-    final posts = [_post('3', 'three'), _post('2', 'two'), _post('1', 'one')];
-    selection.sync(posts, shows: (_) => true);
+  MarkdownSelectionController body(Post post) => selection.controllerOf(post)
+    ..setDocuments([
+      MarkdownDocumentRef(
+        id: post.id,
+        model: selection.markdownOf(post),
+        order: 0,
+      ),
+    ]);
 
-    expect(selection.controller.documentCount, 3);
-    selection.controller.selectAll();
-    // Newest first, as the list reads, not in the order of ids.
-    expect(copied(), 'three\n\ntwo\n\none');
+  test('a post has a selection of its own, which reads its own text', () {
+    final one = body(_post('1', 'one'));
+    final two = body(_post('2', 'two'));
+
+    one.selectAll();
+
+    expect(one.getText(MarkdownSelectionFormatter.plain), 'one');
+    expect(two.selection, isNull);
   });
 
-  test('a post that covers its text is not copied from', () {
-    final posts = [
-      _post('3', 'three'),
-      _post('2', 'secret', warning: 'spoilers'),
-      _post('1', 'one'),
-    ];
-    selection.sync(posts, shows: (post) => post.warning.isEmpty);
+  test('a selection that starts in one post ends the one in another', () {
+    final one = body(_post('1', 'one'));
+    final two = body(_post('2', 'two'));
 
-    expect(selection.controller.documentCount, 2);
-    selection.controller.selectAll();
-    expect(copied(), 'three\n\none');
+    one.selectAll();
+    two.selectAll();
 
-    // Opened, it is read with the rest, in its place.
-    selection.sync(posts, shows: (_) => true);
-    selection.controller.selectAll();
-    expect(copied(), 'three\n\nsecret\n\none');
+    expect(one.selection, isNull);
+    expect(two.getText(MarkdownSelectionFormatter.plain), 'two');
   });
 
-  test('a post with no words has nothing to select', () {
-    final posts = [_post('2', ''), _post('1', 'one')];
-    selection.sync(posts, shows: (_) => true);
+  test('clear ends the selection wherever it is', () {
+    final one = body(_post('1', 'one'));
+    one.selectAll();
 
-    expect(selection.controller.documentCount, 1);
+    selection.clear();
+
+    expect(one.selection, isNull);
   });
 
-  test('a new list replaces the old documents', () {
-    selection.sync([_post('1', 'one')], shows: (_) => true);
-    selection
-      ..reset()
-      ..sync([_post('9', 'nine'), _post('8', 'eight')], shows: (_) => true);
+  test('a post that goes takes its selection with it', () {
+    final one = body(_post('1', 'one'));
+    one.selectAll();
+    one.dispose();
 
-    expect(selection.controller.documentCount, 2);
-    selection.controller.selectAll();
-    expect(copied(), 'nine\n\neight');
+    // Nothing is left for the group to clear, and clearing is safe.
+    expect(selection.clear, returnsNormally);
   });
 }

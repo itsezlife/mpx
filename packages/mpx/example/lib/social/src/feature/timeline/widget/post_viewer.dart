@@ -23,6 +23,16 @@ abstract final class PostViewer {
     // The viewer plays a clip's own sound: nothing in the list plays aloud
     // under it.
     dependencies.inlineSound.suspend();
+    // The tile that played aloud lets go of its player view in the next
+    // frame. The pool pauses a sound owner whose last view goes with no other
+    // view attached, so a viewer that starts the player in that same frame
+    // would find it paused: it opens once the tile has let go.
+    await WidgetsBinding.instance.endOfFrame;
+    if (!context.mounted) {
+      gallery.dispose();
+      dependencies.inlineSound.resume();
+      return;
+    }
     try {
       await MediaViewer.show(
         context,

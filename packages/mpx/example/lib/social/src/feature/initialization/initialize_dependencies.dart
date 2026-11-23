@@ -133,9 +133,13 @@ final Map<String, _InitializationStep> _initializationSteps =
           powerSaving: signals.powerSaving,
           thermal: signals.thermal,
           toThermal: (value) => FeedThermal.values.byName(value.name),
+          batteryLevel: signals.batteryLevel,
         );
       },
       'Initialize players': (dependencies, context) async {
+        // The players' lifecycle goes to the log in a debug run, so what a
+        // device did can be read in the journal.
+        PlayerDiagnostics.enabled = !kReleaseMode;
         dependencies.players = await _players(
           context.readers,
           dependencies.stack.scope,

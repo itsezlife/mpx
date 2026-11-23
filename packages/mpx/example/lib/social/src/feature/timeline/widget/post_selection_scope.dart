@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_md/flutter_md.dart';
 import 'package:mpx_example/social/src/feature/timeline/controller/post_selection.dart';
 
-/// The text selection of a list of posts: a `MarkdownSelectionScope` over the
-/// list that ends the selection the moment the list stops being what the
-/// reader sees.
+/// Ends the text selection of a list of posts the moment the list stops
+/// being what the reader sees.
 ///
-/// The selection's toolbar and handles live in the navigator's overlay, not
-/// in the list. When the list goes off (another tab, another tab bar
+/// A selection's toolbar and handles live in the navigator's overlay, not in
+/// the list. When the list goes off (another tab, another tab bar
 /// destination, a route over it) the text they were anchored to is no longer
 /// laid out, their anchors turn to NaN, and the toolbar throws from paint on
 /// every frame: the screen stops updating. So the selection is cleared on the
@@ -16,6 +14,8 @@ import 'package:mpx_example/social/src/feature/timeline/controller/post_selectio
 /// - a route is pushed over it (`ModalRoute.isCurrent`);
 /// - an `IndexedStack` hides it (`TickerMode`);
 /// - the tab bar moves to another tab (`DefaultTabController`).
+///
+/// A post scrolled out of the list takes its own selection with it.
 class PostSelectionScope extends StatefulWidget {
   const PostSelectionScope({
     required this.selection,
@@ -59,11 +59,5 @@ class _PostSelectionScopeState extends State<PostSelectionScope> {
   }
 
   @override
-  Widget build(BuildContext context) => MarkdownSelectionScope(
-    controller: widget.selection.controller,
-    selectionColor: Theme.of(
-      context,
-    ).colorScheme.primary.withValues(alpha: 0.35),
-    child: widget.child,
-  );
+  Widget build(BuildContext context) => widget.child;
 }

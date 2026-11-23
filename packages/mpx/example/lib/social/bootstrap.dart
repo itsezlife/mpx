@@ -26,7 +26,11 @@ Future<void> bootstrap() async {
       overrideOutput: _messageFormatting,
       outputInRelease: true,
       printColors: false,
-      output: LogOutput.developer,
+      // `--dart-define=LOG_TO_PRINT=true` sends the logs to the console, for
+      // a run from the command line.
+      output: bool.fromEnvironment('LOG_TO_PRINT')
+          ? LogOutput.print
+          : LogOutput.developer,
     ),
   );
 }

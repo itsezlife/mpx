@@ -5,6 +5,7 @@ import 'package:mpx_example/social/src/common/theme/app_theme.dart';
 import 'package:mpx_example/social/src/common/util/count_format.dart';
 import 'package:mpx_example/social/src/common/util/time_ago_extension.dart';
 import 'package:mpx_example/social/src/common/widget/avatar.dart';
+import 'package:mpx_example/social/src/feature/timeline/controller/post_selection.dart';
 import 'package:mpx_example/social/src/feature/timeline/model/post.dart';
 import 'package:mpx_example/social/src/feature/timeline/widget/post_media_album.dart';
 import 'package:mpx_example/social/src/feature/timeline/widget/post_text_view.dart';
@@ -21,6 +22,7 @@ class PostCard extends StatelessWidget {
     required this.mediaWidth,
     required this.revealed,
     required this.onReveal,
+    required this.selection,
     super.key,
   });
 
@@ -38,6 +40,10 @@ class PostCard extends StatelessWidget {
   /// Whether the reader asked to see what the post covers.
   final bool revealed;
   final VoidCallback onReveal;
+
+  /// What the post's text joins to be selected: one selection of the list
+  /// at a time.
+  final PostSelection selection;
 
   /// How many lines of text show before "Show more".
   static const int _collapsedLines = 8;
@@ -112,6 +118,8 @@ class PostCard extends StatelessWidget {
               documentId: post.id,
               host: post.host,
               maxLines: _collapsedLines,
+              selectionGroup: selection.group,
+              selectable: !post.covered || revealed,
             ),
           ),
         if (post.media.isNotEmpty)

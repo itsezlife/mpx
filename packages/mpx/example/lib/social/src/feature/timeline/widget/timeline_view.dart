@@ -127,6 +127,7 @@ class _PostListState extends State<_PostList> {
   // before any tile exists.
   double _mediaWidth = 360;
   double _devicePixelRatio = 1;
+  late ContentFetcher _fetcher;
 
   TimelineStateEntity get _data => widget.controller.state.data;
 
@@ -135,7 +136,6 @@ class _PostListState extends State<_PostList> {
     super.initState();
     _generation = _data.generation;
     _feed = _createFeed();
-    _syncSelection();
     widget.controller.addListener(_onTimeline);
   }
 
@@ -149,7 +149,9 @@ class _PostListState extends State<_PostList> {
 
   FeedItem _itemOf(int index) {
     final (post, media) = _data.mediaAt(index);
-    return PostMediaFacts.feedItem(_data.posts[post].media[media]);
+    final item = _data.posts[post].media[media];
+    final local = PostMediaFacts.isOnDevice(item, _fetcher);
+    return PostMediaFacts.feedItem(item, onDevice: local);
   }
 
   AssetPreset _presetOf(int index, AssetProfile profile) {
@@ -170,6 +172,7 @@ class _PostListState extends State<_PostList> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+    _fetcher = Dependencies.of(context).stack.fetcher;
     _feed.scope = AssetCacheProvider.of(context);
   }
 
@@ -187,15 +190,7 @@ class _PostListState extends State<_PostList> {
     } else if (data.mediaCount != _feed.itemCount) {
       _feed.itemCount = data.mediaCount;
     }
-    _syncSelection();
   }
-
-  // The selection reads the texts of the posts the reader is shown: not
-  // those a content warning still covers.
-  void _syncSelection() => _selection.sync(
-    _data.posts,
-    shows: (post) => !post.covered || _revealed.contains(post.id),
-  );
 
   @override
   void dispose() {
@@ -261,10 +256,8 @@ class _PostListState extends State<_PostList> {
       firstIndex: data.feedIndexOf(index, 0),
       mediaWidth: _mediaWidth,
       revealed: _revealed.contains(post.id),
-      onReveal: () {
-        setState(() => _revealed.add(post.id));
-        _syncSelection();
-      },
+      onReveal: () => setState(() => _revealed.add(post.id)),
+      selection: _selection,
     );
   }
 }

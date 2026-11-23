@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_lucide/flutter_lucide.dart';
@@ -6,6 +8,7 @@ import 'package:mpx_example/social/src/common/media/post_media_facts.dart';
 import 'package:mpx_example/social/src/common/media/post_media_presets.dart';
 import 'package:mpx_example/social/src/common/theme/app_theme.dart';
 import 'package:mpx_example/social/src/feature/initialization/dependencies.dart';
+import 'package:mpx_example/social/src/feature/timeline/controller/download_request.dart';
 import 'package:mpx_example/social/src/feature/timeline/controller/inline_sound.dart';
 import 'package:mpx_example/social/src/feature/timeline/model/post.dart';
 import 'package:mpx_example/social/src/feature/timeline/widget/album_layout.dart';
@@ -41,18 +44,15 @@ class PostMediaAlbum extends StatelessWidget {
       height: layout.size.height,
       child: Stack(
         children: [
-          for (final (i, media) in post.media.indexed)
+          for (final i in List.generate(post.media.length, (i) => i))
             Positioned.fromRect(
               rect: layout.tiles[i],
-              child: FeedSlot(
-                index: firstIndex + i,
-                item: PostMediaFacts.feedItem(media),
-                child: _AlbumTile(
-                  post: post,
-                  index: i,
-                  size: layout.tiles[i].size,
-                  radius: _radiusOf(layout.tiles[i], layout.size),
-                ),
+              child: _AlbumCell(
+                post: post,
+                index: i,
+                feedIndex: firstIndex + i,
+                size: layout.tiles[i].size,
+                radius: _radiusOf(layout.tiles[i], layout.size),
               ),
             ),
         ],
@@ -75,6 +75,118 @@ class PostMediaAlbum extends StatelessWidget {
       bottomRight: right && bottom ? round : Radius.zero,
     );
   }
+}
+
+/// One media of an album: the feed's slot, which knows the item's facts, and
+/// the tile. The facts that change while it is on screen are the cell's: a
+/// clip is on the device once the reader's download lands, and the feed
+/// plays it by itself from then on (the policy plays what is on the device
+/// whatever its size), which it learns only from a new item on the slot.
+class _AlbumCell extends StatefulWidget {
+  const _AlbumCell({
+    required this.post,
+    required this.index,
+    required this.feedIndex,
+    required this.size,
+    required this.radius,
+  });
+
+  final Post post;
+  final int index;
+  final int feedIndex;
+  final Size size;
+  final BorderRadius radius;
+
+  @override
+  State<_AlbumCell> createState() => _AlbumCellState();
+}
+
+class _AlbumCellState extends State<_AlbumCell> {
+  // The content's own binding, held while the clip is not on the device, to
+  // hear its download.
+  AssetBinding? _content;
+  bool _onDevice = false;
+  bool _asked = false;
+  bool _started = false;
+  final DownloadRequest _request = DownloadRequest();
+
+  PostMedia get _media => widget.post.media[widget.index];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    final media = _media;
+    if (!media.plays) return;
+    final dependencies = Dependencies.of(context);
+    _onDevice = PostMediaFacts.isOnDevice(media, dependencies.stack.fetcher);
+    if (_onDevice) return;
+    // The binding the clip itself holds is the feed's: same profile, same
+    // entry, so the download the reader starts is heard here.
+    final profile =
+        (FeedScope.maybeOf(context)?.policy ?? const FeedPolicy.list())
+            .clipProfile();
+    _content = AssetCacheProvider.of(context).attach(
+      media.key,
+      PostMediaPresets.of(
+        media,
+        size: widget.size,
+        devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+        profile: profile,
+      ).spec,
+      profile,
+    )..addListener(_onContent);
+  }
+
+  // After the notification: the binding is detached from here, and a
+  // notifier is not disposed while it notifies.
+  void _onContent() {
+    final binding = _content;
+    if (binding == null) return;
+    final asked = _request.see(binding.transfer);
+    if (asked != _asked) {
+      // The reader asked for it, or took it back: the feed plays it as it
+      // streams in, as the reference client does, not when it is whole.
+      scheduleMicrotask(() {
+        if (mounted) setState(() => _asked = asked);
+      });
+    }
+    scheduleMicrotask(_check);
+  }
+
+  void _check() {
+    if (!mounted || _onDevice) return;
+    final fetcher = Dependencies.of(context).stack.fetcher;
+    if (!PostMediaFacts.isOnDevice(_media, fetcher)) return;
+    _release();
+    setState(() => _onDevice = true);
+  }
+
+  void _release() {
+    _content
+      ?..removeListener(_onContent)
+      ..detach();
+    _content = null;
+  }
+
+  @override
+  void dispose() {
+    _release();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => FeedSlot(
+    index: widget.feedIndex,
+    item: PostMediaFacts.feedItem(_media, onDevice: _onDevice || _asked),
+    child: _AlbumTile(
+      post: widget.post,
+      index: widget.index,
+      size: widget.size,
+      radius: widget.radius,
+    ),
+  );
 }
 
 class _AlbumTile extends StatefulWidget {
@@ -155,26 +267,58 @@ class _AlbumTileState extends State<_AlbumTile> {
                 listenable: sound,
                 builder: (context, _) {
                   final lease = sound.playing == media.key ? sound.lease : null;
+                  // The picture the viewer opens from is the player's, not the
+                  // controls over it.
                   return lease == null
                       ? clip
-                      : PlayerView(
-                          lease: lease,
-                          fit: BoxFit.cover,
-                          standIn: clip,
+                      : Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            AssetPicture(
+                              child: PlayerView(
+                                lease: lease,
+                                fit: BoxFit.cover,
+                                standIn: clip,
+                              ),
+                            ),
+                            // The clip lays its badge and its download control
+                            // over itself; a player draws neither, so they go
+                            // over it, as the feed lays them over a player.
+                            AssetView(
+                              content: media.key,
+                              preset: PostMediaPresets.of(
+                                media,
+                                size: widget.size,
+                                devicePixelRatio: dpr,
+                                profile: const AssetProfile(),
+                              ),
+                              opacity: 0,
+                              status: const MediaStatusMode.control(),
+                              badge: true,
+                            ),
+                          ],
                         );
                 },
               ),
+              // Marks over the picture fade while the viewer shows it, so none
+              // of them rides the morph or stands beside the viewer's picture.
               if (media.kind == PostMediaKind.video && sound.isAvailable)
                 Positioned(
                   right: AppSpacing.s,
                   bottom: AppSpacing.s,
-                  child: _SoundButton(sound: sound, media: media.key),
+                  child: ViewerOriginOverlay(
+                    media: media.key,
+                    child: _SoundButton(sound: sound, media: media.key),
+                  ),
                 ),
               if (alt != null && alt.isNotEmpty)
                 Positioned(
                   left: AppSpacing.s,
                   bottom: AppSpacing.s,
-                  child: _AltBadge(alt: alt),
+                  child: ViewerOriginOverlay(
+                    media: media.key,
+                    child: _AltBadge(alt: alt),
+                  ),
                 ),
             ],
           ),
@@ -230,6 +374,7 @@ class _AltBadge extends StatelessWidget {
     child: InkWell(
       borderRadius: BorderRadius.circular(4),
       onTap: () => showModalBottomSheet<void>(
+        useRootNavigator: false,
         context: context,
         showDragHandle: true,
         builder: (context) => SafeArea(

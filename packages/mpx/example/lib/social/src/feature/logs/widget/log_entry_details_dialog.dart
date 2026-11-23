@@ -15,6 +15,7 @@ class LogEntryDetailsDialog extends StatelessWidget {
   /// Opens the dialog for [log].
   static Future<void> show(BuildContext context, LogMessage log) =>
       showDialog<void>(
+        useRootNavigator: false,
         context: context,
         builder: (_) => LogEntryDetailsDialog(log: log),
       );

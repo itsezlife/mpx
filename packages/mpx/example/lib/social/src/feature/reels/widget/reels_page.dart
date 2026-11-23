@@ -81,14 +81,17 @@ class _ReelsState extends State<_Reels> {
   // the reader came to watch. The reference gate holds back a file above its
   // size limit until a tap, which on a surface with no button to tap is a
   // black page that never plays. Only a device with no network has nothing
-  // to play.
+  // to play. The reader's settings and the power saver stand, as in the
+  // reference gate.
   static const FeedPolicy _policy = FeedPolicy.pager(autoplayGate: _gate);
 
   static FeedAutoplay _gate(
     FeedItem item,
     FeedConditions conditions,
     FeedPolicy policy,
-  ) => conditions.network == FeedNetwork.none
+  ) =>
+      !policy.lite.allows(item, conditions) ||
+          conditions.network == FeedNetwork.none
       ? FeedAutoplay.none
       : FeedAutoplay.full;
 

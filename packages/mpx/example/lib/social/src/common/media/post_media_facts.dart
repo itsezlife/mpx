@@ -31,14 +31,25 @@ abstract final class PostMediaFacts {
     );
   }
 
-  /// What the feed policy weighs for [media].
-  static FeedItem feedItem(PostMedia media) => FeedItem(
-    media.key,
-    byteSize: media.byteSize,
-    duration: media.duration,
-    hasAudio: media.kind == PostMediaKind.video,
-    descriptor: descriptor(media),
-  );
+  /// What the feed policy weighs for [media]: its size and length, and
+  /// whether its bytes are on the device already ([onDevice]), in which case
+  /// the policy plays it whatever its size, as playing it costs no network.
+  static FeedItem feedItem(PostMedia media, {bool onDevice = false}) =>
+      FeedItem(
+        media.key,
+        byteSize: media.byteSize,
+        duration: media.duration,
+        hasAudio: media.kind == PostMediaKind.video,
+        local: onDevice,
+        descriptor: descriptor(media),
+      );
+
+  /// Whether [media]'s file is all on the device, by what [fetcher] knows: a
+  /// download the reader asked for, or one a viewer or a player made, has
+  /// finished. The store holding a row is not that: a clip streamed in part
+  /// has one too.
+  static bool isOnDevice(PostMedia media, ContentFetcher fetcher) =>
+      media.plays && !fetcher.needsDownload(media.key);
 
   /// What the viewer pages through for [media].
   static GalleryItem galleryItem(PostMedia media) {
