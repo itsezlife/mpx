@@ -3,12 +3,13 @@ import Network
 
 #if os(iOS)
 import Flutter
+import UIKit
 #elseif os(macOS)
 import FlutterMacOS
 #endif
 
 /// Streams device signals to Dart: one full reading (network class, power
-/// saving, thermal status) on listen and another whenever any of them changes.
+/// saving, thermal status, battery level) on listen and another whenever any of them changes.
 ///
 /// Readings are sent on the main queue. Apple platforms do not report
 /// roaming, so the network class is one of none, unmetered and metered.
@@ -36,10 +37,20 @@ final class DeviceSignalsStream: NSObject, FlutterStreamHandler {
     self.monitor = monitor
 
     let center = NotificationCenter.default
-    for name in [
-      Notification.Name.NSProcessInfoPowerStateDidChange,
+    #if os(iOS)
+    UIDevice.current.isBatteryMonitoringEnabled = true
+    let names: [Notification.Name] = [
+      .NSProcessInfoPowerStateDidChange,
       ProcessInfo.thermalStateDidChangeNotification,
-    ] {
+      UIDevice.batteryLevelDidChangeNotification,
+    ]
+    #else
+    let names: [Notification.Name] = [
+      .NSProcessInfoPowerStateDidChange,
+      ProcessInfo.thermalStateDidChangeNotification,
+    ]
+    #endif
+    for name in names {
       observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
         self?.send()
       })
@@ -53,6 +64,9 @@ final class DeviceSignalsStream: NSObject, FlutterStreamHandler {
     monitor = nil
     observers.forEach(NotificationCenter.default.removeObserver)
     observers.removeAll()
+    #if os(iOS)
+    UIDevice.current.isBatteryMonitoringEnabled = false
+    #endif
     sink = nil
     network = nil
     lastSent = nil
@@ -66,10 +80,21 @@ final class DeviceSignalsStream: NSObject, FlutterStreamHandler {
       "network": network as NSString,
       "powerSaving": NSNumber(value: info.isLowPowerModeEnabled),
       "thermal": Self.name(of: info.thermalState) as NSString,
+      "batteryLevel": NSNumber(value: Self.batteryLevel()),
     ]
     if reading == lastSent { return }
     lastSent = reading
     sink(reading)
+  }
+
+  // The percentage, or -1 where the system cannot say (macOS, a simulator).
+  private static func batteryLevel() -> Int {
+    #if os(iOS)
+    let level = UIDevice.current.batteryLevel
+    return level < 0 ? -1 : Int((level * 100).rounded())
+    #else
+    return -1
+    #endif
   }
 
   // Low Data Mode (a constrained path) reads as metered: the user asked to

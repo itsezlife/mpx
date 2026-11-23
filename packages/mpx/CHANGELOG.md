@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Device signals carry the battery level (`IDeviceSignals.batteryLevel`, an
+  int percentage, null when the device cannot tell): read on Android and iOS,
+  unknown on macOS and where there is no native side.
 - The auto-download policy weighs a vector image as a still.
 - `RangedContentPublisher.publish(onProgress:, whole:)`: a published clip
   reports its bytes as they land (the first stretch's and the reads'), so a

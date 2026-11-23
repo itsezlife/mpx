@@ -12,10 +12,12 @@ void main() {
             required NetworkClass network,
             required bool powerSaving,
             required ThermalStatus thermal,
+            int? batteryLevel,
           }) async {
             fake.network.value = network;
             fake.powerSaving.value = powerSaving;
             fake.thermal.value = thermal;
+            fake.batteryLevel.value = batteryLevel;
           },
     );
   });

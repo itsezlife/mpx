@@ -44,7 +44,8 @@ enum ThermalStatus {
 // --- Contract ---
 
 /// Live readings of the device state that playback and preload policies
-/// weigh: [network] class, [powerSaving] mode and [thermal] status.
+/// weigh: [network] class, [powerSaving] mode, [thermal] status and the
+/// [batteryLevel].
 ///
 /// Every value starts neutral (unmetered, not saving power, nominal), which
 /// is what a host with no signals at all would assume, and changes when the
@@ -58,6 +59,10 @@ abstract interface class IDeviceSignals {
 
   /// The device's thermal status.
   ValueListenable<ThermalStatus> get thermal;
+
+  /// The battery, 0 to 100 percent; null when the device cannot tell (a
+  /// desktop with no battery, a platform with no native side).
+  ValueListenable<int?> get batteryLevel;
 
   /// Stops reading the device. The listenables keep their last values and
   /// must not be listened to afterwards.
@@ -97,12 +102,16 @@ final class DeviceSignals implements IDeviceSignals {
     ThermalStatus.nominal,
   );
 
+  @override
+  final ValueNotifier<int?> batteryLevel = ValueNotifier(null);
+
   bool _disposed = false;
 
   void _take(_Reading reading) {
     network.value = reading.network;
     powerSaving.value = reading.powerSaving;
     thermal.value = reading.thermal;
+    batteryLevel.value = reading.batteryLevel;
   }
 
   @override
@@ -113,6 +122,7 @@ final class DeviceSignals implements IDeviceSignals {
     network.dispose();
     powerSaving.dispose();
     thermal.dispose();
+    batteryLevel.dispose();
   }
 }
 
@@ -120,6 +130,7 @@ typedef _Reading = ({
   NetworkClass network,
   bool powerSaving,
   ThermalStatus thermal,
+  int? batteryLevel,
 });
 
 /// The one listener of the event channel, fanning readings out to every live
@@ -177,8 +188,10 @@ final class _DeviceSignalsHub {
   );
 }
 
-/// One wire reading: a map with `network` and `thermal` wire names and a
-/// `powerSaving` bool. Unknown names throw; the sides ship together.
+/// One wire reading: a map with `network` and `thermal` wire names, a
+/// `powerSaving` bool and a `batteryLevel` int (-1 when unknown, and absent
+/// from a native side that predates it). Unknown names throw; the sides ship
+/// together.
 _Reading _decode(Object? event) => switch (event) {
   {
     'network': final String network,
@@ -189,6 +202,10 @@ _Reading _decode(Object? event) => switch (event) {
       network: NetworkClass.values.byName(network),
       powerSaving: powerSaving,
       thermal: ThermalStatus.values.byName(thermal),
+      batteryLevel: switch (event['batteryLevel']) {
+        final int level when level >= 0 && level <= 100 => level,
+        _ => null,
+      },
     ),
   _ => throw FormatException('Not a device signals reading', event),
 };

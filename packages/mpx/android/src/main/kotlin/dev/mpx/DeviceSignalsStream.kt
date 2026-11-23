@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -15,7 +16,7 @@ import io.flutter.plugin.common.EventChannel
 
 /**
  * Streams device signals to Dart: one full reading (network class, power
- * saving, thermal status) on listen and another whenever any of them changes.
+ * saving, thermal status, battery level) on listen and another whenever any of them changes.
  *
  * Readings are sent on the main thread; the network callback runs on a
  * system thread, so its updates are posted there.
@@ -44,6 +45,12 @@ internal class DeviceSignalsStream(private val context: Context) : EventChannel.
         override fun onReceive(context: Context, intent: Intent) = send()
     }
 
+    // The battery is a sticky broadcast: registering for it with no receiver
+    // returns the current state, and a receiver hears every change.
+    private val batteryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) = send()
+    }
+
     // Typed as Any so the class loads below API 29, where the listener
     // interface does not exist.
     private var thermalListener: Any? = null
@@ -60,6 +67,12 @@ internal class DeviceSignalsStream(private val context: Context) : EventChannel.
         } else {
             context.registerReceiver(powerSaveReceiver, filter)
         }
+        val battery = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        if (Build.VERSION.SDK_INT >= 33) {
+            context.registerReceiver(batteryReceiver, battery, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            context.registerReceiver(batteryReceiver, battery)
+        }
         if (Build.VERSION.SDK_INT >= 29) {
             val listener = PowerManager.OnThermalStatusChangedListener { send() }
             power.addThermalStatusListener(context.mainExecutor, listener)
@@ -73,6 +86,7 @@ internal class DeviceSignalsStream(private val context: Context) : EventChannel.
         lastSent = null
         connectivity.unregisterNetworkCallback(networkCallback)
         context.unregisterReceiver(powerSaveReceiver)
+        context.unregisterReceiver(batteryReceiver)
         if (Build.VERSION.SDK_INT >= 29) {
             (thermalListener as? PowerManager.OnThermalStatusChangedListener)
                 ?.let(power::removeThermalStatusListener)
@@ -87,10 +101,21 @@ internal class DeviceSignalsStream(private val context: Context) : EventChannel.
             "network" to network,
             "powerSaving" to power.isPowerSaveMode,
             "thermal" to thermal(),
+            "batteryLevel" to batteryLevel(),
         )
         if (reading == lastSent) return
         lastSent = reading
         events.success(reading)
+    }
+
+    // The percentage, or -1 when the system cannot say.
+    private fun batteryLevel(): Int {
+        val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            ?: return -1
+        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+        if (level < 0 || scale <= 0) return -1
+        return Math.round(level * 100f / scale)
     }
 
     private fun classify(capabilities: NetworkCapabilities): String {

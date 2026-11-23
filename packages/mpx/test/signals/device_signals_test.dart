@@ -41,10 +41,13 @@ final class _FakePlatform {
     required NetworkClass network,
     required bool powerSaving,
     required ThermalStatus thermal,
+    int? batteryLevel,
   }) => send({
     'network': network.name,
     'powerSaving': powerSaving,
     'thermal': thermal.name,
+    // The native side sends -1 for a battery it cannot read.
+    'batteryLevel': batteryLevel ?? -1,
   });
 }
 
@@ -97,6 +100,25 @@ void main() {
     ]);
     expect(signals.powerSaving.value, isTrue);
   });
+
+  test(
+    'a reading from a native side with no battery is still decoded',
+    () async {
+      final platform = _FakePlatform();
+      final signals = DeviceSignals();
+      addTearDown(signals.dispose);
+      await pumpEventQueue();
+
+      await platform.send({
+        'network': 'metered',
+        'powerSaving': false,
+        'thermal': 'nominal',
+      });
+
+      expect(signals.network.value, NetworkClass.metered);
+      expect(signals.batteryLevel.value, isNull);
+    },
+  );
 
   test('instances share one platform listener', () async {
     final platform = _FakePlatform();

@@ -9,6 +9,7 @@ typedef DeviceSignalsReport =
       required NetworkClass network,
       required bool powerSaving,
       required ThermalStatus thermal,
+      int? batteryLevel,
     });
 
 /// Fresh [IDeviceSignals] for one contract test, with the hook that drives
@@ -39,6 +40,7 @@ void runDeviceSignalsContract(
       expect(signals.network.value, NetworkClass.unmetered);
       expect(signals.powerSaving.value, isFalse);
       expect(signals.thermal.value, ThermalStatus.nominal);
+      expect(signals.batteryLevel.value, isNull);
     });
 
     test('takes every value the device reports', () async {
@@ -48,11 +50,31 @@ void runDeviceSignalsContract(
         network: NetworkClass.metered,
         powerSaving: true,
         thermal: ThermalStatus.serious,
+        batteryLevel: 42,
       );
 
       expect(signals.network.value, NetworkClass.metered);
       expect(signals.powerSaving.value, isTrue);
       expect(signals.thermal.value, ThermalStatus.serious);
+      expect(signals.batteryLevel.value, 42);
+    });
+
+    test('a battery the device cannot read is unknown, not empty', () async {
+      final (:signals, :report) = await open();
+      await report(
+        network: NetworkClass.unmetered,
+        powerSaving: false,
+        thermal: ThermalStatus.nominal,
+        batteryLevel: 80,
+      );
+
+      await report(
+        network: NetworkClass.unmetered,
+        powerSaving: false,
+        thermal: ThermalStatus.nominal,
+      );
+
+      expect(signals.batteryLevel.value, isNull);
     });
 
     test('notifies only the listenables whose value changed', () async {
@@ -61,14 +83,22 @@ void runDeviceSignalsContract(
       signals.network.addListener(() => heard.add('network'));
       signals.powerSaving.addListener(() => heard.add('powerSaving'));
       signals.thermal.addListener(() => heard.add('thermal'));
+      signals.batteryLevel.addListener(() => heard.add('battery'));
 
       await report(
         network: NetworkClass.unmetered,
         powerSaving: false,
         thermal: ThermalStatus.fair,
       );
-
       expect(heard, ['thermal']);
+
+      await report(
+        network: NetworkClass.unmetered,
+        powerSaving: false,
+        thermal: ThermalStatus.fair,
+        batteryLevel: 50,
+      );
+      expect(heard, ['thermal', 'battery']);
     });
 
     test('a repeated reading notifies nobody', () async {
