@@ -259,9 +259,10 @@ void main() {
   });
 
   testWidgets('clips that do not autoplay attach still', (tester) async {
-    final saving = ValueNotifier(true);
-    addTearDown(saving.dispose);
-    final signals = FeedSignals(powerSaving: saving);
+    // The power saver: a battery at or under the level.
+    final battery = ValueNotifier<int?>(5);
+    addTearDown(battery.dispose);
+    final signals = FeedSignals(batteryLevel: battery);
     addTearDown(signals.dispose);
     await pumpList(tester, conditions: signals);
 
@@ -285,15 +286,15 @@ void main() {
   });
 
   testWidgets('plans again when the signals change', (tester) async {
-    final saving = ValueNotifier(true);
-    addTearDown(saving.dispose);
-    final signals = FeedSignals(powerSaving: saving);
+    final battery = ValueNotifier<int?>(5);
+    addTearDown(battery.dispose);
+    final signals = FeedSignals(batteryLevel: battery);
     addTearDown(signals.dispose);
     await pumpList(tester, conditions: signals);
     final metadataOnly = attemptsFor(4).single;
     expect(metadataOnly.demand.preloadStage, AssetPreloadStage.metadata);
 
-    saving.value = false;
+    battery.value = 80;
     await tester.pump();
 
     expect(metadataOnly.isCancelled, isTrue);

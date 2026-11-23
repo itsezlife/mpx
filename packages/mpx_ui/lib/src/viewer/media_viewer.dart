@@ -24,6 +24,7 @@ import 'package:mpx_ui/src/viewer/viewer_origin.dart';
 import 'package:mpx_ui/src/viewer/viewer_photo_page.dart';
 import 'package:mpx_ui/src/viewer/viewer_policy.dart';
 import 'package:mpx_ui/src/viewer/viewer_policy_scope.dart';
+import 'package:mpx_ui/src/viewer/viewer_system_bars.dart';
 import 'package:mpx_ui/src/viewer/viewer_tokens.dart';
 import 'package:mpx_ui/src/viewer/viewer_video.dart';
 import 'package:mpx_ui/src/viewer/viewer_video_session.dart';
@@ -204,6 +205,7 @@ class MediaViewer extends StatefulWidget {
     this.qualitiesOf,
     this.previewFrame,
     this.onFullscreenChanged,
+    this.systemBars = ViewerSystemBars.hideStatusBar,
     this.videoStrings = const ViewerVideoStrings(),
     this.controller,
     this.videoStartOf,
@@ -263,6 +265,9 @@ class MediaViewer extends StatefulWidget {
   /// Told to put the app window into fullscreen (true) or back (false).
   final ValueChanged<bool>? onFullscreenChanged;
 
+  /// What happens to the system bars with the controls.
+  final ViewerSystemBars systemBars;
+
   /// The texts of the video controls.
   final ViewerVideoStrings videoStrings;
 
@@ -315,6 +320,7 @@ class MediaViewer extends StatefulWidget {
     List<ViewerQuality> Function(int index, GalleryItem item)? qualitiesOf,
     ViewerPreviewFrame? previewFrame,
     ValueChanged<bool>? onFullscreenChanged,
+    ViewerSystemBars systemBars = ViewerSystemBars.hideStatusBar,
     Duration? Function(int index, GalleryItem item)? videoStartOf,
     void Function(int index, GalleryItem item, Duration position)? onVideoLeft,
     Future<void> Function(int index, GalleryItem item)? onOpenElsewhere,
@@ -346,6 +352,7 @@ class MediaViewer extends StatefulWidget {
             qualitiesOf: qualitiesOf,
             previewFrame: previewFrame,
             onFullscreenChanged: onFullscreenChanged,
+            systemBars: systemBars,
             videoStartOf: videoStartOf,
             onVideoLeft: onVideoLeft,
             onOpenElsewhere: onOpenElsewhere,
@@ -384,6 +391,10 @@ class MediaViewerState extends State<MediaViewer>
 
   _Phase _phase = _Phase.opening;
   Size _size = Size.zero;
+
+  // Where the pictures lie: the viewer above the navigation bar, which is
+  // clear and over the picture's room, not the picture's.
+  Size get _stage => Size(_size.width, math.max(0, _size.height - _navInset));
   // The morph in progress: from and to, in global coordinates.
   _Frame? _from;
   _Frame? _to;
@@ -477,6 +488,44 @@ class MediaViewerState extends State<MediaViewer>
   bool _isVideo(int index) =>
       widget.source.itemAt(index)?.kind == GalleryMediaKind.video;
 
+  // Whether the video's settings are open: the top bar's button and the
+  // controls' panel share it.
+  final ValueNotifier<bool> _settingsOpen = ValueNotifier(false);
+  bool _menuOpen = false;
+
+  // Something the controls opened keeps them shown.
+  void _syncHold() {
+    _session?.hold = _settingsOpen.value || _menuOpen;
+  }
+
+  // The system bars are hidden now, by this viewer.
+  bool _barsHidden = false;
+  // The viewer is closing: the bars are back, and stay.
+  bool _closeRequested = false;
+  // The room the navigation bar takes at the bottom, kept while the bars are
+  // hidden: the picture does not move as they go.
+  double _navInset = 0;
+
+  void _syncSystemBars() {
+    final hide =
+        widget.systemBars != ViewerSystemBars.keep &&
+        !_closeRequested &&
+        _phase == _Phase.open &&
+        !_controls.value;
+    if (hide == _barsHidden) return;
+    _barsHidden = hide;
+    unawaited(
+      !hide
+          ? SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge)
+          : widget.systemBars == ViewerSystemBars.hideAll
+          ? SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky)
+          : SystemChrome.setEnabledSystemUIMode(
+              SystemUiMode.manual,
+              overlays: [SystemUiOverlay.bottom],
+            ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -484,6 +533,8 @@ class MediaViewerState extends State<MediaViewer>
     _springBack = AnimationController(vsync: this)..addListener(_onSpringBack);
     _speeds.beginViewer();
     _controls.addListener(_notifyController);
+    _controls.addListener(_syncSystemBars);
+    _settingsOpen.addListener(_syncHold);
     widget.controller?._attach(this);
     widget.source.addListener(_onSource);
     widget.source.loadAround(_index);
@@ -520,6 +571,10 @@ class MediaViewerState extends State<MediaViewer>
 
   @override
   void dispose() {
+    _closeRequested = true;
+    _syncSystemBars();
+    _controls.removeListener(_syncSystemBars);
+    _settingsOpen.removeListener(_syncHold);
     _releaseTransitionHold();
     _spaceHold?.cancel();
     widget.controller?._detach(this);
@@ -543,6 +598,7 @@ class MediaViewerState extends State<MediaViewer>
     _springBack.dispose();
     _pages.dispose();
     _controls.dispose();
+    _settingsOpen.dispose();
     _spinnerShown.dispose();
     _dismissedFailure.dispose();
     _pageStatusShows.dispose();
@@ -664,6 +720,7 @@ class MediaViewerState extends State<MediaViewer>
       autoHide: _phase == _Phase.open,
     )..addListener(_onSession);
     _sessionIndex = _index;
+    _syncHold();
     _notifyController();
   }
 
@@ -784,6 +841,7 @@ class MediaViewerState extends State<MediaViewer>
       ..removeListener(_onSession)
       ..dispose();
     _session = null;
+    _settingsOpen.value = false;
     _sessionIndex = null;
     // The spinner of the session went with it. Told after the frame: this
     // runs in builds and while the tree is locked, and the next session's
@@ -1150,6 +1208,7 @@ class MediaViewerState extends State<MediaViewer>
         if (!mounted || _phase != _Phase.opening) return;
         _releaseTransitionHold();
         setState(() => _phase = _Phase.open);
+        _syncSystemBars();
         _session?.autoHide = true;
         _notifyController();
         _syncNeighbours();
@@ -1164,7 +1223,9 @@ class MediaViewerState extends State<MediaViewer>
     if (_phase != _Phase.open) return;
     // Every close fades the chrome out with it, as a dismiss drag does: a
     // back press, a close button, a call from the host.
+    _closeRequested = true;
     _controls.value = false;
+    _syncSystemBars();
     // The surface the viewer closes onto gets the decoders back.
     _releaseNeighbours();
     final session = _session;
@@ -1326,7 +1387,7 @@ class MediaViewerState extends State<MediaViewer>
   // The item's picture fitted into the viewer, in global coordinates (the
   // viewer covers the screen, so local and global agree).
   Rect _fittedRect(int index, GalleryOrigin? origin) {
-    final size = _size;
+    final size = _stage;
     final aspect = _aspectOf(index, origin);
     if (size.isEmpty || aspect <= 0) return Offset.zero & size;
     final fitsWidth = size.width / size.height < aspect;
@@ -1398,6 +1459,8 @@ class MediaViewerState extends State<MediaViewer>
   Widget _build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       _size = constraints.biggest;
+      final bottom = MediaQuery.paddingOf(context).bottom;
+      if (bottom > 0 || !_barsHidden) _navInset = bottom;
       final background = widget.tokens.background;
       final desktop = _policy.desktopInput;
       Widget viewer = PopScope(
@@ -1433,6 +1496,17 @@ class MediaViewerState extends State<MediaViewer>
                   hideDuration: _policy.controlsHideDuration,
                   onInteraction: session.interacted,
                   onSpeed: session.setSpeed,
+                  slide: _policy.controlsSlide,
+                  settingsOpen: _settingsOpen,
+                  settingsButton: widget.chrome == null,
+                  settingsTop:
+                      MediaQuery.paddingOf(context).top +
+                      _policy.chrome.topBarHeight +
+                      (widget.source.count > 1
+                          ? _policy.chrome.counterGap +
+                                _policy.chrome.counterHeight
+                          : 0) +
+                      4,
                   qualities: _qualities(),
                   quality: session.quality,
                   onQuality: session.setQuality,
@@ -1476,6 +1550,12 @@ class MediaViewerState extends State<MediaViewer>
                 bottomInset: _session == null
                     ? 0
                     : ViewerVideoControls.barHeight,
+                settingsOpen: _session == null ? null : _settingsOpen,
+                settingsLabel: widget.videoStrings.settings,
+                onMenuChanged: (open) {
+                  _menuOpen = open;
+                  _syncHold();
+                },
                 onBack: () => unawaited(close()),
                 onSelectIndex: _pageTo,
                 onAction: (action, index) =>
@@ -1547,33 +1627,45 @@ class MediaViewerState extends State<MediaViewer>
     final policy = _policy;
     return Transform.translate(
       offset: Offset(0, _drag),
-      child: GalleryPager(
-        controller: _pages,
-        count: widget.source.count,
-        gap: policy.pageGap,
-        physics: policy.pager,
-        transition: policy.transition,
-        taps: policy.taps,
-        // The item and its neighbours keep their state (zoom, the origin's
-        // frame); preparation beyond them is the viewer's own.
-        keepAlive: const GalleryKeepAlive.around(1),
-        // The media references never mirror the gallery.
-        textDirection: TextDirection.ltr,
-        dismiss: policy.dismissClaim,
-        onDismissStart: _dragEvents.onStart,
-        onDismissUpdate: _dragEvents.onUpdate,
-        onDismissEnd: _dragEvents.onEnd,
-        onPageChanged: (index) {
-          setState(() => _index = index);
-          _cover(index);
-          _dropOriginFrames(around: index);
-          _notifyController();
-          _syncVideo();
-          _syncNeighbours();
-          widget.source.loadAround(index);
-          widget.onIndexChanged?.call(index);
-        },
-        pageBuilder: (context, index) => _page(index),
+      child: Padding(
+        padding: EdgeInsets.only(bottom: _navInset),
+        child: GalleryPager(
+          controller: _pages,
+          count: widget.source.count,
+          gap: policy.pageGap,
+          physics: policy.pager,
+          transition: policy.transition,
+          taps: policy.taps,
+          // The item and its neighbours keep their state (zoom, the origin's
+          // frame); preparation beyond them is the viewer's own.
+          keepAlive: const GalleryKeepAlive.around(1),
+          // The media references never mirror the gallery.
+          textDirection: TextDirection.ltr,
+          dismiss: policy.dismissClaim,
+          onDismissStart: _dragEvents.onStart,
+          onDismissUpdate: _dragEvents.onUpdate,
+          onDismissEnd: _dragEvents.onEnd,
+          onPageChanged: (index) {
+            final previous = _index;
+            setState(() => _index = index);
+            // The surface hides the cell of the item the viewer shows, as the
+            // overlays over it fade: paged on, the cell of the item left shows
+            // again and the new one is empty, so a drag to close shows the
+            // picture over an empty place, not over its own twin.
+            if (_phase == _Phase.open) {
+              _hide(previous, hidden: false);
+              _hide(index, hidden: true);
+            }
+            _cover(index);
+            _dropOriginFrames(around: index);
+            _notifyController();
+            _syncVideo();
+            _syncNeighbours();
+            widget.source.loadAround(index);
+            widget.onIndexChanged?.call(index);
+          },
+          pageBuilder: (context, index) => _page(index),
+        ),
       ),
     );
   }
@@ -1599,10 +1691,10 @@ class MediaViewerState extends State<MediaViewer>
       contentSize: fitted,
       policy: policy,
       drag: _dragEvents,
-      maxZoom: policy.maxZoomFor(fitted, _size, pixels: item.size),
+      maxZoom: policy.maxZoomFor(fitted, _stage, pixels: item.size),
       doubleTapZoom: video && !_video.doubleTapZooms
           ? null
-          : policy.doubleTapZoomFor(fitted, _size, pixels: item.size),
+          : policy.doubleTapZoomFor(fitted, _stage, pixels: item.size),
       onTap: switch ((session, policy.pictureClickCloses)) {
         (final playing?, _) when _video.clickPlays => playing.togglePlay,
         (null, _) when widget.onPictureTap != null =>

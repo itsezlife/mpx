@@ -670,6 +670,29 @@ void main() {
       expect(harness.closed, 1);
     });
 
+    testWidgets('the cell hidden on the surface follows the page', (
+      tester,
+    ) async {
+      final harness = ViewerHarness();
+      harness.bridge.origins[1] = const GalleryOrigin(rect: originRect);
+      await harness.pump(tester);
+      expect(harness.bridge.hidden, {0});
+
+      await tester.fling(
+        find.byType(ViewerPhotoPage),
+        const Offset(-300, 0),
+        1000,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      // The cell of the item left shows again and the one the viewer is on
+      // is empty: dragged to close, the picture is over an empty place, not
+      // over its own twin.
+      expect(harness.state(tester).index, 1);
+      expect(harness.bridge.hidden, {1});
+    });
+
     testWidgets('closing on another item reveals its origin first', (
       tester,
     ) async {

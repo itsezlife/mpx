@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart' show kMinInteractiveDimension;
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -931,11 +932,147 @@ void main() {
       );
     });
 
-    testWidgets('the speed panel sets the speed, kept per item', (
+    group('with the viewer\'s chrome', () {
+      final settings = find.byKey(const ValueKey('mpx-viewer-settings'));
+      final panel = find.byKey(const ValueKey('mpx-viewer-settings-panel'));
+
+      Future<void> openWithChrome(WidgetTester tester) async {
+        harness = ViewerHarness(
+          items: ViewerHarness.videos(1),
+          videoDuration: const Duration(seconds: 60),
+        );
+        await harness.pump(
+          tester,
+          chrome: ViewerChrome(
+            title: (context, index, item) => const Text('Author'),
+            caption: (context, index, item) => const Text('A caption'),
+          ),
+        );
+      }
+
+      testWidgets('the settings button is in the top bar', (tester) async {
+        await openWithChrome(tester);
+
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('mpx-viewer-top')),
+            matching: settings,
+          ),
+          findsOneWidget,
+        );
+        await tester.tap(settings);
+        await tester.pump();
+        expect(panel, findsOneWidget);
+        // Under the bar, at its right edge.
+        final bar = tester.getRect(
+          find.byKey(const ValueKey('mpx-viewer-top')),
+        );
+        expect(tester.getRect(panel).top, greaterThanOrEqualTo(bar.bottom));
+        expect(tester.getRect(panel).right, closeTo(viewerSize.width, 8));
+      });
+
+      testWidgets('the controls stay while the settings are open', (
+        tester,
+      ) async {
+        await openWithChrome(tester);
+        await tester.tap(settings);
+        await tester.pump();
+
+        await tester.pump(const Duration(seconds: 10));
+        expect(harness.state(tester).controlsVisible, isTrue);
+        expect(panel, findsOneWidget);
+
+        // A tap outside closes the panel; the wait starts again.
+        await tester.tapAt(const Offset(40, 300));
+        await tester.pump();
+        expect(panel, findsNothing);
+        await tester.pump(const Duration(seconds: 4));
+        expect(harness.state(tester).controlsVisible, isFalse);
+      });
+
+      testWidgets('the controls stay while the overflow menu is open', (
+        tester,
+      ) async {
+        harness = ViewerHarness(
+          items: ViewerHarness.videos(1),
+          videoDuration: const Duration(seconds: 60),
+        );
+        await harness.pump(
+          tester,
+          chrome: ViewerChrome(
+            actions: (index, item) => [
+              ViewerAction(label: 'Save', onSelected: (_) {}),
+            ],
+          ),
+        );
+        await tester.tap(find.byKey(const ValueKey('mpx-viewer-more')));
+        await tester.pump();
+
+        await tester.pump(const Duration(seconds: 10));
+        expect(harness.state(tester).controlsVisible, isTrue);
+        expect(find.byKey(const ValueKey('mpx-viewer-menu')), findsOneWidget);
+      });
+
+      testWidgets('the caption and the bar hide as one: the gap between them '
+          'never changes', (tester) async {
+        await openWithChrome(tester);
+        final caption = find.byKey(const ValueKey('mpx-viewer-caption'));
+        final bar = find.byKey(const ValueKey('mpx-viewer-video-bar'));
+        double gap() =>
+            tester.getRect(bar).top - tester.getRect(caption).bottom;
+        final resting = gap();
+
+        await tester.tapAt(const Offset(200, 290));
+        // A single tap waits out the double-tap window.
+        await tester.pump(const Duration(milliseconds: 301));
+        expect(harness.state(tester).controlsVisible, isFalse);
+        for (var i = 0; i < 4; i++) {
+          await tester.pump(const Duration(milliseconds: 40));
+          expect(gap(), closeTo(resting, 0.01), reason: 'frame $i');
+        }
+      });
+    });
+
+    testWidgets('the speed button goes through 1x, 1.5x, 2x and back', (
       tester,
     ) async {
       await open(tester);
+      final button = find.byKey(const ValueKey('mpx-viewer-speed'));
+      expect(find.descendant(of: button, matching: find.text('1x')), findsOne);
+
+      for (final speed in [1.5, 2.0, 1.0]) {
+        await tester.tap(button);
+        await tester.pump();
+        expect(harness.lease(tester).state.value.speed, speed);
+      }
+      // No panel opens under it: the full list is the settings'.
+      expect(
+        find.byKey(const ValueKey('mpx-viewer-settings-panel')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('a speed from the settings outside the cycle goes back to its '
+        'first', (tester) async {
+      await open(tester);
+      await tester.tap(find.byKey(const ValueKey('mpx-viewer-settings')));
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey(('mpx-viewer-speed-preset', 0.5))),
+      );
+      await tester.pump();
+      expect(harness.lease(tester).state.value.speed, 0.5);
+
       await tester.tap(find.byKey(const ValueKey('mpx-viewer-speed')));
+      await tester.pump();
+      expect(harness.lease(tester).state.value.speed, 1);
+    });
+
+    testWidgets('the settings set the speed, kept per item, and close', (
+      tester,
+    ) async {
+      await open(tester);
+      await tester.tap(find.byKey(const ValueKey('mpx-viewer-settings')));
       await tester.pump();
       await tester.tap(
         find.byKey(const ValueKey(('mpx-viewer-speed-preset', 2.0))),
@@ -950,6 +1087,10 @@ void main() {
       expect(
         harness.speeds.speedFor(videoKey(1), ViewerSpeedMemory.perItem),
         1,
+      );
+      expect(
+        find.byKey(const ValueKey('mpx-viewer-settings-panel')),
+        findsNothing,
       );
     });
 
@@ -966,69 +1107,37 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('mpx-viewer-speed')));
       await tester.pump();
-      await tester.tap(
-        find.byKey(const ValueKey(('mpx-viewer-speed-preset', 1.5))),
-      );
-      await tester.pump();
       expect(bar(), before);
-    });
-
-    testWidgets('the speed panel names the speed beside its slider', (
-      tester,
-    ) async {
-      await open(tester);
-      await tester.tap(find.byKey(const ValueKey('mpx-viewer-speed')));
-      await tester.pump();
-
-      final value = find.byKey(const ValueKey('mpx-viewer-speed-value'));
-      expect(find.descendant(of: value, matching: find.text('1x')), findsOne);
-      final slider = tester.getRect(
-        find.byKey(const ValueKey('mpx-viewer-speed-slider')),
-      );
-      expect(tester.getRect(value).center.dy, closeTo(slider.center.dy, 1));
-      expect(find.byKey(const ValueKey('mpx-viewer-seek-bar')), findsOne);
     });
 
     for (final policy in [
       ViewerPolicy.$Android,
-      // Controls show on open here too, so the panel can be opened.
+      // Controls show on open here too, so the settings can be opened.
       ViewerPolicy.$IOS.copyWith(
         video: ViewerPolicy.$IOS.video.copyWith(controlsVisibleOnOpen: true),
       ),
     ]) {
-      testWidgets('each speed preset is a 48 px target that takes a tap at '
-          'its edge (${policy.openStyle.name})', (tester) async {
+      testWidgets('each speed in the settings is a 48 px target that takes a '
+          'tap at its edge (${policy.openStyle.name})', (tester) async {
         harness = ViewerHarness(
           items: ViewerHarness.videos(1),
           videoDuration: const Duration(seconds: 60),
         );
         await harness.pump(tester, policy: policy);
-        await tester.tap(find.byKey(const ValueKey('mpx-viewer-speed')));
-        await tester.pump();
 
-        final rects = <Rect>[];
         for (final preset in policy.video.speed.presets) {
-          final target = find.byKey(
-            ValueKey(('mpx-viewer-speed-preset', preset)),
+          await tester.tap(find.byKey(const ValueKey('mpx-viewer-settings')));
+          await tester.pump();
+          final rect = tester.getRect(
+            find.byKey(ValueKey(('mpx-viewer-speed-preset', preset))),
           );
-          final rect = tester.getRect(target);
           expect(rect.width, greaterThanOrEqualTo(kMinInteractiveDimension));
           expect(rect.height, greaterThanOrEqualTo(kMinInteractiveDimension));
-          for (final other in rects) {
-            expect(rect.overlaps(other), isFalse, reason: '$preset');
-          }
-          rects.add(rect);
 
           await tester.tapAt(rect.topLeft + const Offset(2, 2));
           await tester.pump();
           expect(harness.lease(tester).state.value.speed, preset);
         }
-        expect(
-          tester
-              .getSize(find.byKey(const ValueKey('mpx-viewer-speed-slider')))
-              .height,
-          greaterThanOrEqualTo(kMinInteractiveDimension),
-        );
         expect(
           tester
               .getSize(find.byKey(const ValueKey('mpx-viewer-seek-bar')))
@@ -1072,6 +1181,34 @@ void main() {
         expect(time(), '0:00 / 1:00');
       },
     );
+
+    testWidgets('the time shows whole under a host text with letter spacing', (
+      tester,
+    ) async {
+      harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+      );
+      // The width the time keeps is measured with the style it is drawn in,
+      // the host's included (a Material text has letter spacing): measured
+      // without it, the time was a few pixels narrower than its text, and
+      // "0:11 / 0:14" wrapped at the slash and the total was dropped.
+      await harness.pump(
+        tester,
+        hostTextStyle: const TextStyle(
+          letterSpacing: 3,
+          color: Color(0xFFFFFFFF),
+        ),
+      );
+
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.descendant(
+          of: find.byKey(const ValueKey('mpx-viewer-time')),
+          matching: find.byType(RichText),
+        ),
+      );
+      expect(paragraph.didExceedMaxLines, isFalse);
+    });
 
     testWidgets('its text is styled whatever the host puts above it', (
       tester,
@@ -1119,7 +1256,7 @@ void main() {
       );
       harness.engine(0).advance(const Duration(seconds: 7));
 
-      await tester.tap(find.byKey(const ValueKey('mpx-viewer-quality')));
+      await tester.tap(find.byKey(const ValueKey('mpx-viewer-settings')));
       await tester.pump();
       await tester.tap(
         find.byKey(const ValueKey(('mpx-viewer-quality-item', '480p'))),

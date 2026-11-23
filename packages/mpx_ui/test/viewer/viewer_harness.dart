@@ -28,6 +28,7 @@ final class ViewerHarness {
     bool autoPrepare = true,
     Duration? originPosition,
     Set<int>? loaded,
+    this.systemBars = ViewerSystemBars.hideStatusBar,
   }) {
     producer = FakeAssetProducer();
     clock = PlaybackClock(ticks: ManualPlaybackTickSource());
@@ -57,6 +58,9 @@ final class ViewerHarness {
       players = PlayerPool(backend: backend!);
     }
   }
+
+  /// What the viewer does with the system bars.
+  final ViewerSystemBars systemBars;
 
   /// Videos 400 x 300 like the photos.
   static List<GalleryItem> videos(int count, {bool hasAudio = true}) => [
@@ -131,6 +135,7 @@ final class ViewerHarness {
               speeds: speeds,
               qualitiesOf: qualitiesOf,
               onFullscreenChanged: fullscreen.add,
+              systemBars: systemBars,
               controller: controller,
               videoStartOf: videoStartOf,
               onVideoLeft: onVideoLeft,

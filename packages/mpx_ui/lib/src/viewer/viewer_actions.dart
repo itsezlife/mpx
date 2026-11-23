@@ -144,6 +144,7 @@ final class ViewerChrome {
     this.thumbnails = false,
     this.backIcon,
     this.moreIcon,
+    this.settingsIcon,
   });
 
   /// The actions of an item; none when null.
@@ -173,4 +174,7 @@ final class ViewerChrome {
 
   /// The overflow button's icon; three dots when null.
   final Widget? moreIcon;
+
+  /// The video settings button's icon; a plain glyph when null.
+  final Widget? settingsIcon;
 }

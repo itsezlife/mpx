@@ -255,7 +255,7 @@ class ViewerSeekBar extends StatelessWidget {
 }
 
 /// Draws a seek bar: the track behind, the buffered ranges, the progress and
-/// the thumb. Also what draws the speed slider of the viewer's controls.
+/// the thumb.
 class ViewerSeekBarPainter extends CustomPainter {
   /// Creates the painter of [position] in [duration].
   const ViewerSeekBarPainter({

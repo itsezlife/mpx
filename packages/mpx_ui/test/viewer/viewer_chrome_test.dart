@@ -128,7 +128,7 @@ void main() {
       return harness;
     }
 
-    testWidgets('a zoomed picture takes the whole screen, bars and all', (
+    testWidgets('a zoomed picture takes the screen above the navigation bar', (
       tester,
     ) async {
       final harness = await open(tester);
@@ -138,18 +138,23 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      // The page is the screen: the picture pans to its edges, under the
-      // status and navigation bars.
+      // The page is the screen above the navigation bar, which is clear: the
+      // picture pans to its edges, under the status bar, not under the
+      // navigation bar.
       expect(
         tester.getRect(find.byType(ViewerPhotoPage)),
-        Offset.zero & viewerSize,
+        Rect.fromLTWH(0, 0, viewerSize.width, viewerSize.height - bottom),
       );
-      // At 3x the 300 px picture is 900 tall: 50 past each edge.
+      // At 3x the 300 px picture is 900 tall: past each edge by half of
+      // what the page leaves.
       expect(harness.page(tester).zoom, 3);
       await tester.drag(find.byType(ViewerPhotoPage), const Offset(0, -300));
       await tester.pump();
       await tester.pump(const Duration(seconds: 1));
-      expect(harness.page(tester).pan.dy, -50);
+      expect(
+        harness.page(tester).pan.dy,
+        -(900 - (viewerSize.height - bottom)) / 2,
+      );
     });
 
     testWidgets('the system bars are clear with light icons; the viewer '
@@ -201,6 +206,83 @@ void main() {
 
     await tapPicture(tester);
     expect(harness.state(tester).controlsVisible, isTrue);
+  });
+
+  group('system bars', () {
+    late List<Object?> modes;
+
+    setUp(() {
+      modes = [];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+            switch (call.method) {
+              case 'SystemChrome.setEnabledSystemUIMode':
+              case 'SystemChrome.setEnabledSystemUIOverlays':
+                modes.add(call.arguments);
+            }
+            return null;
+          });
+    });
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null);
+    });
+
+    // Only the status bar goes with the controls: the navigation bar is
+    // clear and the pictures lie above it, so there is nothing to win by
+    // hiding it, and it would bring the gesture area up over the picture.
+    const statusBarGone = ['SystemUiOverlay.bottom'];
+    const back = 'SystemUiMode.edgeToEdge';
+
+    testWidgets('the status bar goes with the controls and comes back', (
+      tester,
+    ) async {
+      final harness = ViewerHarness();
+      await harness.pump(tester, chrome: chrome());
+      modes.clear();
+
+      await tapPicture(tester);
+      expect(modes, [statusBarGone]);
+
+      await tapPicture(tester);
+      expect(modes, [statusBarGone, back]);
+    });
+
+    testWidgets('both bars go under hideAll', (tester) async {
+      final harness = ViewerHarness(systemBars: ViewerSystemBars.hideAll);
+      await harness.pump(tester, chrome: chrome());
+      modes.clear();
+
+      await tapPicture(tester);
+      expect(modes, ['SystemUiMode.immersiveSticky']);
+    });
+
+    testWidgets('none goes under keep', (tester) async {
+      final harness = ViewerHarness(systemBars: ViewerSystemBars.keep);
+      await harness.pump(tester, chrome: chrome());
+      modes.clear();
+
+      await tapPicture(tester);
+      await tapPicture(tester);
+      expect(modes, isEmpty);
+    });
+
+    testWidgets('are shown again when the viewer closes with them hidden', (
+      tester,
+    ) async {
+      final harness = ViewerHarness();
+      await harness.pump(tester, chrome: chrome());
+      modes.clear();
+      await tapPicture(tester);
+
+      final closing = harness.state(tester).close();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 201));
+      await closing;
+
+      expect(modes.last, back);
+    });
   });
 
   testWidgets('a dismiss drag hides the chrome', (tester) async {
@@ -317,20 +399,81 @@ void main() {
     frame!.dispose();
   });
 
-  testWidgets('the caption shows up to five lines, then scrolls', (
-    tester,
-  ) async {
-    final harness = ViewerHarness();
-    await harness.pump(
-      tester,
-      chrome: chrome(caption: List.filled(40, 'line').join('\n')),
-    );
-
-    final box = tester.getSize(
-      find.byKey(const ValueKey('mpx-viewer-caption')),
-    );
+  group('the caption', () {
+    final caption = find.byKey(const ValueKey('mpx-viewer-caption'));
     // Five lines of 16 px type at 1.2 plus 8 px above and below.
-    expect(box.height, closeTo(16 * 1.2 * 5 + 16, 0.01));
+    const five = 16 * 1.2 * 5 + 16;
+
+    testWidgets('starts at five lines, however long it is', (tester) async {
+      final harness = ViewerHarness();
+      await harness.pump(
+        tester,
+        chrome: chrome(caption: List.filled(40, 'line').join('\n')),
+      );
+
+      expect(tester.getSize(caption).height, closeTo(five, 0.01));
+    });
+
+    testWidgets('is as tall as its text when that is short', (tester) async {
+      final harness = ViewerHarness();
+      await harness.pump(tester, chrome: chrome(caption: 'one line'));
+
+      // One line and its padding, not the five a long one starts at.
+      final height = tester.getSize(caption).height;
+      expect(height, inExclusiveRange(16 + 16, 16 + 16 * 2));
+    });
+
+    testWidgets('a drag up grows it over the picture, then scrolls the text', (
+      tester,
+    ) async {
+      final harness = ViewerHarness();
+      await harness.pump(
+        tester,
+        chrome: chrome(caption: List.filled(40, 'line').join('\n')),
+      );
+      final collapsed = tester.getSize(caption).height;
+      final bottom = tester.getRect(caption).bottom;
+
+      await tester.drag(caption, const Offset(0, -150));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final grown = tester.getRect(caption);
+      expect(grown.height, greaterThan(collapsed + 100));
+      // It grows upward: its foot stays where it was.
+      expect(grown.bottom, bottom);
+
+      // Never past the top bar: the picture's top part stays.
+      await tester.drag(caption, const Offset(0, -2000));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      final top = tester.getRect(find.byKey(const ValueKey('mpx-viewer-top')));
+      expect(tester.getRect(caption).top, greaterThanOrEqualTo(top.bottom));
+    });
+
+    testWidgets('fades at its edges while there is more text', (tester) async {
+      final harness = ViewerHarness();
+      await harness.pump(
+        tester,
+        chrome: chrome(caption: List.filled(40, 'line').join('\n')),
+      );
+
+      expect(
+        find.descendant(of: caption, matching: find.byType(ShaderMask)),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a short one is not scrolled by a drag', (tester) async {
+      final harness = ViewerHarness();
+      await harness.pump(tester, chrome: chrome(caption: 'one line'));
+      final before = tester.getRect(caption);
+
+      await tester.drag(caption, const Offset(0, -150));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(tester.getRect(caption), before);
+    });
   });
 
   testWidgets('a thumbnail moves the viewer to its item', (tester) async {

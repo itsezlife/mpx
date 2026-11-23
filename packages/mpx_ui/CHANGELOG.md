@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- `ViewerSystemBars` is `keep`, `hideStatusBar` (the default: only the status
+  bar goes with the controls, as a messenger's viewer does) or `hideAll`.
+- The caption starts at five lines (two in landscape) and a drag up grows it
+  over the picture, then scrolls the text, with its edges fading while there
+  is more text (`ViewerCaptionSheet`). The caption and the video bar hide as
+  one block: they slide by the same amount over the same time.
+- The video's settings button is in the top bar (`ViewerChrome.settingsIcon`),
+  and the settings panel closes on a tap outside. The controls do not hide by
+  themselves while the settings or the overflow menu is open.
+- The viewer's speed control is a button beside the seek bar that goes
+  through `ViewerSpeedRule.cycle` (1x, 1.5x, 2x by default, back to the first
+  after the last), and a settings button under the top bar that lists every
+  `ViewerSpeedRule.presets` speed and the qualities. The slider and the
+  panel under the caption are gone; the quality button moved to the
+  settings. `ViewerVideoStrings.settings` is the new button's label.
+- The viewer's pictures lie above the navigation bar, which stays clear:
+  a picture, zoomed or not, no longer runs under it.
+- `ViewerSystemBars` (`MediaViewer.systemBars`): by default the system bars
+  hide with the viewer's controls and come back, edge to edge, with them and
+  when the viewer closes; `keep` leaves them to the host.
+- Paging in the viewer moves the hidden cell with the page: the cell of the
+  item left shows again, and the item the viewer is on is the one that is
+  empty, so a dismiss drag over another item no longer shows its cell twice.
+- The viewer's time reads whole (with its total) under a host text style
+  with letter spacing.
 - The viewer's seek bar is a piece of its own: `ViewerSeekController` (the
   playhead, the preview a finger moves, the seek made when it leaves) and
   `ViewerSeekBar`, drawn as a `ViewerSeekBarStyle` says. The viewer looks and

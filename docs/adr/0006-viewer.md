@@ -399,3 +399,46 @@ The viewer's controls use both with the default style, which is the bar as it
 was; the time and the preview frame stay the controls', read from the same
 controller. A reels page uses them with a hairline style and holds its pager
 while the preview is set.
+
+## Amendment 2026-11-23: speed, system bars and the cell that follows the page
+
+Three decisions from running the viewer in a messenger-like feed:
+
+- **Speed is a cycle and a menu.** The panel with a slider under the caption
+  was a prototype. A button beside the seek bar goes through
+  `ViewerSpeedRule.cycle` (1x, 1.5x, 2x); every other speed
+  (`ViewerSpeedRule.presets`, 0.25x and 0.5x among them) and the qualities
+  are in a settings menu opened from a button under the top bar. No free
+  slider: a speed is one of a list.
+- **System bars are the viewer's while it is open.** `MediaViewer.systemBars`
+  (`ViewerSystemBars.hideWithControls` by default) hides the status and
+  navigation bars with the controls and restores them edge to edge when the
+  viewer closes. The pictures lie above the navigation bar (clear, as the
+  viewer's scrim draws over it), at every zoom, and the room is kept while
+  the bars are hidden, so the picture does not move as they go.
+- **The surface's hidden cell follows the page.** The origin of the item on
+  show is the one hidden; paging hides the new one and shows the one left, so
+  a close onto another item flies from an empty place to its cell, as the
+  reference does.
+
+## Amendment 2026-11-23, second pass: the chrome as one block
+
+Read against the reference's viewer:
+
+- **Only the status bar goes** (`ViewerSystemBars.hideStatusBar`, the
+  default). The reference hides the status bar with its controls and keeps
+  the navigation bar (it hides that only in landscape with side insets);
+  `hideAll` is for a host that wants the immersive mode.
+- **The caption is a sheet**, not a box with a line limit. It starts at five
+  lines (two in landscape), is bottom-anchored in the room between the top
+  bar and the video controls, and a drag up grows it over the picture before
+  it scrolls the text; its edges fade (12 px) while there is more text. Only
+  the box takes touches.
+- **One block hides.** The caption, the strip and the video bar slide by
+  `controlsSlide` over the same duration and curve, so there is never a gap
+  between their containers while the controls go.
+- **The settings button is in the top bar**, with the overflow button, not
+  under it; the panel opens under the bar at its right edge. A menu or the
+  settings keeps the controls shown (`ViewerVideoSession.hold`): the
+  auto-hide wait starts again when they close.
+

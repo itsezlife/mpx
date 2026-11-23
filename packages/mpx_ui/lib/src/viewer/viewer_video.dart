@@ -86,6 +86,7 @@ final class ViewerVideoStrings {
     this.pause = 'Pause',
     this.speed = 'Speed',
     this.quality = 'Quality',
+    this.settings = 'Settings',
     this.failed = 'This video could not be played',
     this.retry = 'Retry',
     this.openElsewhere = 'Open',
@@ -101,8 +102,14 @@ final class ViewerVideoStrings {
   /// The speed button's semantic label.
   final String speed;
 
-  /// The quality button's semantic label.
+  /// The quality button's semantic label, and the heading of its list.
   final String quality;
+
+  /// The settings button's semantic label.
+  final String settings;
+
+  /// The heading of the speed list in the settings.
+  String get speedHeading => speed;
 
   /// What a video that failed to play says over its picture.
   final String failed;
@@ -353,6 +360,9 @@ class ViewerVideoControls extends StatefulWidget {
     required this.onSpeed,
     super.key,
     this.slide = 0,
+    this.settingsTop = 0,
+    this.settingsOpen,
+    this.settingsButton = true,
     this.qualities = const [],
     this.quality,
     this.onQuality,
@@ -394,6 +404,19 @@ class ViewerVideoControls extends StatefulWidget {
   /// How far the bottom bar slides down as it hides.
   final double slide;
 
+  /// Where the settings panel sits from the top of the controls: under the
+  /// viewer's own top bar, which is the host's to measure.
+  final double settingsTop;
+
+  /// Whether the settings panel is open. The host owns it, so a button in
+  /// its own bar can open it; the controls close it on a choice, on a tap
+  /// outside and when they hide. Their own state when null.
+  final ValueNotifier<bool>? settingsOpen;
+
+  /// Whether the controls draw the button that opens the settings: not when
+  /// the host's bar has it.
+  final bool settingsButton;
+
   /// Any touch on the controls.
   final VoidCallback onInteraction;
 
@@ -426,8 +449,6 @@ class ViewerVideoControls extends StatefulWidget {
   State<ViewerVideoControls> createState() => ViewerVideoControlsState();
 }
 
-enum _Panel { none, speed, quality }
-
 /// The state of [ViewerVideoControls]; the preview position is readable for
 /// tests.
 class ViewerVideoControlsState extends State<ViewerVideoControls>
@@ -439,7 +460,8 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
   int _previewRequest = 0;
   // The preview the frame was asked for last.
   Duration? _previewed;
-  _Panel _panel = _Panel.none;
+  late final ValueNotifier<bool> _ownSettings = ValueNotifier(false);
+  ValueNotifier<bool> get _settings => widget.settingsOpen ?? _ownSettings;
 
   /// Where a seek-bar drag would seek; null while none is in progress.
   Duration? get preview => _seek.preview;
@@ -454,6 +476,7 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
       onInteraction: widget.onInteraction,
     )..addListener(_onSeek);
     widget.lease.state.addListener(_onState);
+    _settings.addListener(_onState);
   }
 
   @override
@@ -468,12 +491,18 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
       widget.lease.state.addListener(_onState);
       _onState();
     }
-    if (!widget.visible && _panel != _Panel.none) _panel = _Panel.none;
+    if (!identical(oldWidget.settingsOpen, widget.settingsOpen)) {
+      (oldWidget.settingsOpen ?? _ownSettings).removeListener(_onState);
+      _settings.addListener(_onState);
+    }
+    if (!widget.visible) _settings.value = false;
   }
 
   @override
   void dispose() {
     widget.lease.state.removeListener(_onState);
+    _settings.removeListener(_onState);
+    _ownSettings.dispose();
     _seek
       ..removeListener(_onSeek)
       ..dispose();
@@ -537,7 +566,13 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
       context,
       DefaultTextStyle.merge(
         style: tokens.subtitle,
-        child: _controls(state, bottom),
+        child: IgnorePointer(
+          ignoring: !widget.visible,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [_controls(state, bottom), _settingsLayer(state)],
+          ),
+        ),
       ),
     );
   }
@@ -586,48 +621,92 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
       child: TweenAnimationBuilder<double>(
         tween: Tween(end: widget.visible ? 1 : 0),
         duration: widget.visible ? widget.showDuration : widget.hideDuration,
-        builder: (context, t, child) =>
-            Opacity(opacity: t.clamp(0.0, 1.0), child: child),
-        child: Stack(
-          children: [
-            Center(
-              child: _centre(
-                _RoundButton(
-                  key: const ValueKey('mpx-viewer-play'),
-                  label: state.playing
-                      ? widget.strings.pause
-                      : widget.strings.play,
-                  size: ViewerVideoControls.playButtonSize,
-                  fill: tokens.barFill,
-                  onTap: _togglePlay,
-                  child: CustomPaint(
-                    size: const Size.square(24),
-                    painter: _PlayGlyph(
-                      tokens.foreground,
-                      paused: !state.playing,
-                    ),
+        builder: (context, t, child) => Opacity(
+          opacity: t.clamp(0.0, 1.0),
+          child: Stack(
+            children: [
+              ?child,
+              // The bar goes down by the same slide, over the same time, as
+              // the viewer's caption above it: one block, not two.
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: bottom,
+                child: Transform.translate(
+                  offset: Offset(0, widget.slide * (1 - t)),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_seek.preview case final preview?)
+                        _previewBox(preview),
+                      _bar(state),
+                    ],
                   ),
                 ),
-                state,
+              ),
+            ],
+          ),
+        ),
+        child: Center(
+          child: _centre(
+            _RoundButton(
+              key: const ValueKey('mpx-viewer-play'),
+              label: state.playing ? widget.strings.pause : widget.strings.play,
+              size: ViewerVideoControls.playButtonSize,
+              fill: tokens.barFill,
+              onTap: _togglePlay,
+              child: CustomPaint(
+                size: const Size.square(24),
+                painter: _PlayGlyph(tokens.foreground, paused: !state.playing),
               ),
             ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: bottom,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_seek.preview case final preview?) _previewBox(preview),
-                  if (_panel == _Panel.speed) _speedPanel(state.speed),
-                  if (_panel == _Panel.quality) _qualityPanel(),
-                  _bar(state),
-                ],
-              ),
-            ),
-          ],
+            state,
+          ),
         ),
       ),
+    );
+  }
+
+  // The settings: a tap outside closes them, the button (when the controls
+  // draw it) opens them.
+  Widget _settingsLayer(PlayerState state) {
+    final tokens = widget.tokens;
+    final open = _settings.value;
+    return Stack(
+      children: [
+        if (open)
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                widget.onInteraction();
+                _settings.value = false;
+              },
+            ),
+          ),
+        Positioned(
+          top: widget.settingsTop,
+          right: 4,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (widget.settingsButton)
+                _RoundButton(
+                  key: const ValueKey('mpx-viewer-settings'),
+                  label: widget.strings.settings,
+                  size: 40,
+                  fill: tokens.barFill,
+                  onTap: _toggleSettings,
+                  child: CustomPaint(
+                    size: const Size.square(20),
+                    painter: _SettingsGlyph(tokens.foreground),
+                  ),
+                ),
+              if (open) _settingsPanel(state.speed),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -676,15 +755,8 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
               label: widget.strings.speed,
               text: '${_speedText(state.speed)}x',
               width: _speedWidth(context),
-              onTap: () => _toggle(_Panel.speed),
+              onTap: () => _cycleSpeed(state.speed),
             ),
-            if (widget.qualities.length > 1)
-              _textButton(
-                key: const ValueKey('mpx-viewer-quality'),
-                label: widget.strings.quality,
-                text: widget.quality?.label ?? widget.qualities.first.label,
-                onTap: () => _toggle(_Panel.quality),
-              ),
             const SizedBox(width: 4),
           ],
         ),
@@ -692,9 +764,9 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
     );
   }
 
-  void _toggle(_Panel panel) {
+  void _toggleSettings() {
     widget.onInteraction();
-    setState(() => _panel = _panel == panel ? _Panel.none : panel);
+    _settings.value = !_settings.value;
   }
 
   Widget _textButton({
@@ -730,9 +802,17 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
   static String _digitsOf(Duration duration) =>
       formatViewerTime(duration).replaceAll(RegExp('[0-9]'), '0');
 
+  // [text]'s width as the controls draw it: in the style the host's text
+  // root gives (its letter spacing and family included) with the tokens'
+  // over it. Measured with the tokens' alone, a time was a few pixels
+  // narrower than its text under a Material text root, wrapped at the slash,
+  // and lost its total.
   double _widthOf(BuildContext context, String text) {
     final painter = TextPainter(
-      text: TextSpan(text: text, style: _figures),
+      text: TextSpan(
+        text: text,
+        style: DefaultTextStyle.of(context).style.merge(_figures),
+      ),
       textDirection: TextDirection.ltr,
       textScaler: MediaQuery.textScalerOf(context),
       maxLines: 1,
@@ -746,7 +826,7 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
   double _speedWidth(BuildContext context) {
     final rule = widget.rules.speed;
     var widest = 0.0;
-    for (final speed in {rule.min, rule.max, 1.0, ...rule.presets}) {
+    for (final speed in {1.0, ...rule.cycle, ...rule.presets}) {
       widest = math.max(widest, _widthOf(context, '${_speedText(speed)}x'));
     }
     // A speed between two tenths shows one decimal, as wide as 0.0.
@@ -786,130 +866,100 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
     return size * scale;
   }
 
-  Widget _speedSlider(double speed, ViewerSpeedRule rule) => LayoutBuilder(
-    builder: (context, constraints) {
-      final width = constraints.maxWidth;
-      void at(double x) {
-        final fraction = (x / width).clamp(0.0, 1.0);
-        widget.onSpeed(
-          rule.settle(rule.min + (rule.max - rule.min) * fraction),
-        );
-      }
+  // The next of the policy's cycle after [speed]: the first when [speed] is
+  // not in it (a speed chosen from the settings) or is its last.
+  void _cycleSpeed(double speed) {
+    widget.onInteraction();
+    final cycle = widget.rules.speed.cycle;
+    if (cycle.isEmpty) return;
+    final at = cycle.indexOf(speed);
+    widget.onSpeed(cycle[(at + 1) % cycle.length]);
+  }
 
-      return GestureDetector(
-        key: const ValueKey('mpx-viewer-speed-slider'),
-        behavior: HitTestBehavior.opaque,
-        onHorizontalDragUpdate: (d) => at(d.localPosition.dx),
-        onTapUp: (d) => at(d.localPosition.dx),
-        child: CustomPaint(
-          size: Size(width, kMinInteractiveDimension),
-          painter: ViewerSeekBarPainter(
-            duration: const Duration(seconds: 1),
-            position:
-                const Duration(seconds: 1) *
-                ((speed - rule.min) / (rule.max - rule.min)).clamp(0.0, 1.0),
-            buffered: const [],
-            foreground: widget.tokens.menuForeground,
-            dragging: false,
+  // The settings: every speed the policy offers, and the qualities when
+  // there is a choice. A choice closes it.
+  Widget _settingsPanel(double speed) {
+    final rule = widget.rules.speed;
+    final tokens = widget.tokens;
+    Widget row(
+      Key key,
+      String text, {
+      required bool selected,
+      required void Function() onTap,
+    }) => ViewerTapTarget(
+      key: key,
+      onTap: () {
+        _settings.value = false;
+        widget.onInteraction();
+        onTap();
+      },
+      selected: selected,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            text,
+            maxLines: 1,
+            style: tokens.subtitle.copyWith(
+              color: selected ? tokens.link : tokens.menuForeground,
+              fontWeight: selected ? FontWeight.w600 : null,
+            ),
           ),
         ),
-      );
-    },
-  );
-
-  Widget _speedPanel(double speed) {
-    final rule = widget.rules.speed;
-    return ColoredBox(
-      key: const ValueKey('mpx-viewer-speed-panel'),
-      color: widget.tokens.menuBackground,
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
+      ),
+    );
+    Widget heading(String text) => Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
+      child: Text(
+        text,
+        maxLines: 1,
+        style: tokens.subtitle.copyWith(
+          color: tokens.menuForeground.withValues(alpha: 0.6),
+        ),
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: DecoratedBox(
+        key: const ValueKey('mpx-viewer-settings-panel'),
+        decoration: BoxDecoration(
+          color: tokens.menuBackground,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: SizedBox(
+          width: 200,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // The speed set now, beside the slider that sets it: the
-                // slider reads as the speed's, not as a second seek bar.
-                Padding(
-                  key: const ValueKey('mpx-viewer-speed-value'),
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: SizedBox(
-                    width: _speedWidth(context),
-                    child: Text(
-                      '${_speedText(speed)}x',
-                      style: _figures.copyWith(
-                        color: widget.tokens.menuForeground,
-                      ),
-                      maxLines: 1,
-                    ),
-                  ),
-                ),
-                Expanded(child: _speedSlider(speed, rule)),
-              ],
-            ),
-            // One target per preset, sharing the row evenly: each at least
-            // 48 px, none overlapping, a tap anywhere in it taken.
-            Row(
-              children: [
+                heading(widget.strings.speedHeading),
                 for (final preset in rule.presets)
-                  Expanded(
-                    child: ViewerTapTarget(
-                      key: ValueKey(('mpx-viewer-speed-preset', preset)),
-                      onTap: () => widget.onSpeed(preset),
-                      selected: preset == speed,
-                      child: Text(
-                        '${_speedText(preset)}x',
-                        maxLines: 1,
-                        style: widget.tokens.subtitle.copyWith(
-                          color: preset == speed
-                              ? widget.tokens.link
-                              : widget.tokens.menuForeground,
-                          fontWeight: preset == speed ? FontWeight.w600 : null,
-                        ),
-                      ),
-                    ),
+                  row(
+                    ValueKey(('mpx-viewer-speed-preset', preset)),
+                    preset == 1 ? '1x' : '${_speedText(preset)}x',
+                    selected: preset == speed,
+                    onTap: () => widget.onSpeed(preset),
                   ),
+                if (widget.qualities.length > 1) ...[
+                  heading(widget.strings.quality),
+                  for (final quality in widget.qualities)
+                    row(
+                      ValueKey(('mpx-viewer-quality-item', quality.label)),
+                      quality.label,
+                      selected: quality == widget.quality,
+                      onTap: () => widget.onQuality?.call(quality),
+                    ),
+                ],
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
-
-  Widget _qualityPanel() => ColoredBox(
-    key: const ValueKey('mpx-viewer-quality-panel'),
-    color: widget.tokens.menuBackground,
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final quality in widget.qualities)
-          GestureDetector(
-            key: ValueKey(('mpx-viewer-quality-item', quality.label)),
-            behavior: HitTestBehavior.opaque,
-            onTap: () {
-              setState(() => _panel = _Panel.none);
-              widget.onInteraction();
-              widget.onQuality?.call(quality);
-            },
-            child: SizedBox(
-              height: 44,
-              child: Center(
-                child: Text(
-                  quality.label,
-                  style: widget.tokens.subtitle.copyWith(
-                    color: quality == widget.quality
-                        ? widget.tokens.link
-                        : widget.tokens.menuForeground,
-                  ),
-                ),
-              ),
-            ),
-          ),
-      ],
-    ),
-  );
 }
 
 /// [position] as m:ss, or h:mm:ss from an hour on.
@@ -986,4 +1036,30 @@ class _PlayGlyph extends CustomPainter {
   @override
   bool shouldRepaint(_PlayGlyph oldDelegate) =>
       oldDelegate.color != color || oldDelegate.paused != paused;
+}
+
+/// The settings glyph: two sliders, each a line with a knob.
+class _SettingsGlyph extends CustomPainter {
+  const _SettingsGlyph(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final line = Paint()
+      ..color = color
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+    final knob = Paint()..color = color;
+    final w = size.width;
+    final h = size.height;
+    canvas
+      ..drawLine(Offset(1, h * 0.3), Offset(w - 1, h * 0.3), line)
+      ..drawLine(Offset(1, h * 0.7), Offset(w - 1, h * 0.7), line)
+      ..drawCircle(Offset(w * 0.68, h * 0.3), 3.2, knob)
+      ..drawCircle(Offset(w * 0.32, h * 0.7), 3.2, knob);
+  }
+
+  @override
+  bool shouldRepaint(_SettingsGlyph oldDelegate) => oldDelegate.color != color;
 }

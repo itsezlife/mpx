@@ -63,6 +63,17 @@ final class ViewerVideoSession extends ChangeNotifier {
   Timer? _hideTimer;
   bool _disposed = false;
 
+  /// Whether something the controls opened (a menu, the settings) keeps them
+  /// shown: they do not hide by themselves while it is open.
+  bool get hold => _hold;
+  set hold(bool value) {
+    if (value == _hold) return;
+    _hold = value;
+    _scheduleAutoHide();
+  }
+
+  bool _hold = false;
+
   /// The lease the item plays on.
   PlayerLease get lease => _lease;
 
@@ -126,6 +137,7 @@ final class ViewerVideoSession extends ChangeNotifier {
     _hideTimer = null;
     if (_disposed ||
         !_autoHide ||
+        _hold ||
         !rules.autoHides ||
         !controls.value ||
         !_lease.state.value.playing) {

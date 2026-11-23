@@ -6,6 +6,7 @@ import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_ui/src/text/mpx_text_root.dart';
 import 'package:mpx_ui/src/viewer/gallery_source.dart';
 import 'package:mpx_ui/src/viewer/viewer_actions.dart';
+import 'package:mpx_ui/src/viewer/viewer_caption.dart';
 import 'package:mpx_ui/src/viewer/viewer_policy.dart';
 import 'package:mpx_ui/src/viewer/viewer_tokens.dart';
 
@@ -28,6 +29,9 @@ class ViewerChromeOverlay extends StatefulWidget {
     super.key,
     this.scope,
     this.bottomInset = 0,
+    this.settingsOpen,
+    this.settingsLabel = 'Settings',
+    this.onMenuChanged,
   });
 
   /// What the host fills in.
@@ -63,12 +67,34 @@ class ViewerChromeOverlay extends StatefulWidget {
   /// Room left at the bottom for the video controls.
   final double bottomInset;
 
+  /// Whether the video's settings are open: when given, the top bar has the
+  /// button that opens them, before the overflow button.
+  final ValueNotifier<bool>? settingsOpen;
+
+  /// The settings button's semantic label.
+  final String settingsLabel;
+
+  /// Told when the overflow menu opens or closes, so the viewer keeps its
+  /// controls while it is open.
+  final ValueChanged<bool>? onMenuChanged;
+
   @override
   State<ViewerChromeOverlay> createState() => _ViewerChromeOverlayState();
 }
 
 class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
-  bool _menuOpen = false;
+  bool _menuState = false;
+
+  bool get _menuOpen => _menuState;
+  set _menuOpen(bool value) {
+    if (value == _menuState) return;
+    _menuState = value;
+    // Told after the frame: a close from a rebuild must not rebuild the
+    // viewer that is building it.
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => widget.onMenuChanged?.call(_menuState),
+    );
+  }
 
   @override
   void initState() {
@@ -142,6 +168,33 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
             ),
           ),
         ),
+        if (item != null)
+          if (_caption(context, item, metrics, padding) case final caption?)
+            Positioned(
+              left: 0,
+              right: 0,
+              // Under the top bar and its counter, over the strip, the video
+              // controls and the navigation bar: the room a drag grows it in.
+              top:
+                  padding.top +
+                  metrics.topBarHeight +
+                  (widget.source.count > 1
+                      ? metrics.counterGap + metrics.counterHeight
+                      : 0),
+              bottom:
+                  padding.bottom +
+                  widget.bottomInset +
+                  (widget.chrome.thumbnails && widget.source.count > 1
+                      ? metrics.stripHeight
+                      : 0),
+              child: _Shown(
+                visible: visible,
+                slide: widget.policy.controlsSlide,
+                duration: widget.policy.controlsDuration,
+                hideDuration: widget.policy.controlsHideDuration,
+                child: caption,
+              ),
+            ),
         Positioned(
           left: 0,
           right: 0,
@@ -155,7 +208,6 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
               key: const ValueKey('mpx-viewer-bottom'),
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (item != null) ?_caption(context, item, metrics),
                 if (widget.chrome.thumbnails && widget.source.count > 1)
                   _strip(metrics),
                 SizedBox(height: widget.bottomInset),
@@ -238,6 +290,14 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
                     icon: action.icon!,
                     onTap: () => widget.onAction(action, widget.index),
                   ),
+              if (widget.settingsOpen case final open?)
+                _button(
+                  key: const ValueKey('mpx-viewer-settings'),
+                  label: widget.settingsLabel,
+                  icon:
+                      chrome.settingsIcon ?? _Glyph.settings(tokens.foreground),
+                  onTap: () => open.value = !open.value,
+                ),
               if (menu.isNotEmpty)
                 _button(
                   key: const ValueKey('mpx-viewer-more'),
@@ -309,27 +369,25 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
     BuildContext context,
     GalleryItem item,
     ViewerChromeMetrics metrics,
+    EdgeInsets padding,
   ) {
     final caption = widget.chrome.caption?.call(context, widget.index, item);
     if (caption == null) return null;
     final style = widget.tokens.caption;
     final line = (style.fontSize ?? 16) * (style.height ?? 1.2);
-    // Up to the metric's line count shows at once; a longer caption scrolls.
-    final maxHeight =
-        line * metrics.captionMaxLines + metrics.captionPadding.vertical;
-    return ColoredBox(
-      key: const ValueKey('mpx-viewer-caption'),
-      color: widget.tokens.barFill,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: maxHeight,
-          minWidth: double.infinity,
-        ),
-        child: SingleChildScrollView(
-          padding: metrics.captionPadding,
-          child: DefaultTextStyle.merge(style: style, child: caption),
-        ),
-      ),
+    // The first height is the metric's lines (two in landscape, as the
+    // reference); a longer caption grows from it under a drag.
+    final landscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    final lines = landscape
+        ? math.min(2, metrics.captionMaxLines)
+        : metrics.captionMaxLines;
+    return ViewerCaptionSheet(
+      boxKey: const ValueKey('mpx-viewer-caption'),
+      fill: widget.tokens.barFill,
+      padding: metrics.captionPadding,
+      collapsedHeight: line * lines + metrics.captionPadding.vertical,
+      child: DefaultTextStyle.merge(style: style, child: caption),
     );
   }
 
@@ -501,25 +559,29 @@ class _Shown extends StatelessWidget {
 
 // A plain glyph for a host that brings no icons: a back arrow or three dots.
 class _Glyph extends StatelessWidget {
-  const _Glyph.back(this.color) : _back = true;
+  const _Glyph.back(this.color) : _kind = _GlyphKind.back;
 
-  const _Glyph.more(this.color) : _back = false;
+  const _Glyph.more(this.color) : _kind = _GlyphKind.more;
+
+  const _Glyph.settings(this.color) : _kind = _GlyphKind.settings;
 
   final Color color;
-  final bool _back;
+  final _GlyphKind _kind;
 
   @override
   Widget build(BuildContext context) => CustomPaint(
     size: const Size.square(24),
-    painter: _GlyphPainter(color, back: _back),
+    painter: _GlyphPainter(color, _kind),
   );
 }
 
+enum _GlyphKind { back, more, settings }
+
 class _GlyphPainter extends CustomPainter {
-  const _GlyphPainter(this.color, {required this.back});
+  const _GlyphPainter(this.color, this.kind);
 
   final Color color;
-  final bool back;
+  final _GlyphKind kind;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -530,20 +592,40 @@ class _GlyphPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
     final w = size.width;
     final h = size.height;
-    if (back) {
-      canvas
-        ..drawLine(Offset(w * 0.2, h / 2), Offset(w * 0.8, h / 2), paint)
-        ..drawLine(Offset(w * 0.2, h / 2), Offset(w * 0.45, h * 0.25), paint)
-        ..drawLine(Offset(w * 0.2, h / 2), Offset(w * 0.45, h * 0.75), paint);
-    } else {
-      paint.style = PaintingStyle.fill;
-      for (final y in [0.25, 0.5, 0.75]) {
-        canvas.drawCircle(Offset(w / 2, h * y), 2, paint);
-      }
+    switch (kind) {
+      case _GlyphKind.back:
+        canvas
+          ..drawLine(Offset(w * 0.2, h / 2), Offset(w * 0.8, h / 2), paint)
+          ..drawLine(Offset(w * 0.2, h / 2), Offset(w * 0.45, h * 0.25), paint)
+          ..drawLine(Offset(w * 0.2, h / 2), Offset(w * 0.45, h * 0.75), paint);
+      case _GlyphKind.more:
+        paint.style = PaintingStyle.fill;
+        for (final y in [0.25, 0.5, 0.75]) {
+          canvas.drawCircle(Offset(w / 2, h * y), 2, paint);
+        }
+      case _GlyphKind.settings:
+        // Two sliders: a line each, with a knob.
+        canvas
+          ..drawLine(
+            Offset(w * 0.1, h * 0.32),
+            Offset(w * 0.9, h * 0.32),
+            paint,
+          )
+          ..drawLine(
+            Offset(w * 0.1, h * 0.68),
+            Offset(w * 0.9, h * 0.68),
+            paint,
+          );
+        paint
+          ..style = PaintingStyle.fill
+          ..strokeWidth = 0;
+        canvas
+          ..drawCircle(Offset(w * 0.68, h * 0.32), 3.2, paint)
+          ..drawCircle(Offset(w * 0.32, h * 0.68), 3.2, paint);
     }
   }
 
   @override
   bool shouldRepaint(_GlyphPainter oldDelegate) =>
-      oldDelegate.color != color || oldDelegate.back != back;
+      oldDelegate.color != color || oldDelegate.kind != kind;
 }

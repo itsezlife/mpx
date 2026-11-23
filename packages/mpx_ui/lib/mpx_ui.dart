@@ -68,6 +68,7 @@ export 'src/viewer/viewer_photo_page.dart';
 export 'src/viewer/viewer_policy.dart';
 export 'src/viewer/viewer_policy_scope.dart';
 export 'src/viewer/viewer_seek.dart';
+export 'src/viewer/viewer_system_bars.dart';
 export 'src/viewer/viewer_tokens.dart';
 export 'src/viewer/viewer_video.dart';
 export 'src/viewer/viewer_video_page.dart';

@@ -377,6 +377,7 @@ final class ViewerSpeedRule {
     required this.max,
     required this.presets,
     required this.memory,
+    this.cycle = const [1, 1.5, 2],
   });
 
   /// The slowest speed.
@@ -385,8 +386,13 @@ final class ViewerSpeedRule {
   /// The fastest speed.
   final double max;
 
-  /// The speeds offered as one tap each.
+  /// The speeds the settings list, one tap each.
   final List<double> presets;
+
+  /// The speeds the button beside the seek bar goes through, one tap each,
+  /// back to the first after the last; 1x, 1.5x, 2x by default. A speed
+  /// chosen from the settings that is not among them goes back to the first.
+  final List<double> cycle;
 
   /// Where a chosen speed applies.
   final ViewerSpeedMemory memory;
@@ -405,11 +411,13 @@ final class ViewerSpeedRule {
     double? max,
     List<double>? presets,
     ViewerSpeedMemory? memory,
+    List<double>? cycle,
   }) => ViewerSpeedRule(
     min: min ?? this.min,
     max: max ?? this.max,
     presets: presets ?? this.presets,
     memory: memory ?? this.memory,
+    cycle: cycle ?? this.cycle,
   );
 }
 
@@ -985,7 +993,7 @@ final class ViewerPolicy {
       speed: ViewerSpeedRule(
         min: 0.2,
         max: 3,
-        presets: [0.2, 0.5, 1, 1.5, 2],
+        presets: [0.25, 0.5, 1, 1.5, 2],
         memory: ViewerSpeedMemory.perItem,
       ),
       loops: ViewerVideoRules.loopShort,
