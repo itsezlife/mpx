@@ -11,6 +11,7 @@ import 'asset/asset_cache_demand_test.dart' as asset_cache_demand_test;
 import 'asset/asset_cache_failure_test.dart' as asset_cache_failure_test;
 import 'asset/asset_cache_playback_test.dart' as asset_cache_playback_test;
 import 'asset/asset_cache_scope_test.dart' as asset_cache_scope_test;
+import 'asset/asset_covering_decode_test.dart' as asset_covering_decode_test;
 import 'asset/asset_fit_test.dart' as asset_fit_test;
 import 'asset/asset_foreground_playback_test.dart'
     as asset_foreground_playback_test;
@@ -96,6 +97,7 @@ void main() {
   group('asset_cache_failure_test', asset_cache_failure_test.main);
   group('asset_cache_playback_test', asset_cache_playback_test.main);
   group('asset_cache_scope_test', asset_cache_scope_test.main);
+  group('asset_covering_decode_test', asset_covering_decode_test.main);
   group('asset_fit_test', asset_fit_test.main);
   group('asset_foreground_playback_test', asset_foreground_playback_test.main);
   group('asset_playback_test', asset_playback_test.main);

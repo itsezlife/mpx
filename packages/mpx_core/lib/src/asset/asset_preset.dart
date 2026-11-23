@@ -61,12 +61,21 @@ final class AssetPreset {
 /// A host names the presets of its own surfaces (a grid cell, media set in
 /// text, media shown on its own) on top of these, with the size and playback
 /// rules of its design.
+///
+/// The decodes of [square], [round] and [media] stand on a ladder of sizes:
+/// each side is rounded up to the next rung, three to an octave (a power of
+/// two, times 5/4, times 8/5: ... 256, 320, 410, 512, 640, 820, 1024 ...).
+/// A box that follows a window being dragged asks for a new decode only when
+/// it crosses a rung, not at every pixel, for a decode at most about a
+/// quarter larger on a side than the box. The cache draws a finished still
+/// of a larger rung for a smaller one (`AssetCacheScope.attach`), so a
+/// shrinking box decodes nothing.
 abstract final class AssetPresets {
   /// A square of [extent] logical pixels decoded at [devicePixelRatio], used
   /// as [profile] says.
   ///
-  /// The pixel size is the extent at the density, rounded up so the decode is
-  /// never smaller than the box.
+  /// The pixel size is the extent at the density, rounded up to its rung
+  /// (see [AssetPresets]), so the decode is never smaller than the box.
   static AssetPreset square({
     required double extent,
     required double devicePixelRatio,
@@ -74,11 +83,13 @@ abstract final class AssetPresets {
     AssetDecodeMode decodeMode = AssetDecodeMode.original,
   }) => AssetPreset(
     size: Size.square(extent),
-    spec: AssetSpec.atDensity(
-      logicalWidth: extent,
-      logicalHeight: extent,
-      devicePixelRatio: devicePixelRatio,
-      decodeMode: decodeMode,
+    spec: _onRung(
+      AssetSpec.atDensity(
+        logicalWidth: extent,
+        logicalHeight: extent,
+        devicePixelRatio: devicePixelRatio,
+        decodeMode: decodeMode,
+      ),
     ),
     profile: profile,
   );
@@ -133,7 +144,8 @@ abstract final class AssetPresets {
   /// [maxPixelExtent] caps the decode's longer side, the shorter scaled with
   /// it: a large box on a dense screen draws a decode smaller than its pixels
   /// rather than one larger than the media holds. Under the cap the decode is
-  /// the box at the density, rounded up like [square].
+  /// the box at the density, on its rung like [square]; a rung past the cap
+  /// is held to the cap.
   static AssetPreset media({
     required Size size,
     required double devicePixelRatio,
@@ -146,13 +158,43 @@ abstract final class AssetPresets {
       devicePixelRatio: devicePixelRatio,
     );
     final longer = math.max(full.pixelWidth, full.pixelHeight);
+    final onRung = _onRung(full);
+    // A rung past the cap is held to it: the cap is one fixed size, as
+    // steady across a window drag as a rung.
     final spec = switch (maxPixelExtent) {
-      final cap? when longer > cap => AssetSpec(
-        pixelWidth: math.max(1, (full.pixelWidth * cap / longer).round()),
-        pixelHeight: math.max(1, (full.pixelHeight * cap / longer).round()),
-      ),
-      _ => full,
+      final cap? when math.max(onRung.pixelWidth, onRung.pixelHeight) > cap =>
+        AssetSpec(
+          pixelWidth: math.max(1, (full.pixelWidth * cap / longer).round()),
+          pixelHeight: math.max(1, (full.pixelHeight * cap / longer).round()),
+        ),
+      _ => onRung,
     };
     return AssetPreset(size: size, spec: spec, profile: profile);
+  }
+
+  // [spec] with each side rounded up to the ladder's next rung. Each side on
+  // its own: the decoder fits the picture inside the spec keeping its
+  // proportion, so the decode still covers the box, and a box whose
+  // proportion wavers by a rounded pixel asks for the same spec.
+  static AssetSpec _onRung(AssetSpec spec) => AssetSpec(
+    pixelWidth: _rungOf(spec.pixelWidth),
+    pixelHeight: _rungOf(spec.pixelHeight),
+    decodeMode: spec.decodeMode,
+    variant: spec.variant,
+  );
+
+  // The smallest rung at least [side]. Integer rungs, a power of two p and
+  // its 5/8 and 4/5 rounded up, so an exact power never lands a pixel past
+  // itself as a float root of two would.
+  static int _rungOf(int side) {
+    var power = 1;
+    while (power < side) {
+      power <<= 1;
+    }
+    final fiveEighths = (power * 5 + 7) ~/ 8;
+    if (side <= fiveEighths) return fiveEighths;
+    final fourFifths = (power * 4 + 4) ~/ 5;
+    if (side <= fourFifths) return fourFifths;
+    return power;
   }
 }

@@ -50,25 +50,60 @@ void main() {
   });
 
   group('square', () {
-    test(
-      'decodes an explicit extent at the density with the given profile',
-      () {
-        final preset = AssetPresets.square(
-          extent: 40,
-          devicePixelRatio: 2.5,
-          profile: const AssetProfile(animate: true, loop: false),
-        );
+    test('decodes an explicit extent at the density, on its rung, with the '
+        'given profile', () {
+      final preset = AssetPresets.square(
+        extent: 40,
+        devicePixelRatio: 2.5,
+        profile: const AssetProfile(animate: true, loop: false),
+      );
 
-        expect(preset.size, const Size(40, 40));
-        expect(preset.spec.pixelWidth, 100);
-        expect(preset.spec.pixelHeight, 100);
-        expect(preset.profile, const AssetProfile(animate: true, loop: false));
-      },
-    );
+      // 100 px: the rungs near it are 80 and 103 (128 x 4/5, rounded up).
+      expect(preset.size, const Size(40, 40));
+      expect(preset.spec.pixelWidth, 103);
+      expect(preset.spec.pixelHeight, 103);
+      expect(preset.profile, const AssetProfile(animate: true, loop: false));
+    });
+  });
+
+  group('size ladder', () {
+    test('a box a few pixels wider asks for the same decode', () {
+      AssetSpec specAt(double width) => AssetPresets.media(
+        size: Size(width, width * 0.6),
+        devicePixelRatio: 1,
+        profile: const AssetProfile(),
+      ).spec;
+
+      expect({for (var w = 1000.0; w <= 1020; w++) specAt(w)}, hasLength(1));
+    });
+
+    test('rounds each side up to its rung', () {
+      // Rungs near 330 px: 320, 410 (512 x 4/5, rounded up); near 200 px:
+      // 160, 205 (256 x 4/5, rounded up).
+      final preset = AssetPresets.media(
+        size: const Size(330, 200),
+        devicePixelRatio: 1,
+        profile: const AssetProfile(),
+      );
+
+      expect(preset.size, const Size(330, 200));
+      expect((preset.spec.pixelWidth, preset.spec.pixelHeight), (410, 205));
+    });
+
+    test('a side already on a rung stays', () {
+      final preset = AssetPresets.media(
+        size: const Size(1024, 640),
+        devicePixelRatio: 1,
+        profile: const AssetProfile(),
+      );
+
+      expect((preset.spec.pixelWidth, preset.spec.pixelHeight), (1024, 640));
+    });
   });
 
   group('media', () {
     test('shows the box it is given and decodes it at the density', () {
+      // 320 x 180 px: 320 is a rung (512 x 5/8), 180 rounds up to 205.
       final preset = AssetPresets.media(
         size: const Size(160, 90),
         devicePixelRatio: 2,
@@ -77,7 +112,7 @@ void main() {
 
       expect(preset.size, const Size(160, 90));
       expect(preset.spec.pixelWidth, 320);
-      expect(preset.spec.pixelHeight, 180);
+      expect(preset.spec.pixelHeight, 205);
       expect(preset.profile, const AssetProfile(animate: true));
     });
 
@@ -101,7 +136,8 @@ void main() {
       expect((wide.spec.pixelWidth, wide.spec.pixelHeight), (512, 288));
     });
 
-    test('a decode under the cap is not enlarged to it', () {
+    test('a decode under the cap stands on its rung, not on the cap', () {
+      // 336 px rounds up to 410 (512 x 4/5), below the cap of 512.
       final preset = AssetPresets.media(
         size: const Size.square(112),
         devicePixelRatio: 3,
@@ -109,7 +145,19 @@ void main() {
         maxPixelExtent: 512,
       );
 
-      expect((preset.spec.pixelWidth, preset.spec.pixelHeight), (336, 336));
+      expect((preset.spec.pixelWidth, preset.spec.pixelHeight), (410, 410));
+    });
+
+    test('a rung past the cap is held to the cap', () {
+      // 420 px would round up to 512, past the cap of 480.
+      final preset = AssetPresets.media(
+        size: const Size.square(420),
+        devicePixelRatio: 1,
+        profile: const AssetProfile(),
+        maxPixelExtent: 480,
+      );
+
+      expect((preset.spec.pixelWidth, preset.spec.pixelHeight), (480, 480));
     });
   });
 

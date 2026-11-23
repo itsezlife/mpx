@@ -48,8 +48,9 @@ void main() {
         profile: const AssetProfile(animate: true),
       );
 
+      // 200 px stands on the rung 205 (256 x 4/5, rounded up).
       expect(preset.size, const Size.square(100));
-      expect((preset.spec.pixelWidth, preset.spec.pixelHeight), (200, 200));
+      expect((preset.spec.pixelWidth, preset.spec.pixelHeight), (205, 205));
       expect(preset.profile.cornerRadius, 50);
       expect(preset.profile.animate, isTrue);
       expect(preset.isRound, isTrue);

@@ -115,6 +115,42 @@ Rejected: a second entry at the viewer's size that takes the thumbnail's
 phase. A forward-only decoder has to decode its way to the phase, so the copy
 showed its first frame or jumped back while it caught up.
 
+### Stills across a resized box
+
+Amended 2026-11-24. A still's spec follows its box (`AssetPresets.media`,
+`square`, `round`), and a desktop window being dragged changes the box every
+frame. With a spec of the box's exact pixels each frame was a new entry and a
+new decode from the stored bytes, and each finished one stayed in the still
+budget. Two rules make a drag cost a few decodes:
+
+| Rule | Where | Shape |
+| --- | --- | --- |
+| Size ladder | `AssetPresets` | Each side of the decode is rounded up to the next rung, three to an octave: a power of two, its 5/8 and its 4/5 (... 256, 320, 410, 512, 640, 820, 1024 ...). A decode is at most about a quarter larger on a side than its box. `maxPixelExtent` holds a rung past it to the cap. `AssetSpec` itself stays exact pixels |
+| Covering still | `AssetCacheScope.attach` | A spec with no entry of its own binds the smallest final still of the content, of the same decode mode and variant, at least as large and at most twice as large on each side, and starts no decode. The binding draws it into its own rectangle. Animations keep an entry per spec |
+
+Growing a box from 300 to 600 px decodes four times (320, 410, 512, 640);
+shrinking it back decodes nothing.
+
+The Telegram clients differ here. Android keys its memory cache by the size
+in dp and decodes again at each new size, showing the old size meanwhile, as
+the sibling stand-in does. iOS redraws from the file's bytes in memory, and
+its emoji cache scales a larger cached size down. Desktop keeps the decoded
+original and only rescales. The web clients pick one of the server's fixed
+sizes and let the browser scale. Telegram's server already sizes its photos
+(1280 or 2560 px), so a decode is cheap there; content here comes from any
+URL, so the size of the decode matters more.
+
+Rejected:
+
+- Debouncing a resize. The sibling stand-in already shows the last decode
+  until the new one is ready, and a running decode is cancelled when its last
+  binding leaves. A delay adds latency without saving any decode the two
+  rules leave.
+- Keeping one decode at the content's own size and scaling it at paint. A
+  thumbnail would hold a full picture's pixels.
+- A larger still answering without limit. A thumbnail drawn from a page's
+  decode would pin the page's pixels for as long as it shows.
+
 ### Vector images
 
 `MediaKind.vectorImage` is a resolution-independent still (SVG). It is a kind

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- A still's decode no longer follows its box pixel by pixel. `AssetPresets`
+  rounds each side up to a ladder of sizes, three to an octave (... 320,
+  410, 512, 640 ...), and `AssetCacheScope.attach` draws a finished still up
+  to twice as large instead of decoding a smaller spec. Dragging a desktop
+  window decodes once per rung the box grows across, and nothing as it
+  shrinks. Presets now decode slightly larger than their box (a 200 px
+  circle is decoded at 205 px), and `isAttached` / `contains` answer for the
+  covering still's spec.
 - `AssetViewSkin.failure`: what a view shows over its picture while its
   media failed, given the state and the stock part, which is nothing (the
   reference keeps the picture; the status control's download is the

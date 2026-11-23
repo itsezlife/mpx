@@ -55,6 +55,15 @@ import 'package:mpx_core/src/texture/frame_texture_pool.dart';
 /// clip picked from a grid cell is drawn in a list item at once, at the
 /// cell's pixels, until the item's own decode arrives.
 ///
+/// A finished still is more than a stand-in for a smaller spec: [attach] for
+/// a spec with no entry of its own binds the smallest final still of the
+/// content, same decode mode and variant, that is at least as large and at
+/// most twice as large on each side, and starts no decode. The binding draws
+/// it into its own rectangle, so a box that shrinks as a window is dragged
+/// decodes nothing; [isAttached] and [contains] then answer for the still's
+/// spec, not the one asked for. Animations keep an entry per spec: their
+/// playback is addressed by it ([playbackPosition]).
+///
 /// An entry with a live binding is pinned: neither the budget, [clearAll] nor
 /// the memory-pressure signal evicts it, so eviction can never invalidate a
 /// binding. A binding gives back exactly what it took, once, and never looks
@@ -610,7 +619,10 @@ final class AssetCacheScope {
     if (_disposed) {
       throw StateError('AssetCacheScope.attach called after dispose.');
     }
-    final entry = _entryFor(key, spec);
+    final entry =
+        _entries[(key, spec)] ??
+        _coveringStill(key, spec) ??
+        _entryFor(key, spec);
     final binding = _EntryBinding(
       scope: this,
       entry: entry,
@@ -661,6 +673,33 @@ final class AssetCacheScope {
 
   static int _area(_Entry entry) =>
       entry.spec.pixelWidth * entry.spec.pixelHeight;
+
+  // How much larger on a side a still may be than the spec it answers. A
+  // larger one stays for the surface that asked for it: a thumbnail drawn
+  // from a page's decode would hold the page's pixels for as long as it shows.
+  static const int _coverFactor = 2;
+
+  // The smallest final still of [key] decoded at least as large as [spec],
+  // drawn smaller instead of decoding [spec] anew, or null. An animation
+  // keeps its own entry: its playback is addressed by its spec.
+  _Entry? _coveringStill(MediaKey key, AssetSpec spec) {
+    _Entry? best;
+    for (final entry in _contents[key]?.entries ?? const <_Entry>{}) {
+      final covering = entry.spec;
+      if (entry.isFinal &&
+          entry.tier == AssetTier.still &&
+          covering.decodeMode == spec.decodeMode &&
+          covering.variant == spec.variant &&
+          covering.pixelWidth >= spec.pixelWidth &&
+          covering.pixelHeight >= spec.pixelHeight &&
+          covering.pixelWidth <= spec.pixelWidth * _coverFactor &&
+          covering.pixelHeight <= spec.pixelHeight * _coverFactor &&
+          (best == null || _area(entry) < _area(best))) {
+        best = entry;
+      }
+    }
+    return best;
+  }
 
   // A borrowed sibling is pinned like a bound entry: what a binding shows is
   // never evicted under it.

@@ -639,6 +639,45 @@ void main() {
     });
   });
 
+  group('a box that follows a window drag', () {
+    // A still in a grid cell as wide as the window lets it be, resized one
+    // pixel a frame; every decode that starts finishes at once.
+    Future<void> drag(WidgetTester tester, Iterable<int> extents) async {
+      for (final extent in extents) {
+        final attempts = producer.attempts.length;
+        await tester.pumpWidget(
+          host(
+            AssetView(
+              content: _sticker,
+              preset: AssetPresets.square(
+                extent: extent.toDouble(),
+                devicePixelRatio: 1,
+                profile: const AssetProfile(),
+              ),
+            ),
+          ),
+        );
+        if (producer.attempts.length > attempts) {
+          producer.last.advance(AssetStage.full);
+        }
+      }
+    }
+
+    testWidgets('decodes once per rung it grows across', (tester) async {
+      // 300 to 600 px: the rungs 320, 410, 512 and 640.
+      await drag(tester, [for (var e = 300; e <= 600; e++) e]);
+
+      expect(producer.attempts, hasLength(4));
+    });
+
+    testWidgets('decodes nothing as it shrinks', (tester) async {
+      // 600 px is on the rung 640, which covers every box down to 320 px.
+      await drag(tester, [for (var e = 600; e >= 320; e--) e]);
+
+      expect(producer.attempts, hasLength(1));
+    });
+  });
+
   group('paint', () {
     testWidgets('paints the placeholder before a stage exists', (tester) async {
       final placeholder = FakeAssetPaintable(label: 'placeholder');
