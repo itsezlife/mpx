@@ -109,6 +109,41 @@ void main() {
     binding.detach();
   });
 
+  testWidgets('a download that failed offline is repeated when the network '
+      'is back', (tester) async {
+    var calls = 0;
+    await client.close();
+    client = HttpBytesClient(
+      client: MockClient((request) async {
+        calls++;
+        if (calls == 1) throw http.ClientException('offline');
+        return http.Response.bytes(_body, 200);
+      }),
+    );
+    final decoder = FakeDecoder();
+    final stack = await create(decoders: (_) => {MediaKind.video: decoder});
+    stack.pipeline.know(
+      const MediaDescriptor(key: _key, kind: MediaKind.video, byteSize: 16),
+    );
+    signals.network.value = NetworkClass.none;
+    final binding = stack.scope.attach(
+      _key,
+      const AssetSpec(pixelWidth: 8, pixelHeight: 8),
+      const AssetProfile(),
+    );
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+    expect(decoder.decodes, isEmpty);
+
+    signals.network.value = NetworkClass.unmetered;
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+
+    expect(calls, 2);
+    expect(decoder.decodes, hasLength(1));
+    binding.detach();
+  });
+
   testWidgets('content its decoder cannot read goes to the kind\'s '
       'fallback', (tester) async {
     final decoder = FakeDecoder(autoRespond: false);

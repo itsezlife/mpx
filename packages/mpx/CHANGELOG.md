@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `MpxStack` repeats what failed for want of a network when the device's
+  `network` signal comes back from `none` (`AssetCacheScope.connectivityRestored`):
+  an avatar or a picture asked for offline loads once the network is back,
+  with no re-attach.
 - Device signals carry the media volume (`IDeviceSignals.mediaVolume`, 0 to
   100 percent, 0 when muted, null when unknown): the Android music stream's
   (`VOLUME_CHANGED_ACTION`) and the Apple audio session's output volume.

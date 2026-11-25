@@ -254,6 +254,9 @@ final class MpxStack {
     );
     own(scope.dispose);
 
+    final connectivity = _ConnectivityRetry(deviceSignals.network, scope);
+    own(connectivity.dispose);
+
     final lowPower = _LowPower(deviceSignals);
     own(lowPower.dispose);
     final lifecycle = WidgetsPlaybackLifecycleSource();
@@ -343,6 +346,29 @@ final class MpxStack {
     }
     _teardowns.clear();
   }
+}
+
+// What failed for want of a network is repeated when one is back: the scope
+// keeps a transient failure for attached bindings (an avatar that was asked
+// for offline stays blank) and repeats it only when the host says the network
+// is back, which is a reading of the device's signals, not of any one widget.
+final class _ConnectivityRetry {
+  _ConnectivityRetry(this._network, this._scope) : _last = _network.value {
+    _network.addListener(_changed);
+  }
+
+  final ValueListenable<NetworkClass> _network;
+  final AssetCacheScope _scope;
+  NetworkClass _last;
+
+  void _changed() {
+    final back =
+        _last == NetworkClass.none && _network.value != NetworkClass.none;
+    _last = _network.value;
+    if (back) _scope.connectivityRestored();
+  }
+
+  void dispose() => _network.removeListener(_changed);
 }
 
 // Power is short when the device saves it or runs hot enough to throttle.
