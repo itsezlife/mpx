@@ -6,6 +6,7 @@ import 'lab/lab_download_test.dart' as lab_download;
 import 'lab/lab_net_test.dart' as lab_net;
 import 'lab/pointer_tape_test.dart' as pointer_tape;
 import 'social/album_layout_test.dart' as album_layout;
+import 'social/aloud_picture_test.dart' as aloud_picture;
 import 'social/download_request_test.dart' as download_request;
 import 'social/formatting_test.dart' as formatting;
 import 'social/inline_sound_test.dart' as inline_sound;
@@ -28,6 +29,7 @@ void main() {
   group('social album layout', album_layout.main);
   group('social download request', download_request.main);
   group('social formatting', formatting.main);
+  group('social aloud picture', aloud_picture.main);
   group('social inline sound', inline_sound.main);
   group('social post media facts', post_media_facts.main);
   group('social post selection', post_selection.main);

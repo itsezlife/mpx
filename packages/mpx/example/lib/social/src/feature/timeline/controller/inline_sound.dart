@@ -71,6 +71,12 @@ final class InlineSound extends ChangeNotifier {
   /// The lease of [playing], for the view that draws it.
   PlayerLease? get lease => _lease;
 
+  /// Where the player of [key] is, when it plays that clip now, else null.
+  /// Read before a [suspend]: the viewer that takes the player goes on from
+  /// there.
+  Duration? positionOf(MediaKey key) =>
+      _playing == key ? _lease?.position : null;
+
   /// The reader's switch on [key]'s tile: on gives it the sound, off (on the
   /// clip that has it) mutes it and takes the sound from every other clip.
   void toggle(MediaKey key) {

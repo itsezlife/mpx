@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_lucide/flutter_lucide.dart';
+import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_example/gallery.dart';
 import 'package:mpx_example/social/src/common/media/post_media_facts.dart';
+import 'package:mpx_example/social/src/common/media/post_media_presets.dart';
 import 'package:mpx_example/social/src/common/util/time_ago_extension.dart';
 import 'package:mpx_example/social/src/feature/initialization/dependencies.dart';
 import 'package:mpx_example/social/src/feature/timeline/model/post.dart';
@@ -20,6 +22,28 @@ abstract final class PostViewer {
     final gallery = ListGallery([
       for (final media in post.media) PostMediaFacts.galleryItem(media),
     ]);
+    // Where the tapped clip stands: its player's place when it plays aloud,
+    // read before the suspend lets that player go.
+    final aloudAt = dependencies.inlineSound.positionOf(post.media[index].key);
+    // The tile draws the clip's player while it plays aloud and its loop
+    // once the player lets go: the loop goes to the player's place first,
+    // showing the picture the tile shows, so the tile does not change frame
+    // between the tap and the viewer's first one.
+    if (aloudAt != null) {
+      AssetCacheProvider.of(context).seekPlayback(
+        post.media[index].key,
+        PostMediaPresets.of(
+          post.media[index],
+          size: Size.zero,
+          devicePixelRatio: 1,
+          profile: const AssetProfile(),
+        ).spec,
+        aloudAt,
+        picture: ViewerOriginScope.maybeOf(
+          context,
+        )?.bridgeFor(gallery).frameOf(index),
+      );
+    }
     // The viewer plays a clip's own sound: nothing in the list plays aloud
     // under it.
     dependencies.inlineSound.suspend();
@@ -33,12 +57,19 @@ abstract final class PostViewer {
       dependencies.inlineSound.resume();
       return;
     }
+    // A muted clip's loop is the picture the reader looks at: the player
+    // goes on from there, not from the beginning or from where it was left.
+    final rules = ViewerPolicyScope.resolve(context);
     try {
       await MediaViewer.show(
         context,
         source: gallery,
         initialIndex: index,
         players: dependencies.players,
+        policy: rules.copyWith(
+          video: rules.video.copyWith(start: ViewerVideoStart.origin),
+        ),
+        videoStartOf: (at, item) => at == index ? aloudAt : null,
         chrome: ViewerChrome(
           title: (context, index, item) => Text(post.author.displayName),
           subtitle: (context, index, item) => Text(post.createdAt.timeAgo()),

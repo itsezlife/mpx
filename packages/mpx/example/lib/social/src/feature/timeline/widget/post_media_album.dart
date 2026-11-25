@@ -12,6 +12,7 @@ import 'package:mpx_example/social/src/feature/timeline/controller/download_requ
 import 'package:mpx_example/social/src/feature/timeline/controller/inline_sound.dart';
 import 'package:mpx_example/social/src/feature/timeline/model/post.dart';
 import 'package:mpx_example/social/src/feature/timeline/widget/album_layout.dart';
+import 'package:mpx_example/social/src/feature/timeline/widget/aloud_picture.dart';
 import 'package:mpx_example/social/src/feature/timeline/widget/post_viewer.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_ui/mpx_ui.dart';
@@ -305,35 +306,37 @@ class _AlbumTileState extends State<_AlbumTile> {
                           fit: StackFit.expand,
                           children: [
                             AssetPicture(
-                              child: PlayerView(
-                                lease: lease,
-                                fit: BoxFit.cover,
-                                standIn: clip,
-                              ),
+                              child: AloudPicture(lease: lease, clip: clip),
                             ),
                             // The clip lays its badge and its download control
                             // over itself; a player draws neither, so they go
                             // over it, as the feed lays them over a player.
-                            AssetView(
-                              content: media.key,
-                              preset: PostMediaPresets.of(
-                                media,
-                                size: widget.size,
-                                devicePixelRatio: dpr,
-                                profile: const AssetProfile(),
+                            ViewerOriginOverlay(
+                              media: media.key,
+                              child: AssetView(
+                                content: media.key,
+                                preset: PostMediaPresets.of(
+                                  media,
+                                  size: widget.size,
+                                  devicePixelRatio: dpr,
+                                  profile: const AssetProfile(),
+                                ),
+                                opacity: 0,
+                                status: const MediaStatusMode.control(),
                               ),
-                              opacity: 0,
-                              status: const MediaStatusMode.control(),
                             ),
                             // The clip's badge counts its own loop; the
                             // player's time is the lease's.
                             Positioned(
                               left: AppSpacing.s,
                               top: AppSpacing.s,
-                              child: _PlayerBadge(
-                                lease: lease,
-                                total: media.duration,
-                                width: widget.size.width,
+                              child: ViewerOriginOverlay(
+                                media: media.key,
+                                child: _PlayerBadge(
+                                  lease: lease,
+                                  total: media.duration,
+                                  width: widget.size.width,
+                                ),
                               ),
                             ),
                           ],

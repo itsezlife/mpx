@@ -40,6 +40,20 @@ void main() {
     expect(sound.lease!.position, const Duration(seconds: 12));
   });
 
+  test('the place of the clip that plays is its player\'s, of no other', () {
+    sound
+      ..report(_a, 1, clipPosition: () => const Duration(seconds: 3))
+      ..report(_b, 0.2)
+      ..toggle(_a);
+
+    expect(sound.positionOf(_a), const Duration(seconds: 3));
+    expect(sound.positionOf(_b), isNull);
+
+    sound.suspend();
+
+    expect(sound.positionOf(_a), isNull);
+  });
+
   test('switching it off on the same clip keeps the player, muted: one '
       'track, not two', () {
     sound
