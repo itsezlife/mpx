@@ -73,10 +73,25 @@ final class MediaArcSmoothing {
   );
 }
 
+/// How the sweep of an arc that knows no progress changes.
+enum MediaSpinnerMotion {
+  /// The sweep swings between its shortest and longest once per
+  /// [MediaSpinnerStyle.sweepPeriod], a sine, with the start turning
+  /// steadily; it holds when both are equal.
+  swing,
+
+  /// The tail chases the head, as a platform spinner does it: for the first
+  /// half of the period the arc grows from its shortest to its longest,
+  /// slowly at first (the head accelerates), then the start jumps by the
+  /// longest sweep and the arc is drawn backwards from there, shrinking
+  /// quickly at first (the tail decelerates onto the head) back to the
+  /// shortest. The start turns steadily as well.
+  chase,
+}
+
 /// The arc of a status control that knows no progress: it turns once per
-/// [turn] while its sweep swings between [minSweepDegrees] and
-/// [maxSweepDegrees] once per [sweepPeriod] (a sine), or holds when both
-/// are equal.
+/// [turn] while its sweep changes between [minSweepDegrees] and
+/// [maxSweepDegrees] once per [sweepPeriod] as [motion] says.
 @immutable
 final class MediaSpinnerStyle {
   /// Creates a spinner.
@@ -85,6 +100,7 @@ final class MediaSpinnerStyle {
     required this.minSweepDegrees,
     required this.maxSweepDegrees,
     required this.sweepPeriod,
+    this.motion = MediaSpinnerMotion.swing,
   });
 
   /// One full turn.
@@ -96,8 +112,11 @@ final class MediaSpinnerStyle {
   /// The longest the arc gets, in degrees.
   final double maxSweepDegrees;
 
-  /// One swing of the sweep, short to long and back.
+  /// One change of the sweep, short to long and back.
   final Duration sweepPeriod;
+
+  /// How the sweep changes.
+  final MediaSpinnerMotion motion;
 
   /// This spinner with the given fields replaced.
   MediaSpinnerStyle copyWith({
@@ -105,11 +124,13 @@ final class MediaSpinnerStyle {
     double? minSweepDegrees,
     double? maxSweepDegrees,
     Duration? sweepPeriod,
+    MediaSpinnerMotion? motion,
   }) => MediaSpinnerStyle(
     turn: turn ?? this.turn,
     minSweepDegrees: minSweepDegrees ?? this.minSweepDegrees,
     maxSweepDegrees: maxSweepDegrees ?? this.maxSweepDegrees,
     sweepPeriod: sweepPeriod ?? this.sweepPeriod,
+    motion: motion ?? this.motion,
   );
 
   @override
@@ -118,11 +139,12 @@ final class MediaSpinnerStyle {
       other.turn == turn &&
       other.minSweepDegrees == minSweepDegrees &&
       other.maxSweepDegrees == maxSweepDegrees &&
-      other.sweepPeriod == sweepPeriod;
+      other.sweepPeriod == sweepPeriod &&
+      other.motion == motion;
 
   @override
   int get hashCode =>
-      Object.hash(turn, minSweepDegrees, maxSweepDegrees, sweepPeriod);
+      Object.hash(turn, minSweepDegrees, maxSweepDegrees, sweepPeriod, motion);
 }
 
 /// How a status control comes and goes.
@@ -316,6 +338,7 @@ final class MediaStatusStyle {
       minSweepDegrees: 4,
       maxSweepDegrees: 270,
       sweepPeriod: Duration(milliseconds: 1000),
+      motion: MediaSpinnerMotion.chase,
     ),
     appearance: MediaStatusAppearance.scale,
     appearDuration: Duration(milliseconds: 220),

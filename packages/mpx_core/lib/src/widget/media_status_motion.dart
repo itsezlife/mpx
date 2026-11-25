@@ -233,7 +233,13 @@ final class MediaStatusMotion {
     if (!_arcShown) return null;
     if (_target.arc && _target.progress == null) {
       return (
-        startDegrees: _startDegrees,
+        startDegrees:
+            (_startDegrees +
+                MediaStatusPainting.spinnerJumpDegrees(
+                  style.spinner,
+                  _spinning,
+                )) %
+            360,
         sweepDegrees: MediaStatusPainting.spinnerSweepDegrees(
           style.spinner,
           _spinning,

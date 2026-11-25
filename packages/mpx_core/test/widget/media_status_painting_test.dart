@@ -7,17 +7,45 @@ void main() {
   const style = MediaStatusStyle.$Android;
 
   group('a painter of its own draws the control\'s arcs', () {
-    test('the spinner starts short at the style\'s start, and is longest '
-        'half a swing on', () {
-      final first = MediaStatusPainting.spinnerArc(style, Duration.zero);
-      expect(first.startDegrees, style.spinStartDegrees);
-      expect(first.sweepDegrees, style.spinner.minSweepDegrees);
+    test('the swinging spinner starts short at the style\'s start, and is '
+        'longest half a swing on', () {
+      const swing = MediaStatusStyle.$IOS;
+      expect(swing.spinner.motion, MediaSpinnerMotion.swing);
+      final first = MediaStatusPainting.spinnerArc(swing, Duration.zero);
+      expect(first.startDegrees, swing.spinStartDegrees % 360);
+      expect(first.sweepDegrees, swing.spinner.minSweepDegrees);
 
-      final half = style.spinner.sweepPeriod ~/ 2;
+      final half = swing.spinner.sweepPeriod ~/ 2;
       expect(
-        MediaStatusPainting.spinnerArc(style, half).sweepDegrees,
-        closeTo(style.spinner.maxSweepDegrees, 0.001),
+        MediaStatusPainting.spinnerArc(swing, half).sweepDegrees,
+        closeTo(swing.spinner.maxSweepDegrees, 0.001),
       );
+    });
+
+    test('the chasing spinner grows its head, accelerating, then jumps its '
+        'start and draws backwards, its tail decelerating onto the head', () {
+      expect(style.spinner.motion, MediaSpinnerMotion.chase);
+      MediaStatusArc at(int ms) =>
+          MediaStatusPainting.spinnerArc(style, Duration(milliseconds: ms));
+
+      expect(at(0).startDegrees, style.spinStartDegrees);
+      expect(at(0).sweepDegrees, 4);
+      // 4 + 266 * (1/2)^2: slow at first.
+      expect(at(250).sweepDegrees, closeTo(70.5, 0.001));
+      expect(at(499).sweepDegrees, closeTo(270, 2));
+      // Half a period on: the start has jumped by the longest sweep on top of
+      // its turn (a quarter of a turn here), and the arc runs backwards.
+      expect(at(500).sweepDegrees, closeTo(-266, 0.001));
+      expect(
+        at(500).startDegrees,
+        closeTo((style.spinStartDegrees + 90 + 270) % 360, 0.001),
+      );
+      // 4 - 270 * (1/2)^2: the tail has covered three quarters of its way.
+      expect(at(750).sweepDegrees, closeTo(-63.5, 0.001));
+      expect(at(1000).sweepDegrees, closeTo(4, 0.001));
+      expect(at(1000).startDegrees, closeTo((112 + 180 + 270) % 360, 0.001));
+      // The jump comes once per period.
+      expect(at(1500).startDegrees, closeTo((112 + 270 + 540) % 360, 0.001));
     });
 
     test('a fraction sweeps its share of the turn, never below the '

@@ -239,6 +239,27 @@ void main() {
     expect(producer.attempts, hasLength(2));
   });
 
+  testWidgets('streamable video not local with no host to stream it: no play '
+      'button, the download is the centre control', (tester) async {
+    await tester.pumpWidget(
+      host(
+        const AssetView(
+          content: _key,
+          preset: _preset,
+          status: MediaStatusMode.control(),
+        ),
+      ),
+    );
+    producer.last
+      ..describe(_clip)
+      ..awaitingUser();
+    await tester.pump(_gone);
+
+    expect(find.bySemanticsLabel('Play'), findsNothing);
+    expect(find.bySemanticsLabel('Download'), findsOneWidget);
+    expect(find.byType(MediaStatusControl), findsOneWidget);
+  });
+
   testWidgets('placeholderUntil keeps the view placeholder over the preview '
       'and the thumbnail, which paint beneath it (a clear placeholder never '
       'leaves the view black)', (tester) async {

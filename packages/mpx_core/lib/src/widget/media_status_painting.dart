@@ -22,11 +22,10 @@ abstract final class MediaStatusPainting {
   /// The indeterminate arc of [style] after it has spun for [elapsed].
   static MediaStatusArc spinnerArc(MediaStatusStyle style, Duration elapsed) =>
       (
-        startDegrees: _turned(
-          style.spinStartDegrees,
-          elapsed,
-          style.spinner.turn,
-        ),
+        startDegrees:
+            (_turned(style.spinStartDegrees, elapsed, style.spinner.turn) +
+                spinnerJumpDegrees(style.spinner, elapsed)) %
+            360,
         sweepDegrees: spinnerSweepDegrees(style.spinner, elapsed),
       );
 
@@ -43,16 +42,49 @@ abstract final class MediaStatusPainting {
     ),
   );
 
-  /// How far the arc of [spinner] sweeps after it has spun for [spinning].
+  /// How far the arc of [spinner] sweeps after it has spun for [spinning]; a
+  /// [MediaSpinnerMotion.chase] arc in its second half sweeps backwards, a
+  /// negative number.
   static double spinnerSweepDegrees(
     MediaSpinnerStyle spinner,
     Duration spinning,
   ) {
+    final period = spinner.sweepPeriod;
     final swing = spinner.maxSweepDegrees - spinner.minSweepDegrees;
-    final phase = spinner.sweepPeriod <= Duration.zero
-        ? 0.0
-        : _ratio(spinning, spinner.sweepPeriod) * 2 * math.pi;
-    return spinner.minSweepDegrees + swing * (1 - math.cos(phase)) / 2;
+    if (period <= Duration.zero) return spinner.minSweepDegrees;
+    switch (spinner.motion) {
+      case MediaSpinnerMotion.swing:
+        final phase = _ratio(spinning, period) * 2 * math.pi;
+        return spinner.minSweepDegrees + swing * (1 - math.cos(phase)) / 2;
+      case MediaSpinnerMotion.chase:
+        final into = _ratio(spinning, period) % 1;
+        if (into < 0.5) {
+          // The head accelerates: an accelerate interpolator is t squared.
+          final t = into * 2;
+          return spinner.minSweepDegrees + swing * t * t;
+        }
+        // The tail decelerates onto the head, drawn backwards from the
+        // jumped start: min - max * (1 - decelerate(t)), and a decelerate
+        // interpolator leaves (1 - t) squared of its way.
+        final left = 1 - (into - 0.5) * 2;
+        return spinner.minSweepDegrees - spinner.maxSweepDegrees * left * left;
+    }
+  }
+
+  /// How far the start of the arc of [spinner] has jumped after it has spun
+  /// for [spinning], on top of its steady turn: a [MediaSpinnerMotion.chase]
+  /// arc moves its start on by its longest sweep each time it has grown to
+  /// it (half a period in, then every period).
+  static double spinnerJumpDegrees(
+    MediaSpinnerStyle spinner,
+    Duration spinning,
+  ) {
+    if (spinner.motion != MediaSpinnerMotion.chase ||
+        spinner.sweepPeriod <= Duration.zero) {
+      return 0;
+    }
+    final grown = (_ratio(spinning, spinner.sweepPeriod) + 0.5).floor();
+    return spinner.maxSweepDegrees * grown;
   }
 
   /// Draws the disc of [style] around [center], [diameter] across (scaled

@@ -14,8 +14,10 @@ sealed class MediaStatusMode {
   /// The full control in the centre: cancel and an arc while the content
   /// downloads, download while it waits for the user or failed, and play
   /// once it shows when [playAction] is set. Streamable video that is not
-  /// local shows play in the centre (the host's `onPlay` streams it) and a
-  /// compact download control in the style's corner.
+  /// local and waiting for the reader shows play in the centre when the host
+  /// gives an `onPlay` to stream it, with a compact download control in the
+  /// style's corner; a download that runs, or a surface with no `onPlay`,
+  /// shows the download's control in the centre.
   const factory MediaStatusMode.control({bool playAction}) =
       MediaStatusMode$Control;
 

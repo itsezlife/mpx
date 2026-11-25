@@ -111,16 +111,20 @@ class _AssetStatusOverlayState extends State<AssetStatusOverlay> {
     super.dispose();
   }
 
-  // Streamable video that is not local and shows no frame: play streams it,
-  // the corner control downloads it.
+  // Streamable video that is not local, waits for the reader and shows no
+  // frame: play streams it, the corner control downloads it. A download that
+  // runs (the policy's own) shows its arc and cancel in the centre, as any
+  // content does, and so does one with no host to stream it (`onPlay`): a
+  // play button would do nothing.
   bool _readStreaming() {
     if (widget.status is! MediaStatusMode$Control) return false;
+    if (widget.onPlay == null) return false;
     final binding = widget.binding;
     final descriptor = binding.descriptor;
     return descriptor != null &&
         descriptor.streamable &&
         descriptor.kind == MediaKind.video &&
-        binding.transfer is! AssetTransfer$None &&
+        binding.transfer is AssetTransfer$AwaitingUser &&
         binding.readiness.stage.index < AssetStage.firstFrame.index;
   }
 

@@ -258,10 +258,12 @@ void main() {
         const MediaStatus.spinner(),
         MediaStatusStyle.$Android,
       )..advance(_ms(1000));
-      expect(spinner.arc!.startDegrees, closeTo((112 + 180) % 360, 1e-9));
+      // A turn and a half of the period on, the chasing start has jumped
+      // twice by the longest sweep (270) on top of its turn (180).
+      expect(spinner.arc!.startDegrees, closeTo((112 + 180 + 270) % 360, 1e-9));
       expect(spinner.arc!.sweepDegrees, closeTo(4, 1e-9));
       spinner.advance(_ms(500));
-      expect(spinner.arc!.sweepDegrees, closeTo(270, 1e-9));
+      expect(spinner.arc!.sweepDegrees, closeTo(-266, 1e-9));
     });
 
     test('nothing moves once gone', () {

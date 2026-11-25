@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- A streamable video that is not local shows play in the centre only where
+  the host gives an `onPlay` to stream it and the content waits for the
+  reader; a download that runs, or a surface with no `onPlay` (a feed tile),
+  shows its arc and cancel, as any other content.
+- `MediaSpinnerStyle.motion`: `MediaSpinnerMotion.chase` is the platform's
+  spinner (the head grows accelerating, the start jumps by the longest sweep
+  and the tail decelerates onto the head), `swing` the sine it was. The
+  Android styles chase.
 - A still's decode no longer follows its box pixel by pixel. `AssetPresets`
   rounds each side up to a ladder of sizes, three to an octave (... 320,
   410, 512, 640 ...), and `AssetCacheScope.attach` draws a finished still up
