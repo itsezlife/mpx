@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_ui/src/viewer/viewer_loading.dart';
+import 'package:mpx_ui/src/viewer/viewer_origin.dart';
 import 'package:mpx_ui/src/viewer/viewer_policy.dart';
 import 'package:mpx_ui/src/viewer/viewer_policy_scope.dart';
 
@@ -178,15 +179,20 @@ class FeedClip extends StatelessWidget {
             // The picture a viewer opens from: the player's frame or the
             // view's, never the controls over them.
             AssetPicture(child: picture()),
-            AssetView(
-              key: const ValueKey('mpx-feed-overlays'),
-              content: item.key,
-              preset: presetOf(AssetProfile(fit: shownFit)),
-              scope: scope,
-              downloadContext: item.downloadContext,
-              opacity: 0,
-              status: status,
-              badge: badge,
+            // They fade with the viewer's morph, as every mark over an item
+            // does, and are back once the viewer has left it.
+            ViewerOriginOverlay(
+              media: item.key,
+              child: AssetView(
+                key: const ValueKey('mpx-feed-overlays'),
+                content: item.key,
+                preset: presetOf(AssetProfile(fit: shownFit)),
+                scope: scope,
+                downloadContext: item.downloadContext,
+                opacity: 0,
+                status: status,
+                badge: badge,
+              ),
             ),
           ],
         );

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The badge and the status control `FeedClip` lays over a clip fade with the
+  viewer's morph, as every mark over an item does (`ViewerOriginOverlay`).
+- Closing on a video stands its player still on the frame the origin's loop
+  is handed, with its position and picture: the loop takes up at the frame the
+  flight shows, with no step back or forward as the picture lands.
 - The thumbnail strip is drawn and moved as the usual strip is
   (`ViewerThumbnailStrip`, `ViewerStripLayout`): the thumbnail on show is as
   wide as its picture at the strip's height (between 42 and 84) with a gap of

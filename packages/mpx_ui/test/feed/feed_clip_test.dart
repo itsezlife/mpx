@@ -311,4 +311,30 @@ void main() {
     final badge = tester.getTopLeft(find.byType(MediaBadge));
     expect(badge - box, const Offset(4, 4));
   });
+
+  testWidgets('the badge and the status control over a clip fade with the '
+      'viewer, as every mark over an item does', (tester) async {
+    final feed = FeedController(presetOf: preset);
+    addTearDown(feed.dispose);
+    await pump(
+      tester,
+      FeedScope(
+        controller: feed,
+        child: ListView(
+          children: [
+            SizedBox(
+              height: 200,
+              child: FeedSlot(
+                index: 0,
+                item: _item(0),
+                child: const FeedClip(badge: true),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    expect(find.byType(ViewerOriginOverlay), findsOneWidget);
+  });
 }

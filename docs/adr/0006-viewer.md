@@ -161,7 +161,9 @@ rest, so these are policy values (`ViewerVideoRules`):
   (`OriginBridge.handBack`) and seeks the loop there
   (`AssetCacheScope.seekPlayback`), showing the player's last picture until
   the loop's own frame there is drawn; the silent clip seeks for real (ADR
-  0003). `restart` plays the loop from its first frame; `whereItPaused`
+  0003). The player is paused as the close begins, so it stands on the frame
+  the loop is handed through the flight (a player that played on would land
+  on a frame the loop does not have, and the loop would step back). `restart` plays the loop from its first frame; `whereItPaused`
   goes on from its frame.
 - `loopOpen`: `continues` shares the bubble's playback; `restart` shares it
   and starts it over as the viewer opens and closes; `own` plays an entry of

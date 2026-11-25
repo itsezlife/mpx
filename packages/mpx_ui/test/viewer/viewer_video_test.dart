@@ -574,6 +574,32 @@ void main() {
       picture!.dispose();
     });
 
+    testWidgets('closing stands the player still on the frame the loop is '
+        'handed, whichever way the origin returns', (tester) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+      );
+      final loop = harness.cardLoop(videoKey(0), seconds);
+      await harness.pump(
+        tester,
+        policy: ViewerHarness.android(
+          originReturn: ViewerOriginReturn.atPlayer,
+        ),
+      );
+      harness.engine(0).advance(const Duration(seconds: 3));
+
+      unawaited(harness.state(tester).close());
+      await tester.pump();
+
+      expect(harness.engine(0).state.value.playing, isFalse);
+      await _settle(tester);
+      expect(loop.seeks.last, const Duration(seconds: 3));
+      for (final picture in loop.seekPictures) {
+        picture?.dispose();
+      }
+    });
+
     for (final android in [true, false]) {
       testWidgets(
         '${android ? 'Android' : 'iOS'}: the loop stands on the frame the '

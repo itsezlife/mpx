@@ -1215,6 +1215,20 @@ class MediaViewerState extends State<MediaViewer>
 
   // --- Close ----------------------------------------------------------------
 
+  // The surface's loop of the content goes to the player's place, showing
+  // the player's last picture until its own frame there is drawn. The player
+  // stands still from here (`close`), so the picture handed is the frame the
+  // flight shows and the loop goes on from it as the picture lands.
+  void _handBackAtPlayer(GalleryItem item, Duration position) {
+    widget.bridge?.handBack(_index, position);
+    _cache?.seekPlayback(
+      item.key,
+      _loopSpec,
+      position,
+      picture: _pictureNow(_index),
+    );
+  }
+
   /// Closes the viewer on the item it shows.
   Future<void> close() async {
     // Ignored while the viewer opens, as while it closes.
@@ -1230,21 +1244,17 @@ class MediaViewerState extends State<MediaViewer>
     if (session != null) {
       final position = session.lease.position;
       final item = widget.source.itemAt(_index);
+      // The video stands still on the frame it is handed back on: a player
+      // that went on through the flight would land on a frame the origin's
+      // loop does not have, and the loop would step back to the one it was
+      // handed.
+      session.lease.pause();
       if (item != null) {
         widget.onVideoLeft?.call(_index, item, position);
         _leftReported = true;
         switch (_video.originReturn) {
           case ViewerOriginReturn.atPlayer:
-            widget.bridge?.handBack(_index, position);
-            // The surface's loop of the content goes to the player's place,
-            // showing the player's last picture until its own frame there
-            // is drawn.
-            _cache?.seekPlayback(
-              item.key,
-              _loopSpec,
-              position,
-              picture: _pictureNow(_index),
-            );
+            _handBackAtPlayer(item, position);
           case ViewerOriginReturn.restart:
             _cache?.seekPlayback(item.key, _loopSpec, Duration.zero);
           case ViewerOriginReturn.whereItPaused:

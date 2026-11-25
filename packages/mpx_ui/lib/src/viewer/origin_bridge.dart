@@ -80,6 +80,7 @@ abstract interface class OriginBridge {
   void setHidden(int index, {required bool hidden});
 
   /// Tells the surface where the player of [index] stands as the viewer
-  /// closes on it, so the bubble's loop continues from there.
+  /// closes on it (it stands still through the flight), so the bubble's loop
+  /// continues from there.
   void handBack(int index, Duration position);
 }
