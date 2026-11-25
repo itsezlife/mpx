@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The viewer's player starts with sound: a player a list left muted (volume 0,
+  kept warm) opened silent in the viewer.
 - `FeedClip.onPlay`: a clip the autoplay gate holds (a setting, the power
   saver, a size over the limit) shows play over its picture, with the host's
   action behind it (`FeedController.requestPlay` for a clip that plays in

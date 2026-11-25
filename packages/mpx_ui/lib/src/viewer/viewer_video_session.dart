@@ -106,7 +106,11 @@ final class ViewerVideoSession extends ChangeNotifier {
 
   PlayerLease _leaseAt(Duration? startAt, {required bool play}) {
     final memory = rules.speed.memory;
+    // The viewer plays with sound, whatever the player did before it: a warm
+    // one comes from a list that played the clip muted (volume 0), and the
+    // viewer would open silent.
     final lease = players.lease(_quality?.key ?? item.key)
+      ..setVolume(1)
       ..setSpeed(speeds.speedFor(item.key, memory));
     // A warm player knows its duration already; a new one gets its loop rule
     // when the duration arrives (_onState).

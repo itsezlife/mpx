@@ -129,6 +129,24 @@ void main() {
       expect(harness.engine(0).state.value.playing, isFalse);
     });
 
+    testWidgets('a player a list left muted plays with sound in the viewer', (
+      tester,
+    ) async {
+      final harness = ViewerHarness(
+        items: ViewerHarness.videos(1),
+        videoDuration: const Duration(seconds: 60),
+      );
+      // A list's player, prepared and muted, let go but kept warm.
+      harness.players!.lease(videoKey(0))
+        ..prepare()
+        ..setVolume(0)
+        ..release();
+
+      await harness.pump(tester);
+
+      expect(harness.engine(0).state.value.volume, 1);
+    });
+
     testWidgets('a GIF loops on the software path with no controls', (
       tester,
     ) async {
