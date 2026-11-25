@@ -99,11 +99,13 @@ final class FeedListPlanner {
   ///
   /// An index [item] knows nothing about (null) neither plays nor preloads:
   /// a host that registers its items as they are built has no facts for the
-  /// ones further ahead.
+  /// ones further ahead. An index in [requested] is one the reader asked to
+  /// play (a tap on its play button): it plays whatever the gate says.
   FeedListPlan plan(
     FeedListViewport viewport,
-    FeedItem? Function(int index) item,
-  ) {
+    FeedItem? Function(int index) item, {
+    Set<int> requested = const {},
+  }) {
     final facts = <int, FeedItem>{};
     final shown = <int, double>{};
     for (final MapEntry(:key, :value) in viewport.visible.entries) {
@@ -115,7 +117,9 @@ final class FeedListPlanner {
     }
     final autoplay = {
       for (final MapEntry(:key, :value) in facts.entries)
-        key: policy.autoplayOf(value, conditions),
+        key: requested.contains(key)
+            ? FeedAutoplay.full
+            : policy.autoplayOf(value, conditions),
     };
     final distances = <int, int>{};
     return FeedListPlan(

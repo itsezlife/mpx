@@ -81,8 +81,11 @@ final class FeedItemState {
   /// pager's page that plays.
   final bool inView;
 
-  /// What the autoplay gate allows for the item, or null while it is neither
-  /// visible nor the pager's page.
+  /// What the autoplay gate allows for the item, or null while its facts are
+  /// not known (a list), or while it is not the pager's page (a pager). A
+  /// list item has it from the moment its slot is built, before it is
+  /// measured: what a cell draws for a clip the gate holds (a play button)
+  /// is there at once, not a frame later.
   final FeedAutoplay? autoplay;
 
   /// Whether the item plays by itself: in list mode a visible clip the gate
@@ -291,6 +294,9 @@ final class FeedController extends ChangeNotifier {
   int? _itemCount;
   AssetCacheScope? _scope;
 
+  // The visible items the reader asked to play (requestPlay).
+  final Set<int> _requested = {};
+
   final Set<FeedSlotRegistration> _registrations = {};
   // The registrations of each index, for the facts lookups the planners make
   // once per index they consider.
@@ -344,6 +350,15 @@ final class FeedController extends ChangeNotifier {
     _ListMode(:final last) => last,
     _PagerMode() => null,
   };
+
+  /// Plays the item at [index] whatever the autoplay gate says, as long as
+  /// it shows: the reader's tap on the play button of a clip the policy
+  /// holds (power saver, a setting, a size over the limit). In list mode;
+  /// a pager has its own page, shown by [FeedPager.show].
+  void requestPlay(int index) {
+    if (_disposed || _mode is! _ListMode) return;
+    if (_requested.add(index)) _apply();
+  }
 
   /// The facts of the item at [index]: its registration's, else [itemOf]'s.
   FeedItem? itemAt(int index) {
@@ -436,6 +451,9 @@ final class FeedController extends ChangeNotifier {
         if (value.viewportsAway > policy.heavyUnloadViewports) key,
     };
     final visible = seen..removeWhere((_, read) => read.fraction <= 0);
+    // A request lasts while its item shows: scrolled away, it is the gate's
+    // again.
+    _requested.removeWhere((index) => !visible.containsKey(index));
     _direction = _directionTo(visible);
     _visible = visible;
     _apply();
@@ -560,7 +578,7 @@ final class FeedController extends ChangeNotifier {
     _preloads.clear();
   }
 
-  FeedItemState _stateAt(int index) => _states[index] ?? _mode.idle;
+  FeedItemState _stateAt(int index) => _states[index] ?? _mode.idleOf(index);
 
   // Builds every non-default state, pushes it to the listened notifiers and
   // drops (and disposes) the notifiers nobody listens to or registers any
@@ -660,6 +678,10 @@ sealed class _FeedMode {
   // The decision for an index with nothing decided.
   FeedItemState get idle;
 
+  // The decision for [index] before it is measured: [idle], unless the mode
+  // can tell more from the item's facts.
+  FeedItemState idleOf(int index) => idle;
+
   FeedItemState stateOf(
     int index, {
     required double fraction,
@@ -693,6 +715,7 @@ final class _ListMode extends _FeedMode {
         fastScroll: feed._fastScroll,
       ),
       feed.itemAt,
+      requested: feed._requested,
     );
     last = next;
     return next.inView;
@@ -717,6 +740,32 @@ final class _ListMode extends _FeedMode {
   FeedItemState get idle =>
       FeedItemState(muted: policy.mutedAutoplay, clip: _still);
 
+  // The gate's decision needs the item's facts and the conditions, not its
+  // visibility: a slot built now already knows whether its clip plays.
+  //
+  // A slot between two registrations (its dependencies changed) has no facts
+  // for a moment: the decision it had stays, as a gap in what the controller
+  // knows is no decision to play, and a cell that drew play over a held clip
+  // would take it away and give it back.
+  @override
+  FeedItemState idleOf(int index) {
+    final autoplay = _gateOf(index) ?? feed._notifiers[index]?.value.autoplay;
+    if (autoplay == null) return idle;
+    return FeedItemState(
+      autoplay: autoplay,
+      muted: policy.mutedAutoplay,
+      clip: _still,
+    );
+  }
+
+  // What the gate says of the item at [index] by its facts, or null with
+  // none. It does not depend on the item showing: an item scrolled out of
+  // view (preloaded, or kept built) is held or not as it was.
+  FeedAutoplay? _gateOf(int index) {
+    final item = feed.itemAt(index);
+    return item == null ? null : policy.autoplayOf(item, feed._conditionsNow);
+  }
+
   @override
   FeedItemState stateOf(
     int index, {
@@ -725,8 +774,8 @@ final class _ListMode extends _FeedMode {
     required AssetPreloadStage? preload,
     required bool released,
   }) {
-    final autoplay = last?.autoplay[index];
-    final playing = autoplay == FeedAutoplay.full && !paused;
+    final autoplay = last?.autoplay[index] ?? _gateOf(index);
+    final playing = last?.autoplay[index] == FeedAutoplay.full && !paused;
     return FeedItemState(
       fraction: fraction,
       inView: last?.inView == index,

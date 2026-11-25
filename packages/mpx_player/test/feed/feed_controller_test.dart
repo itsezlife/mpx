@@ -65,6 +65,71 @@ void main() {
       expect(states.every((s) => s.muted), isTrue);
     });
 
+    test('a slot knows what the gate says of its clip before it is '
+        'measured', () {
+      final controller = FeedController(
+        policy: const FeedPolicy.list(
+          lite: FeedLiteMode(autoplayVideos: false),
+        ),
+      );
+      addTearDown(controller.dispose);
+      slots(controller, {0: 1.0});
+
+      final state = controller.stateOf(0).value;
+
+      expect(state.autoplay, FeedAutoplay.none);
+      expect(state.playing, isFalse);
+    });
+
+    test('an item scrolled out keeps what the gate said of it: a cell that '
+        'draws play over a held clip does not take it away', () {
+      final controller = FeedController(
+        policy: const FeedPolicy.list(
+          lite: FeedLiteMode(autoplayVideos: false),
+        ),
+      );
+      addTearDown(controller.dispose);
+      final fractions = {0: 1.0};
+      slots(controller, fractions);
+      controller.measure();
+      final seen = <FeedAutoplay?>[];
+      controller
+          .stateOf(0)
+          .addListener(() => seen.add(controller.stateOf(0).value.autoplay));
+
+      fractions[0] = 0;
+      controller.measure();
+
+      expect(controller.stateOf(0).value.autoplay, FeedAutoplay.none);
+      expect(seen, everyElement(isNotNull));
+    });
+
+    test('a clip the gate holds plays once the reader asks, until it '
+        'scrolls away', () {
+      final controller = FeedController(
+        policy: const FeedPolicy.list(
+          lite: FeedLiteMode(autoplayVideos: false),
+        ),
+      );
+      addTearDown(controller.dispose);
+      final fractions = {0: 1.0, 1: 1.0};
+      slots(controller, fractions);
+      controller.measure();
+      expect(controller.stateOf(0).value.autoplay, FeedAutoplay.none);
+      expect(controller.stateOf(0).value.playing, isFalse);
+
+      controller.requestPlay(0);
+
+      expect(controller.stateOf(0).value.playing, isTrue);
+      expect(controller.stateOf(1).value.playing, isFalse);
+
+      fractions[0] = 0;
+      controller.measure();
+      fractions[0] = 1;
+      controller.measure();
+      expect(controller.stateOf(0).value.playing, isFalse);
+    });
+
     test('items ahead preload through the scope; dispose cancels them', () {
       final controller = FeedController(
         itemCount: 20,

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `FeedController.requestPlay(index)`: the reader's tap on the play button
+  of a clip the gate holds plays it, as long as it shows (list mode);
+  `FeedListPlanner.plan` takes the indexes as `requested`.
 - `FeedPolicy.referenceAutoplayGate` is `FeedPolicy.standardAutoplayGate`.
 - The feed's power saver is the reference clients' lite mode, not the system's
   battery saver. `FeedPolicy.lite` (`FeedLiteMode`): videos and GIFs autoplay
