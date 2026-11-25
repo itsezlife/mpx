@@ -8,12 +8,15 @@ import 'lab/pointer_tape_test.dart' as pointer_tape;
 import 'social/album_layout_test.dart' as album_layout;
 import 'social/download_request_test.dart' as download_request;
 import 'social/formatting_test.dart' as formatting;
+import 'social/inline_sound_test.dart' as inline_sound;
 import 'social/post_media_facts_test.dart' as post_media_facts;
 import 'social/post_selection_test.dart' as post_selection;
 import 'social/post_text_view_test.dart' as post_text_view;
+import 'social/sound_requests_test.dart' as sound_requests;
 import 'social/status_adapter_test.dart' as status_adapter;
 import 'social/status_html_test.dart' as status_html;
 import 'social/timeline_controller_test.dart' as timeline_controller;
+import 'social/volume_rise_test.dart' as volume_rise;
 import 'video_through_stack_test.dart' as video_through_stack;
 
 void main() {
@@ -25,10 +28,13 @@ void main() {
   group('social album layout', album_layout.main);
   group('social download request', download_request.main);
   group('social formatting', formatting.main);
+  group('social inline sound', inline_sound.main);
   group('social post media facts', post_media_facts.main);
   group('social post selection', post_selection.main);
   group('social post text view', post_text_view.main);
+  group('social sound requests', sound_requests.main);
   group('social status adapter', status_adapter.main);
+  group('social volume rise', volume_rise.main);
   group('social status html', status_html.main);
   group('social timeline controller', timeline_controller.main);
   group('video through the stack', video_through_stack.main);

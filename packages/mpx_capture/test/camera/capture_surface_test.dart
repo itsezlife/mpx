@@ -258,7 +258,7 @@ void main() {
       expect(session.value.value.zoom, closeTo(0.4, 1e-6));
     });
 
-    testWidgets('the knob is the reference image\'s 12 disc, 16.7 pressed', (
+    testWidgets('the knob is a 12 disc, 16.7 pressed', (
       tester,
     ) async {
       final session = await pumpWide(tester);

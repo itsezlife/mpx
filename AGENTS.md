@@ -71,8 +71,8 @@ There are no workspace lints; review holds these:
   component; the bytes cache's native reader uses `http_bytes_cache_*` /
   `hbc_*` (ADR 0009).
 - Public API has dartdoc in glossary terms and roles. No product screens and
-  no reference-client names, file names or line numbers in code, tests,
-  READMEs or CHANGELOGs (ADRs may cite them).
+  no names, file names or line numbers of the clients behaviour was taken
+  from in code, tests, READMEs or CHANGELOGs (ADRs may cite them).
 - pubspec `description`: one plain sentence, 60 to 180 characters. README:
   what it is, install, a minimal usage example, features, doc links.
   CHANGELOG: short user-facing entries per version.

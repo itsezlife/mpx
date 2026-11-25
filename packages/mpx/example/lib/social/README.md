@@ -68,7 +68,7 @@ Worked around here, in the app:
 - **A pager that is not shown goes on playing**: its slots measure as hidden,
   and the page that played keeps playing. The reels are built only while their
   tab shows.
-- **The reference autoplay gate holds a large video back until a tap**, which
+- **The standard autoplay gate holds a large video back until a tap**, which
   on a page with no button is a black page. The reels pass a gate that plays
   every video when there is a network.
 - **No inline embed seam for text.** `flutter_md` paints custom emoji through

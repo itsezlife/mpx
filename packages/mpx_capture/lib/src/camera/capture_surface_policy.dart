@@ -67,7 +67,7 @@ enum CaptureRecordingChrome {
 /// The capture surface's behaviour on a platform: the shutter's timing and
 /// modes, the zoom, focus, the timer and what a recording hides.
 ///
-/// [$Android] and [$IOS] follow each platform's reference camera;
+/// [$Android] and [$IOS] follow each platform's own camera;
 /// [forPlatform] picks one.
 @immutable
 final class CaptureSurfacePolicy {
@@ -91,7 +91,7 @@ final class CaptureSurfacePolicy {
     required this.shotsCounter,
   });
 
-  /// The Android reference camera: tap for a photo, hold 800 ms for a
+  /// The Android camera: tap for a photo, hold 800 ms for a
   /// video; flash off → auto → on; a zoom slider; a closing focus ring; the
   /// zoom back to the widest after every shot.
   static const CaptureSurfacePolicy $Android = CaptureSurfacePolicy(
@@ -113,7 +113,7 @@ final class CaptureSurfacePolicy {
     shotsCounter: true,
   );
 
-  /// The iOS reference camera: a Video / Photo mode control; in photo mode
+  /// The iOS camera: a Video / Photo mode control; in photo mode
   /// a 250 ms hold switches to video and records until release; flash off
   /// ↔ auto; lens buttons and factor zoom up to 8×; a focus crosshair with
   /// exposure; the shutter turns into a red square while recording; the

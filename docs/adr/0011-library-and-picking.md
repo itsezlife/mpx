@@ -22,7 +22,7 @@ preparation, camera), 0006 (picker mode as a composition, no structural change)
 ## Context
 
 chat_scroll_view needs a media picker (its ADR 046). Its teardown of the four
-reference clients (chat_scroll_view `.scratch/media-picker/research/`, file and
+messenger clients (chat_scroll_view `.scratch/media-picker/research/`, file and
 line per value) shows one split on every platform: a container with caption
 and send, pages, data loaders, an ordered selection, a send plan. Only the
 container, caption and plan are chat concerns. The library, the intake, the
@@ -205,7 +205,7 @@ preset.
   where the camera goes and when it pauses.
 - A selection seam lets a host count picks from the library, files and the
   camera in one order, while a simple host takes the default.
-- The 432 preset is the Android reference's lowest step; offering 480 in its
+- The 432 preset is the Android client's lowest step; offering 480 in its
   place would send larger files than users of that platform get today.
 - iOS sends a library photo at JPEG 0.6 at both sizes (chat_scroll_view
   `.scratch/media-picker/research/ios-jpeg-quality.md`).
@@ -220,7 +220,7 @@ preset.
 | `mpx_ui -> mpx_capture` for the camera cell | Every viewer host would link CameraX, Transformer and AVFoundation capture |
 | Intake in its own package in v1 | Its routes share the intake file and classification with the library's originals; split only if the drop plugin's cost is refused |
 | A preparation package beside `mpx_capture` | Same encoders and permissions |
-| 480 in place of 432 | Larger outputs than the Android reference |
+| 480 in place of 432 | Larger outputs than the Android client |
 | A `MediaKey.library` variant | `external` already means "media from outside the host's backend"; a closed-set change costs every consumer |
 | The grid owning the selection outright | A messenger counts files and captures in the same order numbers |
 
@@ -315,7 +315,7 @@ preset.
 chat_scroll_view ADR 046 and `.scratch/media-picker/` (spec, tickets 04-09,
 14-17, 27; research `android-desktop.md`, `desktop-notes.md`, `ios-web.md`,
 `web-notes.md`, `ios-jpeg-quality.md`). The 432 bitrate ceiling is the
-Android reference's `MediaController.makeVideoBitrate` cap for a short side
+Android client's `MediaController.makeVideoBitrate` cap for a short side
 under 480 (750 kbps); the offered-preset counts are its `PhotoViewer`
 compression count rule. Maintainer decisions of 2026-11-20: the package
 split, the 432 preset, the minimal capture surface, drop and paste through

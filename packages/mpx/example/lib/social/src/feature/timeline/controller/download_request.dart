@@ -2,7 +2,7 @@ import 'package:mpx_core/mpx_core.dart';
 
 /// Whether the reader asked for a clip that waited for them: it was
 /// `awaitingUser` (the auto-download policy held it back) and is now being
-/// fetched. The reference client plays such a clip as it streams in; the feed
+/// fetched. Such a clip plays as it streams in; the feed
 /// does the same once this says so, instead of waiting for the whole file.
 ///
 /// Fed every transfer of the clip's content, in order. A clip the policy

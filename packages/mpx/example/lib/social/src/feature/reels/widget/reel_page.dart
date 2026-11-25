@@ -6,6 +6,7 @@ import 'package:mpx_example/social/src/common/theme/app_theme.dart';
 import 'package:mpx_example/social/src/common/util/count_format.dart';
 import 'package:mpx_example/social/src/common/util/time_ago_extension.dart';
 import 'package:mpx_example/social/src/common/widget/avatar.dart';
+import 'package:mpx_example/social/src/feature/initialization/dependencies.dart';
 import 'package:mpx_example/social/src/feature/reels/widget/reel_hearts.dart';
 import 'package:mpx_example/social/src/feature/timeline/model/post.dart';
 import 'package:mpx_player/mpx_player.dart';
@@ -80,6 +81,7 @@ class _ReelPageState extends State<ReelPage> with TickerProviderStateMixin {
 
   FeedPager? _pager;
   ValueListenable<FeedItemState>? _slot;
+  VoidCallback? _stopHearing;
 
   // The holds on the pager this page took: a press and a drag can overlap,
   // and the pager is released when the last of them ends.
@@ -97,6 +99,11 @@ class _ReelPageState extends State<ReelPage> with TickerProviderStateMixin {
       _pager = pager..addListener(_onPager);
       _muted.value = pager.muted;
     }
+    // The reader asking for sound (the system volume went up) unmutes the
+    // pager, as it unmutes the feed's clips.
+    _stopHearing ??= Dependencies.of(context).soundRequests.listen(() {
+      _pager?.muted = false;
+    });
     final slot = FeedSlot.of(context).state;
     if (!identical(slot, _slot)) {
       _slot?.removeListener(_onSlot);
@@ -139,6 +146,7 @@ class _ReelPageState extends State<ReelPage> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _stopHearing?.call();
     _slot?.removeListener(_onSlot);
     _pager?.removeListener(_onPager);
     // A page swiped away mid-press must not leave the pager held.

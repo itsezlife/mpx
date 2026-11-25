@@ -14,7 +14,7 @@ failure keeps the picture and turns the control back to download.
 Until now readiness had four stages (`none`, `placeholder`, `firstFrame`,
 `full`), and `placeholder` meant a fetched thumbnail. The first paint after
 an attach was the scope's default placeholder, a light flat box, until that
-thumbnail arrived over the network. No reference client draws such a box:
+thumbnail arrived over the network. No messenger client draws such a box:
 photos and videos show a blurred inline thumbnail from the first frame (or
 nothing, or black), stickers and emoji show an outline of their shape. A
 bare progress arc had no download, cancel or retry state, every attach
@@ -166,7 +166,7 @@ one record per `MediaKey` and derives the transfer there, from:
   restarts a waiting entry whose answer became `now`, one per content.
 - The core default is `AutoDownloadPolicy.always`. The composition root's
   default (`NetworkAutoDownloadPolicy` in `mpx`) weighs the network class
-  and per-kind size limits, with each platform's reference values.
+  and per-kind size limits, with each platform's standard values.
 
 ### Status control and badge
 
@@ -205,7 +205,7 @@ again, so the cost is paid once per item.
 
 ## Why
 
-- The reference clients draw no box before content: a blurred inline
+- The messenger clients draw no box before content: a blurred inline
   thumbnail, or a shape outline, is there from the first frame.
 - One transfer per content, derived in one place, so the cell, the feed
   and the viewer agree whatever spec each decodes, and no two of them
@@ -221,7 +221,7 @@ again, so the cost is paid once per item.
 | --- | --- |
 | A wire-format codec seam in the core | The host expands its own formats before the descriptor |
 | Blur resolved per widget | One decoded preview serves every surface of the scope |
-| A failed picture or error glyph | No reference draws one; the control carries the retry |
+| A failed picture or error glyph | No client draws one; the control carries the retry |
 | Keeping the inline stand-in in `placeholder` | Loses the preview → thumbnail fade and "has a preview" |
 | Auto-download rules in the core | The network class lives in the composition root |
 | A transfer per entry, reconciled across specs | Two specs downloaded the same bytes, and a cancel or a completion reached one spec only |
@@ -246,7 +246,7 @@ again, so the cost is paid once per item.
 ## Provenance
 
 The media-loading-stages spec and its research note on loading stages
-across the reference clients (stages per kind, transitions, progress UI,
+across the messenger clients (stages per kind, transitions, progress UI,
 auto-download, failure), in chat_scroll_view's local scratch area.
 
 ## Related

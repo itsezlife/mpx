@@ -121,7 +121,7 @@ void main() {
     expect(stub, findsNothing);
   });
 
-  testWidgets('the snapshot is the size the reference samples: 100 px wide '
+  testWidgets('the snapshot is the size the platform samples: 100 px wide '
       'for a switch, 80 for a pause', (tester) async {
     final (sessions, session) = await open(tester);
     await tester.runAsync(session.switchCamera);

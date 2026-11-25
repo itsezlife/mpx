@@ -422,7 +422,7 @@ class _MediaAppState extends State<MediaApp> {
     super.dispose();
   }
 
-  // The platform's reference viewer, opening from the tile's `ViewerOrigin`
+  // The platform's standard viewer, opening from the tile's `ViewerOrigin`
   // through the closest `ViewerOriginScope`: no bridge to write.
   void _open(BuildContext context, int index) => MediaViewer.show(
     context,

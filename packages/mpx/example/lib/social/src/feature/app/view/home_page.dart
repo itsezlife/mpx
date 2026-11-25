@@ -44,7 +44,10 @@ class _HomePageState extends State<HomePage> {
     body: IndexedStack(
       index: _destination,
       children: [
-        const _TopicTabs(),
+        // An IndexedStack keeps its hidden child alive and ticking: the
+        // feed under the reels is told it is out of view (the clips' sound,
+        // the text selection) through its tickers.
+        TickerMode(enabled: _destination == 0, child: const _TopicTabs()),
         if (_reelsOpened)
           ControllerScope<TimelineController>.value(
             _reelsController(),

@@ -124,7 +124,7 @@ void main() {
     cacheDirectory: dir.path,
     platformTextures: false,
     signals: FakeDeviceSignals(),
-    // These clips carry no size; the reference policy would wait for a tap.
+    // These clips carry no size; the standard policy would wait for a tap.
     autoDownload: AutoDownloadPolicy.always,
     // Small pieces, so a test file of tens of kilobytes lands in many.
     client: HttpBytesClient(

@@ -2,7 +2,7 @@
 
 The viewer in `mpx_ui` is one fullscreen viewer structure driven by three pure
 policies: `$Android`, `$IOS` and `$Desktop`. Each platform follows its own
-reference client by default (Android from the Android client, iOS from the iOS
+client by default (Android from the Android client, iOS from the iOS
 client, macOS from the desktop client); a host may pick any policy on any
 platform. The host supplies a gallery source and an origin bridge, the actions
 per item (save and share among them) and the caption builders. The package
@@ -17,16 +17,16 @@ the seek bar as a piece of its own
 
 ## Context
 
-The map requires the viewer and everything around it to match the reference
-1:1. The three reference clients ship three different viewers: different
+The map requires the viewer and everything around it to match the platform clients
+1:1. The three clients ship three different viewers: different
 open/close transitions, dismiss gestures, zoom, double-tap seek, auto-hide
-timings and PiP. "1:1" therefore needs a reference per platform or one canon.
+timings and PiP. "1:1" therefore needs one canon per platform or a shared one.
 
 ## Decision
 
 ### Canon
 
-| Platform | Reference | Policy |
+| Platform | Client | Policy |
 | --- | --- | --- |
 | Android | The Android client | `ViewerPolicy.$Android` |
 | iOS | The iOS client | `ViewerPolicy.$IOS` |
@@ -52,7 +52,7 @@ Constants with file and line: research `04-viewer-anatomy`.
 | Speed persistence | Per item | Shared across items | Global |
 | Loop | Video ≤ 30 s, or saved toggle | ≤ 30 s | Silent video loops |
 | Seek preview | Yes, 150 dp long side | Yes, fit 160x90 | No |
-| PiP | Own floating window + system PiP | System `AVPictureInPictureController` | System `AVPictureInPictureController` on macOS (the reference's own 320 px window needs multi-window) |
+| PiP | Own floating window + system PiP | System `AVPictureInPictureController` | System `AVPictureInPictureController` on macOS (the desktop client's own 320 px window needs multi-window) |
 
 **Loading** (`ViewerPolicy.loading`, ADR 0010):
 
@@ -68,11 +68,11 @@ Constants with file and line: research `04-viewer-anatomy`.
 | Seam | Contract |
 | --- | --- |
 | `GallerySource` | Indexed; loads both ways; total count for "5 of 120". A `Listenable` with `count`, `itemAt(index)` (null while not loaded) and `loadAround(index)`; items are `GalleryItem(key, kind, size, descriptor)`; a descriptor given reaches the pipeline before the page attaches |
-| `OriginBridge` | For any index: rect, corner radius and clip (`GalleryOrigin`), and the bubble's current frame (`frameOf`, a `ui.Image` the caller owns: each call hands out a clone, so the bridge freeing its copy never frees one the viewer paints; the viewer keeps its copies for the item and its neighbours and frees the rest). Contract suite: `OriginBridgeContract`. When the viewer closes on another item, `reveal(index)` gives the host a chance to build an origin it has not built; the list is never scrolled to an origin it has (the reference flies to where the item is, or fades when it shows nothing); `setHidden(index, hidden:)` hides the bubble while the viewer's copy covers it |
+| `OriginBridge` | For any index: rect, corner radius and clip (`GalleryOrigin`), and the bubble's current frame (`frameOf`, a `ui.Image` the caller owns: each call hands out a clone, so the bridge freeing its copy never frees one the viewer paints; the viewer keeps its copies for the item and its neighbours and frees the rest). Contract suite: `OriginBridgeContract`. When the viewer closes on another item, `reveal(index)` gives the host a chance to build an origin it has not built; the list is never scrolled to an origin it has (it flies to where the item is, or fades when it shows nothing); `setHidden(index, hidden:)` hides the bubble while the viewer's copy covers it |
 | Actions | The host supplies the action set and handlers per index (`ViewerAction`: label, icon, handler, in the bar or the menu) |
 | Files | A host callback `openFile(key) -> ViewerFile?` (`path`, `release`); the host wraps the bytes cache's file lease in it, so `mpx_ui` takes no cache dependency. The viewer releases files an action opened when the action completes |
 | Caption and author | Builders; rich text stays on the host's side |
-| Tokens | Colours and typography from the host (`ViewerTokens`, defaulting to the Android reference's values); no `chrome_foundation` dependency |
+| Tokens | Colours and typography from the host (`ViewerTokens`, defaulting to the Android values); no `chrome_foundation` dependency |
 | Backdrop | The viewer reports the scale the host draws its surface at (`onBackdropScale`); it cannot reach the surface itself |
 
 The viewer knows nothing about chats or messages.
@@ -96,10 +96,10 @@ pages in its own screens. `MediaViewer` stays the assembled default.
 Every behaviour is a field of `ViewerPolicy`, a full value per platform
 (`$Android`, `$IOS`, `$Desktop`). A host changes one with `copyWith`, which
 the policy and every value in it have, and sets it for the viewers below a
-`ViewerPolicyScope`, whose function receives the platform's reference and
+`ViewerPolicyScope`, whose function receives the platform's default policy and
 returns the policy: a change relative to the platform, or a whole
 replacement. A viewer follows its own `policy`, else the closest scope's,
-else the reference of the theme's platform (`ThemeData.platform`, so a theme
+else the default policy of the theme's platform (`ThemeData.platform`, so a theme
 that overrides the platform gets that viewer). Anything a host does not set
 stays the platform's.
 
@@ -120,7 +120,7 @@ the one source of truth.
 ### Chrome and built-in actions
 
 The package draws the top bar, bottom bar, menu, caption area and group
-thumbnail strip in each reference layout. Speed, quality, PiP and rotation are
+thumbnail strip in each platform's layout. Speed, quality, PiP and rotation are
 the package's own actions.
 
 | Action | Owner |
@@ -141,17 +141,17 @@ An item whose bubble is gone gets its own entry at the same spec.
 While the player plays a video with sound, the bubble's loop of it never
 plays underneath: it stands still on its frame
 (`AssetCacheScope.holdPlayback`), one decode of the content at a time, as on
-every reference. The page shows that frame until the player's first, and the
-morph carries the player's picture both ways. The references differ on the
+every platform. The page shows that frame until the player's first, and the
+morph carries the player's picture both ways. The platforms differ on the
 rest, so these are policy values (`ViewerVideoRules`):
 
 | Value | `$Android` | `$IOS` | `$Desktop` |
 | --- | --- | --- | --- |
 | `start`: where the player of a video with sound starts | `beginning` | `beginning` | `beginning` |
-| `originReturn`: the bubble's loop on close | `atPlayer` | `restart` | `atPlayer` (unconfirmed in the reference) |
+| `originReturn`: the bubble's loop on close | `atPlayer` | `restart` | `atPlayer` (unconfirmed) |
 | `loopOpen`: an animation on open | `continues` | `restart` | `continues` |
 
-- `start`: no reference starts a video with sound at the bubble's position;
+- `start`: no platform starts a video with sound at the bubble's position;
   each starts at the beginning or at a place it saved. `origin` (the
   origin's `GalleryOrigin.position`, else the loop's position in the cache)
   stays an option. A saved place is the host's data, not policy:
@@ -168,7 +168,7 @@ rest, so these are policy values (`ViewerVideoRules`):
   the page's own from its first frame.
 
 The web has no policy of its own yet: `ViewerPolicy.forPlatform` takes the
-platform the browser runs on. Its reference behaves like the desktop for
+platform the browser runs on. The web client behaves like the desktop for
 input and differs elsewhere (speeds up to 5x, loops under 60 s, a drag that
 pauses and seeks live, its own playback of an animation from frame 0); it
 needs a policy of its own.
@@ -267,7 +267,7 @@ fields):
 | Held press | 300 ms, video of 8 s or more, right two thirds: 2x | 300 ms, right 60%: +1x | 200 ms: 2x |
 
 Desktop: the arrows and a wheel notch switch one item at once (Home and End
-do nothing, as on the reference); a trackpad's vertical pan pages every
+do nothing, as usual); a trackpad's vertical pan pages every
 120 px, its horizontal swipe goes once past 17.5 px of a fifth of the pan;
 Ctrl with the wheel or a trackpad pinch zooms at the cursor; a click
 anywhere off the controls closes, on a video it plays or pauses; the cursor
@@ -275,15 +275,15 @@ is a hand over a strip that pages, a move cursor while a zoomed picture pans,
 and hidden with a video's controls.
 
 Two values were wrong before and are fixed: `$Android.dismissDownOnly` is
-false (the reference reads the drag's absolute offset) and
-`$IOS.dismissFraction` is 1/4 (the reference divides a scroll content three
-heights tall by 12).
+false (the drag's absolute offset is read) and
+`$IOS.dismissFraction` is 1/4 (a scroll content three
+heights tall is divided by 12).
 
 Kept: the origin morph, the loading stages and the one centre control, the
 neighbours' preparation once a settle lands (`onPageChanged` fires then, as
-both mobile references switch their item after the settle), the chrome.
+both mobile clients switch their item after the settle), the chrome.
 
-RTL: the references never mirror the gallery, so the viewer pages left to
+RTL: media never mirrors the gallery, so the viewer pages left to
 right in any locale; `GalleryPager.textDirection` mirrors the order for a host
 that asks. Semantics: the pager exposes scroll actions for the next and
 previous page.
@@ -291,15 +291,15 @@ previous page.
 Not covered yet: the desktop trackpad swipe's arrow bubble (the commit rule
 is there, the visual is not); the Android hold's back-seek on the left third
 and the hold-and-drag speed scrub; a long-press or right-click menu (no
-mobile reference has one; the desktop's right click is open); the desktop
+mobile client has one; the desktop's right click is open); the desktop
 touchscreen swipe.
 
 Rejected: a scale recognizer per page beside a pager drag recognizer (the
 race above); nested scrollables imitating the iOS structure (three
 `Scrollable`s would race the same way, and the other platforms are not
-nested); a strip for every platform (the Android reference stacks its pages).
-Evidence, with file and line in the references: research
-`media-viewer-gestures/reference-gestures` (chat_scroll_view `.scratch`).
+nested); a strip for every platform (the Android client stacks its pages).
+Evidence, with file and line in the clients: research
+`media-viewer-gestures` (chat_scroll_view `.scratch`).
 
 ## Why
 
@@ -323,7 +323,7 @@ Evidence, with file and line in the references: research
 | One canon for all platforms | Foreign on two platforms; the map asks for 1:1 |
 | Three separate viewers | Duplicates paging, zoom, chrome and playback |
 | The viewer knowing the chat (message ids, scroll controller) | Breaks the portable surface |
-| Host-drawn bars and menu | Each host would redo the reference layout |
+| Host-drawn bars and menu | Each host would redo the platform layout |
 | Policy as platform-forked code (`_vm`/`_js`) | The differences are not native |
 | A separate OS window on macOS in v1 | Needs Flutter multi-window |
 | Built-in save and share | Pulls gallery, share and permission plugins into the package |
@@ -333,7 +333,7 @@ Evidence, with file and line in the references: research
 - Three sets of motion and gesture tests, one per policy.
 - The origin bridge asks hosts for the bubble's current frame; chat_scroll_view
   provides it from the core's binding.
-- The macOS `$Desktop` policy departs from its reference in form and PiP: no
+- The macOS `$Desktop` policy departs from its client in form and PiP: no
   separate window, no own PiP window.
 - Hosts implement save and share; the example shows how.
 - Strings for built-in actions (speed, quality, PiP, rotation, "N of M") need a
@@ -361,7 +361,7 @@ shown has its first frame), hands off from the origin
 ## Open in implementation
 
 - Desktop colour values and fade/slide durations: the toolkit's style and
-  palette files are absent from the reference checkout.
+  palette files are absent from the checkout.
 - Android open/close interpolators are unset in source (framework default
   inferred).
 - Quality list source: answered as a host callback,
@@ -369,7 +369,7 @@ shown has its first frame), hands off from the origin
   choosing one leases the other key at the same position.
 - The strings seam's shape: `ViewerStrings` (chrome) and
   `ViewerVideoStrings` (controls) for now; one strings object later.
-- Desktop zoom below the fitted size (the reference goes down to 1/8 of the
+- Desktop zoom below the fitted size (the desktop client goes down to 1/8 of the
   picture's pixels) is not offered: steps start at fit.
 - Instant-view galleries, stories and secret media: not covered.
 
@@ -415,36 +415,32 @@ Three decisions from running the viewer in a messenger-like feed:
   the controls and restores it edge to edge when the viewer closes. The
   navigation bar stays clear and the pictures run under it; the viewer's
   scrim (the bars' fill) draws over it with the controls, and the picture
-  shows through without them, as in the reference. The controls (the video
+  shows through without them. The controls (the video
   bar, the caption) sit above it.
 - **The surface's hidden cell follows the page.** The origin of the item on
   show is the one hidden; paging hides the new one and shows the one left, so
-  a close onto another item flies from an empty place to its cell, as the
-  reference does.
+  a close onto another item flies from an empty place to its cell.
 
 ## Amendment 2026-11-23, second pass: the chrome as one block
 
-Read against the reference's viewer:
+Read against the platform viewers:
 
 - **Only the status bar goes** (`ViewerSystemBars.hideStatusBar`, the
-  default). The reference hides the status bar with its controls and keeps
+  default). The platform hides the status bar with its controls and keeps
   the navigation bar (it hides that only in landscape with side insets);
   `hideAll` is for a host that wants the immersive mode.
-- **The caption is a scroll view, as the reference's `CaptionScrollView` is.**
+- **The caption is a scroll view.**
   It fills the room between the top bar and the video controls; its text
   starts as low as five lines (two in landscape) and scrolls up over the
   picture, the box behind it following the text. A pull past an end gives
   (a finger's move followed by `1 - |over| / room` of itself, the room being
-  the space above the text at rest, as the reference's `dispatchNestedScroll`
-  does; the spring is `BouncingScrollPhysics`': stiffness 100, no bounce of
+  the space above the text at rest, as in a nested scroll; the spring is `BouncingScrollPhysics`': stiffness 100, no bounce of
   its own) also when
-  all of the text shows and there is nothing to scroll, as the reference's
-  does; its edges fade (12 px) while there is more text.
+  all of the text shows and there is nothing to scroll; its edges fade (12 px) while there is more text.
   Touches above the box fall through to the picture. A first design that grew
   a box and then scrolled the text, with a hand-made rubber band, let a pull
   take the text far up; it is gone.
-- **The chrome fades in with the open morph**, as the reference's container
-  does (alpha 0 to 1 over the 200 ms), not when it ends.
+- **The chrome fades in with the open morph** (alpha 0 to 1 over the 200 ms), not when it ends.
 - **One block hides.** The caption, the strip and the video bar slide by
   `controlsSlide` over the same duration and curve, so there is never a gap
   between their containers while the controls go.
@@ -452,4 +448,39 @@ Read against the reference's viewer:
   under it; the panel opens under the bar at its right edge. A menu or the
   settings keeps the controls shown (`ViewerVideoSession.hold`): the
   auto-hide wait starts again when they close.
+
+## Amendment 2026-11-25: touches keep the controls, and a zoomed close
+
+Read against the platform viewers:
+
+- **One touch-level rule keeps the controls.** The 3 s hide is cancelled on
+  every touch down on the viewer (a tap, a drag, a pinch, the seek bar, the
+  caption, the thumbnails) and scheduled on the last touch up, only while a
+  video plays with the controls shown; a menu that is open and a caption
+  scrolled away from its start veto the hide. One listener over the whole
+  viewer (`ViewerVideoSession.touchDown` / `touchUp`) does it, and the
+  session's `hold` for the menus and the caption, in place of each control
+  telling the session of its own touches.
+- **A zoomed close flies from the picture as it is drawn.** There is
+  no zoom-out step on close: the zoomed, panned rect is the start of one
+  200 ms motion to the thumbnail. The close takes the fitted rect scaled by
+  the page's zoom and moved by its pan as its start.
+
+- **The chrome's parts change with the item, and a host can change how.** The
+  viewer animates its title and counter (320 ms, ease-out-quint, an 8 px
+  slide that follows the direction of the change) and crossfades its caption
+  (200 ms), and animates the rest not at all, by default, through
+  `ViewerChangeSwitcher`. Each part has a `ViewerChrome` transition a host may replace or turn off
+  (`ViewerChangeTransition.none`); the mechanism is public.
+- **The play button gives way to the caption.** The viewer fades it as the
+  caption's top edge crosses its foot (`setIndexedAlpha`, animated); the
+  caption reports its top and the controls fade the button by it.
+- **The strip is one layout of a focus.** The platform computes widths and
+  positions per frame from a current item, a next item and their progress. The
+  viewer's strip does the same from a focus (`ViewerStripLayout.of`): the item
+  on show and its neighbour take the share the focus gives them, the row moves
+  to keep the point between them in the middle, and a finger on the pager, an
+  animation and a scrub only move the focus. A jump of more than one item grows
+  the target and shrinks the old item, with no item between it grows
+  (`ViewerStripLayout.between`). Decoding stays at one size.
 

@@ -78,11 +78,11 @@ class _ReelsState extends State<_Reels> {
   static const int _prefetchAhead = 3;
 
   // A reel plays by itself whatever its size: the player streams it, and
-  // the reader came to watch. The reference gate holds back a file above its
+  // the reader came to watch. The standard gate holds back a file above its
   // size limit until a tap, which on a surface with no button to tap is a
   // black page that never plays. Only a device with no network has nothing
   // to play. The reader's settings and the power saver stand, as in the
-  // reference gate.
+  // standard gate.
   static const FeedPolicy _policy = FeedPolicy.pager(autoplayGate: _gate);
 
   static FeedAutoplay _gate(

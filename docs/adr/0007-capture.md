@@ -13,7 +13,7 @@ server key to it.
 
 ## Context
 
-The reference clients compress every video before send and record round video
+The messenger clients compress every video before send and record round video
 messages. Android draws camera frames through GL into a MediaCodec encoder and
 writes MP4 with its own muxer; iOS uses AVCaptureSession and
 AVAssetReader/AVAssetWriter, never AVAssetExportSession for sending; desktop
@@ -98,10 +98,10 @@ native AAC, which stays LGPL.
 ## Why
 
 - Transformer replaces about 1.5k lines of encoder quirk handling in the
-  Android reference with a maintained library, and transmuxes when no change
+  Android client with a maintained library, and transmuxes when no change
   is needed.
 - CameraX's `Recorder` cannot set codec, container or size, so round video needs
-  our own GL stage into MediaCodec, as the reference does.
+  our own GL stage into MediaCodec.
 - The iOS table has explicit kbps per step, so it travels across platforms;
   the Android source-bitrate ceiling keeps outputs from growing.
 - Reporting bytes written now keeps live upload possible without committing v1
@@ -161,7 +161,7 @@ native AAC, which stays LGPL.
 ## Provenance
 
 Planning tickets `06`, `12`, `23` (local key and alias); research
-`06-recording-transcoding` (reference encoders, iOS preset
+`06-recording-transcoding` (client encoders, iOS preset
 table, Android bitrate rules, platform options, FFmpeg licence by encoder).
 
 ## Related

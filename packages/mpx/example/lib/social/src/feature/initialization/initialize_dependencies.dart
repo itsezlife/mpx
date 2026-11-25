@@ -16,6 +16,8 @@ import 'package:mpx_example/social/src/feature/initialization/dependencies.dart'
 import 'package:mpx_example/social/src/feature/initialization/initialization_context.dart';
 import 'package:mpx_example/social/src/feature/initialization/initialization_metrics.dart';
 import 'package:mpx_example/social/src/feature/timeline/controller/inline_sound.dart';
+import 'package:mpx_example/social/src/feature/timeline/controller/sound_requests.dart';
+import 'package:mpx_example/social/src/feature/timeline/controller/volume_rise.dart';
 import 'package:mpx_example/social/src/feature/timeline/data/mastodon_client.dart';
 import 'package:mpx_example/social/src/feature/timeline/data/timeline_repository.dart';
 import 'package:mpx_player/mpx_player.dart';
@@ -147,7 +149,19 @@ final Map<String, _InitializationStep> _initializationSteps =
         );
       },
       'Initialize inline sound': (dependencies, _) {
-        dependencies.inlineSound = InlineSound(dependencies.players);
+        dependencies.inlineSound = InlineSound(
+          dependencies.players,
+          clock: dependencies.stack.scope.clock,
+        );
+        // A rise of the system volume is the reader asking to hear it, as a
+        // volume key is: every surface that plays video
+        // listens (the feed's clips here, the reels' pager on its page).
+        dependencies.soundRequests = SoundRequests()
+          ..listen(dependencies.inlineSound.unmute);
+        dependencies.volumeRise = VolumeRise(
+          dependencies.stack.signals.mediaVolume,
+          dependencies.soundRequests.request,
+        );
       },
       'Initialize timeline repository': (dependencies, _) {
         dependencies.timelineRepository = MastodonTimelineRepository(

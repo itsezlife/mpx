@@ -193,8 +193,8 @@ class CameraCaptureSurface extends StatefulWidget {
     Duration closeTransition = const Duration(milliseconds: 220),
   }) async {
     // One surface at a time per session: a second tap while one opens or
-    // shows does nothing (the reference ignores the camera cell while its
-    // camera opens or is open).
+    // shows does nothing (the camera cell is ignored while its camera
+    // opens or is open).
     if (!_shown.add(session)) return;
     // The strip's gallery cells draw through the host's asset cache, which
     // may sit under the navigator the route goes on.
@@ -711,8 +711,8 @@ class _CameraCaptureSurfaceState extends State<CameraCaptureSurface>
     widget.onShotRemoved?.call(shot);
   }
 
-  // The strip: the kept shots, oldest first, then the host's album, as the
-  // reference's camera strip counts its camera photos and then the album's.
+  // The strip: the kept shots, oldest first, then the host's album; the
+  // strip counts its camera photos and then the album's.
   // 80 square cells 6 apart, the last with no gap; built only as they
   // scroll in, the album can be long.
   Widget _strip(BuildContext context) {
@@ -1694,8 +1694,7 @@ class _Never implements Listenable {
   void removeListener(VoidCallback listener) {}
 }
 
-// A strip cell (a kept shot or an album item), as the reference draws its
-// attach cell there:
+// A strip cell (a kept shot or an album item), drawn like an attach cell:
 // the picture 80 square over a 5 % black background; a recording's
 // duration in a 17 high pill at its bottom start (4 in, 5 padding, a
 // play mark 8 x 10, the time 12 bold white, 13 after the mark's start, on

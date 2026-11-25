@@ -20,7 +20,7 @@ depend on for media. It covers:
   decoders that live in chat_scroll_view today);
 - a hardware video player with sound, seek and a streaming cache;
 - feed and reels playback policies and widgets;
-- a fullscreen viewer that follows each platform's reference client;
+- a fullscreen viewer that follows each platform's own behaviour;
 - compression before send and round video recording.
 
 chat_scroll_view becomes one consumer among others. The chat keeps its own
@@ -32,7 +32,7 @@ domain (rich text, packs, the glyph atlas, embeds, presets).
 2. The one hardware player per audible item, shared by every surface that shows
    that item, so a hand-off never restarts playback.
 3. Silent inline loops stay on the software decoders and the CPU texture pool,
-   as both mobile reference clients do.
+   as both mobile messenger clients do.
 4. Viewer, feed widgets and capture are optional. A host that only shows
    images takes `mpx_core`, `http_bytes_cache` and `mpx` (which joins them).
 5. A package boundary stands only where a host would otherwise pay for what it
@@ -60,7 +60,7 @@ domain (rich text, packs, the glyph atlas, embeds, presets).
 - Legal review of LGPL FFmpeg in App Store apps. That is the maintainer's
   action before the native video packages publish, not a design decision.
 - Quality-of-experience metrics, diagnostics dashboards, accessibility and
-  captions beyond what the viewer reference draws.
+  captions beyond what the viewer draws.
 
 ## 2. Package set
 
@@ -223,7 +223,7 @@ sound.
 - Feed policies: two modes on one knob set, `list` (every visible clip plays
   muted) and `pager` (one active item with sound, ±1 warm, at most 2 prepared
   players). The 25 knobs of research `05-feed-policies` §7 are the seam,
-  each with the reference default. Preload by distance and direction.
+  each with its default. Preload by distance and direction.
   Platform signals reach it through one host seam. Seams: `FeedPolicy`
   *(working)*, `FeedMode`, `FeedSignals` *(working)*. ADR 0005.
 
@@ -234,7 +234,7 @@ The optional UI over the player.
 - Feed widgets: a list and a pager driven by the player's feed policy.
   ADR 0005.
 - Fullscreen viewer: one viewer structure, three pure policies: `ViewerPolicy.$Android`, `$IOS`,
-`$Desktop`. Each platform follows its own reference client; a host may pick
+`$Desktop`. Each platform follows its own behaviour; a host may pick
 any. On macOS the viewer is an in-app overlay over the whole app window;
 "fullscreen" puts the app window into fullscreen and PiP uses the system
 `AVPictureInPictureController`. Host seams: `GallerySource` (indexed, loads
@@ -355,7 +355,7 @@ The composition root, a plugin.
   `MPX_VIDEO_FFMPEG_DIR`, `http_bytes_cache_*` / `hbc_*`. No `chat_` remains.
 - `mpx_ui`, `mpx_library` and `mpx_capture` are optional. Nothing below them
   imports them.
-- No reference-client citations (file names, line numbers, client names) in
+- No citations of the source clients (file names, line numbers, client names) in
   code, tests, READMEs or CHANGELOGs. Provenance lives in ADRs and planning
   scratch only.
 - Docs follow the agnostic-documentation rules: contracts and roles, no product

@@ -40,7 +40,7 @@
   and photos in one session; binding it at the start closed and reopened
   the session and stalled the preview). The switch turn's perspective is
   four heights deep, so the turning card stays near the preview's size.
-- The kept shots strip draws the reference's cell (80 square, 6 apart, a
+- The kept shots strip draws the usual cell (80 square, 6 apart, a
   recording's duration pill, the selection check and number;
   `shotOrder`, `onShotToggle`, `shotSelection`) with a picture of each
   shot: a photo's own, a recording's first frame
@@ -58,7 +58,7 @@
   follows the finger and the controls fade (220 ms); released past a sixth
   of the height it closes from there into the slot, otherwise it comes back
   (250 ms, decelerating).
-- Input guards as the reference: a camera switch asked for while one runs
+- Input guards: a camera switch asked for while one runs
   is ignored (until the new camera's first frame); the switch and close
   wait for a photo being taken; the flash icon swaps over 220 ms and taps
   meanwhile are ignored; `CameraCaptureSurface.show` opens one surface per

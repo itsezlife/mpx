@@ -14,7 +14,7 @@ native reader. Apple v1 plays progressive MP4 only. v1 runs from Android API
 
 ## Context
 
-Both mobile reference clients run two tiers: a software decoder for many silent
+Both mobile messenger clients run two tiers: a software decoder for many silent
 loops, and a hardware player for the one item with sound. The silent tier
 exists (`mpx_video_decoder`, the CPU texture pool). The hardware tier does not.
 The Flutter engine accepts an Android `SurfaceProducer` (zero-copy through a
@@ -82,12 +82,12 @@ the bytes cache, with playlists still through the loader.
 ## Why
 
 - ExoPlayer and AVPlayer bring A/V sync, seek, speed, loop, PiP and HDR
-  handling with the least native code. The Android reference stays on ExoPlayer.
+  handling with the least native code. The Android client stays on ExoPlayer.
 - BGRA with BT.709 sidesteps the engine's BT.601-only NV12 path and does the
   colour conversion on the GPU inside AVFoundation.
 - A pool keyed by content means the bubble, feed and viewer never hold two
   decoders for one file; hand-offs do not restart.
-- One audio owner matches the reference's single sound-carrying player.
+- One audio owner matches the single sound-carrying player of the messenger clients.
 - Reading through the cache's own native reader keeps the range protocol in
   one package and the hot read path native.
 - The minimums match Flutter and the chat app; API 24-28 devices still play,
@@ -222,7 +222,7 @@ Tickets 23-26, 28, 29 (2026-11-13).
 Planning tickets `02`, `03`, `09`, `16`, `17` (bytes edge), `26`
 (minimum versions); research
 `02-hw-player-backends` (engine source, video_player, media_kit,
-reference players, limits), `03-streaming-cache.md`. Probe source and logs are
+client players, limits), `03-streaming-cache.md`. Probe source and logs are
 in the session scratchpad named in ticket 16.
 
 ## Related

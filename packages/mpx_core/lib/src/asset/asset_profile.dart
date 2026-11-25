@@ -133,7 +133,7 @@ final class AssetProfile {
   /// Below it the binding stays shown but holds its frame, as a held binding
   /// does, and plays on from that frame once enough of it shows again. A
   /// scrolling list that plays every visible clip sets it so a clip mostly
-  /// scrolled away costs no frames; Android's reference behaviour is 0.25.
+  /// scrolled away costs no frames; the Android default is 0.25.
   final double advanceFloor;
 
   /// This profile with the given fields replaced.

@@ -23,7 +23,7 @@ abstract final class LoadingDemo {
     animatedImage: AutoDownloadLimit.off(),
   );
 
-  /// The stack's auto-download policy: the platform's reference presets
+  /// The stack's auto-download policy: the platform's standard presets
   /// over [signals], with [manual] and [manualKeys] held back.
   static AutoDownloadPolicy policy(IDeviceSignals signals) => _DemoPolicy(
     NetworkAutoDownloadPolicy(

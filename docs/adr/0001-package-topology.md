@@ -122,7 +122,7 @@ reasons.
   preload stages), so they live with the pool; the widgets that draw a feed
   belong with the viewer as optional UI.
 - One bytes cache for every kind gives one eviction and one budget. All three
-  reference clients keep streamed video and small media in one store.
+  messenger clients keep streamed video and small media in one store.
 - The player sits over the core so it shares the clock, pause layers, budgets
   and visibility the decoders already use, instead of growing a second set.
 - The player depends on the cache directly because the cache owns the ranged

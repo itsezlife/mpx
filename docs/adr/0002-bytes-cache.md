@@ -79,7 +79,7 @@ resume, the whole body buffered by design.
 
 ## Why
 
-- Every reference client keeps streamed video in the same store as other media,
+- Every messenger client keeps streamed video in the same store as other media,
   keyed by content identity, read by a thin blocking adapter. None uses the
   platform media cache.
 - Dart keeps fetch, validation and budgets, so ETag rules and middlewares are
@@ -228,7 +228,7 @@ Planning tickets `01`, `03`, `08`, `14` (name addendum), `17` (native
 reader), `18` (adapter home), `19` (registered quotas), `23` (alias), `24`
 (native names), `25` (priorities, SWR), `27` (adapter folded into `mpx`); research `01-bytes-tier-fit`
 (file:line on both sides), `03-streaming-cache.md` (Media3, Apple loader, RFC
-9110 / 8216, the three references' range stores). chat_scroll_view ADR 022
+9110 / 8216, the three clients' range stores). chat_scroll_view ADR 022
 amendments *one media disk store* and *download progress*.
 
 ## Related

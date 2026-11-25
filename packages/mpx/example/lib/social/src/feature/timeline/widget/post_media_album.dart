@@ -147,7 +147,7 @@ class _AlbumCellState extends State<_AlbumCell> {
     final asked = _request.see(binding.transfer);
     if (asked != _asked) {
       // The reader asked for it, or took it back: the feed plays it as it
-      // streams in, as the reference client does, not when it is whole.
+      // streams in, not when it is whole.
       scheduleMicrotask(() {
         if (mounted) setState(() => _asked = asked);
       });
@@ -209,6 +209,7 @@ class _AlbumTile extends StatefulWidget {
 class _AlbumTileState extends State<_AlbumTile> {
   InlineSound? _sound;
   ValueListenable<FeedItemState>? _state;
+  bool _tickers = true;
 
   PostMedia get _media => widget.post.media[widget.index];
 
@@ -216,6 +217,14 @@ class _AlbumTileState extends State<_AlbumTile> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _sound ??= Dependencies.of(context).inlineSound;
+    // A tab that hides the list (the reels, over it) stops its tickers: the
+    // clip is not in view then, whatever its place in the scroll says, and
+    // the sound goes to the tab that shows.
+    final tickers = TickerMode.valuesOf(context).enabled;
+    if (tickers != _tickers) {
+      _tickers = tickers;
+      if (_state != null) _onState();
+    }
     // A clip tells the sound switch how much of it shows, so the one most in
     // view can take the sound.
     if (_media.kind == PostMediaKind.video) {
@@ -231,7 +240,28 @@ class _AlbumTileState extends State<_AlbumTile> {
     super.dispose();
   }
 
-  void _onState() => _sound?.report(_media.key, _state!.value.fraction);
+  void _onState() => _sound?.report(
+    _media.key,
+    _tickers ? _state!.value.fraction : 0,
+    clipPosition: _clipPosition,
+  );
+
+  // Where the loop of this clip is: the sound starts from there, so it goes
+  // on from the picture the reader is looking at.
+  Duration? _clipPosition() {
+    if (!mounted) return null;
+    final media = _media;
+    final profile =
+        (FeedScope.maybeOf(context)?.policy ?? const FeedPolicy.list())
+            .clipProfile();
+    final spec = PostMediaPresets.of(
+      media,
+      size: widget.size,
+      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+      profile: profile,
+    ).spec;
+    return AssetCacheProvider.of(context).playbackPosition(media.key, spec);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -294,7 +324,17 @@ class _AlbumTileState extends State<_AlbumTile> {
                               ),
                               opacity: 0,
                               status: const MediaStatusMode.control(),
-                              badge: true,
+                            ),
+                            // The clip's badge counts its own loop; the
+                            // player's time is the lease's.
+                            Positioned(
+                              left: AppSpacing.s,
+                              top: AppSpacing.s,
+                              child: _PlayerBadge(
+                                lease: lease,
+                                total: media.duration,
+                                width: widget.size.width,
+                              ),
                             ),
                           ],
                         );
@@ -328,6 +368,68 @@ class _AlbumTileState extends State<_AlbumTile> {
   }
 }
 
+/// The time left of a clip a player draws: its length less the player's
+/// place, read as it plays.
+class _PlayerBadge extends StatefulWidget {
+  const _PlayerBadge({
+    required this.lease,
+    required this.total,
+    required this.width,
+  });
+
+  final PlayerLease lease;
+  final Duration? total;
+  final double width;
+
+  @override
+  State<_PlayerBadge> createState() => _PlayerBadgeState();
+}
+
+class _PlayerBadgeState extends State<_PlayerBadge> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.lease.state.addListener(_onState);
+    _onState();
+  }
+
+  @override
+  void dispose() {
+    widget.lease.state.removeListener(_onState);
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  // The place is a read, not a stream: while the player plays it is read
+  // a few times a second, the time being whole seconds.
+  void _onState() {
+    final playing = widget.lease.state.value.playing;
+    if (playing && _timer == null) {
+      _timer = Timer.periodic(
+        const Duration(milliseconds: 250),
+        (_) => setState(() {}),
+      );
+    } else if (!playing) {
+      _timer?.cancel();
+      _timer = null;
+    }
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = widget.total ?? widget.lease.state.value.duration;
+    if (total == null) return const SizedBox.shrink();
+    final left = total - widget.lease.position;
+    return MediaBadge(
+      duration: left.isNegative ? Duration.zero : left,
+      width: widget.width,
+    );
+  }
+}
+
 class _SoundButton extends StatelessWidget {
   const _SoundButton({required this.sound, required this.media});
 
@@ -338,7 +440,7 @@ class _SoundButton extends StatelessWidget {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: sound,
     builder: (context, _) {
-      final on = sound.playing == media;
+      final on = sound.playing == media && sound.isSoundOn;
       return Material(
         color: Theme.of(context).colors.scrim,
         shape: const CircleBorder(),

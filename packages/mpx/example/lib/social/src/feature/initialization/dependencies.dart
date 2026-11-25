@@ -6,6 +6,8 @@ import 'package:mpx_example/social/src/feature/initialization/initialization_con
     show InitializationContext;
 import 'package:mpx_example/social/src/feature/initialization/initialization_metrics.dart';
 import 'package:mpx_example/social/src/feature/timeline/controller/inline_sound.dart';
+import 'package:mpx_example/social/src/feature/timeline/controller/sound_requests.dart';
+import 'package:mpx_example/social/src/feature/timeline/controller/volume_rise.dart';
 import 'package:mpx_example/social/src/feature/timeline/data/mastodon_client.dart';
 import 'package:mpx_example/social/src/feature/timeline/data/timeline_repository.dart';
 import 'package:mpx_player/mpx_player.dart';
@@ -50,6 +52,12 @@ class Dependencies {
 
   /// The reader's sound switch for the lists of posts, shared by all of them.
   late final InlineSound inlineSound;
+
+  /// The reader asking for sound: every surface that plays video listens.
+  late final SoundRequests soundRequests;
+
+  /// What the system volume going up asks of them.
+  late final VolumeRise volumeRise;
 
   /// Where a topic's posts are read from.
   late final TimelineRepository timelineRepository;

@@ -14,7 +14,7 @@ import 'package:mpx_core/src/widget/media_status.dart';
 /// What a download's arc shows while its measure is not known yet (no byte
 /// has arrived, or no total).
 enum MediaProgressLook {
-  /// The measured arc, from nothing: the reference's GIF cell, whose arc
+  /// The measured arc, from nothing: the GIF cell, whose arc
   /// stands at its least sweep and turns until the bytes come.
   measured,
 
@@ -113,7 +113,7 @@ typedef AssetSkinBuilder =
 /// The look of an [AssetView] around its loading state, each part
 /// replaceable: the status control, the badge, and the reveal of the
 /// picture. A null builder keeps the stock part, so [AssetViewSkin.stock]
-/// is the reference look of the platform's `MediaLoadingStyle`.
+/// is the standard look of the platform's `MediaLoadingStyle`.
 ///
 /// A [reveal] gets the picture itself as its stock: a host that brings its
 /// own entrance sets the style's stage fades to zero and animates the
@@ -130,7 +130,7 @@ final class AssetViewSkin {
     this.failure,
   });
 
-  /// The reference look: every part stock.
+  /// The standard look: every part stock.
   static const AssetViewSkin stock = AssetViewSkin();
 
   /// Builds the status control (download, progress, play, the retry).
@@ -144,8 +144,8 @@ final class AssetViewSkin {
   final AssetSkinBuilder? reveal;
 
   /// Builds what a view shows over its picture while its media failed
-  /// ([AssetLoadState.failed]); its stock part is nothing: the reference
-  /// keeps the picture (no visible failed stage), and the status control
+  /// ([AssetLoadState.failed]); its stock part is nothing: the picture
+  /// stays (no visible failed stage), and the status control
   /// offers download, which is the retry. A host that wants a mark of its
   /// own (an icon, a word) builds it here.
   final AssetSkinBuilder? failure;
