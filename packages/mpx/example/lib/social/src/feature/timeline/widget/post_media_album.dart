@@ -264,6 +264,17 @@ class _AlbumTileState extends State<_AlbumTile> {
     return AssetCacheProvider.of(context).playbackPosition(media.key, spec);
   }
 
+  // The reader asks to play a clip the feed's policy holds. A GIF plays where
+  // it is; a video opens in the viewer, where it has its controls and sound.
+  void _play(PostMedia media) {
+    if (media.kind == PostMediaKind.gif) {
+      final slot = FeedSlot.of(context);
+      slot.controller.requestPlay(slot.index);
+    } else {
+      PostViewer.open(context, widget.post, widget.index);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final dpr = MediaQuery.devicePixelRatioOf(context);
@@ -277,6 +288,7 @@ class _AlbumTileState extends State<_AlbumTile> {
       ),
       status: const MediaStatusMode.control(),
       badge: true,
+      onPlay: () => _play(media),
     );
     final sound = _sound!;
     final alt = media.alt;
