@@ -2,6 +2,7 @@ import Foundation
 import Network
 
 #if os(iOS)
+import AVFoundation
 import Flutter
 import UIKit
 #elseif os(macOS)
@@ -9,7 +10,7 @@ import FlutterMacOS
 #endif
 
 /// Streams device signals to Dart: one full reading (network class, power
-/// saving, thermal status, battery level) on listen and another whenever any of them changes.
+/// saving, thermal status, battery level, media volume) on listen and another whenever any of them changes.
 ///
 /// Readings are sent on the main queue. Apple platforms do not report
 /// roaming, so the network class is one of none, unmetered and metered.
@@ -21,6 +22,9 @@ final class DeviceSignalsStream: NSObject, FlutterStreamHandler {
   private var network: String?
   private var lastSent: [String: NSObject]?
   private var observers: [NSObjectProtocol] = []
+  #if os(iOS)
+  private var volumeObservation: NSKeyValueObservation?
+  #endif
 
   func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
     sink = events
@@ -39,6 +43,11 @@ final class DeviceSignalsStream: NSObject, FlutterStreamHandler {
     let center = NotificationCenter.default
     #if os(iOS)
     UIDevice.current.isBatteryMonitoringEnabled = true
+    // The output volume is the audio session's: it changes with the keys and
+    // the slider, and is told only while the session is there to be asked.
+    volumeObservation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) { [weak self] _, _ in
+      DispatchQueue.main.async { self?.send() }
+    }
     let names: [Notification.Name] = [
       .NSProcessInfoPowerStateDidChange,
       ProcessInfo.thermalStateDidChangeNotification,
@@ -66,6 +75,8 @@ final class DeviceSignalsStream: NSObject, FlutterStreamHandler {
     observers.removeAll()
     #if os(iOS)
     UIDevice.current.isBatteryMonitoringEnabled = false
+    volumeObservation?.invalidate()
+    volumeObservation = nil
     #endif
     sink = nil
     network = nil
@@ -81,10 +92,20 @@ final class DeviceSignalsStream: NSObject, FlutterStreamHandler {
       "powerSaving": NSNumber(value: info.isLowPowerModeEnabled),
       "thermal": Self.name(of: info.thermalState) as NSString,
       "batteryLevel": NSNumber(value: Self.batteryLevel()),
+      "mediaVolume": NSNumber(value: Self.mediaVolume()),
     ]
     if reading == lastSent { return }
     lastSent = reading
     sink(reading)
+  }
+
+  // The output volume as a percentage, or -1 where there is no session (macOS).
+  private static func mediaVolume() -> Int {
+    #if os(iOS)
+    return Int((AVAudioSession.sharedInstance().outputVolume * 100).rounded())
+    #else
+    return -1
+    #endif
   }
 
   // The percentage, or -1 where the system cannot say (macOS, a simulator).

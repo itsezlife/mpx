@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.media.AudioManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
@@ -16,7 +17,7 @@ import io.flutter.plugin.common.EventChannel
 
 /**
  * Streams device signals to Dart: one full reading (network class, power
- * saving, thermal status, battery level) on listen and another whenever any of them changes.
+ * saving, thermal status, battery level, media volume) on listen and another whenever any of them changes.
  *
  * Readings are sent on the main thread; the network callback runs on a
  * system thread, so its updates are posted there.
@@ -25,6 +26,7 @@ internal class DeviceSignalsStream(private val context: Context) : EventChannel.
     private val main = Handler(Looper.getMainLooper())
     private val connectivity = context.getSystemService(ConnectivityManager::class.java)
     private val power = context.getSystemService(PowerManager::class.java)
+    private val audio = context.getSystemService(AudioManager::class.java)
 
     private var sink: EventChannel.EventSink? = null
     private var network = "none"
@@ -43,6 +45,16 @@ internal class DeviceSignalsStream(private val context: Context) : EventChannel.
 
     private val powerSaveReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) = send()
+    }
+
+    // The media volume changes with a key and with the slider: the system says
+    // so in a broadcast that is not in the SDK's constants but has been sent
+    // since the first release, with the stream it was for.
+    private val volumeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val stream = intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1)
+            if (stream == AudioManager.STREAM_MUSIC) send()
+        }
     }
 
     // The battery is a sticky broadcast: registering for it with no receiver
@@ -67,6 +79,12 @@ internal class DeviceSignalsStream(private val context: Context) : EventChannel.
         } else {
             context.registerReceiver(powerSaveReceiver, filter)
         }
+        val volume = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+        if (Build.VERSION.SDK_INT >= 33) {
+            context.registerReceiver(volumeReceiver, volume, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            context.registerReceiver(volumeReceiver, volume)
+        }
         val battery = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
         if (Build.VERSION.SDK_INT >= 33) {
             context.registerReceiver(batteryReceiver, battery, Context.RECEIVER_NOT_EXPORTED)
@@ -87,6 +105,7 @@ internal class DeviceSignalsStream(private val context: Context) : EventChannel.
         connectivity.unregisterNetworkCallback(networkCallback)
         context.unregisterReceiver(powerSaveReceiver)
         context.unregisterReceiver(batteryReceiver)
+        context.unregisterReceiver(volumeReceiver)
         if (Build.VERSION.SDK_INT >= 29) {
             (thermalListener as? PowerManager.OnThermalStatusChangedListener)
                 ?.let(power::removeThermalStatusListener)
@@ -102,10 +121,18 @@ internal class DeviceSignalsStream(private val context: Context) : EventChannel.
             "powerSaving" to power.isPowerSaveMode,
             "thermal" to thermal(),
             "batteryLevel" to batteryLevel(),
+            "mediaVolume" to mediaVolume(),
         )
         if (reading == lastSent) return
         lastSent = reading
         events.success(reading)
+    }
+
+    // The media volume as a percentage of its range, 0 when muted.
+    private fun mediaVolume(): Int {
+        val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        if (max <= 0) return -1
+        return Math.round(audio.getStreamVolume(AudioManager.STREAM_MUSIC) * 100f / max)
     }
 
     // The percentage, or -1 when the system cannot say.

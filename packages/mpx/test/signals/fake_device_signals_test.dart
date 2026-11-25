@@ -13,11 +13,13 @@ void main() {
             required bool powerSaving,
             required ThermalStatus thermal,
             int? batteryLevel,
+            int? mediaVolume,
           }) async {
             fake.network.value = network;
             fake.powerSaving.value = powerSaving;
             fake.thermal.value = thermal;
             fake.batteryLevel.value = batteryLevel;
+            fake.mediaVolume.value = mediaVolume;
           },
     );
   });

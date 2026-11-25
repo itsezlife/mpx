@@ -10,10 +10,12 @@ final class FakeDeviceSignals implements IDeviceSignals {
     bool powerSaving = false,
     ThermalStatus thermal = ThermalStatus.nominal,
     int? batteryLevel,
+    int? mediaVolume,
   }) : network = ValueNotifier(network),
        powerSaving = ValueNotifier(powerSaving),
        thermal = ValueNotifier(thermal),
-       batteryLevel = ValueNotifier(batteryLevel);
+       batteryLevel = ValueNotifier(batteryLevel),
+       mediaVolume = ValueNotifier(mediaVolume);
 
   @override
   final ValueNotifier<NetworkClass> network;
@@ -27,6 +29,9 @@ final class FakeDeviceSignals implements IDeviceSignals {
   @override
   final ValueNotifier<int?> batteryLevel;
 
+  @override
+  final ValueNotifier<int?> mediaVolume;
+
   /// Whether [dispose] ran.
   bool get isDisposed => _disposed;
   bool _disposed = false;
@@ -39,5 +44,6 @@ final class FakeDeviceSignals implements IDeviceSignals {
     powerSaving.dispose();
     thermal.dispose();
     batteryLevel.dispose();
+    mediaVolume.dispose();
   }
 }

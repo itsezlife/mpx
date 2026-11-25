@@ -1,8 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:mpx_player/src/feed/feed_item.dart';
 
-/// The reader's autoplay settings and the power saver, as the reference
-/// clients have them (their "lite mode").
+/// The reader's autoplay settings and the power saver, as a "lite mode".
 ///
 /// - What autoplays is a setting per kind of media: [autoplayVideos] and
 ///   [autoplayGifs] (a silent loop). Off, nothing of that kind plays by
@@ -16,7 +15,7 @@ import 'package:mpx_player/src/feed/feed_item.dart';
 ///   phone's sake did not turn off the feed's videos.
 @immutable
 final class FeedLiteMode {
-  /// Creates the settings; the defaults are the reference's: both kinds on,
+  /// Creates the settings; the defaults: both kinds on,
   /// the power saver at 10 %.
   const FeedLiteMode({
     this.autoplayVideos = true,

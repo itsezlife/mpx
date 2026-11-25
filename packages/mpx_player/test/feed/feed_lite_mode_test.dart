@@ -17,7 +17,7 @@ FeedItem _gif({bool local = false}) => FeedItem(
   ),
 );
 
-/// The reference clients' lite mode: what autoplays is the reader's choice
+/// Lite mode: what autoplays is the reader's choice
 /// per kind, and the power saver is a battery level, not the system's mode.
 void main() {
   group('the power saver', () {

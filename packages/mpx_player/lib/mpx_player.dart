@@ -9,7 +9,7 @@
 /// how many players hold an engine and how many play.
 ///
 /// A `FeedPolicy` holds the rules of a scrolling surface (the 25 feed knobs
-/// with reference defaults); `FeedListPlanner` turns what a list shows into
+/// with defaults); `FeedListPlanner` turns what a list shows into
 /// what plays, what is in view and what preloads. A `FeedController` runs
 /// it inside any host scrollable whose cells are `FeedSlot`s.
 ///

@@ -160,7 +160,7 @@ void main() {
       }
     });
 
-    test('a host gate replaces the reference one', () {
+    test('a host gate replaces the standard one', () {
       final never = FeedPolicy.list(
         autoplayGate: (item, conditions, policy) => FeedAutoplay.none,
       );

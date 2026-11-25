@@ -205,7 +205,7 @@ final class NativePlayerBackend implements PlayerBackend {
   final bool _backgroundAudio;
 
   /// How an audible player takes the platform's sound; by default the
-  /// platform's reference behaviour ([PlayerAudioFocus.forPlatform]).
+  /// platform's standard behaviour ([PlayerAudioFocus.forPlatform]).
   final PlayerAudioFocus audioFocusMode;
 
   /// How far a player that has not played yet buffers ahead.
@@ -1135,7 +1135,7 @@ final class PreparedBuffer {
     : assert(bytes >= 0, 'A byte cap is not negative.');
 
   /// About two seconds and 2 MiB: a first frame and a start that needs no
-  /// wait, as the reference fetches for a neighbour.
+  /// wait, as a neighbour's fetch does.
   static const PreparedBuffer standard = PreparedBuffer(
     ahead: Duration(seconds: 2),
     bytes: 2 * 1024 * 1024,

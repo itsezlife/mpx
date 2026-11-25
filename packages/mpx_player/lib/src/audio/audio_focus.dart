@@ -71,7 +71,7 @@ enum PlayerAudioFocus {
   /// going away (headphones out) is still reported.
   mix;
 
-  /// The reference behaviour of [platform]: Android plays a video over the
+  /// The standard behaviour of [platform]: Android plays a video over the
   /// music that plays; Apple platforms take the sound.
   static PlayerAudioFocus forPlatform(TargetPlatform platform) =>
       switch (platform) {

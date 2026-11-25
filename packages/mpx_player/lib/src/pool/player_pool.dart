@@ -273,8 +273,8 @@ final class PlayerPool {
   // Videos whose decoder was busy while they were off screen: not prepared
   // ahead again until a view shows them or they are played. Without this a
   // viewer's neighbours would ask the hardware for a decoder at every page,
-  // be refused and let go, over and over (the reference prepares only the
-  // item shown).
+  // be refused and let go, over and over (only the
+  // item shown is prepared).
   final Set<MediaKey> _busyOffScreen = {};
 
   // Lets go of the engine of every player no view shows, but [except]:

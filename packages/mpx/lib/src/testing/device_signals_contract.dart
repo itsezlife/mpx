@@ -10,6 +10,7 @@ typedef DeviceSignalsReport =
       required bool powerSaving,
       required ThermalStatus thermal,
       int? batteryLevel,
+      int? mediaVolume,
     });
 
 /// Fresh [IDeviceSignals] for one contract test, with the hook that drives
@@ -41,6 +42,7 @@ void runDeviceSignalsContract(
       expect(signals.powerSaving.value, isFalse);
       expect(signals.thermal.value, ThermalStatus.nominal);
       expect(signals.batteryLevel.value, isNull);
+      expect(signals.mediaVolume.value, isNull);
     });
 
     test('takes every value the device reports', () async {
@@ -51,12 +53,26 @@ void runDeviceSignalsContract(
         powerSaving: true,
         thermal: ThermalStatus.serious,
         batteryLevel: 42,
+        mediaVolume: 60,
       );
 
       expect(signals.network.value, NetworkClass.metered);
       expect(signals.powerSaving.value, isTrue);
       expect(signals.thermal.value, ThermalStatus.serious);
       expect(signals.batteryLevel.value, 42);
+      expect(signals.mediaVolume.value, 60);
+    });
+
+    test('a volume that goes to zero is muted, not unknown', () async {
+      final (:signals, :report) = await open();
+      await report(
+        network: NetworkClass.unmetered,
+        powerSaving: false,
+        thermal: ThermalStatus.nominal,
+        mediaVolume: 0,
+      );
+
+      expect(signals.mediaVolume.value, 0);
     });
 
     test('a battery the device cannot read is unknown, not empty', () async {
@@ -84,6 +100,7 @@ void runDeviceSignalsContract(
       signals.powerSaving.addListener(() => heard.add('powerSaving'));
       signals.thermal.addListener(() => heard.add('thermal'));
       signals.batteryLevel.addListener(() => heard.add('battery'));
+      signals.mediaVolume.addListener(() => heard.add('volume'));
 
       await report(
         network: NetworkClass.unmetered,
@@ -99,6 +116,15 @@ void runDeviceSignalsContract(
         batteryLevel: 50,
       );
       expect(heard, ['thermal', 'battery']);
+
+      await report(
+        network: NetworkClass.unmetered,
+        powerSaving: false,
+        thermal: ThermalStatus.fair,
+        batteryLevel: 50,
+        mediaVolume: 30,
+      );
+      expect(heard, ['thermal', 'battery', 'volume']);
     });
 
     test('a repeated reading notifies nobody', () async {

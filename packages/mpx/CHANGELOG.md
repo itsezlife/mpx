@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Device signals carry the media volume (`IDeviceSignals.mediaVolume`, 0 to
+  100 percent, 0 when muted, null when unknown): the Android music stream's
+  (`VOLUME_CHANGED_ACTION`) and the Apple audio session's output volume.
 - Device signals carry the battery level (`IDeviceSignals.batteryLevel`, an
   int percentage, null when the device cannot tell): read on Android and iOS,
   unknown on macOS and where there is no native side.
@@ -20,7 +23,7 @@
   for the rest; per network class, `AutoDownloadLimits` per kind) and the
   network class of `IDeviceSignals`; without a network it keeps the last
   connected class. `$Android`, `$IOS` and `$Desktop` hold each platform's
-  reference defaults. `MpxStack.create(autoDownload:)` defaults to it for
+  standard defaults. `MpxStack.create(autoDownload:)` defaults to it for
   `defaultTargetPlatform`, and `MpxStack.autoDownload` exposes the policy.
   Missing videos over the limit, and videos and animations whose size is
   unknown, now show their stand-ins and wait for a tap instead of

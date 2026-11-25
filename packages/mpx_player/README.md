@@ -112,7 +112,7 @@ warm neighbours (`state.lease`).
   calls, other apps and headphones go through the backend's `AudioFocus`
 - `FakePlayerBackend` and the `PlayerEngine`, `AudioFocus` and
   `PictureInPicture` contracts in `testing.dart`
-- `FeedPolicy`: the 25 feed knobs with reference defaults per mode;
+- `FeedPolicy`: the 25 feed knobs with defaults per mode;
   `FeedListPlanner` decides what a list plays, shows in view and preloads
 - `FeedPager`: the pager mode; the page shown plays with sound, neighbours
   keep prepared players inside the budget, a swipe takes one over

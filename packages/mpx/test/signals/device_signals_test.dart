@@ -42,12 +42,14 @@ final class _FakePlatform {
     required bool powerSaving,
     required ThermalStatus thermal,
     int? batteryLevel,
+    int? mediaVolume,
   }) => send({
     'network': network.name,
     'powerSaving': powerSaving,
     'thermal': thermal.name,
     // The native side sends -1 for a battery it cannot read.
     'batteryLevel': batteryLevel ?? -1,
+    'mediaVolume': mediaVolume ?? -1,
   });
 }
 

@@ -42,7 +42,7 @@ final class PlayerDecoder {
 /// What this device can decode, from the platform backend's hardware probe:
 /// the input to the prepared-player budget and to the choice of a quality.
 ///
-/// The gate is the reference client's: players are kept prepared only on a
+/// The gate: players are kept prepared only on a
 /// high-class device that can run at least [minHevcInstances] HEVC decoders
 /// at once; elsewhere every player but the one that plays is released, and
 /// the neighbours stay warm as bytes only. A platform that names no instance

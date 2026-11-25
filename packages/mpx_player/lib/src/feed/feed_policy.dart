@@ -45,14 +45,14 @@ final class FeedActiveItemRule {
        );
 
   /// How much of an item must show for it to be in view. 0.5 is a suggestion;
-  /// the reference gives no value.
+  /// no value is given.
   final double minVisibleFraction;
 
   /// How ties among items above [minVisibleFraction] are broken.
   final FeedTieBreak tieBreak;
 
   /// Below this visible fraction a clip keeps its decoder but stops advancing
-  /// frames (`AssetProfile.advanceFloor`). The Android reference stops below a
+  /// frames (`AssetProfile.advanceFloor`). Android stops below a
   /// quarter.
   final double advanceFloor;
 
@@ -140,13 +140,13 @@ final class FeedSizeLimits {
 
   static const int _mib = 1024 * 1024;
 
-  /// On Wi-Fi and other free networks. The reference's high preset: 15 MiB.
+  /// On Wi-Fi and other free networks. The high preset: 15 MiB.
   final int unmetered;
 
-  /// On mobile data. The reference's medium preset: 10 MiB.
+  /// On mobile data. The medium preset: 10 MiB.
   final int metered;
 
-  /// Abroad. The reference's low preset: 500 KiB.
+  /// Abroad. The low preset: 500 KiB.
   final int roaming;
 
   /// The limit on [network]; nothing autoplays without a network.
@@ -224,8 +224,8 @@ final class FeedOversizePrefix {
     this.maxBytes = 2 * 1024 * 1024,
   });
 
-  /// How much playback the prefix holds. The reference fetches 4 s on one
-  /// platform and the first second on another; a duration, never a fixed
+  /// How much playback the prefix holds. Platforms differ: one
+  /// fetches 4 s, another the first second; a duration, never a fixed
   /// byte count, is the lesson of both.
   final Duration duration;
 
@@ -257,7 +257,7 @@ enum FeedResume {
 /// device's conditions come in through [FeedConditions].
 ///
 /// One knob set serves both modes, with per-mode defaults taken from the
-/// reference clients and the platform guidance; a host overrides any knob.
+/// messenger clients and the platform guidance; a host overrides any knob.
 /// The numbering of the knobs follows the feed decision (ADR 0005). Every
 /// knob here is read by the feed; the ones only a native player backend or a
 /// later consumer can honour (start buffer, forward buffer cap, resolution
@@ -269,7 +269,7 @@ final class FeedPolicy {
   /// The list mode's defaults: every visible clip plays muted and loops.
   const FeedPolicy.list({
     this.activeItem = const FeedActiveItemRule(),
-    this.autoplayGate = referenceAutoplayGate,
+    this.autoplayGate = standardAutoplayGate,
     this.sizeLimits = const FeedSizeLimits(),
     this.lite = const FeedLiteMode(),
     this.mutedAutoplay = true,
@@ -290,7 +290,7 @@ final class FeedPolicy {
   /// The pager mode's defaults: one item with sound, its neighbours warm.
   const FeedPolicy.pager({
     this.activeItem = const FeedActiveItemRule(),
-    this.autoplayGate = referenceAutoplayGate,
+    this.autoplayGate = standardAutoplayGate,
     this.sizeLimits = const FeedSizeLimits(),
     this.lite = const FeedLiteMode(),
     this.mutedAutoplay = false,
@@ -435,11 +435,11 @@ final class FeedPolicy {
     return stage.compareTo(cap) <= 0 ? stage : cap;
   }
 
-  // --- Reference defaults ---------------------------------------------------
+  // --- Standard defaults ----------------------------------------------------
 
-  /// The reference autoplay gate.
+  /// The standard autoplay gate.
   ///
-  /// The reader's settings come first, as in the reference clients: nothing
+  /// The reader's settings come first, as usual: nothing
   /// of a kind autoplays when its setting is off, and nothing at all under the
   /// power saver ([FeedPolicy.lite]), a file on the device included. Then an
   /// item already on the device plays. Otherwise nothing plays with no
@@ -447,7 +447,7 @@ final class FeedPolicy {
   /// larger one gets a prefix when prefixes are on and the limit is above the
   /// prefix cap (a small limit means the user saves data); else it does not
   /// play. An unknown size counts as within the limit.
-  static FeedAutoplay referenceAutoplayGate(
+  static FeedAutoplay standardAutoplayGate(
     FeedItem item,
     FeedConditions conditions,
     FeedPolicy policy,

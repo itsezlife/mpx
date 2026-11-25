@@ -358,7 +358,7 @@ void main() {
     expect(changes, 1);
   });
 
-  test('forPlatform picks each reference', () {
+  test('forPlatform picks the presets of each platform', () {
     expect(
       AutoDownloadPresets.forPlatform(TargetPlatform.android),
       same(AutoDownloadPresets.$Android),

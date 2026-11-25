@@ -64,6 +64,10 @@ abstract interface class IDeviceSignals {
   /// desktop with no battery, a platform with no native side).
   ValueListenable<int?> get batteryLevel;
 
+  /// The media volume of the device, 0 to 100 percent (0 is muted); null when
+  /// the device cannot tell. A rise of it is a reader asking for sound.
+  ValueListenable<int?> get mediaVolume;
+
   /// Stops reading the device. The listenables keep their last values and
   /// must not be listened to afterwards.
   void dispose();
@@ -105,6 +109,9 @@ final class DeviceSignals implements IDeviceSignals {
   @override
   final ValueNotifier<int?> batteryLevel = ValueNotifier(null);
 
+  @override
+  final ValueNotifier<int?> mediaVolume = ValueNotifier(null);
+
   bool _disposed = false;
 
   void _take(_Reading reading) {
@@ -112,6 +119,7 @@ final class DeviceSignals implements IDeviceSignals {
     powerSaving.value = reading.powerSaving;
     thermal.value = reading.thermal;
     batteryLevel.value = reading.batteryLevel;
+    mediaVolume.value = reading.mediaVolume;
   }
 
   @override
@@ -123,6 +131,7 @@ final class DeviceSignals implements IDeviceSignals {
     powerSaving.dispose();
     thermal.dispose();
     batteryLevel.dispose();
+    mediaVolume.dispose();
   }
 }
 
@@ -131,6 +140,7 @@ typedef _Reading = ({
   bool powerSaving,
   ThermalStatus thermal,
   int? batteryLevel,
+  int? mediaVolume,
 });
 
 /// The one listener of the event channel, fanning readings out to every live
@@ -189,8 +199,8 @@ final class _DeviceSignalsHub {
 }
 
 /// One wire reading: a map with `network` and `thermal` wire names, a
-/// `powerSaving` bool and a `batteryLevel` int (-1 when unknown, and absent
-/// from a native side that predates it). Unknown names throw; the sides ship
+/// `powerSaving` bool, a `batteryLevel` and a `mediaVolume` int (-1 when
+/// unknown, and absent from a native side that predates them). Unknown names throw; the sides ship
 /// together.
 _Reading _decode(Object? event) => switch (event) {
   {
@@ -203,6 +213,10 @@ _Reading _decode(Object? event) => switch (event) {
       powerSaving: powerSaving,
       thermal: ThermalStatus.values.byName(thermal),
       batteryLevel: switch (event['batteryLevel']) {
+        final int level when level >= 0 && level <= 100 => level,
+        _ => null,
+      },
+      mediaVolume: switch (event['mediaVolume']) {
         final int level when level >= 0 && level <= 100 => level,
         _ => null,
       },

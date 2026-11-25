@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `FeedPolicy.referenceAutoplayGate` is `FeedPolicy.standardAutoplayGate`.
 - The feed's power saver is the reference clients' lite mode, not the system's
   battery saver. `FeedPolicy.lite` (`FeedLiteMode`): videos and GIFs autoplay
   as the reader's settings say, each kind apart, and nothing autoplays at or
