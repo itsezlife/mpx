@@ -564,6 +564,7 @@ final class ViewerLoadingRules {
         minSweepDegrees: 4,
         maxSweepDegrees: 270,
         sweepPeriod: Duration(milliseconds: 1000),
+        motion: MediaSpinnerMotion.chase,
       ),
       appearance: MediaStatusAppearance.scale,
       appearDuration: Duration(milliseconds: 200),

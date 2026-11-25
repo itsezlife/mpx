@@ -45,6 +45,7 @@ class FeedClip extends StatelessWidget {
     this.showsBuffering = false,
     this.status = MediaStatusMode.none,
     this.badge = false,
+    this.onPlay,
     super.key,
   });
 
@@ -53,6 +54,18 @@ class FeedClip extends StatelessWidget {
 
   /// Whether the media badge shows over the item (`AssetView.badge`).
   final bool badge;
+
+  /// What a tap on the play button does, or null for no button.
+  ///
+  /// With a [status] control, a clip the autoplay gate holds
+  /// ([FeedAutoplay.none], [FeedAutoplay.prefixOnly]: a setting, the power
+  /// saver, a size over the limit) shows play once its picture shows, as
+  /// content that does not play by itself does: the host decides what that
+  /// is, `FeedController.requestPlay` for a clip that plays in place, the
+  /// viewer for a video. A clip that plays, or is only paused for a moment
+  /// (the app away, a scroll), shows none. Streamable video that waits for
+  /// the reader shows play too, and streams through it.
+  final VoidCallback? onPlay;
 
   /// The size and decode of the item's media under a profile.
   final AssetPreset Function(AssetProfile profile)? preset;
@@ -153,7 +166,16 @@ class FeedClip extends StatelessWidget {
           );
         }
 
-        final overlays = status is! MediaStatusMode$None || badge;
+        final held =
+            state.autoplay == FeedAutoplay.none ||
+            state.autoplay == FeedAutoplay.prefixOnly;
+        // Content that does not play by itself offers to play.
+        final shownStatus = switch (status) {
+          MediaStatusMode$Control() when onPlay != null && held =>
+            const MediaStatusMode.control(playAction: true),
+          _ => status,
+        };
+        final overlays = shownStatus is! MediaStatusMode$None || badge;
         if (!overlays ||
             state.released ||
             item == null ||
@@ -190,8 +212,9 @@ class FeedClip extends StatelessWidget {
                 scope: scope,
                 downloadContext: item.downloadContext,
                 opacity: 0,
-                status: status,
+                status: shownStatus,
                 badge: badge,
+                onPlay: onPlay,
               ),
             ),
           ],

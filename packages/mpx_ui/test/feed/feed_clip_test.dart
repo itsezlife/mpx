@@ -337,4 +337,65 @@ void main() {
 
     expect(find.byType(ViewerOriginOverlay), findsOneWidget);
   });
+
+  group('a clip the gate holds offers to play', () {
+    const held = FeedPolicy.list(lite: FeedLiteMode(autoplayVideos: false));
+
+    Future<void> pumpHeld(
+      WidgetTester tester, {
+      required FeedPolicy policy,
+      VoidCallback? onPlay,
+    }) async {
+      final feed = FeedController(policy: policy, presetOf: preset);
+      addTearDown(feed.dispose);
+      await pump(
+        tester,
+        FeedScope(
+          controller: feed,
+          child: ListView(
+            children: [
+              SizedBox(
+                height: 200,
+                child: FeedSlot(
+                  index: 0,
+                  item: _item(0),
+                  child: FeedClip(
+                    status: const MediaStatusMode.control(),
+                    onPlay: onPlay,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      for (final attempt in producer.attempts) {
+        attempt.advance(AssetStage.firstFrame);
+      }
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    testWidgets('play shows over its picture, and a tap is the host\'s', (
+      tester,
+    ) async {
+      var plays = 0;
+      await pumpHeld(tester, policy: held, onPlay: () => plays++);
+
+      expect(find.bySemanticsLabel('Play'), findsOneWidget);
+      await tester.tap(find.bySemanticsLabel('Play'));
+      expect(plays, 1);
+    });
+
+    testWidgets('with no host to play it there is no button', (tester) async {
+      await pumpHeld(tester, policy: held);
+
+      expect(find.bySemanticsLabel('Play'), findsNothing);
+    });
+
+    testWidgets('a clip that plays by itself shows none', (tester) async {
+      await pumpHeld(tester, policy: const FeedPolicy.list(), onPlay: () {});
+
+      expect(find.bySemanticsLabel('Play'), findsNothing);
+    });
+  });
 }

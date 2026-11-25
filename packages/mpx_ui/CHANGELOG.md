@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `FeedClip.onPlay`: a clip the autoplay gate holds (a setting, the power
+  saver, a size over the limit) shows play over its picture, with the host's
+  action behind it (`FeedController.requestPlay` for a clip that plays in
+  place, the viewer for a video); a clip that plays, or is paused for a
+  moment, shows none.
 - The badge and the status control `FeedClip` lays over a clip fade with the
   viewer's morph, as every mark over an item does (`ViewerOriginOverlay`).
 - Closing on a video stands its player still on the frame the origin's loop
