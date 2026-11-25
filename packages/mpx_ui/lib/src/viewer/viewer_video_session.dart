@@ -73,6 +73,21 @@ final class ViewerVideoSession extends ChangeNotifier {
   }
 
   bool _hold = false;
+  int _touches = 0;
+
+  /// A finger went down on the viewer: the controls do not hide while any is
+  /// down; every touch cancels the hide.
+  void touchDown() {
+    _touches++;
+    _hideTimer?.cancel();
+    _hideTimer = null;
+  }
+
+  /// A finger left: the wait starts again once none is down.
+  void touchUp() {
+    if (_touches > 0) _touches--;
+    _scheduleAutoHide();
+  }
 
   /// The lease the item plays on.
   PlayerLease get lease => _lease;
@@ -138,6 +153,7 @@ final class ViewerVideoSession extends ChangeNotifier {
     if (_disposed ||
         !_autoHide ||
         _hold ||
+        _touches > 0 ||
         !rules.autoHides ||
         !controls.value ||
         !_lease.state.value.playing) {

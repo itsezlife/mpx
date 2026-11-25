@@ -41,7 +41,7 @@ void main() {
       return harness.state(tester).policy;
     }
 
-    testWidgets('with nothing set, the reference of the theme\'s platform', (
+    testWidgets('with nothing set, the default of the theme\'s platform', (
       tester,
     ) async {
       expect(
@@ -58,7 +58,7 @@ void main() {
       );
     });
 
-    testWidgets('a scope changes the platform\'s reference and keeps the '
+    testWidgets('a scope changes the platform\'s default and keeps the '
         'rest of it', (tester) async {
       final policy = await resolved(
         tester,

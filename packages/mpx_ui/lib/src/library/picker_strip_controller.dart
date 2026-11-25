@@ -11,7 +11,7 @@ import 'package:mpx_ui/src/library/picker_selection.dart';
 /// selected strip, or a host's own row driven by a [PickerStripController].
 @immutable
 final class PickerStripPolicy {
-  /// Creates a policy; [PickerStripPolicy.$Android] is the reference's row.
+  /// Creates a policy; [PickerStripPolicy.$Android] is the standard row.
   const PickerStripPolicy({
     this.item = 85,
     this.gap = 6,
@@ -24,7 +24,7 @@ final class PickerStripPolicy {
     this.edgeTick = const Duration(milliseconds: 15),
   });
 
-  /// The reference's row: 85 px items 6 apart; a removed item fades over
+  /// The standard row: 85 px items 6 apart; a removed item fades over
   /// 120 ms while the rest slide over 250 ms, both easing in and out, at
   /// once; a lifted item held within 32 px of an end scrolls the row by up
   /// to 6 px every 15 ms.

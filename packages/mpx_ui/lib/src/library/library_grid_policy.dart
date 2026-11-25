@@ -106,7 +106,7 @@ final class LibraryGridPolicy {
     liveCornerMark: true,
     videoPlayMark: true,
     swipeRule: SwipeSelectRule.longPressDrag,
-    // The reference's range selector: 80 hotspots, each step half as far
+    // The range selector: 80 hotspots, each step half as far
     // as the finger is into one (up to 40 at the end).
     autoScrollEdge: 80,
     autoScrollMaxStep: 40,
@@ -250,7 +250,7 @@ final class LibraryGridPolicy {
   final double autoScrollEdge;
 
   /// How long a cell's check and marks take to fade out as the viewer opens
-  /// on it, and back as the viewer leaves it (the reference's 180 ms,
+  /// on it, and back as the viewer leaves it (180 ms,
   /// decelerating); zero to switch at once.
   final Duration viewerOverlayFade;
 

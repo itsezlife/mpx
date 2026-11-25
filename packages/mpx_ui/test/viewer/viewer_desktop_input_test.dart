@@ -29,7 +29,7 @@ void main() {
       expect(harness.state(tester).index, 2);
     });
 
-    testWidgets('Home and End do nothing, as on the reference', (tester) async {
+    testWidgets('Home and End do nothing, as usual', (tester) async {
       final harness = await _open(tester);
 
       await tester.sendKeyEvent(LogicalKeyboardKey.end);

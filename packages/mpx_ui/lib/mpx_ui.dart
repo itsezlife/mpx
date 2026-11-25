@@ -11,7 +11,7 @@
 ///
 /// `GalleryPager` is the viewer's pager, and any host's: one gesture owner
 /// decides once, from the down point, between a pinch, a pan of a zoomed
-/// picture, a dismiss drag and a page drag, with a reference's
+/// picture, a dismiss drag and a page drag, with its own
 /// `GalleryPagerPhysics`, tap timings and `GalleryPageTransition`; a zoomed
 /// page hands the rest of a pan on to its neighbour at its edge.
 ///
@@ -61,6 +61,7 @@ export 'src/viewer/origin_bridge.dart';
 export 'src/viewer/viewer_actions.dart';
 export 'src/viewer/viewer_backdrop.dart';
 export 'src/viewer/viewer_caption.dart';
+export 'src/viewer/viewer_change.dart';
 export 'src/viewer/viewer_chrome_overlay.dart';
 export 'src/viewer/viewer_loading.dart'
     show ViewerBufferingSpinner, ViewerPageStatus;
@@ -69,7 +70,9 @@ export 'src/viewer/viewer_photo_page.dart';
 export 'src/viewer/viewer_policy.dart';
 export 'src/viewer/viewer_policy_scope.dart';
 export 'src/viewer/viewer_seek.dart';
+export 'src/viewer/viewer_strip.dart';
 export 'src/viewer/viewer_system_bars.dart';
+export 'src/viewer/viewer_text.dart';
 export 'src/viewer/viewer_tokens.dart';
 export 'src/viewer/viewer_video.dart';
 export 'src/viewer/viewer_video_page.dart';

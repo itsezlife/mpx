@@ -263,7 +263,7 @@ final class GalleryPagerPhysics {
     this.sideTap,
   });
 
-  /// The Android reference: a drag pages once it is 12 px longer
+  /// The Android physics: a drag pages once it is 12 px longer
   /// horizontally than vertically; past the ends the page follows a third
   /// of the drag; a release a third of a page on, or faster than 650 px/s,
   /// goes on (by distance only while the picture is zoomed); the settle
@@ -288,7 +288,7 @@ final class GalleryPagerPhysics {
     ),
   );
 
-  /// The iOS reference: a drag pages past the platform pan slop when it is
+  /// The iOS physics: a drag pages past the platform pan slop when it is
   /// more horizontal than vertical; past the ends a rubber band; a release
   /// past half a page or with a flick goes on; the settle is a spring a
   /// touch catches.
@@ -301,7 +301,7 @@ final class GalleryPagerPhysics {
     edge: GalleryEdge.rubberBand(),
   );
 
-  /// The desktop reference: no drag pages and items switch at once; a press
+  /// The desktop physics: no drag pages and items switch at once; a press
   /// on a 90 px strip at either side, clear of the 47 px bars, pages.
   static const GalleryPagerPhysics $Desktop = GalleryPagerPhysics(
     claim: GalleryClaim.none(),

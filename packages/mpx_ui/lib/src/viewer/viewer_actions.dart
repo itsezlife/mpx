@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_ui/src/viewer/gallery_source.dart';
+import 'package:mpx_ui/src/viewer/viewer_change.dart';
 
 /// A file on disk the host holds for the viewer while an action uses it: the
 /// cached bytes of an item. The viewer releases it when the action is done,
@@ -145,6 +146,10 @@ final class ViewerChrome {
     this.backIcon,
     this.moreIcon,
     this.settingsIcon,
+    this.titleTransition = ViewerChangeTransition.slide,
+    this.subtitleTransition = ViewerChangeTransition.words,
+    this.counterTransition = ViewerChangeTransition.digits,
+    this.captionTransition = ViewerChangeTransition.fade,
   });
 
   /// The actions of an item; none when null.
@@ -177,4 +182,18 @@ final class ViewerChrome {
 
   /// The video settings button's icon; a plain glyph when null.
   final Widget? settingsIcon;
+
+  /// How the title changes when the item does: the slide by
+  /// default; [ViewerChangeTransition.none] for no animation.
+  final ViewerChangeTransition titleTransition;
+
+  /// How the subtitle changes when the item does.
+  final ViewerChangeTransition subtitleTransition;
+
+  /// How the "N of M" counter changes when the item does.
+  final ViewerChangeTransition counterTransition;
+
+  /// How the caption changes when the item does: the crossfade by
+  /// default.
+  final ViewerChangeTransition captionTransition;
 }

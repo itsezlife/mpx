@@ -7,7 +7,10 @@ import 'package:mpx_ui/src/text/mpx_text_root.dart';
 import 'package:mpx_ui/src/viewer/gallery_source.dart';
 import 'package:mpx_ui/src/viewer/viewer_actions.dart';
 import 'package:mpx_ui/src/viewer/viewer_caption.dart';
+import 'package:mpx_ui/src/viewer/viewer_change.dart';
 import 'package:mpx_ui/src/viewer/viewer_policy.dart';
+import 'package:mpx_ui/src/viewer/viewer_strip.dart';
+import 'package:mpx_ui/src/viewer/viewer_text.dart';
 import 'package:mpx_ui/src/viewer/viewer_tokens.dart';
 
 /// The chrome the viewer draws over its pages: the top bar (back, title and
@@ -32,6 +35,9 @@ class ViewerChromeOverlay extends StatefulWidget {
     this.settingsOpen,
     this.settingsLabel = 'Settings',
     this.onMenuChanged,
+    this.onCaptionScrolled,
+    this.onCaptionTop,
+    this.pagePosition,
   });
 
   /// What the host fills in.
@@ -78,11 +84,23 @@ class ViewerChromeOverlay extends StatefulWidget {
   /// controls while it is open.
   final ValueChanged<bool>? onMenuChanged;
 
+  /// Told when the caption is scrolled away from its start or back to it.
+  final ValueChanged<bool>? onCaptionScrolled;
+
+  /// Told where the caption's top edge is on the screen.
+  final ValueChanged<double>? onCaptionTop;
+
+  /// The pager's continuous page: the thumbnail strip follows a drag by it.
+  final ValueListenable<double>? pagePosition;
+
   @override
   State<ViewerChromeOverlay> createState() => _ViewerChromeOverlayState();
 }
 
 class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
+  // The way the item went last: the title, the counter and the rest slide
+  // that way as they change.
+  int _direction = 1;
   bool _menuState = false;
 
   bool get _menuOpen => _menuState;
@@ -109,7 +127,10 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
       oldWidget.controls.removeListener(_controlsChanged);
       widget.controls.addListener(_controlsChanged);
     }
-    if (oldWidget.index != widget.index) _menuOpen = false;
+    if (oldWidget.index != widget.index) {
+      _menuOpen = false;
+      _direction = widget.index > oldWidget.index ? 1 : -1;
+    }
   }
 
   @override
@@ -267,18 +288,16 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (title != null)
-                      DefaultTextStyle.merge(
-                        style: tokens.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        child: title,
-                      ),
+                      _changing(title, chrome.titleTransition, tokens.title, (
+                        'title',
+                        widget.index,
+                      )),
                     if (subtitle != null)
-                      DefaultTextStyle.merge(
-                        style: tokens.subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        child: subtitle,
+                      _changing(
+                        subtitle,
+                        chrome.subtitleTransition,
+                        tokens.subtitle,
+                        ('subtitle', widget.index),
                       ),
                   ],
                 ),
@@ -339,6 +358,49 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
     );
   }
 
+  // A part of the chrome that changes with the item: a text that is only a
+  // text is animated as a text (the runs that differ are swapped), anything
+  // else crossfades, sliding the way the item went. A part the next item
+  // shares does not change at all.
+  Widget _changing(
+    Widget content,
+    ViewerChangeTransition transition,
+    TextStyle style,
+    Object fallback,
+  ) {
+    if (transition.kind != ViewerChangeKind.crossfade &&
+        content is Text &&
+        content.data != null) {
+      return ViewerAnimatedText(
+        content.data!,
+        style: style.merge(content.style),
+        byWords: transition.kind == ViewerChangeKind.words,
+        moveAmplitude: transition.amplitude,
+        duration: transition.duration,
+        curve: transition.curve,
+      );
+    }
+    return ViewerChangeSwitcher(
+      transition: transition.kind == ViewerChangeKind.crossfade
+          ? transition
+          : ViewerChangeTransition(
+              duration: transition.duration,
+              curve: transition.curve,
+              distance: 8,
+            ),
+      direction: _direction,
+      child: KeyedSubtree(
+        key: ViewerChangeKey.of(content, fallback),
+        child: DefaultTextStyle.merge(
+          style: style,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          child: content,
+        ),
+      ),
+    );
+  }
+
   Widget _counter(ViewerChromeMetrics metrics) {
     final text = widget.chrome.strings.counter(
       widget.index + 1,
@@ -359,7 +421,12 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
         // picture lies under it.
         child: Align(
           widthFactor: 1,
-          child: Text(text, style: widget.tokens.counter),
+          child: _changing(
+            Text(text),
+            widget.chrome.counterTransition,
+            widget.tokens.counter,
+            ('counter', widget.index),
+          ),
         ),
       ),
     );
@@ -375,85 +442,41 @@ class _ViewerChromeOverlayState extends State<ViewerChromeOverlay> {
     if (caption == null) return null;
     final style = widget.tokens.caption;
     final line = (style.fontSize ?? 16) * (style.height ?? 1.2);
-    // The first height is the metric's lines (two in landscape, as the
-    // reference); a longer caption grows from it under a drag.
+    // The first height is the metric's lines (two in landscape);
+    // a longer caption grows from it under a drag.
     final landscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
     final lines = landscape
         ? math.min(2, metrics.captionMaxLines)
         : metrics.captionMaxLines;
     return ViewerCaptionSheet(
+      onScrolled: widget.onCaptionScrolled,
+      onTopChanged: widget.onCaptionTop,
       fill: widget.tokens.barFill,
       padding: metrics.captionPadding,
       collapsedHeight: line * lines + metrics.captionPadding.vertical,
-      child: DefaultTextStyle.merge(style: style, child: caption),
-    );
-  }
-
-  Widget _strip(ViewerChromeMetrics metrics) {
-    final thumb = metrics.thumbSize;
-    return SizedBox(
-      key: const ValueKey('mpx-viewer-strip'),
-      height: metrics.stripHeight,
-      child: ColoredBox(
-        color: widget.tokens.barFill,
-        child: ListView.builder(
-          scrollDirection: Axis.horizontal,
-          itemCount: widget.source.count,
-          padding: EdgeInsets.only(top: metrics.thumbTop),
-          itemBuilder: (context, index) {
-            final item = widget.source.itemAt(index);
-            final current = index == widget.index;
-            final aspect = switch (item?.size) {
-              final size? when !size.isEmpty => size.width / size.height,
-              _ => thumb.width / thumb.height,
-            };
-            final width = current
-                ? math.min(metrics.currentThumbMaxWidth, thumb.height * aspect)
-                : thumb.width;
-            final gap = current
-                ? metrics.currentThumbPadding
-                : metrics.thumbSpacing / 2;
-            return GestureDetector(
-              key: ValueKey(('mpx-viewer-thumb', index)),
-              behavior: HitTestBehavior.opaque,
-              onTap: () => widget.onSelectIndex(index),
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: gap),
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(metrics.thumbRadius),
-                    child: SizedBox(
-                      width: width,
-                      height: thumb.height,
-                      child: item == null
-                          ? ColoredBox(color: widget.tokens.placeholder)
-                          : AssetView(
-                              content: item.key,
-                              scope: widget.scope,
-                              preset: AssetPresets.media(
-                                size: Size(width, thumb.height),
-                                devicePixelRatio:
-                                    MediaQuery.maybeDevicePixelRatioOf(
-                                      context,
-                                    ) ??
-                                    1,
-                                profile: const AssetProfile(
-                                  fit: AssetFit.cover,
-                                ),
-                              ),
-                            ),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
+      child: ViewerChangeSwitcher(
+        transition: widget.chrome.captionTransition,
+        direction: _direction,
+        alignment: AlignmentDirectional.topStart,
+        child: KeyedSubtree(
+          key: ViewerChangeKey.of(caption, ('caption', widget.index)),
+          child: DefaultTextStyle.merge(style: style, child: caption),
         ),
       ),
     );
   }
+
+  Widget _strip(ViewerChromeMetrics metrics) => ViewerThumbnailStrip(
+    source: widget.source,
+    index: widget.index,
+    position: widget.pagePosition,
+    metrics: metrics,
+    fill: widget.tokens.barFill,
+    placeholder: widget.tokens.placeholder,
+    scope: widget.scope,
+    onSelect: widget.onSelectIndex,
+  );
 
   List<Widget> _menu(
     List<ViewerAction> menu,

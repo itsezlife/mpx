@@ -156,7 +156,7 @@ void main() {
     });
   });
 
-  group('the reference values', () {
+  group('the standard values', () {
     test('per platform', () {
       expect(_android.claim, const GalleryClaim.margin(12));
       expect(_android.settleDuration, const Duration(milliseconds: 250));

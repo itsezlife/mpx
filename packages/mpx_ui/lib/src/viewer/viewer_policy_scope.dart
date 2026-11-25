@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mpx_ui/src/viewer/viewer_policy.dart';
 
 /// Sets the policy of every viewer below that is given none, as a change to
-/// the platform's reference: [policy] receives that reference and returns
+/// the platform's default policy: [policy] receives that default and returns
 /// the policy to use.
 ///
 /// One function serves both needs: `(platform) => platform.copyWith(...)`
@@ -19,19 +19,19 @@ import 'package:mpx_ui/src/viewer/viewer_policy.dart';
 /// )
 /// ```
 class ViewerPolicyScope extends InheritedWidget {
-  /// Applies [policy] to the platform's reference for the viewers below.
+  /// Applies [policy] to the platform's default policy for the viewers below.
   const ViewerPolicyScope({
     required this.policy,
     required super.child,
     super.key,
   });
 
-  /// The policy to use, given the platform's reference.
+  /// The policy to use, given the platform's default policy.
   final ViewerPolicy Function(ViewerPolicy platformDefault) policy;
 
   /// The policy a viewer at [context] uses: [policy] when given, else the
-  /// closest scope's applied to the platform's reference, else that
-  /// reference. The platform is the theme's (`ThemeData.platform`), so a
+  /// closest scope's applied to the platform's default policy, else that
+  /// default. The platform is the theme's (`ThemeData.platform`), so a
   /// host that overrides it in its theme gets that platform's viewer.
   ///
   /// Registers [context] as a dependent of the theme and the scope.

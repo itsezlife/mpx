@@ -16,7 +16,7 @@ final class GalleryTapRules {
     this.minDoubleTapGap = Duration.zero,
   });
 
-  /// The Android reference: a single tap waits 300 ms after the lift for a
+  /// The Android rules: a single tap waits 300 ms after the lift for a
   /// second press, which counts 40 ms to 300 ms after the lift and within
   /// 100 px of the first; a press that moves 8 px is no tap.
   static const GalleryTapRules $Android = GalleryTapRules(
@@ -26,7 +26,7 @@ final class GalleryTapRules {
     doubleTapSlop: 100,
   );
 
-  /// The iOS reference: a single tap waits 160 ms after the lift when a
+  /// The iOS rules: a single tap waits 160 ms after the lift when a
   /// double tap is possible; a press that moves into a pan is no tap.
   static const GalleryTapRules $IOS = GalleryTapRules(
     doubleTapDelay: Duration(milliseconds: 160),
@@ -34,7 +34,7 @@ final class GalleryTapRules {
     doubleTapSlop: 100,
   );
 
-  /// The desktop reference: a click waits for a double click only where one
+  /// The desktop rules: a click waits for a double click only where one
   /// does something; a press dragged 10 px is no click.
   static const GalleryTapRules $Desktop = GalleryTapRules(
     doubleTapDelay: Duration(milliseconds: 300),
@@ -128,7 +128,7 @@ abstract interface class GalleryTapTarget {
 /// deeper in the tree that wins its tap keeps it.
 ///
 /// A stock double-tap recognizer waits a fixed 300 ms and fires on the
-/// second lift; the references wait their own delays, skip the wait where a
+/// second lift; the platforms wait their own delays, skip the wait where a
 /// double tap does nothing, and fire on the second press.
 class GalleryTapRecognizer extends OneSequenceGestureRecognizer {
   /// Creates the recognizer.
@@ -193,7 +193,7 @@ class GalleryTapRecognizer extends OneSequenceGestureRecognizer {
         target.doubleTap(event.localPosition);
         return;
       }
-      // Too far or too soon: the reference drops the first tap.
+      // Too far or too soon: the first tap is dropped.
     }
     if (target.sideTap(event.localPosition, press: true)) {
       _consumed = true;

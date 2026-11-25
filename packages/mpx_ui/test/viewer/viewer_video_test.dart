@@ -990,6 +990,86 @@ void main() {
         expect(harness.state(tester).controlsVisible, isFalse);
       });
 
+      testWidgets('a finger on the viewer keeps the controls, and the wait '
+          'starts again when it leaves', (tester) async {
+        await openWithChrome(tester);
+
+        // Any touch, the caption here.
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('A caption')),
+        );
+        await tester.pump(const Duration(seconds: 10));
+        expect(harness.state(tester).controlsVisible, isTrue);
+
+        await gesture.up();
+        await tester.pump(const Duration(milliseconds: 2900));
+        expect(harness.state(tester).controlsVisible, isTrue);
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(harness.state(tester).controlsVisible, isFalse);
+      });
+
+      testWidgets('a caption scrolled away from its start keeps the '
+          'controls until it is back', (tester) async {
+        harness = ViewerHarness(
+          items: ViewerHarness.videos(1),
+          videoDuration: const Duration(seconds: 60),
+        );
+        await harness.pump(
+          tester,
+          chrome: ViewerChrome(
+            caption: (context, index, item) =>
+                Text(List.filled(40, 'line').join('\n')),
+          ),
+        );
+        final caption = find.byType(ViewerCaptionSheet);
+        final from = Offset(200, tester.getBottomLeft(caption).dy - 30);
+
+        await tester.dragFrom(from, const Offset(0, -200));
+        await tester.pump(const Duration(seconds: 10));
+        expect(harness.state(tester).controlsVisible, isTrue);
+
+        await tester.dragFrom(from, const Offset(0, 3000));
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump(const Duration(milliseconds: 3100));
+        expect(harness.state(tester).controlsVisible, isFalse);
+      });
+
+      testWidgets('the play button fades while the caption is over it and '
+          'comes back when it is not', (tester) async {
+        harness = ViewerHarness(
+          items: ViewerHarness.videos(1),
+          videoDuration: const Duration(seconds: 60),
+        );
+        await harness.pump(
+          tester,
+          chrome: ViewerChrome(
+            caption: (context, index, item) =>
+                Text(List.filled(60, 'line').join('\n')),
+          ),
+        );
+        harness.lease(tester).pause();
+        await tester.pump(const Duration(milliseconds: 300));
+        final fade = find.byKey(const ValueKey('mpx-viewer-play-fade'));
+        double opacity() => tester.widget<Opacity>(fade).opacity;
+        expect(opacity(), 1);
+
+        final caption = find.byType(ViewerCaptionSheet);
+        final from = Offset(200, tester.getBottomLeft(caption).dy - 30);
+        // The caption grows over the picture, up to the button's place.
+        await tester.dragFrom(from, const Offset(0, -500));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(opacity(), 0);
+
+        await tester.dragFrom(
+          Offset(200, tester.getTopLeft(find.byType(Text).last).dy + 30),
+          const Offset(0, 800),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(opacity(), 1);
+      });
+
       testWidgets('the controls stay while the overflow menu is open', (
         tester,
       ) async {

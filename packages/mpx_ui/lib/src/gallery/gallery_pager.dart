@@ -17,7 +17,7 @@ import 'package:mpx_ui/src/gallery/gallery_tap_recognizer.dart';
 /// The page of a [GalleryPager], and the way a host moves it.
 ///
 /// [page] is the page the pager rests on; it changes when a settle lands,
-/// as the references switch their item, so preparation keyed to it is not
+/// as other pagers switch their item, so preparation keyed to it is not
 /// churned by a drag that comes back. [position] is the continuous page,
 /// for chrome that follows the motion. Listeners of the controller hear
 /// [page] change; listeners of [position] every move.
@@ -96,7 +96,7 @@ typedef GalleryPageBuilder = Widget Function(BuildContext context, int index);
 /// A pager for full-screen media with one gesture owner: it decides once,
 /// from the down point, between a pinch, a pan of a zoomed picture, a
 /// dismiss drag and a page drag ([GalleryGestureRecognizer]), with the
-/// [physics] and the tap timings ([taps]) of a reference, and draws its
+/// [physics] and the tap timings ([taps]) of a platform, and draws its
 /// pages by a [transition].
 ///
 /// Each page is built under a [GalleryPageScope]: a page that zooms
@@ -108,7 +108,7 @@ typedef GalleryPageBuilder = Widget Function(BuildContext context, int index);
 ///
 /// Page order follows [textDirection] on a horizontal axis: right to left
 /// puts the next page on the left. Null keeps left to right whatever the
-/// ambient direction, as the media references do.
+/// ambient direction, as media pagers do.
 class GalleryPager extends StatefulWidget {
   /// Creates a pager of [count] pages.
   const GalleryPager({

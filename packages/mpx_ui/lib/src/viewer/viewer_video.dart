@@ -369,6 +369,7 @@ class ViewerVideoControls extends StatefulWidget {
     this.previewFrame,
     this.strings = const ViewerVideoStrings(),
     this.centreTaken,
+    this.captionTop,
     this.knownDuration,
   });
 
@@ -382,6 +383,11 @@ class ViewerVideoControls extends StatefulWidget {
   /// button fades out by as much and takes no taps while any is taken, so
   /// the centre shows one control. Null leaves the button alone.
   final ValueListenable<double>? centreTaken;
+
+  /// Where the viewer's caption starts on the screen (its top edge's y): the
+  /// play button fades while the caption is over it and comes back when it
+  /// is not.
+  final ValueListenable<double>? captionTop;
 
   /// The player.
   final PlayerLease lease;
@@ -578,11 +584,11 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
   }
 
   // The play button, faded out by as much as another control takes the
-  // centre: the reference's one centre control is either the spinner or
+  // centre: the one centre control is either the spinner or
   // play / pause, never both over each other. Before the player's first
   // frame there is no play / pause at all: the page's download radial or
   // the spinner is the centre, never a pause over a picture not playing.
-  Widget _centre(Widget button, PlayerState state) {
+  Widget _centre(Widget button, PlayerState state, double centreY) {
     // A policy without a centre while playing leaves it empty over a
     // playing video: the button stands for play only.
     // A video that failed keeps play in the centre: a tap tries again
@@ -594,8 +600,8 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
                 (state.playing && !widget.rules.centreWhilePlaying))
         ? 1.0
         : 0.0;
-    Widget faded(double spinner) {
-      final taken = math.max(spinner, unplayed);
+    Widget faded(double spinner, double overlap) {
+      final taken = math.max(math.max(spinner, overlap), unplayed);
       return IgnorePointer(
         ignoring: taken > 0,
         child: Opacity(
@@ -606,11 +612,30 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
       );
     }
 
+    // The caption over the button takes it, and gives it back when it goes:
+    // the button's alpha animates as the caption's top edge
+    // crosses its foot.
+    Widget overlapped(double spinner) {
+      final top = widget.captionTop;
+      if (top == null) return faded(spinner, 0);
+      return ValueListenableBuilder<double>(
+        valueListenable: top,
+        builder: (context, captionTop, _) {
+          final foot = centreY + ViewerVideoControls.playButtonSize / 2;
+          return TweenAnimationBuilder<double>(
+            tween: Tween(end: captionTop < foot ? 1 : 0),
+            duration: const Duration(milliseconds: 150),
+            builder: (context, overlap, _) => faded(spinner, overlap),
+          );
+        },
+      );
+    }
+
     final taken = widget.centreTaken;
-    if (taken == null) return faded(0);
+    if (taken == null) return overlapped(0);
     return ValueListenableBuilder<double>(
       valueListenable: taken,
-      builder: (context, value, _) => faded(value),
+      builder: (context, value, _) => overlapped(value),
     );
   }
 
@@ -647,20 +672,28 @@ class ViewerVideoControlsState extends State<ViewerVideoControls>
             ],
           ),
         ),
-        child: Center(
-          child: _centre(
-            _RoundButton(
-              key: const ValueKey('mpx-viewer-play'),
-              label: state.playing ? widget.strings.pause : widget.strings.play,
-              size: ViewerVideoControls.playButtonSize,
-              fill: tokens.barFill,
-              onTap: _togglePlay,
-              child: CustomPaint(
-                size: const Size.square(24),
-                painter: _PlayGlyph(tokens.foreground, paused: !state.playing),
+        child: LayoutBuilder(
+          builder: (context, constraints) => Center(
+            child: _centre(
+              _RoundButton(
+                key: const ValueKey('mpx-viewer-play'),
+                label: state.playing
+                    ? widget.strings.pause
+                    : widget.strings.play,
+                size: ViewerVideoControls.playButtonSize,
+                fill: tokens.barFill,
+                onTap: _togglePlay,
+                child: CustomPaint(
+                  size: const Size.square(24),
+                  painter: _PlayGlyph(
+                    tokens.foreground,
+                    paused: !state.playing,
+                  ),
+                ),
               ),
+              state,
+              constraints.maxHeight / 2,
             ),
-            state,
           ),
         ),
       ),

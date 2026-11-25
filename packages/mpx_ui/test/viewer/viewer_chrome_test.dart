@@ -64,8 +64,8 @@ void main() {
     await harness.pump(tester, chrome: chrome());
 
     expect(find.text('Author 0'), findsOneWidget);
-    expect(find.text('Today'), findsOneWidget);
-    expect(find.text('1 of 3'), findsOneWidget);
+    expect(animated('Today'), findsOneWidget);
+    expect(animated('1 of 3'), findsOneWidget);
     expect(harness.state(tester).controlsVisible, isTrue);
   });
 
@@ -86,7 +86,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
 
-    expect(find.text('2/3'), findsOneWidget);
+    expect(animated('2/3'), findsOneWidget);
   });
 
   testWidgets('the counter is a pill as wide as its text, zoomed or not', (
@@ -96,7 +96,7 @@ void main() {
     await harness.pump(tester, chrome: chrome());
     final metrics = ViewerPolicy.$Android.chrome;
     final counter = find.byKey(const ValueKey('mpx-viewer-counter'));
-    final text = tester.getSize(find.text('1 of 3')).width;
+    final text = tester.getSize(animated('1 of 3')).width;
 
     void expectPill() {
       final rect = tester.getRect(counter);
@@ -206,6 +206,37 @@ void main() {
     await tester.pump(const Duration(milliseconds: 150));
     expect(opacity(), 1);
     expect(halfway, lessThan(opacity()));
+  });
+
+  testWidgets('a part of the chrome that the next item shares does not '
+      'animate, one it changes does', (tester) async {
+    final harness = ViewerHarness();
+    await harness.pump(
+      tester,
+      chrome: ViewerChrome(
+        title: (context, index, item) => const Text('Same author'),
+        subtitle: (context, index, item) => Text('Day $index'),
+      ),
+    );
+
+    await tester.fling(
+      find.byType(ViewerPhotoPage),
+      const Offset(-300, 0),
+      1000,
+    );
+    await tester.pump();
+    // The page settles and the item changes at its end; the change begins.
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pump(const Duration(milliseconds: 60));
+
+    // The title is one text all through; the subtitle has two, one leaving.
+    expect(find.text('Same author'), findsOneWidget);
+    // The date line is a text that swaps what changed: its width is between
+    // the two while it does, and it says the new one.
+    expect(animated('Day 1'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 1));
+    expect(animated('Day 0'), findsNothing);
   });
 
   testWidgets('a tap on the picture hides and shows the chrome', (
@@ -526,8 +557,9 @@ void main() {
       expect(tester.getTopLeft(text).dy, closeTo(rest, 0.5));
     });
 
-    testWidgets('resists a long pull more the further it goes, as the '
-        'reference does', (tester) async {
+    testWidgets('resists a long pull more the further it goes, as usual', (
+      tester,
+    ) async {
       final harness = ViewerHarness();
       await harness.pump(tester, chrome: chrome(caption: lines(40)));
       await tester.dragFrom(onBox(tester), const Offset(0, -3000));
@@ -568,29 +600,31 @@ void main() {
       expect(tester.getTopLeft(text).dy, closeTo(rest, 0.5));
     });
 
-    testWidgets('a text that all shows gives under a pull too, as the '
-        'reference does, and settles back', (tester) async {
-      final harness = ViewerHarness();
-      // Under five lines: the box is as tall as the text, nothing is left to
-      // scroll, and the feel is the same.
-      await harness.pump(tester, chrome: chrome(caption: lines(3)));
-      final rest = tester.getTopLeft(text).dy;
-      final boxHeight = box(tester).height;
+    testWidgets(
+      'a text that all shows gives under a pull too, as usual, and settles back',
+      (tester) async {
+        final harness = ViewerHarness();
+        // Under five lines: the box is as tall as the text, nothing is left to
+        // scroll, and the feel is the same.
+        await harness.pump(tester, chrome: chrome(caption: lines(3)));
+        final rest = tester.getTopLeft(text).dy;
+        final boxHeight = box(tester).height;
 
-      for (final dy in [-80.0, 80.0]) {
-        final gesture = await tester.startGesture(onBox(tester));
-        await gesture.moveBy(Offset(0, dy.sign * 20));
-        await gesture.moveBy(Offset(0, dy));
-        await tester.pump();
-        expect((tester.getTopLeft(text).dy - rest).abs(), greaterThan(5));
+        for (final dy in [-80.0, 80.0]) {
+          final gesture = await tester.startGesture(onBox(tester));
+          await gesture.moveBy(Offset(0, dy.sign * 20));
+          await gesture.moveBy(Offset(0, dy));
+          await tester.pump();
+          expect((tester.getTopLeft(text).dy - rest).abs(), greaterThan(5));
 
-        await gesture.up();
-        await tester.pump();
-        await tester.pump(const Duration(seconds: 3));
-        expect(tester.getTopLeft(text).dy, closeTo(rest, 0.5));
-        expect(box(tester).height, closeTo(boxHeight, 0.5));
-      }
-    });
+          await gesture.up();
+          await tester.pump();
+          await tester.pump(const Duration(seconds: 3));
+          expect(tester.getTopLeft(text).dy, closeTo(rest, 0.5));
+          expect(box(tester).height, closeTo(boxHeight, 0.5));
+        }
+      },
+    );
   });
 
   testWidgets('a thumbnail moves the viewer to its item', (tester) async {
@@ -603,8 +637,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(harness.state(tester).index, 2);
-    expect(find.text('3 of 3'), findsOneWidget);
+    expect(animated('3 of 3'), findsOneWidget);
   });
 }
+
+/// The animated text that says [text] (the date line, the counter).
+Finder animated(String text) => find.byWidgetPredicate(
+  (widget) => widget is ViewerAnimatedText && widget.text == text,
+);
 
 String _counter(int position, int count) => '$position/$count';

@@ -14,12 +14,12 @@ const _android = ViewerPolicy.$Android;
 
 void main() {
   group('policy', () {
-    test('the Android reference values', () {
+    test('the Android default values', () {
       expect(_android.openDuration, const Duration(milliseconds: 200));
       expect(_android.closeDuration, const Duration(milliseconds: 200));
       expect(_android.backdropScale, 0.1);
       expect(_android.dismissFraction, 1 / 6);
-      // Either way: the reference reads the drag's absolute offset.
+      // Either way: the drag's absolute offset is read.
       expect(_android.dismissDownOnly, isFalse);
       expect(_android.backgroundOpacityFloor, 127 / 255);
       expect(_android.settleDuration, const Duration(milliseconds: 250));
@@ -691,6 +691,35 @@ void main() {
       // over its own twin.
       expect(harness.state(tester).index, 1);
       expect(harness.bridge.hidden, {1});
+    });
+
+    testWidgets('closing while zoomed flies from the zoomed picture, as it '
+        'is drawn, not from the fitted one', (tester) async {
+      final harness = ViewerHarness();
+      await harness.pump(tester);
+      // Double tap zooms to 3x around the picture's centre.
+      await tester.tapAt(const Offset(200, 400));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(const Offset(200, 400));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(harness.page(tester).zoom, 3);
+
+      unawaited(harness.state(tester).close());
+      await tester.pump();
+
+      // The first frame of the close is the picture as it showed: 3x the
+      // fitted size about the same centre.
+      final start = harness.morphRect(tester);
+      expect(start.center.dx, closeTo(fittedRect.center.dx, 0.5));
+      expect(start.center.dy, closeTo(fittedRect.center.dy, 0.5));
+      expect(start.width, closeTo(fittedRect.width * 3, 0.5));
+      expect(start.height, closeTo(fittedRect.height * 3, 0.5));
+
+      // And it comes down to the origin in one motion.
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(harness.morphRect(tester).width, lessThan(start.width));
+      await tester.pump(const Duration(milliseconds: 200));
     });
 
     testWidgets('closing on another item reveals its origin first', (

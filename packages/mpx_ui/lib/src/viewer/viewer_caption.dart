@@ -1,17 +1,18 @@
 import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
-/// The viewer's caption, as the reference's is: a scroll view over all the
+/// The viewer's caption: a scroll view over all the
 /// room it is given, whose text starts as low as [collapsedHeight] (or as its
 /// own height, when that is less) and which a drag up takes over the picture,
 /// the box behind the text growing with it.
 ///
 /// - The text scrolls like any scroll view, and gives under a pull past an end
-///   with the reference's resistance and spring (stiffness 100, no bounce of
+///   with the usual resistance and spring (stiffness 100, no bounce of
 ///   its own), text that all shows included: there is nothing to scroll and
-///   it still gives, as the reference's does.
+///   it still gives.
 /// - The edges fade while there is more text beyond them.
 /// - Only the box and its text take touches; the room above them is the
 ///   picture's.
@@ -24,6 +25,8 @@ class ViewerCaptionSheet extends StatefulWidget {
     required this.padding,
     this.fadeLength = 12,
     this.onInteraction,
+    this.onScrolled,
+    this.onTopChanged,
     super.key,
   });
 
@@ -45,6 +48,15 @@ class ViewerCaptionSheet extends StatefulWidget {
   /// Told of every touch, so the viewer's auto-hide starts again.
   final VoidCallback? onInteraction;
 
+  /// Told when the text goes away from its start or comes back to it: the
+  /// the bars stay while the caption is scrolled.
+  final ValueChanged<bool>? onScrolled;
+
+  /// Told where the top edge of the box is on the screen (its y), as the
+  /// text moves and the layout changes; infinity once the sheet is gone. The
+  /// the play button fades while the caption is over it.
+  final ValueChanged<double>? onTopChanged;
+
   @override
   State<ViewerCaptionSheet> createState() => _ViewerCaptionSheetState();
 }
@@ -52,9 +64,49 @@ class ViewerCaptionSheet extends StatefulWidget {
 class _ViewerCaptionSheetState extends State<ViewerCaptionSheet> {
   final ScrollController _scroll = ScrollController();
   final _CaptionGeometry _geometry = _CaptionGeometry();
+  bool _scrolled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_reportScrolled);
+    _geometry.onLayout = _onLayout;
+  }
+
+  void _reportScrolled() {
+    _reportTop();
+    final scrolled = _scroll.hasClients && _scroll.offset > 0.5;
+    if (scrolled == _scrolled) return;
+    _scrolled = scrolled;
+    widget.onScrolled?.call(scrolled);
+  }
+
+  double? _reportedTop;
+
+  // The box's top on the screen: the room's, plus where the text starts.
+  void _reportTop() {
+    final report = widget.onTopChanged;
+    final box = context.findRenderObject();
+    if (report == null || box is! RenderBox || !box.hasSize) return;
+    final top = box.localToGlobal(Offset(0, math.max(0, _topNow()))).dy;
+    if (_reportedTop != null && (top - _reportedTop!).abs() < 0.5) return;
+    _reportedTop = top;
+    report(top);
+  }
+
+  // A layout that moves where the text starts is told after the frame: it
+  // is heard in the middle of one.
+  void _onLayout() {
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _reportTop();
+    });
+  }
 
   @override
   void dispose() {
+    // A caption that goes while scrolled holds nothing.
+    if (_scrolled) widget.onScrolled?.call(false);
+    widget.onTopChanged?.call(double.infinity);
     _scroll.dispose();
     super.dispose();
   }
@@ -179,7 +231,7 @@ class _BoxPainter extends CustomPainter {
       oldDelegate.color != color || oldDelegate.geometry != geometry;
 }
 
-// The reference's pull past an end: a finger's move past it is followed by
+// The pull past an end: a finger's move past it is followed by
 // the share of the room not yet given (`dy * (1 - |over| / room)`, the room
 // being the space above the text at rest), a move back is followed whole,
 // and the text settles back on `BouncingScrollPhysics`' spring (stiffness
@@ -227,6 +279,9 @@ class _CaptionPhysics extends BouncingScrollPhysics {
 // What the body's layout tells the sheet: where its text starts.
 final class _CaptionGeometry {
   double margin = 0;
+
+  /// Called after the margin changed in a layout.
+  VoidCallback? onLayout;
 }
 
 // The scroll view's content: the room's height at least, the text at its
@@ -300,7 +355,10 @@ class _RenderCaptionBody extends RenderBox
     );
     final text = child.size.height;
     _margin = math.max(0, _room - math.min(text, _collapsedHeight));
-    _geometry.margin = _margin;
+    if (_geometry.margin != _margin) {
+      _geometry.margin = _margin;
+      _geometry.onLayout?.call();
+    }
     (child.parentData! as BoxParentData).offset = Offset(0, _margin);
     size = constraints.constrain(Size(constraints.maxWidth, _margin + text));
   }

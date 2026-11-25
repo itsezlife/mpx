@@ -30,7 +30,9 @@ import 'library/picker_strip_controller_test.dart'
 import 'library/picker_viewer_test.dart' as picker_viewer_test;
 import 'viewer/media_viewer_test.dart' as media_viewer_test;
 import 'viewer/origin_bridge_contract_test.dart' as origin_bridge_contract_test;
+import 'viewer/viewer_animated_text_test.dart' as viewer_animated_text_test;
 import 'viewer/viewer_backdrop_test.dart' as viewer_backdrop_test;
+import 'viewer/viewer_change_test.dart' as viewer_change_test;
 import 'viewer/viewer_chrome_test.dart' as viewer_chrome_test;
 import 'viewer/viewer_desktop_input_test.dart' as viewer_desktop_input_test;
 import 'viewer/viewer_desktop_policy_test.dart' as viewer_desktop_policy_test;
@@ -40,7 +42,10 @@ import 'viewer/viewer_loading_test.dart' as viewer_loading_test;
 import 'viewer/viewer_origin_test.dart' as viewer_origin_test;
 import 'viewer/viewer_policy_scope_test.dart' as viewer_policy_scope_test;
 import 'viewer/viewer_seek_test.dart' as viewer_seek_test;
+import 'viewer/viewer_strip_layout_test.dart' as viewer_strip_layout_test;
+import 'viewer/viewer_strip_test.dart' as viewer_strip_test;
 import 'viewer/viewer_taps_test.dart' as viewer_taps_test;
+import 'viewer/viewer_text_diff_test.dart' as viewer_text_diff_test;
 import 'viewer/viewer_video_test.dart' as viewer_video_test;
 
 void main() {
@@ -64,7 +69,9 @@ void main() {
   group('picker_viewer_test', picker_viewer_test.main);
   group('media_viewer_test', media_viewer_test.main);
   group('origin_bridge_contract_test', origin_bridge_contract_test.main);
+  group('viewer_animated_text_test', viewer_animated_text_test.main);
   group('viewer_backdrop_test', viewer_backdrop_test.main);
+  group('viewer_change_test', viewer_change_test.main);
   group('viewer_chrome_test', viewer_chrome_test.main);
   group('viewer_desktop_input_test', viewer_desktop_input_test.main);
   group('viewer_desktop_policy_test', viewer_desktop_policy_test.main);
@@ -74,6 +81,9 @@ void main() {
   group('viewer_origin_test', viewer_origin_test.main);
   group('viewer_policy_scope_test', viewer_policy_scope_test.main);
   group('viewer_seek_test', viewer_seek_test.main);
+  group('viewer_strip_layout_test', viewer_strip_layout_test.main);
+  group('viewer_strip_test', viewer_strip_test.main);
   group('viewer_taps_test', viewer_taps_test.main);
+  group('viewer_text_diff_test', viewer_text_diff_test.main);
   group('viewer_video_test', viewer_video_test.main);
 }

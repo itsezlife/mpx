@@ -903,7 +903,7 @@ class _SelectedStrip extends StatefulWidget {
     required this.onDeselect,
   });
 
-  // The reference's row: inset 12 at the sides and the top and 6 at the
+  // The row: inset 12 at the sides and the top and 6 at the
   // bottom, on a rounded shade 6 in from the screen's sides.
   static const EdgeInsets inset = EdgeInsets.fromLTRB(12, 12, 12, 6);
 
@@ -1168,7 +1168,7 @@ class _SelectedStripState extends State<_SelectedStrip> {
   }
 }
 
-// A strip item's video bar, as the reference's picked-photo cell draws it:
+// A strip item's video bar, as a picked-photo cell draws it:
 // 16 high across the bottom on 50 % black with its bottom corners rounded
 // 4, a camcorder mark 14 x 9 at 3 in, and the duration in 12 white 18 from
 // the start.
@@ -1533,7 +1533,7 @@ class _BarTitle extends StatefulWidget {
 }
 
 class _BarTitleState extends State<_BarTitle> with TickerProviderStateMixin {
-  // The reference's ease-out quint.
+  // An ease-out quint.
   static const Curve _curve = Cubic(0.23, 1, 0.32, 1);
 
   late final AnimationController _presence;

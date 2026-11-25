@@ -2,19 +2,44 @@
 
 ## Unreleased
 
+- The thumbnail strip is drawn and moved as the usual strip is
+  (`ViewerThumbnailStrip`, `ViewerStripLayout`): the thumbnail on show is as
+  wide as its picture at the strip's height (between 42 and 84) with a gap of
+  8 on each side and the strip keeps it in the middle; it follows a page swipe
+  as the finger moves (the item that goes shrinks as the next one grows, the
+  row moves with it); a tap on a thumbnail, or a jump of the item, moves the
+  focus over 200 ms (100 ms to the next), easing out, growing the new item and
+  shrinking the old; a drag along the strip scrubs through the items and
+  settles on the one it stops at, and a strip of ten items or more is carried on
+  by a fling (the platform's deceleration), stopping against its ends. The
+  strip comes in with a fade of its own (200 ms) besides the chrome's. The
+  thumbnails are decoded once at the
+  grown size, not at every size they pass through.
+- The play button fades while the caption is over it and comes back when it
+  is not (`ViewerVideoControls.captionTop`).
+- The parts of the chrome animate when the item changes, by default: the title, the subtitle and the counter slide 8 px the way the
+  item went over 320 ms (ease-out-quint), the caption crossfades over 200 ms.
+  `ViewerChrome.titleTransition`, `subtitleTransition`, `counterTransition`
+  and `captionTransition` take a `ViewerChangeTransition` (`slide`, `fade`,
+  `none` or a host's own), and `ViewerChangeSwitcher` gives a host's own
+  widget over the viewer the same change.
+- The controls keep shown while a finger is down anywhere on the viewer and
+  the wait starts again when it leaves (every touch cancels the hide, and it is scheduled on release); a caption scrolled away from its start
+  keeps them too.
+- Closing a zoomed picture flies from the picture as it is drawn (zoom and pan
+  included) to its origin in one motion instead of
+  jumping to its fitted size first.
 - `ViewerSystemBars` is `keep`, `hideStatusBar` (the default: only the status
   bar goes with the controls, as a messenger's viewer does) or `hideAll`.
 - The caption is a scroll view over the room between the top bar and the video
-  controls, as the reference's is (`ViewerCaptionSheet`): its text starts as
+  controls (`ViewerCaptionSheet`): its text starts as
   low as five lines (two in landscape) and a drag up takes it over the picture,
   the box behind it growing, then scrolls it. It gives under a pull past an end
-  (the reference's curve, a move followed by the share of the room not yet
-  given, and its spring) even when all
-  of the text shows (as the reference's does), its edges fade while there is more, and the picture above its
-  box takes the touches. The caption and the video bar hide as one block: they
+  (a move followed by the share of the room not yet given, and its
+  spring) even when all of the text shows, its edges fade while there is
+  more, and the picture above its box takes the touches. The caption and the video bar hide as one block: they
   slide by the same amount over the same time.
-- The chrome and the video controls fade in with the open morph (as the
-  reference's container does) instead of appearing when it ends.
+- The chrome and the video controls fade in with the open morph instead of appearing when it ends.
 - The video's settings button is in the top bar (`ViewerChrome.settingsIcon`),
   and the settings panel closes on a tap outside. The controls do not hide by
   themselves while the settings or the overflow menu is open.
@@ -38,7 +63,7 @@
   behaves as before; a host that draws its own video surface (a reels page)
   takes the same bar and restyles it instead of copying its rules.
 - What a video that cannot be played shows is the policy's
-  (`ViewerVideoRules.failure`): `silent` (a picker's, as the reference's:
+  (`ViewerVideoRules.failure`): `silent` (a picker's:
   the page keeps its picture and play tries again), `alert` (Open in
   another app or Cancel, where the host gives `MediaViewer.onOpenElsewhere`;
   the card without it), or `card` (the old card with Retry, now
@@ -75,7 +100,7 @@
   used to stop after a few steps as the grid moved under the finger. Swipe
   moves are read against the grid where it is now (an event's own local
   position is through its place at the down). `$Android` takes the
-  reference's speed: 80 bands, a step half as deep as the finger is in one
+  usual speed: 80 bands, a step half as deep as the finger is in one
   (`LibraryGridPolicy.autoScrollMaxStep`).
 - `PickerSelectionPreview`'s list fills the preview, so the area past the
   picks takes drags too.

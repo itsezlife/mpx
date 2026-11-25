@@ -4,7 +4,7 @@ import 'package:flutter/painting.dart';
 /// The colours and type of the viewer, supplied by the host from its own
 /// theme: the package carries no palette of its own.
 ///
-/// The defaults are the Android reference's values, for a host without a
+/// The defaults are the Android values, for a host without a
 /// theme of its own.
 @immutable
 final class ViewerTokens {

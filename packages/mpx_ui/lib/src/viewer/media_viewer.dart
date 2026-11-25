@@ -225,7 +225,7 @@ class MediaViewer extends StatefulWidget {
   final OriginBridge? bridge;
 
   /// The gestures, transitions, timings and playback choices. Null takes the
-  /// closest [ViewerPolicyScope]'s, else the reference of the platform the
+  /// closest [ViewerPolicyScope]'s, else the default of the platform the
   /// theme names ([ViewerPolicyScope.resolve]).
   final ViewerPolicy? policy;
 
@@ -386,6 +386,9 @@ class MediaViewerState extends State<MediaViewer>
   // How much the buffering spinner shows: the share of the centre it takes
   // from the play button.
   final ValueNotifier<double> _spinnerShown = ValueNotifier(0);
+  // Where the caption's top edge is on the screen: the play button fades
+  // while it is over it.
+  final ValueNotifier<double> _captionTop = ValueNotifier(double.infinity);
   // Whether the video page's download radial shows: the spinner holds back.
   final ValueNotifier<bool> _pageStatusShows = ValueNotifier(false);
 
@@ -488,10 +491,11 @@ class MediaViewerState extends State<MediaViewer>
   // controls' panel share it.
   final ValueNotifier<bool> _settingsOpen = ValueNotifier(false);
   bool _menuOpen = false;
+  bool _captionScrolled = false;
 
   // Something the controls opened keeps them shown.
   void _syncHold() {
-    _session?.hold = _settingsOpen.value || _menuOpen;
+    _session?.hold = _settingsOpen.value || _menuOpen || _captionScrolled;
   }
 
   // The system bars are hidden now, by this viewer.
@@ -593,6 +597,7 @@ class MediaViewerState extends State<MediaViewer>
     _controls.dispose();
     _settingsOpen.dispose();
     _spinnerShown.dispose();
+    _captionTop.dispose();
     _dismissedFailure.dispose();
     _pageStatusShows.dispose();
     super.dispose();
@@ -1252,7 +1257,10 @@ class MediaViewerState extends State<MediaViewer>
     }
     _restartLoop();
     if (_fullscreen) toggleFullscreen();
-    final from = _fittedRect(_index, null).shift(Offset(0, _drag));
+    // The picture as it is drawn now: the fitted one, zoomed and panned. It
+    // flies from there in one motion instead of
+    // jumping to its fitted size first.
+    final from = _drawnRect(_index).shift(Offset(0, _drag));
     final startBackground = backgroundOpacity;
     final bridge = widget.bridge;
     if (bridge != null && _index != widget.initialIndex) {
@@ -1377,6 +1385,19 @@ class MediaViewerState extends State<MediaViewer>
 
   // --- Layout ---------------------------------------------------------------
 
+  // The picture of the item at [index] as its page draws it: the fitted rect
+  // about its centre by the page's zoom, moved by its pan.
+  Rect _drawnRect(int index) {
+    final fitted = _fittedRect(index, null);
+    final page = _pageKeys[index]?.currentState;
+    if (page == null || page.zoom == 1) return fitted;
+    return Rect.fromCenter(
+      center: fitted.center + page.pan,
+      width: fitted.width * page.zoom,
+      height: fitted.height * page.zoom,
+    );
+  }
+
   // The item's picture fitted into the viewer, in global coordinates (the
   // viewer covers the screen, so local and global agree).
   Rect _fittedRect(int index, GalleryOrigin? origin) {
@@ -1449,9 +1470,8 @@ class MediaViewerState extends State<MediaViewer>
     ),
   );
 
-  // The chrome and the controls come in with the morph, as the reference's
-  // container does (its alpha goes 0 to 1 over the open): faded by how far
-  // the morph is, and no touch while it runs.
+  // The chrome and the controls come in with the morph (alpha 0 to 1 over the
+  // open): faded by how far the morph is, and no touch while it runs.
   //
   // The wrapper stays when the morph is over, so what is under it keeps its
   // state.
@@ -1523,6 +1543,7 @@ class MediaViewerState extends State<MediaViewer>
                     previewFrame: widget.previewFrame,
                     strings: widget.videoStrings,
                     centreTaken: _spinnerShown,
+                    captionTop: _captionTop,
                     knownDuration: widget.source
                         .itemAt(_index)
                         ?.descriptor
@@ -1569,6 +1590,12 @@ class MediaViewerState extends State<MediaViewer>
                     _menuOpen = open;
                     _syncHold();
                   },
+                  onCaptionScrolled: (scrolled) {
+                    _captionScrolled = scrolled;
+                    _syncHold();
+                  },
+                  onCaptionTop: (top) => _captionTop.value = top,
+                  pagePosition: _pages.position,
                   onBack: () => unawaited(close()),
                   onSelectIndex: _pageTo,
                   onAction: (action, index) =>
@@ -1577,6 +1604,14 @@ class MediaViewerState extends State<MediaViewer>
               ),
           ],
         ),
+      );
+      // Any finger on the viewer keeps the controls shown while it is down.
+      viewer = Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => _session?.touchDown(),
+        onPointerUp: (_) => _session?.touchUp(),
+        onPointerCancel: (_) => _session?.touchUp(),
+        child: viewer,
       );
       if (desktop) {
         viewer = Focus(
@@ -1651,7 +1686,7 @@ class MediaViewerState extends State<MediaViewer>
         // The item and its neighbours keep their state (zoom, the origin's
         // frame); preparation beyond them is the viewer's own.
         keepAlive: const GalleryKeepAlive.around(1),
-        // The media references never mirror the gallery.
+        // Media never mirrors the gallery.
         textDirection: TextDirection.ltr,
         dismiss: policy.dismissClaim,
         onDismissStart: _dragEvents.onStart,

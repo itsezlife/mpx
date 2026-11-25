@@ -8,7 +8,7 @@ import 'package:mpx_ui/src/gallery/gallery_page_transition.dart';
 import 'package:mpx_ui/src/gallery/gallery_pager_physics.dart';
 import 'package:mpx_ui/src/gallery/gallery_tap_recognizer.dart';
 
-/// The layout of the viewer's chrome in one reference: bars, the "N of M"
+/// The layout of the viewer's chrome on one platform: bars, the "N of M"
 /// counter, the caption and the thumbnail strip. Logical pixels.
 @immutable
 final class ViewerChromeMetrics {
@@ -32,7 +32,7 @@ final class ViewerChromeMetrics {
     required this.menuMinWidth,
   });
 
-  /// The Android reference's chrome: a 56 px action bar, the counter pill 10
+  /// The Android chrome: a 56 px action bar, the counter pill 10
   /// px under it, a caption that shows up to five lines before it scrolls,
   /// and a 68 px strip of 42 x 56 thumbnails.
   static const ViewerChromeMetrics android = ViewerChromeMetrics(
@@ -54,7 +54,7 @@ final class ViewerChromeMetrics {
     menuMinWidth: 196,
   );
 
-  /// The iOS reference's chrome where it maps onto this layout: a 44 pt
+  /// The iOS chrome where it maps onto this layout: a 44 pt
   /// bar, the "N of M" capsule 24 pt tall 2 pt under it, and a strip of
   /// 15 x 30 thumbnails in a 52 pt panel whose current item grows to 75 pt
   /// with 8 pt around it.
@@ -77,10 +77,10 @@ final class ViewerChromeMetrics {
     menuMinWidth: 250,
   );
 
-  /// The desktop reference's chrome where it maps onto this layout: the
+  /// The desktop chrome where it maps onto this layout: the
   /// header 47 px from the top, a caption box padded 11 x 6, and an 80 px
   /// strip of 56 px thumbnails whose current one grows to 160 px with 12 px
-  /// around it. Values the reference names without a number (its toolkit
+  /// around it. Values given without a number (the toolkit
   /// files are absent) follow the Android ones.
   static const ViewerChromeMetrics desktop = ViewerChromeMetrics(
     topBarHeight: 47,
@@ -194,16 +194,16 @@ final class ViewerChromeMetrics {
 /// and back when it closes.
 enum ViewerOpenStyle {
   /// The whole picture scales and moves from the origin's rectangle and
-  /// corners to its fitted place (the Android reference).
+  /// corners to its fitted place (the Android policy).
   morph,
 
   /// The picture moves and scales from the origin while the window it shows
   /// through grows from the origin's crop to the whole picture: a crop
-  /// reveal (the iOS reference).
+  /// reveal (the iOS policy).
   reveal,
 
   /// No transition: the viewer is there at once, as an overlay over the app
-  /// window (the desktop reference).
+  /// window (the desktop policy).
   appear,
 }
 
@@ -224,11 +224,11 @@ enum ViewerZoomRule {
 /// Where a pinch zooms around.
 enum ViewerZoomFocal {
   /// The point between the fingers when the pinch started; the fingers
-  /// moving together do not pan (the Android reference).
+  /// moving together do not pan (the Android policy).
   fixed,
 
   /// The point between the fingers as they move: the picture stays under
-  /// them and two fingers pan it (the iOS reference).
+  /// them and two fingers pan it (the iOS policy).
   follows,
 }
 
@@ -450,13 +450,13 @@ enum ViewerOriginReturn {
 /// What the viewer shows when a video it shows cannot be played.
 enum ViewerVideoFailure {
   /// Nothing: the page keeps its picture and its play button, which tries
-  /// again. The reference picker's: its viewer offers no other app to open
+  /// again. A picker's: its viewer offers no other app to open
   /// the file in, so its error says nothing.
   silent,
 
   /// An alert offering to open the file in another app (Open, Cancel), where
   /// the host can (`MediaViewer.onOpenElsewhere`); a card where it cannot.
-  /// The reference chat's.
+  /// A chat's.
   alert,
 
   /// A card over the picture saying the video could not be played, with
@@ -535,7 +535,7 @@ final class ViewerLoadingRules {
   /// took it (handed over from another surface, or kept warm).
   final Duration playerFadeInHandedOver;
 
-  /// The Android reference: a 64 dp control, a spinner for photos, the
+  /// The Android defaults: a 64 dp control, a spinner for photos, the
   /// spinner after 500 ms fading in over 200 ms, the player fading in over
   /// 200 ms (100 ms handed over).
   static const ViewerLoadingRules $Android = ViewerLoadingRules(
@@ -576,15 +576,15 @@ final class ViewerLoadingRules {
       iconSize: 0.3,
       iconStroke: 3,
     ),
-    // The photo's radial is the empty disc with an arc of the bytes, as the
-    // reference sets its progress from the file's while it loads.
+    // The photo's radial is the empty disc with an arc of the bytes, its progress
+    // following the file's while it loads.
     photoProgress: ViewerPhotoProgress.arc,
     bufferingFade: Duration(milliseconds: 200),
     playerFadeIn: Duration(milliseconds: 200),
     playerFadeInHandedOver: Duration(milliseconds: 100),
   );
 
-  /// The iOS reference: a 50 pt control on black at 0.5, an arc for
+  /// The iOS defaults: a 50 pt control on black at 0.5, an arc for
   /// photos, the spinner after 500 ms fading in over 200 ms, the player
   /// fading in over 100 ms.
   static const ViewerLoadingRules $IOS = ViewerLoadingRules(
@@ -629,7 +629,7 @@ final class ViewerLoadingRules {
     playerFadeInHandedOver: Duration(milliseconds: 100),
   );
 
-  /// The desktop reference: a 50 px control on `#00000056`, an arc for
+  /// The desktop defaults: a 50 px control on `#00000056`, an arc for
   /// photos once one has loaded for 350 ms, the spinner after 500 ms fading
   /// in over 500 ms, the player shown at once.
   static const ViewerLoadingRules $Desktop = ViewerLoadingRules(
@@ -800,7 +800,7 @@ final class ViewerVideoRules {
   /// dragged; null for no preview.
   final Size? seekPreviewBox;
 
-  /// Mobile references loop a video up to this long.
+  /// Mobile viewers loop a video up to this long.
   static const Duration shortVideo = Duration(seconds: 30);
 
   /// Loops a video of at most [shortVideo].
@@ -863,7 +863,7 @@ final class ViewerVideoRules {
 }
 
 /// A critically damped spring as a curve: it starts fast and settles
-/// without overshoot, the shape of the iOS reference's springs with no
+/// without overshoot, the shape of the iOS springs with no
 /// bounce. [sharpness] is how quickly it settles within the duration.
 final class ViewerSpringCurve extends Curve {
   /// Creates the curve.
@@ -888,7 +888,7 @@ final class ViewerSpringCurve extends Curve {
 /// Lengths are logical pixels; fractions are of the viewer's size.
 @immutable
 final class ViewerPolicy {
-  /// Creates a policy. Hosts usually take a reference one ([$Android],
+  /// Creates a policy. Hosts usually take a platform one ([$Android],
   /// [$IOS], [$Desktop]) and adjust it.
   const ViewerPolicy({
     required this.openStyle,
@@ -937,7 +937,7 @@ final class ViewerPolicy {
     this.plainCloseSlides = false,
   });
 
-  /// The reference policy of [platform]: [$IOS] on iOS, [$Desktop] on
+  /// The default policy of [platform]: [$IOS] on iOS, [$Desktop] on
   /// macOS, Windows and Linux, [$Android] elsewhere.
   static ViewerPolicy forPlatform(TargetPlatform platform) =>
       switch (platform) {
@@ -948,7 +948,7 @@ final class ViewerPolicy {
         TargetPlatform.android || TargetPlatform.fuchsia => $Android,
       };
 
-  /// The Android reference: the picture morphs from its origin in 200 ms
+  /// The Android defaults: the picture morphs from its origin in 200 ms
   /// while the surface behind grows to 1.1; a drag either way past a sixth
   /// of the height closes it, with no velocity term; double tap zooms to 3x
   /// around the tap, a pinch zooms around where it started and settles
@@ -961,7 +961,7 @@ final class ViewerPolicy {
   static const ViewerPolicy $Android = ViewerPolicy(
     openStyle: ViewerOpenStyle.morph,
     openDuration: Duration(milliseconds: 200),
-    // The reference sets no interpolator, so the platform's default
+    // No interpolator is set, so the platform's default
     // accelerate-then-decelerate applies.
     openCurve: Curves.easeInOut,
     closeDuration: Duration(milliseconds: 200),
@@ -1018,7 +1018,7 @@ final class ViewerPolicy {
     taps: GalleryTapRules.$Android,
   );
 
-  /// The iOS reference: the picture is revealed from its origin's crop on a
+  /// The iOS defaults: the picture is revealed from its origin's crop on a
   /// 0.25 s spring while the background fades in over 0.15 s; a drag either
   /// way closes it past a quarter of the height or faster than 1 pt/ms,
   /// with the background gone after 80 pt; zoom reaches 3x or the zoom that
@@ -1104,7 +1104,7 @@ final class ViewerPolicy {
     zoomBounce: true,
   );
 
-  /// The desktop reference, as an overlay over the app window: no open
+  /// The desktop defaults, as an overlay over the app window: no open
   /// transition; items switch at once (keys, the wheel, a press on a side
   /// strip); a click anywhere off the controls closes; zoom goes in steps of
   /// the picture's own pixels up to 8x, with the fitted size between;
@@ -1127,7 +1127,7 @@ final class ViewerPolicy {
     backgroundClickCloses: true,
     pictureClickCloses: true,
     // Zoom steps animate linearly over the toolkit's widget fade, whose
-    // value the reference does not ship; 200 ms like its other fades.
+    // value is not shipped; 200 ms like the other fades.
     settleDuration: Duration(milliseconds: 200),
     settleCurve: Curves.linear,
     slideOffDuration: Duration.zero,
@@ -1432,7 +1432,7 @@ final class ViewerPolicy {
       zoom.clamp(minZoom, max ?? maxZoom).toDouble();
 
   /// This policy with the given fields changed, so a host adjusts a
-  /// platform's reference in one place and keeps the rest of it.
+  /// platform's default policy in one place and keeps the rest of it.
   ///
   /// A field passed as null keeps its value: a nullable field cannot be
   /// cleared here, only set.
