@@ -39,7 +39,7 @@ version and publish overhead without saving any host a dependency.
 | Package | Kind | Owns |
 | --- | --- | --- |
 | `http_bytes_cache` | Dart + native reader | Whole and ranged resources, one disk store with named quotas, HTTP middlewares, the native reader of ranged resources (ADR 0002) |
-| `mpx_core` | Plugin | `MediaKey`, `MediaDescriptor`; asset cache, pipeline, playback clock and pause layers, budgets, visibility, texture seam and the platform texture hosts, placeholders, the engine image decoder (ADR 0003); the `MediaPreparation` and `TrackedTransfers` seams (ADR 0012) |
+| `mpx_core` | Plugin | `MediaKey`, `MediaDescriptor`; asset cache, pipeline, playback clock and pause layers, budgets, visibility, texture seam and the platform texture hosts, placeholders, the engine image decoder (ADR 0003); the `MediaPreparation` and `TrackedTransfers` seams and the preparation values they carry (`PreparationInput`, `PreparationIntent`, `CompressionPreset`, `PreparedMedia`) (ADR 0012) |
 | `mpx_lottie` | Flutter + build hook | Vector animation `Decoder`, frame cache, Rust library over tlottie |
 | `mpx_video_decoder` | Flutter + build hook | Software video `Decoder` for silent loops, FFmpeg + libvpx library, decode-only |
 | `mpx_svg` | Flutter | SVG `Decoder` for `MediaKind.vectorImage`: a sanitizer and limits for untrusted SVG, a compile on a worker isolate, a raster at the spec |
@@ -89,12 +89,16 @@ its composition root.
 | Seam | Shape | Implemented by | Taken by |
 | --- | --- | --- | --- |
 | `MediaPreparation` | `prepare(input, intent)` → a handle with progress, cancel and the prepared file | `mpx_capture` | `mpx_transfer`'s `PublishJob`, through its constructor; without it only already-prepared items are accepted |
-| `TrackedTransfers` | `download(key)`; `watch(key)` → `ValueListenable<AssetTransfer>` in both directions (`receiving` for a download, `sending` then `sent` for an upload whose source has this key); `cancel(key)` (an upload's cancel goes to the job's owner); `leaseFile(key)` → `Future<ContentFileLease?>` | `mpx_transfer` (`leaseFile` over the cache's `leaseFile`) | `AssetBinding`, from the cache scope (without it a download is untracked); `mpx_library`'s `MediaSaver.saveContent(keys)` |
+| `TrackedTransfers` | `download(key, {origin: user \| auto})`; `watch(key)` → `ValueListenable<AssetTransfer>` in both directions (`receiving` for a download, `sending` then `sent` for an upload whose source has this key); `cancel(key)` (an upload's cancel goes to the job's owner); `leaseFile(key)` → `Future<ContentFileLease?>` | `mpx_transfer` (`leaseFile` over the cache's `leaseFile`) | `AssetBinding`, from the cache scope (without it a download is untracked); `mpx_library`'s `MediaSaver.saveContent(keys)` |
 
 Bindings know no jobs, directions or publish jobs; the mapping from the
 implementation's job state to `AssetTransfer` lives in the implementation.
 `ContentFileLease` (a file path and `release()`) is an `mpx_core` value
-beside the seam; it adds no edge.
+beside the seam; it adds no edge. The preparation values the first seam
+takes live in `mpx_core` with a stable serialisation; `mpx_capture` uses them
+and does not re-export them. `mpx_transfer` maps a `MediaKey` to the bytes
+cache's key through a `cacheKeyOf` function the composition root passes,
+the same mapping `mpx`'s fetcher uses, so no edge to `mpx` is needed.
 
 ### When a package boundary stands
 

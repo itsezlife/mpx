@@ -188,7 +188,10 @@ and the engine image decoder folded in. No networking.
 - Seams between optional packages (ADR 0012): `MediaPreparation`
   (`prepare(input, intent)` → a handle with progress, cancel and the prepared
   file; implemented by `mpx_capture`, taken by `mpx_transfer`'s publish
-  jobs) and `TrackedTransfers` (`download(key)`, `watch(key)` →
+  jobs; its values `PreparationInput`, `PreparationIntent`,
+  `CompressionPreset` and `PreparedMedia` are `mpx_core` types with a
+  stable serialisation) and `TrackedTransfers` (`download(key, {origin:
+  user | auto})`, `watch(key)` →
   `ValueListenable<AssetTransfer>` in both directions, `cancel(key)`,
   `leaseFile(key)` → `ContentFileLease?`; implemented by `mpx_transfer`,
   taken by `AssetBinding` from the cache scope and by `mpx_library`'s
@@ -309,8 +312,9 @@ the host's own uploader; the server key is aliased to it after publish, with
 the server keys the host's publisher returns, or by the host after its own
 upload (ADR 0012).
 Camera and microphone permissions live here; `mpx_library`'s system camera
-intake is the one exception (the iOS camera usage string). Seams:
-`CompressionPreset`, `RoundVideoConfig`, `Transcoder`, `RoundVideoRecorder`,
+intake is the one exception (the iOS camera usage string). It uses the
+preparation values from `mpx_core` and does not re-export them. Seams:
+`RoundVideoConfig`, `Transcoder`, `RoundVideoRecorder`,
 `CaptureProgress`, `PreparationCodec`, `MediaPreparer`,
 `PreparationPolicy`, `CameraSession`, `CameraSessions`. ADR 0007, 0011.
 
@@ -319,10 +323,13 @@ intake is the one exception (the iOS camera usage string). Seams:
 An optional plugin for uploads and the downloads a user can see or must
 keep. ADR 0012.
 
-- **Transfer jobs** on one facade, `Transfers`: `download(key)`,
-  `watch(filter)`, `publish(request)`, `registerPublisher(id, publisher)`,
-  `watchJobs(filter)`, `systemActive`. Each job has a `TransferId` (a
-  download's derived from its cache key), an opaque host tag and one sealed
+- **Transfer jobs** on one facade, `Transfers`: `download(key, {origin})`,
+  `upload(item, transport, tag)` (a one-item publish job with no
+  publisher), `watch(filter)`, `publish(request)`,
+  `registerPublisher(id, publisher)`, `watchJobs(filter)`, `systemActive`,
+  `connectivityChanged(online:)`. The composition root passes a
+  `cacheKeyOf(MediaKey)` function, the mapping `mpx`'s fetcher uses. Each
+  job has a `TransferId` (a download's derived from its cache key), an opaque host tag and one sealed
   `TransferState` (`queued`, `running`, `paused` with a closed set of
   reasons, `failed`, `completed`); verbs `pause`, `resume`, `cancel`,
   `retry`, `setPriority`.
@@ -331,7 +338,8 @@ keep. ADR 0012.
   `http_bytes_cache`; the HTTP client, retry backoff, worker isolate and
   ranged storage are the cache's.
 - **Journal**: an append-only log compacted into a snapshot, a file on the VM
-  and OPFS on the web; the source of truth after any kill.
+  and OPFS on the web, written on the main isolate; the source of truth
+  after any kill.
 - **Upload transport** seam (`UploadTransport`: `open`, `sendPart`,
   `finish`, `resumeToken`) with declared capabilities; adapters: multipart
   POST, tus, numbered parallel parts through host callbacks.
@@ -344,7 +352,8 @@ keep. ADR 0012.
 - **Publish jobs**: ordered items prepared through `MediaPreparation`,
   uploaded, then handed to a registered **publisher** with an idempotency
   key; a sealed `PublishOutcome`; failure policies `wholeJob` and `perItem`;
-  ordering groups and held jobs.
+  ordering groups and held jobs; a job emptied by cancels waits in
+  `awaitingOwner` for its owner.
 - Implements the core's `TrackedTransfers`. Fakes and contract suites in
   `testing.dart`.
 

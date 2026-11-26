@@ -15,7 +15,11 @@ registered host publisher with an idempotency key. Two seams in `mpx_core`,
 together without depending on each other. mpx knows nothing of chats,
 messages or posts.
 
-**Status**: Accepted (decided with the maintainer 2026-11-26)
+**Status**: Accepted (decided with the maintainer 2026-11-26; refined the
+same day while the work was planned: preparation values in `mpx_core`, the
+cache key function, download origin, the cancel path and `awaitingOwner`,
+the journal writer, connectivity, the item fingerprint, a single upload,
+binary sizes and the retry count)
 **Relates to**: 0001, 0002, 0003, 0007, 0008, 0010, 0011
 **Amends**: 0001 (package set, edges, core seams), 0007 (who owns upload),
 0008 (plugin list, publish order), 0011 (video preparation limit,
@@ -67,11 +71,26 @@ not link it. It runs on every platform `mpx_core` runs on.
 | Seam | Shape | Implemented by | Taken by |
 | --- | --- | --- | --- |
 | `MediaPreparation` | `prepare(input, intent)` → a handle with progress, cancel and the prepared file | `mpx_capture`, over `MediaPreparer` | `PublishJob`, through its constructor. Without it only already-prepared items are accepted |
-| `TrackedTransfers` | `download(key)`; `watch(key)` → `ValueListenable<AssetTransfer>`, `receiving` for a download and `sending` then `sent` for an upload whose source has this key; `cancel(key)`, which for an upload goes to the job's owner; `leaseFile(key)` → `Future<ContentFileLease?>` | `mpx_transfer` (`leaseFile` over the cache's `leaseFile`) | `AssetBinding`, from the cache scope (without it a download is untracked); `mpx_library`'s `MediaSaver.saveContent(keys)` |
+| `TrackedTransfers` | `download(key, {origin: user \| auto})`; `watch(key)` → `ValueListenable<AssetTransfer>`, `receiving` for a download and `sending` then `sent` for an upload whose source has this key; `cancel(key)`, which for an upload goes to the job's owner; `leaseFile(key)` → `Future<ContentFileLease?>` | `mpx_transfer` (`leaseFile` over the cache's `leaseFile`) | `AssetBinding`, from the cache scope (without it a download is untracked); `mpx_library`'s `MediaSaver.saveContent(keys)` |
 
 `ContentFileLease` is an `mpx_core` value: a file path and `release()`. A
 saver downloads, awaits, leases the file, saves from its path and releases
 it; no edge is added.
+
+The preparation values the first seam takes, `PreparationInput`,
+`PreparationIntent` (with `CompressionPreset`) and `PreparedMedia`, are
+`mpx_core` types with a stable serialisation, so the journal and the reuse
+table can store them. `mpx_capture` uses them and does not re-export them.
+
+A download's `origin` sets its default `resumeOnStart`: a `user` download
+resumes at start, an `auto` one waits for a binding.
+
+`Transfers` maps a `MediaKey` to the bytes cache's key through a
+`cacheKeyOf(MediaKey)` function the composition root passes; the `mpx` stack
+hands it the mapping its `BytesCacheFetcher` uses, so there is one mapping
+and no edge. It serves a download's derived id, `leaseFile` and the alias.
+Keys in mpx are `MediaKey`s and an item id is an opaque `String`; a host
+with its own identity maps it to them.
 
 Bindings know no jobs, directions or publish jobs. The host wires both
 implementations in its composition root. `mpx_transfer` depends on
@@ -81,12 +100,14 @@ implementations in its composition root. `mpx_transfer` depends on
 
 | Member | Does |
 | --- | --- |
-| `download(key)` | A tracked download the host asks for |
+| `download(key, {origin})` | A tracked download the host asks for |
+| `upload(item, transport, tag)` | One upload with no publisher: a one-item publish job that completes at `uploaded` with the `RemoteRef` |
 | `watch(filter)` | Snapshots of transfer jobs, by direction, state, tag and durability |
 | `publish(request)` | Creates a publish job |
 | `registerPublisher(id, publisher)` | Registers a publisher |
 | `watchJobs(filter)` | Snapshots of publish jobs, by tag or tag prefix, publisher and state |
 | `systemActive` | `ValueListenable<bool>`, true while `system` transfers run |
+| `connectivityChanged(online:)` | The connectivity signal, fed by the composition root from the same device signal as the cache scope |
 
 The queries read the journal, so they answer the same at every durability
 level.
@@ -98,7 +119,7 @@ level.
 | Which downloads are jobs | Tracked downloads only: an `AssetBinding` with a status control that starts the content fetch, or a `download(key)` from the host or a saver. Thumbnails, previews and glyphs stay plain cache fetches |
 | Identity | Every job has a `TransferId`. A download's is derived deterministically from its cache key, so a second request for the key returns the same job. An upload's is issued by the engine |
 | Tag | An opaque host value on every job, so an owner finds its jobs after a restart. The engine never reads it |
-| Lanes | Uploads: a small lane (photos, thumbnails, files up to 10 MB) and a big lane (video, larger files), one job each at a time. Downloads keep the cache's priority queue (visible > preload > background) |
+| Lanes | Uploads: a small lane (photos, thumbnails, files up to 10 MiB) and a big lane (video, larger files), one job each at a time. Downloads keep the cache's priority queue (visible > preload > background) |
 | Connections | One cap of 8 shared by both directions; downloads take at most 6 |
 | Verbs | `pause`, `resume`, `cancel`, `retry`, `setPriority`. Cancel removes the job |
 | Retention | Completed jobs stay 24 h |
@@ -119,8 +140,8 @@ Pause reasons are a closed set:
 | --- | --- | --- |
 | `user` | The user paused; a binding's cancel of a download | `resume` |
 | `systemInterrupted` | The system ended the envelope | The app is in the foreground |
-| `awaitingNetwork` | A transient network failure while connectivity is down | Connectivity is restored |
-| `awaitingResume` | A download at start without `resumeOnStart` | A binding watches the key |
+| `awaitingNetwork` | A transient network failure while connectivity is down (`connectivityChanged(online: false)`) | `connectivityChanged(online: true)` |
+| `awaitingResume` | A download at start without `resumeOnStart` (the default for `origin: auto`) | A binding watches the key |
 
 `TrackedTransfers.watch(key)` maps the state for surfaces: `queued` to
 `waiting`; `running` to `receiving` or `sending`; `paused(user)` and
@@ -134,8 +155,8 @@ upload's `completed` to `sent` until the publish's alias applies, then to
 
 - The job holds state; the bytes are the bytes cache's data. Parallel parts
   and ranged resume stay inside the download.
-- After a restart, user-started downloads resume from the cache's data.
-  Downloads started by auto-download or by a visible surface come back
+- After a restart, `origin: user` downloads resume from the cache's data.
+  `origin: auto` downloads (auto-download, a visible surface) come back
   `paused(awaitingResume)`. `resumeOnStart` overrides this per job.
 
 ### Uploads
@@ -162,8 +183,9 @@ keeps. Each transport declares its capabilities:
 The engine splits the file, keeps the budget, retries a failed part, sends the
 head last for a growing source and journals each acknowledged part. Adapters
 only speak their protocol. Part retries use `http_bytes_cache`'s retry backoff
-with upload parameters: exponential from 1 s to 30 s, 5 attempts per part,
-then the transport gives up and the upload fails.
+with upload parameters: exponential from 1 s, each wait capped at 30 s (a
+cap on one wait, not a total budget), five tries in all per part (the first
+and four retries), then the transport gives up and the upload fails.
 
 **Where requests run.** On the VM, on `http_bytes_cache`'s worker isolate,
 whose client streams a request body from a file range: one HTTP stack and one
@@ -176,7 +198,7 @@ with a slice of the OPFS file or a `Blob`.
 | --- | --- | --- | --- |
 | Multipart POST | One request with the file | `none` | None |
 | tus | Resumable chunked upload | `none` | Until the server's `Upload-Expires` |
-| Numbered parallel parts | Three host callbacks: start, a request for part N, complete with the acknowledgements; covers S3, R2 and GCS presigned multipart. Parts of 128 KiB (512 KiB above 10 MB), at most about 4000 parts, 8 MiB in flight | `separate` | 1.5 h for small files, 24 h for big ones |
+| Numbered parallel parts | Three host callbacks: start, a request for part N, complete with the acknowledgements; covers S3, R2 and GCS presigned multipart. Parts of 128 KiB (512 KiB above 10 MiB), at most about 4000 parts, 8 MiB in flight | `separate` | 1.5 h for files up to the 10 MiB lane split, 24 h above it |
 
 A changed source or an expired window restarts the upload from zero; it does
 not fail it. Download freshness stays with the bytes cache.
@@ -184,12 +206,13 @@ not fail it. Download freshness stays with the bytes cache.
 **Reuse table.** Re-sending the same media does not upload it again. Beside
 the journal, `mpx_transfer` keeps a table from source fingerprint plus
 preparation parameters to a `RemoteRef`, with the time it was stored and an
-expiry. The fingerprint is the library asset id and its modification date
-for a library item, and path, size and mtime for a file. The table is checked
+expiry. The fingerprint is the item's `fingerprint` when the host gives one
+(for a library item, built from its asset id and modification date), else
+path, size and mtime. The table is checked
 before preparation: a hit skips preparation and upload, and the item is
 `uploaded` at once. The transport judges a stored ref through its `reuse`
 capability. A publisher's `reuploadItems` answer drops the entry and
-re-uploads. An item whose source is a `ContentKey` that already has a server
+re-uploads. An item whose source is a `MediaKey` that already has a server
 identity (received, or aliased) goes as `remote`, with no upload. The host may
 turn the table off or set its expiry.
 
@@ -197,9 +220,10 @@ turn the table off or set its expiry.
 `sent` (the upload finished, publish not yet). An `AssetBinding` reads
 `TrackedTransfers.watch(key)` and shows a download or an upload in
 `AssetView`'s status control: for an upload, a ring with cancel and "sent /
-total". Cancel there calls `TrackedTransfers.cancel(key)`; for an upload the
-job's owner decides what that means for its item: an item cross is the
-owner's call, and a chat drops only that item from an album. After publish,
+total". Cancel there calls `TrackedTransfers.cancel(key)`; for an upload it
+drops the item from its job by the publish-job rules, and the owner sees that
+through `watchJobs`. Anything more the cross means is the owner's call: a
+chat drops only that item from an album. After publish,
 `alias(local, server)` applies (ADR 0002) with the server keys the publisher
 returns; until then the binding reads `sent`,
 then it returns to `none` with the local picture kept.
@@ -209,8 +233,8 @@ then it returns to `none` with the local picture kept.
 | Area | VM | Web |
 | --- | --- | --- |
 | Store | An append-only log in a file on the bytes cache's storage, compacted into a snapshot. No SQLite | OPFS beside the cache's store, compacted the same way. In memory only where OPFS is missing, with no resume after the tab closes |
-| Writer | The worker isolate | The main thread; a web worker may come later without a contract change |
-| Upload source | The file at its path | Copied into OPFS at job creation, up to a limit per job (default 500 MB, the sum of its sources). Over it, or without OPFS, the job does not resume after a reload and comes back `failed(sourceLost)` |
+| Writer | The main isolate, with async file IO; uploads stay on the cache's worker | The main thread; a web worker may come later without a contract change |
+| Upload source | The file at its path | Copied into OPFS at job creation, up to a limit per job (default 500 MiB, the sum of its sources). Over it, or without OPFS, the job does not resume after a reload and comes back `failed(sourceLost)` |
 
 Both: state changes are written and flushed at once; progress is batched to at
 most one write per 250 ms. A kill loses at most one window; parts are
@@ -238,9 +262,11 @@ override down to "always" or "never":
 
 | Platform | Envelope and start |
 | --- | --- |
-| Android 14+ | A user-initiated data transfer job, started at job creation while the app is visible, for long jobs only: any item a video, or a total size over 10 MB. Shorter jobs run `inProcess` |
+| Android 14+ | A user-initiated data transfer job, started at job creation while the app is visible, for long jobs only: any item a video, or a total size over 10 MiB. Shorter jobs run `inProcess` |
 | Android below 14 | A `dataSync` foreground service, same rule |
-| iOS 26+ | `beginBackgroundTask` at backgrounding; a continued-processing task with Live Activity progress submitted after 10 s if `system` jobs remain (`submitAt: afterDelay(10 s)`), or at resign-active (`submitAt: onResignActive`). Withdrawn when the app returns to the foreground. A refused submission degrades to `beginBackgroundTask`, then `paused(systemInterrupted)` |
+| iOS 26+ | `beginBackgroundTask` at backgrounding; a continued-processing task, its progress in the system's Live Activity
+(the task's title, subtitle and progress; the host adds no widget extension),
+submitted after 10 s if `system` jobs remain (`submitAt: afterDelay(10 s)`), or at resign-active (`submitAt: onResignActive`). Withdrawn when the app returns to the foreground. A refused submission degrades to `beginBackgroundTask`, then `paused(systemInterrupted)` |
 | iOS below 26 | `beginBackgroundTask` (about 30 s) |
 | macOS, Windows, Linux | No envelope; `inProcess`. `systemActive` tells the host that `system` transfers run, so it can confirm quitting |
 | Web | `inProcess` only, with a `beforeunload` warning while transferring |
@@ -253,7 +279,7 @@ and "cancel all"; the envelope ends when its jobs drain.
 | Event | Outcome |
 | --- | --- |
 | The system ends the envelope (expiry, low-memory kill, a service time limit) | The engine deletes nothing. The job becomes `paused(systemInterrupted)` and resumes from the journal once the app is in the foreground. Its owner is notified and may delete instead |
-| The user cancels from the notification or the Live Activity | A user cancel of every job in the envelope; each owner decides |
+| The user cancels from the notification or the Live Activity | Every job in the envelope is cancelled; owners see them removed and decide what that means |
 | Force stop, Task Manager stop, force quit | No callback. On the next start the journal resumes `system` uploads; downloads follow `resumeOnStart` |
 | A web reload with an upload job over the copy limit, or without OPFS | `failed(sourceLost)`; the owner may ask the user for the file again |
 
@@ -275,10 +301,12 @@ debug warning.
 **Request.** `transfers.publish(PublishRequest)`. The request carries a
 `tag`, ordered `PublishItem`s, an opaque `payload` (bytes), a `publisher` id,
 a `durability`, a `failurePolicy`, an optional `orderingGroup` and `hold`. A
-`PublishItem` has the host's item id, its local `ContentKey`, and a source:
+`PublishItem` has an opaque `String` item id, its local `MediaKey`, an
+optional `fingerprint` for the reuse table, and a source:
 a `PreparationInput` with a `PreparationIntent`, an already prepared file, or
 `remote` (a key that already has a server identity). A request with no items
-is valid.
+is valid. `transfers.upload(item, transport, tag)` is the same job with one
+item and no publisher; it completes at `uploaded` with the `RemoteRef`.
 
 **Per item.** A `remote` item is `uploaded` at once. Otherwise the reuse table
 is checked; a valid hit is `uploaded` at once. On a miss the item prepares
@@ -295,7 +323,7 @@ interrupted one starts over.
 
 | Outcome | Engine |
 | --- | --- |
-| `published(result, serverKeys)` | `completed(result)`; `alias(local, server)` for each entry of `serverKeys` (item id to server `ContentKey`) |
+| `published(result, serverKeys)` | `completed(result)`; `alias(local, server)` for each entry of `serverKeys` (item id to server `MediaKey`) |
 | `reuploadItems(ids)` | Drops those items' reuse entries, uploads them again, retries publish. Honoured once; a second one fails the job |
 | `rejected(reason, retryable)` | `failed(stage: publish, reason)`; its retry calls publish only |
 
@@ -314,9 +342,9 @@ is journaled and passed on every attempt.
 Part-level network retries stay inside the upload.
 
 **States.** Job: `preparing`, `uploading`, `publishing`, `awaitingPublisher`,
-`paused(reason)`, `failed(stage, reason)`, `completed(result)`. Item:
+`awaitingOwner`, `paused(reason)`, `failed(stage, reason)`, `completed(result)`. Item:
 `waiting`, `preparing(fraction)`, `uploading(sent, total, estimated)`,
-`uploaded`, `failed`, `removed`, each with its local `ContentKey`.
+`uploaded`, `failed`, `removed`, each with its local `MediaKey`.
 
 **Progress.** Byte-weighted, 0..1, never decreasing; re-estimates fold in
 without going back. Before preparation ends an item weighs its source size. A
@@ -338,8 +366,11 @@ payload changes are allowed, and `cancel` drops all uploaded state. Once
 publish starts only `cancel` and `removeItem` remain.
 
 **Cancel.** Cancelling one item drops it and the rest publish. The job
-reports `items.isEmpty`; whether an empty job is cancelled is its owner's
-rule, since only the owner can read the payload.
+reports `items.isEmpty`. A job whose last item is cancelled goes
+`awaitingOwner` and publishes nothing until its owner decides; an owner
+re-attaches to it after a restart through `watchJobs`. Whether it is then
+cancelled is the owner's rule, since only the owner can read the payload. A
+job made with no items publishes as usual.
 
 **Preparation.** Video preparation runs one at a time app-wide and stills
 and files two at a time, through the preparation policy's video limit (ADR
@@ -351,6 +382,14 @@ Every value in this ADR is a default the host can override.
 
 ## Why
 
+- The journal is written on the main isolate: its writes are small and
+  batched, async file IO keeps them off the frame, and the web writes the
+  same way; a journal isolate would add a second message protocol for no
+  gain. Uploads, which move the bytes, stay on the cache's worker.
+- A key function from the composition root keeps one `MediaKey` to cache
+  key mapping, the fetcher's, without an edge to `mpx`.
+- A job emptied by cancels cannot publish and cannot be judged by the engine,
+  so it waits for its owner instead of publishing nothing or vanishing.
 - Nothing outlives a force quit on any platform, so a journal the engine owns
   is the only state that is always there. Native queues that hold the only
   copy of a transfer lose it exactly when they are killed.
@@ -412,6 +451,8 @@ Every value in this ADR is a default the host can override.
 | Failing an upload whose source changed or whose window expired | Restarting from zero gives the user the same result without an error |
 | Aliasing at upload completion | The server key is known only once the publisher answers |
 | Publish callbacks as closures on the request | Cannot be journaled, so a restart would lose them |
+| A journal isolate, or journal writes through the bytes cache's worker | A second message protocol for small batched writes; the web has no worker isolate anyway |
+| A second `MediaKey` to cache key mapping in `mpx_transfer` | Two mappings that can disagree |
 | Cancelling an empty job in the engine | The engine cannot read the payload, so it cannot tell whether anything is left to publish |
 | A failed job holding its ordering group | One failure would stop every later publish in the group |
 | A separate publish-jobs object beside the transfers object | Two entry points for one engine and one journal |
@@ -428,7 +469,9 @@ Every value in this ADR is a default the host can override.
 - ADR 0008 is amended: `mpx_transfer` joins the plugin list and publishes
   after `mpx_core` and `http_bytes_cache`.
 - ADR 0011 is amended: the preparation policy gains a video concurrency
-  limit, default 1. `mpx_capture` implements `MediaPreparation`.
+  limit, default 1. `mpx_capture` implements `MediaPreparation`. The
+  preparation values move into `mpx_core` with a stable serialisation;
+  hosts import them from there.
   `MediaSaver.saveContent(keys)` lands in `mpx_library` over
   `TrackedTransfers`, decided with the saver's own amendment.
 - `http_bytes_cache`'s client learns to stream a request body from a file
@@ -440,6 +483,8 @@ Every value in this ADR is a default the host can override.
 - Hosts that use `system` durability declare the Android permissions and the
   Play Console foreground-service use, add the iOS task identifier and supply
   localised envelope strings.
+- The composition root passes `Transfers` the `cacheKeyOf` mapping and its
+  connectivity signal.
 - A host that sends media registers its publishers at app start, before jobs
   from the last run can publish, and returns server keys from them.
 - mpx's glossary gains: transfer job, tracked download, journal, upload
@@ -463,7 +508,12 @@ publish jobs, the core seams in both directions, the web journal, host
 permissions, the iOS submission policy, pause reasons and their triggers,
 retry backoff, the facade, engine values, request placement, identities,
 server keys, ordering after a failure, the thumbnail and reuse capabilities,
-the publish outcome and the reuse table. Research on upload and the outgoing
+the publish outcome and the reuse table; and, as the work was planned, the
+preparation values in `mpx_core`, the cache key function, key and item id
+types, download origin, the cancel path and `awaitingOwner`, the journal on
+the main isolate, connectivity, the item fingerprint, the single upload,
+binary sizes, the retry count, the numbered-parts freshness boundary and the
+system Live Activity. Research on upload and the outgoing
 message across the messenger clients (part sizes, in-flight budgets, resume
 windows, lanes, cancel and failure rules) and on background transfer APIs per
 platform, with what each durability level can promise.

@@ -16,7 +16,8 @@ or sending.
 
 **Status**: Accepted (decided with the maintainer 2026-11-20; amended by ADR
 0012 on 2026-11-26: a video preparation limit; `mpx_capture` implements the
-core's `MediaPreparation`; amended on 2026-11-26: the write side of
+core's `MediaPreparation`, and the preparation values move into `mpx_core`;
+amended on 2026-11-26: the write side of
 `mpx_library`, `MediaSaver`)
 **Relates to**: 0001, 0002, 0003, 0006, 0007, 0010, 0012
 **Amends**: 0001 (package set and edges), 0007 (scope, presets, still
@@ -126,7 +127,7 @@ host no permission and no store review flag:
 | Copy | Copies stream off the UI isolate with progress and cancel. `move` only for a file the host owns, never a cache file: moving consumes the source |
 | Result | Per item: `saved(platformRef)` (a content URI, a Photos asset id, a path; null on the web, where the browser confirms nothing), `cancelled`, or `failed` with `accessDenied`, `noSpace`, `unsupportedFormat` or `unavailable` |
 | Save access | `SaveAccess` is separate from library access: Apple `addOnly` (iOS 14+, macOS 11+) with `NSPhotoLibraryAddUsageDescription`, behind its own build define; nothing on Android 29+; the older write permission on Android 28 and below |
-| Content not yet local | `MediaSaver.saveContent(keys, destination)` runs, per key, download (`TrackedTransfers.download(key)`, progress from `watch(key)`), await, `TrackedTransfers.leaseFile(key)` (a `ContentFileLease`, which `mpx_transfer` implements over the bytes cache's own lease), save, release, under one job and one progress (download 90 %, copy 10 %; copy 100 % for an item already local). A null lease after a completed download is downloaded once more, then fails `unavailable`. Cancel cancels the downloads this job started, not others'. Without the seam wired an item that is not local fails `unavailable`, with a debug warning. No new edge: the lease type is `mpx_core`'s |
+| Content not yet local | `MediaSaver.saveContent(keys, destination)` runs, per key, download (`TrackedTransfers.download(key, origin: user)`, progress from `watch(key)`), await, `TrackedTransfers.leaseFile(key)` (a `ContentFileLease`, which `mpx_transfer` implements over the bytes cache's own lease), save, release, under one job and one progress (download 90 %, copy 10 %; copy 100 % for an item already local). A null lease after a completed download is downloaded once more, then fails `unavailable`. Cancel cancels the downloads this job started, not others'. Without the seam wired an item that is not local fails `unavailable`, with a debug warning. No new edge: the lease type is `mpx_core`'s |
 | Rights | The saver knows no rights: a caller that has them (a chat's protection) decides before it calls |
 | Platforms | Android (MediaStore insert with a pending flag, then the bytes; public directories on 28 and below; the document creation intent for `ask`), iOS (Photos add-only; `downloads` is the app's Documents shown in Files when the host declares file sharing, else the export picker; the export picker for `ask`), macOS (Photos add-only 11+; Downloads; the save panel), Windows and Linux (gallery as the Pictures / Videos folders, Downloads through the known folder / XDG; the save dialog), web (gallery and `downloads` as a blob URL download; `ask` through the save file picker where the browser has it, else a download) |
 
@@ -147,6 +148,13 @@ dimensions, duration, thumbnail bytes, MIME, `hasAudio`, progress and cancel.
 cancel and the prepared file. A host passes it to the users that need
 preparation (a publish job, ADR 0012); none of them depends on
 `mpx_capture` (ADR 0001, *Core seams between optional packages*).
+
+The values the seam carries, `PreparationInput`, `PreparationIntent` (with
+`CompressionPreset`) and `PreparedMedia`, live in `mpx_core` with a stable
+serialisation, so a publish job can journal an item's intent and its
+prepared file and key its reuse table on the preparation parameters.
+`mpx_capture` uses them and does not re-export them; hosts import them from
+`mpx_core`.
 
 **Stills**
 
@@ -291,7 +299,9 @@ save (progress, result).
   per-platform policies (`$Android`, `$IOS`, `$Desktop`, `$Web`) keep it at
   1 unless a host overrides it.
 - `mpx_capture` ships the `MediaPreparation` implementation and runs the
-  core seam's contract suite against it.
+  core seam's contract suite against it. `PreparationInput`,
+  `PreparationIntent`, `CompressionPreset` and `PreparedMedia` move into
+  `mpx_core`; hosts change their imports.
 - `mpx_library` ships the write side beside the read side; its README
   lists each platform's declarations for saving (the Android write
   permission for 28 and below, the Apple usage string and define, the
@@ -378,8 +388,8 @@ under 480 (750 kbps); the offered-preset counts are its `PhotoViewer`
 compression count rule. Maintainer decisions of 2026-11-20: the package
 split, the 432 preset, the minimal capture surface, drop and paste through
 `super_drag_and_drop`. Decided with the maintainer 2026-11-26, with ADR
-0012: the video preparation limit, the `MediaPreparation` implementation, and
-the media saver.
+0012: the video preparation limit, the `MediaPreparation` implementation, the
+preparation values in `mpx_core`, and the media saver.
 
 ## Related
 
