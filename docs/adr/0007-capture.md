@@ -2,14 +2,16 @@
 
 `mpx_capture`, a plugin, does two things in v1: it compresses a video before send against a shared preset table, and it
 records round video messages. The output seam reports bytes written, the final
-size and a header-rewritten signal. The host uploads the finished file. The
-result lands in `http_bytes_cache` as a local resource under a local content
-key so the sender's own item plays at once; after upload the host aliases the
-server key to it.
+size and a header-rewritten signal. The finished file is uploaded either by
+`mpx_transfer` (ADR 0012), through a transport the host chooses, or by the
+host's own uploader. The result lands in `http_bytes_cache` as a local
+resource under a local content key so the sender's own item plays at once;
+after upload the server key is aliased to it.
 
 **Status**: Accepted (decided with the maintainer 2026-11-10; amended by ADR
-0011 on 2026-11-20: still preparation, the 432 preset, the camera session)
-**Relates to**: 0001, 0002, 0008, 0011
+0011 on 2026-11-20: still preparation, the 432 preset, the camera session;
+amended by ADR 0012 on 2026-11-26: the upload may go through `mpx_transfer`)
+**Relates to**: 0001, 0002, 0008, 0011, 0012
 
 ## Context
 
@@ -28,7 +30,7 @@ Our FFmpeg build is decode-only under LGPL.
 | --- | --- |
 | Compression before send, and still preparation (ADR 0011) | In-app camera for regular photo and video (moved into v1 by ADR 0011) |
 | Round video messages | Pre-send editor (trim, crop, filters) |
-| Progress and cancel | Upload while recording or converting |
+| Progress and cancel | Upload while recording or converting (`mpx_transfer`'s API admits it; it switches on once a writer emits a growing output, ADR 0012) |
 
 ### Preset table (the shared contract)
 
@@ -74,8 +76,10 @@ and thumbnails, are the preparation policies of ADR 0011
 | Header rewritten | Set at completion when the head of the file changed |
 | Progress | Encode position ÷ duration |
 
-v1 hosts upload the finished file. The seam already allows a later uploader to
-start on a growing file and re-send the head.
+The finished file is uploaded by `mpx_transfer` or by the host. The seam
+already allows an uploader to start on a growing file and re-send the head:
+`mpx_transfer`'s growing `UploadSource` reads these fields, and starts using
+them once a writer emits a growing output.
 
 ### Into the cache
 
@@ -85,7 +89,7 @@ bubble plays it through the normal pipeline without a download.
 | Step | Decision |
 | --- | --- |
 | Mint | A local key, `MediaKey.local(uuid)` from `mpx_core`, when capture or compression starts |
-| After upload | The host calls `alias(local, server)` on the cache: the server key resolves to the same bytes, no copy or move |
+| After upload | `alias(local, server)` is applied on the cache: when `mpx_transfer` owned the upload, after publish, with the server keys the host's publisher returns (ADR 0012); otherwise by the host. The server key resolves to the same bytes, no copy or move |
 | Bubble | Keeps playing under the local key; anyone opening the server key gets the same bytes |
 | Release | The local key is released when the message is confirmed, or by normal retention |
 
@@ -127,7 +131,8 @@ native AAC, which stays LGPL.
 - Camera and microphone permissions live here, with one exception (ADR
   0011): `mpx_library`'s system camera intake needs the iOS camera usage
   string, with no session.
-- The host owns upload and any server-tuned round video values.
+- The upload goes through `mpx_transfer` or the host's own uploader; the host
+  owns the transport, the server and any server-tuned round video values.
 - Thumbnails come from the capture stream and feed the decode tier as stills.
 - `MediaKey` has a `local` variant; the bytes cache gains alias
   and release (ADR 0002, 0003).
@@ -166,4 +171,5 @@ table, Android bitrate rules, platform options, FFmpeg licence by encoder).
 
 ## Related
 
-ADR 0002 (local resource), 0008 (licences and binaries).
+ADR 0002 (local resource), 0008 (licences and binaries), 0012 (transfers and
+publish jobs).

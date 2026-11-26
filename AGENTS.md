@@ -48,6 +48,7 @@ mpx_player                    -> mpx_core, http_bytes_cache
 mpx_library                   -> mpx_core
 mpx_ui                        -> mpx_player, mpx_core, mpx_library
 mpx_capture, mpx              -> mpx_core, http_bytes_cache
+mpx_transfer                  -> mpx_core, http_bytes_cache   (ADR 0012, not landed yet)
 ```
 
 ## Rules held by convention
@@ -56,7 +57,9 @@ There are no workspace lints; review holds these:
 
 - Edges exactly as above. `mpx_core` and `http_bytes_cache` never depend on
   each other; `mpx` never depends on the decoders (`mpx_svg` included), the player, the UI,
-  the library or capture.
+  the library, capture or transfer. Optional packages meet at seams in
+  `mpx_core` (`MediaPreparation`, `TrackedTransfers`), never through an edge
+  between them (`mpx_ui -> mpx_library` is the one exception).
 - No package re-exports another package's API, `mpx` included.
 - Fakes and contract suites only from each package's `lib/testing.dart`; every
   new seam gets a fake, and a contract suite when it has more than one
@@ -82,7 +85,7 @@ There are no workspace lints; review holds these:
 | What | Where |
 | --- | --- |
 | The whole system on one page, build order | [docs/spec.md](docs/spec.md) |
-| Decisions (topology, bytes cache, core, player, feed, viewer, capture, publishing, migration, loading stages, library and picking) | [docs/adr/](docs/adr/) |
+| Decisions (topology, bytes cache, core, player, feed, viewer, capture, publishing, migration, loading stages, library and picking, transfers and publish jobs) | [docs/adr/](docs/adr/) |
 
 Read the ADR for the package you touch before changing its shape. A decision
 that changes an ADR updates that ADR in the same change.

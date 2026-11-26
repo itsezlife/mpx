@@ -82,15 +82,19 @@ mpx_library              ---> mpx_core                    (plugin: media library
 mpx_ui                   ---> mpx_player, mpx_core,       (viewer, feed list and pager widgets,
                               mpx_library                 library grid)
 mpx_capture              ---> mpx_core, http_bytes_cache  (plugin: CameraX, Transformer, MediaCodec / AVFoundation)
+mpx_transfer             ---> mpx_core, http_bytes_cache  (plugin: transfer jobs, journal, upload transports,
+                                                           publish jobs, OS envelope)
 mpx                      ---> mpx_core, http_bytes_cache  (plugin: composition root, fetch adapter,
                                                            device signals)
 ```
 
 `mpx_core` and `http_bytes_cache` do not depend on each other; `mpx` joins
-them. `mpx` depends on no decoder, player, UI, library or capture package;
-the host passes decoders into the stack and wires the optional packages.
-`mpx_ui` takes no edge to `mpx_capture`: the library grid leaves a camera
-slot the host fills (ADR 0011).
+them. `mpx` depends on no decoder, player, UI, library, capture or transfer
+package; the host passes decoders into the stack and wires the optional
+packages. `mpx_ui` takes no edge to `mpx_capture`: the library grid leaves a
+camera slot the host fills (ADR 0011). The other optional packages meet at
+two seams in `mpx_core`, `MediaPreparation` and `TrackedTransfers`, never
+through an edge between them (ADR 0012).
 
 Stays in chat_scroll_view: `content_model` (rich text, collections, packs,
 library, `ContentKey` and `ContentDescriptor`; pure Dart, no mpx dependency),
@@ -172,7 +176,7 @@ and the engine image decoder folded in. No networking.
     `placeholder`; `PreviewStore` (derived previews), `PreviewBlur`,
     `ThumbnailBlurRule`; `ClearPlaceholder` as the scope default;
   - transfer: `AssetTransfer` (`none`, `waiting`, `receiving`,
-    `awaitingUser`, `failed`), `AssetBinding.descriptor`, `download()`,
+    `awaitingUser`, `failed`; `sending` and `sent` for uploads, ADR 0012), `AssetBinding.descriptor`, `download()`,
     `cancelDownload()`, `AssetCacheScope.know`;
   - auto-download: `AutoDownloadPolicy` (`now` / `prefix` / `manual`,
     default `always`) with an opaque `AutoDownloadContext` per attach;
@@ -181,6 +185,15 @@ and the engine image decoder folded in. No networking.
     `MediaLoadingStyleScope`;
   - decoders: `DecodeFailure.unsupported` and
     `DecoderRegistry.registerFallback`.
+- Seams between optional packages (ADR 0012): `MediaPreparation`
+  (`prepare(input, intent)` → a handle with progress, cancel and the prepared
+  file; implemented by `mpx_capture`, taken by `mpx_transfer`'s publish
+  jobs) and `TrackedTransfers` (`download(key)`, `watch(key)` →
+  `ValueListenable<AssetTransfer>` in both directions, `cancel(key)`,
+  `leaseFile(key)` → `ContentFileLease?`; implemented by `mpx_transfer`,
+  taken by `AssetBinding` from the cache scope and by `mpx_library`'s
+  `MediaSaver.saveContent`). `ContentFileLease` is a file path and
+  `release()`. Without `TrackedTransfers` a download is untracked.
 
 ### mpx_lottie, mpx_video_decoder
 
@@ -268,28 +281,72 @@ key; `LibraryFetcher` serves them to the pipeline ahead of the host's
 network fetcher. `FileIntake`: `pickFiles(filter, multiple)` and
 `captureWithSystemCamera(kind)`, answering intake files. Android
 (MediaStore) and iOS (PhotoKit) adapters; the intake also on macOS and
-web. ADR 0011.
+web. The **media saver** (`MediaSaver`) is the write side: a batch save of
+photos, videos, animations and files to the gallery, Downloads or a place the
+user picks, as one `SaveJob` with progress, cancel and a result per item,
+with its own add-only access (`SaveAccess`) behind its own build define;
+`saveContent` fetches and leases content not yet local through the core's
+`TrackedTransfers`. Android, iOS, macOS, Windows, Linux and web. ADR 0011.
 
 ### mpx_capture
 
 Compression before send against a shared preset table (with the 432 px
 step the Android policy offers), media preparation, and round video
 messages. **Media preparation** (`MediaPreparer.prepare(input, intent,
-policy)`, two items at a time, off the UI isolate) scales and encodes
+policy)`, two items at a time and one video at a time app-wide, off the UI
+isolate) scales and encodes
 stills, compresses or passes videos through, and reads thumbnails and
 facts, by a **preparation policy** (`PreparationPolicy.$Android` /
-`$IOS` / `$Desktop` / `$Web`, ADR 0011). A **camera session**
+`$IOS` / `$Desktop` / `$Web`, ADR 0011); it implements the core's
+`MediaPreparation` over `MediaPreparer` (ADR 0012). A **camera session**
 (`CameraSessions.open`, one per process) gives a preview texture, photos,
 videos, a camera switch, a flash, pause and a frame-rate cap; the minimal
 **capture surface** (`CameraCaptureSurface`) takes the running session
 over from a small preview and gives it back without a restart. Output seam reports bytes written, final size and a header-rewritten
 signal; the result lands in `http_bytes_cache` as a local resource under a
-`MediaKey.local` key, and the host aliases the server key to it after upload.
+`MediaKey.local` key. The finished file is uploaded by `mpx_transfer` or by
+the host's own uploader; the server key is aliased to it after publish, with
+the server keys the host's publisher returns, or by the host after its own
+upload (ADR 0012).
 Camera and microphone permissions live here; `mpx_library`'s system camera
 intake is the one exception (the iOS camera usage string). Seams:
 `CompressionPreset`, `RoundVideoConfig`, `Transcoder`, `RoundVideoRecorder`,
 `CaptureProgress`, `PreparationCodec`, `MediaPreparer`,
 `PreparationPolicy`, `CameraSession`, `CameraSessions`. ADR 0007, 0011.
+
+### mpx_transfer
+
+An optional plugin for uploads and the downloads a user can see or must
+keep. ADR 0012.
+
+- **Transfer jobs** on one facade, `Transfers`: `download(key)`,
+  `watch(filter)`, `publish(request)`, `registerPublisher(id, publisher)`,
+  `watchJobs(filter)`, `systemActive`. Each job has a `TransferId` (a
+  download's derived from its cache key), an opaque host tag and one sealed
+  `TransferState` (`queued`, `running`, `paused` with a closed set of
+  reasons, `failed`, `completed`); verbs `pause`, `resume`, `cancel`,
+  `retry`, `setPriority`.
+- Upload lanes (small, big; one job each at a time); one connection cap of 8
+  for both directions, downloads at most 6. Download bytes stay in
+  `http_bytes_cache`; the HTTP client, retry backoff, worker isolate and
+  ranged storage are the cache's.
+- **Journal**: an append-only log compacted into a snapshot, a file on the VM
+  and OPFS on the web; the source of truth after any kill.
+- **Upload transport** seam (`UploadTransport`: `open`, `sendPart`,
+  `finish`, `resumeToken`) with declared capabilities; adapters: multipart
+  POST, tus, numbered parallel parts through host callbacks.
+- **Reuse table**: source fingerprint plus preparation parameters to a
+  `RemoteRef`, so the same media is not uploaded twice.
+- **Durability** `inProcess` or `system`, the same engine inside an **OS
+  envelope** where the platform has one. The host declares the Android
+  permissions and the iOS task identifier and supplies the envelope strings
+  (`TransferEnvelopeConfig`).
+- **Publish jobs**: ordered items prepared through `MediaPreparation`,
+  uploaded, then handed to a registered **publisher** with an idempotency
+  key; a sealed `PublishOutcome`; failure policies `wholeJob` and `perItem`;
+  ordering groups and held jobs.
+- Implements the core's `TrackedTransfers`. Fakes and contract suites in
+  `testing.dart`.
 
 ### mpx
 
@@ -335,6 +392,21 @@ The composition root, a plugin.
 | Picker selection | The ordered selection seam the grid and the picker-mode viewer share |
 | Camera slot | The grid cell the host fills with a camera preview |
 | Picker-mode viewer | The viewer composed for picking, with a check, a counter and a host slot |
+| Media saver | The write side of the device library: a batch save of photos, videos, animations and files to the gallery, Downloads or a chosen place as one job with progress, cancel and per-item results, with its own add-only access; fetches and leases content not yet local through the core's `TrackedTransfers` |
+
+### Glossary (transfers and publish jobs, ADR 0012)
+
+| Term | Meaning |
+| --- | --- |
+| Transfer job | One upload, or one tracked download, that the engine schedules, journals and reports, with a host tag and one sealed state, on the `Transfers` facade |
+| Tracked download | A download a user can see or must keep, started and watched through the core's `TrackedTransfers`; its bytes stay in the bytes cache |
+| Journal | The append-only log of every job, a file on the VM and OPFS on the web; the source of truth after any kill |
+| Upload transport | The seam that speaks one upload protocol, with declared capabilities |
+| Reuse table | Source fingerprint plus preparation parameters to the remote reference already uploaded, so the same media is not uploaded twice |
+| Durability | `inProcess` (resumes from the journal on next start) or `system` (the same engine inside an OS envelope) |
+| OS envelope | What the platform offers to keep the in-process engine running in the background |
+| Publish job | Ordered items prepared through the core's `MediaPreparation`, uploaded and handed to a publisher as one durable unit |
+| Publisher | Host code registered by id that makes the request naming a publish job's items, with an idempotency key, and answers a `PublishOutcome` |
 
 ## 4. Cross-cutting rules
 
@@ -345,7 +417,7 @@ The composition root, a plugin.
   code never downcasts to a fake or a concrete cache.
 - Native code lives in the package whose Dart calls it. Build hooks:
   `mpx_lottie`, `mpx_video_decoder`. Plugins (`mpx_core`, `mpx_player`,
-  `mpx_library`, `mpx_capture`, `mpx`) are single, not federated, and support Swift Package
+  `mpx_library`, `mpx_capture`, `mpx_transfer`, `mpx`) are single, not federated, and support Swift Package
   Manager.
 - A new package needs a reason from ADR 0001's list (heavy native code,
   permissions, standalone pure Dart, large optional UI, wiring); anything else
@@ -353,8 +425,9 @@ The composition root, a plugin.
 - Native names (C symbols, libraries, asset ids, channel ids, env vars) start
   with the `mpx` prefix and the owning component: `mpx_lottie_*`, `dev.mpx.frame_texture`,
   `MPX_VIDEO_FFMPEG_DIR`, `http_bytes_cache_*` / `hbc_*`. No `chat_` remains.
-- `mpx_ui`, `mpx_library` and `mpx_capture` are optional. Nothing below them
-  imports them.
+- `mpx_ui`, `mpx_library`, `mpx_capture` and `mpx_transfer` are optional.
+  Nothing below them imports them, and none imports another except
+  `mpx_ui -> mpx_library`; they meet at seams in `mpx_core` (ADR 0012).
 - No citations of the source clients (file names, line numbers, client names) in
   code, tests, READMEs or CHANGELOGs. Provenance lives in ADRs and planning
   scratch only.
@@ -391,11 +464,16 @@ The composition root, a plugin.
 | Camera session | CameraX Preview, ImageCapture, VideoCapture | AVCaptureSession, photo output, AVAssetWriter | same as iOS |
 | Media library | MediaStore | PhotoKit (host opt-in) | later |
 | File intake | system dialog, system camera | system dialog, system camera | system dialog, drop, paste |
+| Media saver | MediaStore (pending insert; public directories on 28 and below), document creation intent | Photos add-only, Documents or the export picker | Photos add-only (11+), Downloads, save panel |
+| Transfers, OS envelope | user-initiated data transfer job (14+), `dataSync` foreground service below | `beginBackgroundTask`; continued-processing task with Live Activity (26+) | no envelope, `inProcess` |
 | Prebuilt natives | arm64-v8a | arm64 | arm64 |
 
-Windows and Linux: fog. Web has two columns of v1 (ADR 0011):
-`mpx_library`'s intake (a file input, drop and paste) and `mpx_capture`'s
-still preparation (canvas in a worker); the rest of web stays fog.
+Windows and Linux: fog, except the media saver (Downloads and the Pictures /
+Videos folders, the save dialog; ADR 0011). Web in v1: `mpx_library`'s
+intake (a file input, drop and paste), its media saver (browser downloads)
+and `mpx_capture`'s still preparation (canvas in a worker), ADR 0011; and
+`mpx_transfer`, `inProcess` only with a `beforeunload` warning while
+transferring, ADR 0012. The rest of web stays fog.
 Everything needed on Apple is available from iOS 15 / macOS 12 (ADR 0004).
 
 ## 6. Open across ADRs

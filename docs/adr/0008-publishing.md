@@ -9,8 +9,9 @@ with building from source as the fallback. Test helpers stay in each package's
 publishing over the pub workspace.
 
 **Status**: Accepted (decided with the maintainer 2026-11-10: prefix, binaries,
-test helpers; the rest follows the publishing research)
-**Relates to**: 0001, 0003, 0007, 0009
+test helpers; the rest follows the publishing research; amended by ADR 0012
+on 2026-11-26: `mpx_transfer`)
+**Relates to**: 0001, 0003, 0007, 0009, 0012
 
 ## Context
 
@@ -27,7 +28,7 @@ hosted and SDK dependencies, and forbids unpublishing after 48 hours.
 
 | Area | Decision |
 | --- | --- |
-| Prefix | `mpx_` on every package; umbrella name `mpx`. Free under pub's similarity rules (checked 2026-11-10; the eight final names `mpx`, `mpx_core`, `mpx_lottie`, `mpx_video_decoder`, `mpx_player`, `mpx_ui`, `mpx_capture` re-checked 2026-11-13) |
+| Prefix | `mpx_` on every package; umbrella name `mpx`. Free under pub's similarity rules (checked 2026-11-10; the eight final names `mpx`, `mpx_core`, `mpx_lottie`, `mpx_video_decoder`, `mpx_player`, `mpx_ui`, `mpx_capture` re-checked 2026-11-13; `mpx_transfer` is re-checked under the similarity rules before its first publish, with the rest) |
 | Bytes cache name | `http_bytes_cache`, no prefix: it caches any HTTP bytes and is useful on its own. Free including similarity variants (checked 2026-11-10) |
 | Umbrella | `mpx` publishes as the composition root (ADR 0001), with no re-exports |
 | Hooks | Bump `hooks` / `code_assets` to 2.x before the first release |
@@ -37,10 +38,10 @@ hosted and SDK dependencies, and forbids unpublishing after 48 hours.
 | Fallback | Building from source stays available through a user-define |
 | Licences | Each package has its own LICENSE and NOTICE: FFmpeg LGPL 2.1 shared libraries, libvpx BSD-3 + WebM patent grant, tlottie MIT plus the Rust crate's dependencies. Hosts inherit the notice duties |
 | Test helpers | `testing.dart` stays inside each package; `flutter_test` remains a regular dependency (pub accepts it) |
-| Plugins | Single packages: `mpx_core`, `mpx_player`, `mpx_capture`, `mpx`; Swift Package Manager support |
+| Plugins | Single packages: `mpx_core`, `mpx_player`, `mpx_library`, `mpx_capture`, `mpx_transfer`, `mpx`; Swift Package Manager support |
 | Natives | Built by hooks inside the package that uses them: `mpx_lottie`, `mpx_video_decoder`; no native-only packages |
 | Versioning | melos over the pub workspace; `melos version` bumps dependents |
-| Order | Publish in dependency order with hosted constraints, no path dependencies: `http_bytes_cache`, `mpx_core`, `mpx_lottie` and `mpx_video_decoder`, `mpx_player`, `mpx_ui`, `mpx_capture`, `mpx` |
+| Order | Publish in dependency order with hosted constraints, no path dependencies: `http_bytes_cache`, `mpx_core`, `mpx_lottie` and `mpx_video_decoder`, `mpx_player`, `mpx_ui`, `mpx_capture`, `mpx_transfer`, `mpx`. `mpx_transfer` depends on nothing else in the set, so any place after `http_bytes_cache` and `mpx_core` holds |
 | First release | Each package's first version by hand, then GitHub Actions OIDC publishing with one tag pattern per package |
 | LGPL in App Store apps | Waits on the maintainer's legal review before the native video packages publish |
 
@@ -75,6 +76,9 @@ hosted and SDK dependencies, and forbids unpublishing after 48 hours.
 - FFI packages cap near 150 pub points (no Wasm), like `sqlite3`.
 - The README of every native video package must spell out the host's LGPL
   duties (about-box line, EULA terms, the right to replace the library).
+- `mpx_transfer` publishes as a plugin with no prebuilt binaries; its README
+  lists the Android permissions and the Play Console declaration a host
+  needs for `system` durability (ADR 0012).
 
 ## Settled in implementation (2026-11-22)
 
@@ -131,4 +135,4 @@ LGPL text, libvpx and tlottie licences, melos docs).
 ## Related
 
 ADR 0001 (names), 0007 (FFmpeg stays decode-only), 0009 (hooks bump before the
-move).
+move), 0012 (transfers and publish jobs).

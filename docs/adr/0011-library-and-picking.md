@@ -14,8 +14,11 @@ picker-mode viewer built from the viewer's composable pieces. The grid hands
 the host an ordered selection; mpx knows nothing of chats, messages, captions
 or sending.
 
-**Status**: Accepted (decided with the maintainer 2026-11-20)
-**Relates to**: 0001, 0002, 0003, 0006, 0007, 0010
+**Status**: Accepted (decided with the maintainer 2026-11-20; amended by ADR
+0012 on 2026-11-26: a video preparation limit; `mpx_capture` implements the
+core's `MediaPreparation`; amended on 2026-11-26: the write side of
+`mpx_library`, `MediaSaver`)
+**Relates to**: 0001, 0002, 0003, 0006, 0007, 0010, 0012
 **Amends**: 0001 (package set and edges), 0007 (scope, presets, still
 preparation, camera), 0006 (picker mode as a composition, no structural change)
 
@@ -38,7 +41,7 @@ only what is a chat's.
 
 | Package | Kind | Gains |
 | --- | --- | --- |
-| `mpx_library` (new) | Plugin, optional | **Media library** seam and its Android (MediaStore) and iOS (PhotoKit) adapters; **file intake** seam and its adapters on Android, iOS, macOS and web; library keys and a `ContentFetcher` for thumbnails and originals; fakes and contract suites in `testing.dart` |
+| `mpx_library` (new) | Plugin, optional | **Media library** seam and its Android (MediaStore) and iOS (PhotoKit) adapters; **file intake** seam and its adapters on Android, iOS, macOS and web; library keys and a `ContentFetcher` for thumbnails and originals; the **media saver** seam (`MediaSaver`: save photos and videos into the gallery and any file into Downloads or a place the user picks) and its adapters on Android, iOS, macOS, Windows, Linux and web, with its own add-only access; fakes and contract suites in `testing.dart` |
 | `mpx_capture` | Plugin, optional | **Media preparation** with `PreparationPolicy.$Android` / `$IOS` / `$Desktop` / `$Web`; the 432 px preset; a **camera session** (preview texture, photo, video, switch, flash, pause, hand-off) and a minimal **capture surface** |
 | `mpx_ui` | Flutter, optional | **Library grid** with `LibraryGridPolicy.$Android` / `$IOS`, the **picker selection** seam and its default, the **camera slot**, the **album switcher**, access and empty states, the **picker-mode viewer** |
 
@@ -69,6 +72,10 @@ mpx                -> mpx_core, http_bytes_cache
   lease the platform hands over; the host stores captured or pasted bytes
   through `mpx_capture` or its own cache.
 - `mpx` takes no edge to `mpx_library` (0001's rule for optional layers).
+- `mpx_library`'s `MediaSaver.saveContent` fetches content that is not
+  local yet through `mpx_core`'s `TrackedTransfers` seam (ADR 0012), which
+  the host wires; `mpx_library` takes no edge to `mpx_transfer` and `mpx`
+  none to `mpx_library` (0001's rule for optional layers).
 
 ### Cost of the `mpx_ui -> mpx_library` edge
 
@@ -79,6 +86,7 @@ host no permission and no store review flag:
 | --- | --- |
 | No manifest permissions | `mpx_library`'s Android manifest declares none; the host declares `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, `READ_MEDIA_VISUAL_USER_SELECTED` and `READ_EXTERNAL_STORAGE` (API ≤ 32) when it uses the library. The README lists them |
 | Opt-in Apple code | PhotoKit and the system camera compile only when the host opts in through a build define (name settled in implementation, `MPX_LIBRARY_PHOTOS` / `MPX_LIBRARY_CAMERA` style); without it the adapter reports `restricted` and the camera intake is unavailable. The host adds the usage strings when it opts in |
+| Saving | The manifest stays permission-free. Android 29 and later need no permission to add media or downloads; for older devices the host declares `WRITE_EXTERNAL_STORAGE` with `maxSdkVersion="28"` and the saver requests it. The Apple save code (add-only Photos access) compiles only behind its own build define, separate from the library's read define, so a host that only saves does not compile the grid's PhotoKit reading; the host adds `NSPhotoLibraryAddUsageDescription` when it opts in |
 | Drop and paste dependency | `super_drag_and_drop` (with its clipboard reader) brings a prebuilt native core. A viewer-only host links it too; if that cost is ever refused, intake splits into its own package under 0001's heavy-native reason. Not in v1 |
 
 ### Media library
@@ -106,13 +114,39 @@ host no permission and no store review flag:
 | Intake file | A path or a blob handle, with name, size, MIME, modification time, and a de-duplication key (name, size, modified) |
 | Classification | A helper from MIME, extension and probe facts to photo, video, animation (GIF, silent looping video), audio or file |
 
+### Media saver
+
+| Area | Decision |
+| --- | --- |
+| Seam | `MediaSaver.save(items, destination)` returns a `SaveJob`: progress over the batch, cancel, and a result per item. A fake (`FakeMediaSaver`) and a contract suite ship in `testing.dart` |
+| Save request | `saveContent` takes `SaveRequest(key, name, mime, kind)` per item: the caller passes name, MIME and kind beside each key; the saver guesses nothing |
+| Save item | `SaveItem`: a path and a lease (`mpx_core`'s `ContentFileLease`: path and `release()`; bytes only as the web / memory fallback), name, MIME, kind (photo, video, animation, file), optional creation date, written where the platform stores one (Android `DATE_TAKEN`, the asset date on Apple, the file modification time on desktop). A `file` item sent to the gallery is routed by its MIME: an image or video goes to the gallery, anything else fails `unsupportedFormat`. An animation saves to Photos as an animated image on Apple, and as its `.gif` or mp4 to the gallery on Android; on desktop and the web it saves as any file |
+| Destination | `gallery(album?)`, `downloads(subfolder?)`, `ask` (the system save dialog). The sub-folder name is the host's. A named album needs read / write access on iOS, so the album is optional and documented as such; on Android it is the `RELATIVE_PATH` sub-folder (`Pictures/<album>`). Name collisions: the platform store renames on Android 29+; desktop Downloads appends `name (1)` |
+| Batch | One call is one operation: one Photos change block on Apple, so one system prompt. On Apple a failed block fails every item in it; a cancel before the block makes every item `cancelled`; a cancel during the block has no effect |
+| Copy | Copies stream off the UI isolate with progress and cancel. `move` only for a file the host owns, never a cache file: moving consumes the source |
+| Result | Per item: `saved(platformRef)` (a content URI, a Photos asset id, a path; null on the web, where the browser confirms nothing), `cancelled`, or `failed` with `accessDenied`, `noSpace`, `unsupportedFormat` or `unavailable` |
+| Save access | `SaveAccess` is separate from library access: Apple `addOnly` (iOS 14+, macOS 11+) with `NSPhotoLibraryAddUsageDescription`, behind its own build define; nothing on Android 29+; the older write permission on Android 28 and below |
+| Content not yet local | `MediaSaver.saveContent(keys, destination)` runs, per key, download (`TrackedTransfers.download(key)`, progress from `watch(key)`), await, `TrackedTransfers.leaseFile(key)` (a `ContentFileLease`, which `mpx_transfer` implements over the bytes cache's own lease), save, release, under one job and one progress (download 90 %, copy 10 %; copy 100 % for an item already local). A null lease after a completed download is downloaded once more, then fails `unavailable`. Cancel cancels the downloads this job started, not others'. Without the seam wired an item that is not local fails `unavailable`, with a debug warning. No new edge: the lease type is `mpx_core`'s |
+| Rights | The saver knows no rights: a caller that has them (a chat's protection) decides before it calls |
+| Platforms | Android (MediaStore insert with a pending flag, then the bytes; public directories on 28 and below; the document creation intent for `ask`), iOS (Photos add-only; `downloads` is the app's Documents shown in Files when the host declares file sharing, else the export picker; the export picker for `ask`), macOS (Photos add-only 11+; Downloads; the save panel), Windows and Linux (gallery as the Pictures / Videos folders, Downloads through the known folder / XDG; the save dialog), web (gallery and `downloads` as a blob URL download; `ask` through the save file picker where the browser has it, else a download) |
+
 ### Media preparation (`mpx_capture`)
 
 The host calls `MediaPreparer.prepare(input, intent, policy)` per item before
-upload, off the UI isolate, two items at a time. Intents: as photo (standard
+upload, off the UI isolate. The preparation policy holds two limits: how many
+items prepare at once (default 2), and a separate limit for video compression
+(default 1, app-wide). Stills and files take the general limit; a video also
+waits for the video limit. Through `MediaPreparation` the limit holds for
+every caller, including `mpx_transfer`'s publish jobs. Intents: as photo (standard
 or high quality), as video (a preset), as file (original bytes, a thumbnail
 only). The result is a `PreparedMedia`: a local key or file lease,
 dimensions, duration, thumbnail bytes, MIME, `hasAudio`, progress and cancel.
+
+`mpx_capture` implements `mpx_core`'s `MediaPreparation` seam over
+`MediaPreparer`: `prepare(input, intent)` returns a handle with progress,
+cancel and the prepared file. A host passes it to the users that need
+preparation (a publish job, ADR 0012); none of them depends on
+`mpx_capture` (ADR 0001, *Core seams between optional packages*).
 
 **Stills**
 
@@ -187,7 +221,9 @@ and seams of 0006 do not change; a slot the composition lacks is added to
 Captions, sending, grouping, upload, what the selection becomes, rights and
 caps, the container the grid sits in (a sheet, a page, a dialog), feedback for
 refusals, strings, where captured media is saved, and the remembered video
-preset.
+preset; whether and when to save (an auto-save policy included), the save
+sub-folder name, rights checks before a save, and the feedback shown for a
+save (progress, result).
 
 ## Why
 
@@ -223,6 +259,11 @@ preset.
 | 480 in place of 432 | Larger outputs than the Android client |
 | A `MediaKey.library` variant | `external` already means "media from outside the host's backend"; a closed-set change costs every consumer |
 | The grid owning the selection outright | A messenger counts files and captures in the same order numbers |
+| `saveContent` in the `mpx` composition root | Needs `mpx -> mpx_transfer`, an optional-to-optional edge 0001 forbids |
+| A save that reads the file into Dart memory | A video would sit in memory; the copy streams from a file |
+| Moving the cache's file into Photos | Consumes the cache's file; fails while it is open |
+| Save permissions in the library's read access | A save-only host would compile and ask for the grid's read access |
+| Chat rights in the saver | The saver serves hosts without chats; the caller knows its rights |
 
 ## Consequences
 
@@ -246,6 +287,21 @@ preset.
   file, media preparation, preparation policy, camera session, capture
   surface, library grid, picker selection, camera slot, picker-mode viewer.
 - chat_scroll_view moves its mpx pin once these land (its ADR 046).
+- `PreparationPolicy` gains a video concurrency limit, default 1; the
+  per-platform policies (`$Android`, `$IOS`, `$Desktop`, `$Web`) keep it at
+  1 unless a host overrides it.
+- `mpx_capture` ships the `MediaPreparation` implementation and runs the
+  core seam's contract suite against it.
+- `mpx_library` ships the write side beside the read side; its README
+  lists each platform's declarations for saving (the Android write
+  permission for 28 and below, the Apple usage string and define, the
+  macOS sandbox entitlements for Photos and Downloads).
+- The chat side checks its protection before offering a save and maps the
+  results to its own feedback.
+- **Platform matrix**: macOS gains the saver (Photos add-only and Downloads)
+  ahead of the macOS library adapter, which stays later; Windows and Linux
+  gain Downloads and the Pictures / Videos folders; the web gains browser
+  downloads.
 
 ## Settled in implementation
 
@@ -306,6 +362,8 @@ preset.
 ## Open in implementation
 
 - How the opt-in defines reach Swift Package Manager builds.
+- The name of the preparation policy's video concurrency field (beside its
+  `concurrency`); the decision is only that it is separate and defaults to 1.
 - Whether the grid's swipe select auto-scroll speed comes from the policy or a
   fixed curve.
 - A macOS library adapter over PhotoKit.
@@ -319,7 +377,9 @@ Android client's `MediaController.makeVideoBitrate` cap for a short side
 under 480 (750 kbps); the offered-preset counts are its `PhotoViewer`
 compression count rule. Maintainer decisions of 2026-11-20: the package
 split, the 432 preset, the minimal capture surface, drop and paste through
-`super_drag_and_drop`.
+`super_drag_and_drop`. Decided with the maintainer 2026-11-26, with ADR
+0012: the video preparation limit, the `MediaPreparation` implementation, and
+the media saver.
 
 ## Related
 
