@@ -417,6 +417,17 @@ The composition root, a plugin.
 | Publish job | Ordered items prepared through the core's `MediaPreparation`, uploaded and handed to a publisher as one durable unit |
 | Publisher | Host code registered by id that makes the request naming a publish job's items, with an idempotency key, and answers a `PublishOutcome` |
 
+### Diagnostics (ADR 0013)
+
+`mpx_core`'s `MpxDiagnostics` (`silent`, `developer`, `onEvent`) carries
+structured `MpxEvent`s (level, category, closed operation, correlation ids,
+fields) from `mpx_transfer`, `mpx_capture` and the bindings; the `mpx` stack
+bridges the bytes cache's `BytesDiagnostics` into it; native envelope events
+join it and the platform log; `transfers.debugSnapshot()` and the
+`mpx.trace` define serve inspection. No user content. Every code path emits
+its events; an error without one is a defect. `RecordingDiagnostics` in
+`testing.dart`.
+
 ## 4. Cross-cutting rules
 
 - No package re-exports another package's API, `mpx` included. Hosts import

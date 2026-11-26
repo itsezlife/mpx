@@ -380,6 +380,10 @@ uploads.
 
 Every value in this ADR is a default the host can override.
 
+Every path above reports structured events through `mpx_core`'s
+`MpxDiagnostics`, and `transfers.debugSnapshot()` gives a debug panel the
+engine's state (ADR 0013).
+
 ## Why
 
 - The journal is written on the main isolate: its writes are small and
@@ -522,4 +526,4 @@ platform, with what each durability level can promise.
 
 ADR 0002 (bytes cache, alias, worker transfers, retry backoff), 0007 (capture
 output seam), 0008 (plugin shape), 0010 (`AssetTransfer`, status control),
-0011 (media preparation, `MediaSaver`).
+0011 (media preparation, `MediaSaver`), 0013 (diagnostics events).
