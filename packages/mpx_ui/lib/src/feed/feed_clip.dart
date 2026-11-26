@@ -169,12 +169,13 @@ class FeedClip extends StatelessWidget {
         final held =
             state.autoplay == FeedAutoplay.none ||
             state.autoplay == FeedAutoplay.prefixOnly;
-        // Content that does not play by itself offers to play.
-        final shownStatus = switch (status) {
-          MediaStatusMode$Control() when onPlay != null && held =>
-            const MediaStatusMode.control(playAction: true),
-          _ => status,
-        };
+        // Content that does not play by itself offers to play: a clip the
+        // gate holds, and one that should play and shows as a picture (its
+        // decoder could not play it, its first frame stands in).
+        final offers = status is MediaStatusMode$Control && onPlay != null;
+        final shownStatus = offers && held
+            ? const MediaStatusMode.control(playAction: true)
+            : status;
         final overlays = shownStatus is! MediaStatusMode$None || badge;
         if (!overlays ||
             state.released ||
@@ -195,28 +196,45 @@ class FeedClip extends StatelessWidget {
           FeedItemState(clip: final clip?) => clip.fit,
           _ => const AssetProfile().fit,
         };
+        // They fade with the viewer's morph, as every mark over an item
+        // does, and are back once the viewer has left it.
+        Widget marks(MediaStatusMode mode) => ViewerOriginOverlay(
+          media: item.key,
+          child: AssetView(
+            key: const ValueKey('mpx-feed-overlays'),
+            content: item.key,
+            preset: presetOf(AssetProfile(fit: shownFit)),
+            scope: scope,
+            downloadContext: item.downloadContext,
+            opacity: 0,
+            status: mode,
+            badge: badge,
+            onPlay: onPlay,
+          ),
+        );
+        // The clip that should move reads whether it settled on a picture.
+        final moving = state.clip;
+        final readsStill = offers && !held && moving != null && moving.animate;
         return Stack(
           fit: StackFit.expand,
           children: [
             // The picture a viewer opens from: the player's frame or the
             // view's, never the controls over them.
             AssetPicture(child: picture()),
-            // They fade with the viewer's morph, as every mark over an item
-            // does, and are back once the viewer has left it.
-            ViewerOriginOverlay(
-              media: item.key,
-              child: AssetView(
-                key: const ValueKey('mpx-feed-overlays'),
+            if (readsStill)
+              AssetLoadStateBuilder(
                 content: item.key,
-                preset: presetOf(AssetProfile(fit: shownFit)),
+                preset: presetOf(moving),
                 scope: scope,
                 downloadContext: item.downloadContext,
-                opacity: 0,
-                status: shownStatus,
-                badge: badge,
-                onPlay: onPlay,
-              ),
-            ),
+                builder: (context, load, _) => marks(
+                  load.standsStill
+                      ? const MediaStatusMode.control(playAction: true)
+                      : shownStatus,
+                ),
+              )
+            else
+              marks(shownStatus),
           ],
         );
       },

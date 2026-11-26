@@ -345,6 +345,7 @@ void main() {
       WidgetTester tester, {
       required FeedPolicy policy,
       VoidCallback? onPlay,
+      void Function(FakeAssetAttempt attempt)? settle,
     }) async {
       final feed = FeedController(policy: policy, presetOf: preset);
       addTearDown(feed.dispose);
@@ -369,9 +370,9 @@ void main() {
           ),
         ),
       );
-      for (final attempt in producer.attempts) {
-        attempt.advance(AssetStage.firstFrame);
-      }
+      producer.attempts.forEach(
+        settle ?? (attempt) => attempt.advance(AssetStage.firstFrame),
+      );
       await tester.pump(const Duration(milliseconds: 400));
     }
 
@@ -388,6 +389,38 @@ void main() {
 
     testWidgets('with no host to play it there is no button', (tester) async {
       await pumpHeld(tester, policy: held);
+
+      expect(find.bySemanticsLabel('Play'), findsNothing);
+    });
+
+    testWidgets('a clip that should play and settled on a picture offers '
+        'play: its decoder could not play it, and it reads as an image', (
+      tester,
+    ) async {
+      var plays = 0;
+      await pumpHeld(
+        tester,
+        policy: const FeedPolicy.list(),
+        onPlay: () => plays++,
+        settle: (attempt) {
+          attempt
+            ..advance(AssetStage.firstFrame)
+            ..bestReached();
+        },
+      );
+
+      expect(find.bySemanticsLabel('Play'), findsOneWidget);
+      await tester.tap(find.bySemanticsLabel('Play'));
+      expect(plays, 1);
+    });
+
+    testWidgets('a clip that moves shows none', (tester) async {
+      await pumpHeld(
+        tester,
+        policy: const FeedPolicy.list(),
+        onPlay: () {},
+        settle: (attempt) => attempt.advance(AssetStage.full, animated: true),
+      );
 
       expect(find.bySemanticsLabel('Play'), findsNothing);
     });

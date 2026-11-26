@@ -4,6 +4,8 @@
 
 - The viewer's player starts with sound: a player a list left muted (volume 0,
   kept warm) opened silent in the viewer.
+- `FeedClip.onPlay` also shows play over a clip that should play and reads as a
+  picture (its decoder could not play it, `AssetLoadState.standsStill`).
 - `FeedClip.onPlay`: a clip the autoplay gate holds (a setting, the power
   saver, a size over the limit) shows play over its picture, with the host's
   action behind it (`FeedController.requestPlay` for a clip that plays in
