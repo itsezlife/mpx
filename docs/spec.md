@@ -419,11 +419,15 @@ The composition root, a plugin.
 
 ### Diagnostics (ADR 0013)
 
-`mpx_core`'s `MpxDiagnostics` (`silent`, `developer`, `onEvent`) carries
-structured `MpxEvent`s (level, category, closed operation, correlation ids,
-fields) from `mpx_transfer`, `mpx_capture` and the bindings; the `mpx` stack
-bridges the bytes cache's `BytesDiagnostics` into it; native envelope events
-join it and the platform log; `transfers.debugSnapshot()` and the
+`mpx_core`'s process-wide `MpxDiagnostics.current` (`silent`, `developer`,
+`onEvent`; set once by the host, restored by tests that change it) carries
+structured `MpxEvent`s (level, a `DiagnosticOp` with its category,
+correlation ids, fields) from `mpx_transfer`, `mpx_capture`, `mpx` and the
+bindings; `mpx_core` declares only the `DiagnosticOp` interface and each
+package keeps its own closed op enum; the `mpx` stack bridges the bytes
+cache's `BytesDiagnostics.current` into it; native envelope events
+join it and the platform log (a 2 MiB native ring file while Dart is not
+running); `transfers.debugSnapshot()` and the
 `mpx.trace` define serve inspection. No user content. Every code path emits
 its events; an error without one is a defect. `RecordingDiagnostics` in
 `testing.dart`.

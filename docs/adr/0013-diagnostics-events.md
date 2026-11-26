@@ -2,8 +2,9 @@
 
 Every code path in mpx's optional packages reports what it does as a
 structured event: a level, a category, an operation from a closed set,
-correlation ids and a few numeric or short fields. One policy type in
-`mpx_core`, `MpxDiagnostics`, is silent by default, logs to the developer
+correlation ids and a few numeric or short fields. One process-wide policy
+in `mpx_core`, `MpxDiagnostics.current`, set once by the host, is silent by
+default, logs to the developer
 console when asked, or hands every event to the host. The bytes cache keeps
 its own `BytesDiagnostics`; the composition root bridges it into the same
 stream. Native code crosses the plugin channel into the same events and also
@@ -31,12 +32,16 @@ a kill, when the developer console is not attached.
 
 | Piece | Where | Shape |
 | --- | --- | --- |
-| `MpxDiagnostics` | `mpx_core` | Sealed policy: `silent` (the default; one level check per call site), `developer` (`dart:developer` `log`, name `mpx`), `onEvent(callback)` (the host routes events, for example a crash reporter that keeps `warning` and `error` in release builds) |
-| `MpxEvent` | `mpx_core` | `time`; `level` (`trace`, `debug`, `info`, `warning`, `error`); `category`; `op`, a closed enum per category; correlation ids `jobId`, `itemId`, `mediaKey`, `tag`; `fields` (numbers, bools and short strings); `error`; `stackTrace` |
+| `MpxDiagnostics` | `mpx_core` | Sealed policy, process-wide as `MpxDiagnostics.current` (as `BytesDiagnostics.current`): the host sets it once at start, and a test that changes it restores it. Policies: `silent` (the default; one level check per call site), `developer` (`dart:developer` `log`, name `mpx`), `onEvent(callback)` (the host routes events, for example a crash reporter that keeps `warning` and `error` in release builds) |
+| `MpxEvent` | `mpx_core` | `time`; `level` (`trace`, `debug`, `info`, `warning`, `error`); `op`, a `DiagnosticOp` whose category is the event's; correlation ids `jobId`, `itemId`, `mediaKey`, `tag`; `fields` (numbers, bools and short strings); `error`; `stackTrace` |
+| `DiagnosticOp` | `mpx_core` | The op contract only: an interface with a `category` and a `name`. Each package keeps its own closed op enum implementing it |
 | `RecordingDiagnostics` | `mpx_core` `testing.dart` | A fake that records events, with matchers by category, op, level and id |
 
-Categories: `journal`, `scheduler`, `transport`, `envelope`, `reuse`,
-`publish`, `preparation`, `binding`, `cache`. ADR 0012's paths each have
+Categories and the package whose op enum holds them: `journal`,
+`scheduler`, `transport`, `envelope`, `reuse` and `publish` in
+`mpx_transfer`; `preparation` in `mpx_capture`; `binding` in `mpx_core`;
+`cache` in `mpx`. `mpx_core` declares no other package's ops, so a package
+adds an op without touching the core. ADR 0012's paths each have
 their operations (a part sent, acknowledged, retried or given up; a journal
 flush or compaction; an envelope started, refused, degraded, ended by the
 system or withdrawn; a reuse hit or invalidation; a publish attempt and its
@@ -48,16 +53,16 @@ Levels: `trace` for per-part and per-batch detail, `debug` for stage changes,
 `info` for milestones, `warning` for a degrade or a retry, `error` for a
 failure that reaches a state.
 
-`mpx_transfer`, `mpx_capture` and the bindings of `mpx_core` take an
-`MpxDiagnostics` from the composition root. Packages send nothing on their
-own; routing is the host's.
+`mpx_transfer`, `mpx_capture`, `mpx` and the bindings of `mpx_core` emit
+through `MpxDiagnostics.current`; none takes a policy through a constructor.
+Nothing is emitted until the host sets a policy; routing is the host's.
 
 ### The bytes cache
 
 `mpx_core` and `http_bytes_cache` stay independent (ADR 0001). The `mpx`
-stack turns the host's `MpxDiagnostics` into a `BytesDiagnostics.onEvent`
-that forwards each bytes event as category `cache`, with its operation, level
-and stack trace. Its free-text message is dropped, since it can carry keys
+stack sets `BytesDiagnostics.current` to an `onEvent` that forwards each
+bytes event into `MpxDiagnostics.current` as category `cache`, with its
+operation as a field, its level and stack trace. Its free-text message is dropped, since it can carry keys
 and URLs.
 
 ### Native events
@@ -67,7 +72,7 @@ service, the iOS background and continued-processing tasks) cross the plugin
 channel into `MpxEvent` with category `envelope`. They are also written to
 logcat under the tag `mpx_transfer` and to `os_log` under subsystem
 `dev.mpx.transfer`, category `envelope`. While Dart is not running the native
-side writes them to a small ring file; at the next start the plugin emits
+side writes them to a ring file (default 2 MiB); at the next start the plugin emits
 each record with its original time and a `native` field, then a merge event.
 
 ### Inspection
@@ -126,6 +131,8 @@ a host keeps its tags to ids.
 | --- | --- |
 | Free-text log lines | Cannot be filtered by job or item, and tests cannot assert on them reliably |
 | `mpx_core -> http_bytes_cache` to share one diagnostics type | ADR 0001 keeps the two independent; a bridge in the composition root does the job |
+| A policy passed through every constructor | Every seam and widget would grow a parameter, and a forgotten one goes silent; the bytes cache's process-wide policy already works |
+| Every op enum in `mpx_core` | The core would change for every new path in an optional package |
 | A logging package dependency | A host's own routing would sit behind a second abstraction; the callback is enough |
 | Logging on by default | Costs every host a stream it may not want |
 | Counting native events only on the native side | Two logs that disagree in time and ids; the bridge and the ring file keep one stream |
@@ -133,10 +140,12 @@ a host keeps its tags to ids.
 
 ## Consequences
 
-- `mpx_core` gains `MpxDiagnostics`, `MpxEvent`, its categories and
-  operations, the `mpx.trace` helper and `RecordingDiagnostics`.
-- `mpx`'s stack takes an `MpxDiagnostics` and bridges the bytes cache into
-  it.
+- `mpx_core` gains `MpxDiagnostics` with `current`, `MpxEvent`,
+  `DiagnosticOp`, its own `binding` ops, the `mpx.trace` helper and
+  `RecordingDiagnostics`. Each other package declares its own op enum.
+- `mpx`'s stack bridges the bytes cache into `MpxDiagnostics.current`.
+- Tests that change `MpxDiagnostics.current` or `BytesDiagnostics.current`
+  restore it.
 - `mpx_transfer`, `mpx_capture` and the bindings emit their events;
   `mpx_transfer` adds `transfers.debugSnapshot()` and the native ring logs
   (ADR 0012).
@@ -152,7 +161,9 @@ Decided with the maintainer 2026-11-26: structured events with correlation
 ids on the bytes cache's policy pattern, the contract in `mpx_core` with the
 cache bridged in the composition root, native events bridged and kept in the
 platform log and a ring file, the debug snapshot, compile-time traces, no
-user content, and diagnostics as a rule for every package and device check.
+user content, and diagnostics as a rule for every package and device check;
+then, the same day, the process-wide `current` policy, the op contract in
+the core with each package's own op enum, and the ring file's 2 MiB default.
 
 ## Related
 
