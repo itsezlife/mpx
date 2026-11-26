@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `AssetLoadState.standsStill`: a binding that asked for motion and settled on
+  a picture that does not move (a video its decoder could not play, shown by
+  its first frame).
 - A streamable video that is not local shows play in the centre only where
   the host gives an `onPlay` to stream it and the content waits for the
   reader; a download that runs, or a surface with no `onPlay` (a feed tile),

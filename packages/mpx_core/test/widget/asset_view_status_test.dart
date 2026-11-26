@@ -527,6 +527,48 @@ void main() {
     expect(find.text('failed'), findsNothing);
   });
 
+  group('a binding that asked for motion', () {
+    AssetLoadState stateOf(AssetBinding binding) => AssetLoadState.of(binding);
+
+    test('stands still when it settled on a picture that does not move', () {
+      final binding = scope.attach(
+        _key,
+        _preset.spec,
+        const AssetProfile(animate: true),
+      );
+      addTearDown(binding.detach);
+      producer.last
+        ..advance(AssetStage.firstFrame)
+        ..bestReached();
+
+      expect(stateOf(binding).standsStill, isTrue);
+    });
+
+    test('moves when its picture animates, and is still while it loads', () {
+      final binding = scope.attach(
+        _key,
+        _preset.spec,
+        const AssetProfile(animate: true),
+      );
+      addTearDown(binding.detach);
+      expect(stateOf(binding).standsStill, isFalse);
+
+      producer.last.advance(AssetStage.full, animated: true);
+
+      expect(stateOf(binding).standsStill, isFalse);
+    });
+
+    test('a picture that never asked for motion is no still of one', () {
+      final binding = scope.attach(_key, _preset.spec, const AssetProfile());
+      addTearDown(binding.detach);
+      producer.last
+        ..advance(AssetStage.firstFrame)
+        ..bestReached();
+
+      expect(stateOf(binding).standsStill, isFalse);
+    });
+  });
+
   testWidgets('AssetLoadStateBuilder: a host UI from the same entry, with '
       'no view of its own', (tester) async {
     await tester.pumpWidget(

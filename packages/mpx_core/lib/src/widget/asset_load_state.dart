@@ -43,12 +43,18 @@ final class AssetLoadState {
   const AssetLoadState({
     required this.stage,
     this.transfer = AssetTransfer.none,
+    this.standsStill = false,
   });
 
   /// The state of [binding] now.
   factory AssetLoadState.of(AssetBinding binding) => AssetLoadState(
     stage: binding.readiness.stage,
     transfer: binding.transfer,
+    standsStill:
+        binding.profile.animate &&
+        binding.readiness.isFinal &&
+        binding.readiness.stage.index >= AssetStage.firstFrame.index &&
+        !binding.paintable.isAnimated,
   );
 
   /// The best stage the media shows.
@@ -56,6 +62,11 @@ final class AssetLoadState {
 
   /// Its download.
   final AssetTransfer transfer;
+
+  /// Whether the binding asked for motion and settled on a picture that does
+  /// not move: a video its decoder could not play, shown by its first frame.
+  /// It reads as a picture, so a surface offers play over it.
+  final bool standsStill;
 
   /// Whether bytes are on their way while the media shows no frame yet: what
   /// a progress indicator stands for.
@@ -96,10 +107,11 @@ final class AssetLoadState {
   bool operator ==(Object other) =>
       other is AssetLoadState &&
       other.stage == stage &&
-      other.transfer == transfer;
+      other.transfer == transfer &&
+      other.standsStill == standsStill;
 
   @override
-  int get hashCode => Object.hash(stage, transfer);
+  int get hashCode => Object.hash(stage, transfer, standsStill);
 
   @override
   String toString() => 'AssetLoadState(${stage.name}, $transfer)';
