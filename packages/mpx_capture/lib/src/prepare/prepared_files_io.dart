@@ -11,3 +11,9 @@ void delete(String path) {
   final file = File(path);
   if (file.existsSync()) file.deleteSync();
 }
+
+/// Writes [bytes] to [path] (replaced); true when written.
+bool write(String path, List<int> bytes) {
+  File(path).writeAsBytesSync(bytes);
+  return true;
+}
