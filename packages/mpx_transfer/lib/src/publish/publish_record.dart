@@ -39,6 +39,7 @@ final class PublishRecord {
     this.reuploads = 0,
     Map<String, MediaKey> aliases = const {},
     this.end,
+    this.progress = 0,
   }) : items = List.unmodifiable(items),
        aliases = Map.unmodifiable(aliases);
 
@@ -98,6 +99,10 @@ final class PublishRecord {
   /// How the job ended: completed or failed; null while it goes on.
   final PublishJobState? end;
 
+  /// The job's progress as last shown when the record was written: what a
+  /// restart's progress starts from, so the ring does not go back.
+  final double progress;
+
   /// This record with the given parts replaced; [clearEnd] reopens an
   /// ended job.
   PublishRecord copyWith({
@@ -108,6 +113,7 @@ final class PublishRecord {
     PublishJobState? end,
     bool clearEnd = false,
     DateTime? updatedAt,
+    double? progress,
   }) => PublishRecord(
     id: id,
     tag: tag,
@@ -127,6 +133,7 @@ final class PublishRecord {
     reuploads: reuploads ?? this.reuploads,
     aliases: aliases ?? this.aliases,
     end: clearEnd ? null : end ?? this.end,
+    progress: progress ?? this.progress,
   );
 
   /// This record with item [itemId]'s progress replaced.
@@ -291,6 +298,7 @@ abstract final class PublishRecordCodec {
       },
     'items': [for (final item in record.items) _itemToJson(item)],
     if (record.end case final end?) 'end': _endToJson(end),
+    if (record.progress > 0) 'progress': record.progress,
   };
 
   /// The record [json] holds.
@@ -331,6 +339,7 @@ abstract final class PublishRecordCodec {
         final Map<String, Object?> end => _endFromJson(end),
         _ => null,
       },
+      progress: (json['progress'] as num?)?.toDouble() ?? 0,
     );
   }
 

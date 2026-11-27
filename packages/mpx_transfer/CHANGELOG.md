@@ -21,6 +21,21 @@
   `reuploadItems` with its item count. An upload a publish job cancels is
   reported `cancelled` with `by: owner`.
 - `UploadsHarness.open(cache:)`.
+- Publish progress: `PublishJobSnapshot.progress` and
+  `PublishItemSnapshot.progress`, 0..1 and byte-weighted, on `watch()` and
+  `watchItem(id)`. Before its preparation ends an item weighs its source's
+  size (`PreparationInput.byteSize`, else the file's), then its upload's
+  bytes; a video's preparation takes 30 % of its item, a photo's or a
+  file's 2 %, and the publisher's call the last 5 % of the job
+  (`PublishProgressWeights`, set with `Transfers.open(progressWeights:)`).
+  A remote item or a reuse hit counts as done at once. The value never goes
+  back: a re-estimate stretches the rest of the ring over the new remaining
+  work, and the job record keeps the value a restart starts from (an
+  optional `progress` field in the version 1 publish record). Progress
+  reports no diagnostics events.
+- `Transfers.watchJobs(PublishJobFilter)`: lists of publish job snapshots
+  by tag, tag prefix, publisher and state, oldest first, from the journal
+  after a restart.
 
 - Publish jobs: `Transfers.publish(PublishRequest)` (tag, ordered
   `PublishItem`s, an opaque payload, a publisher id, a transport, durability

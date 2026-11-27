@@ -29,7 +29,9 @@ import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
 import 'package:mpx_transfer/src/publish/publish_job.dart';
 import 'package:mpx_transfer/src/publish/publish_jobs.dart';
 import 'package:mpx_transfer/src/publish/publish_journal.dart';
+import 'package:mpx_transfer/src/publish/publish_progress.dart';
 import 'package:mpx_transfer/src/publish/publish_request.dart';
+import 'package:mpx_transfer/src/publish/publish_state.dart';
 import 'package:mpx_transfer/src/publish/publisher.dart';
 import 'package:mpx_transfer/src/reuse/reuse_table.dart';
 import 'package:mpx_transfer/src/upload/remote_ref.dart';
@@ -85,6 +87,7 @@ final class Transfers {
     PublishJournal? publishJournal,
     MediaPreparation? preparation,
     IBytesStore? cache,
+    PublishProgressWeights progressWeights = PublishProgressWeights.standard,
     this.retention = defaultRetention,
     this.sourceCopyLimit = defaultSourceCopyLimit,
     bool online = true,
@@ -111,6 +114,7 @@ final class Transfers {
         host: _PublishHost(this),
         reuse: reuse,
         preparation: preparation,
+        progressWeights: progressWeights,
         now: now,
       );
     }
@@ -144,12 +148,14 @@ final class Transfers {
   /// Uploads and publish jobs go through [transports] (their ids unique),
   /// whose part bodies [client] sends: the bytes cache's client, whose
   /// worker streams them from the file. [preparation] prepares the items
-  /// of publish jobs that need it; without one such a job is refused. Publish
-  /// jobs are kept beside the journal too. Once a publisher answers
-  /// published, each server key it gave is aliased to its item's local key
-  /// in [cache], both through [cacheKeyOf]: the bytes cache the composition
-  /// root's fetcher reads, `downloads.store` unless given. Without either,
-  /// no alias is made.
+  /// of publish jobs that need it; without one such a job is refused.
+  /// [progressWeights] weigh a publish job's progress
+  /// ([PublishProgressWeights.standard] unless given). Publish jobs are
+  /// kept beside the journal too. Once a publisher answers published, each
+  /// server key it gave is aliased to its item's local key in [cache], both
+  /// through [cacheKeyOf]: the bytes cache the composition root's fetcher
+  /// reads, `downloads.store` unless given. Without either, no alias is
+  /// made.
   ///
   /// A journal that cannot be read is reported (`journal` `writeFailed`)
   /// and the engine runs in memory for this run, with no jobs.
@@ -167,6 +173,7 @@ final class Transfers {
     HttpBytesClient? client,
     MediaPreparation? preparation,
     IBytesStore? cache,
+    PublishProgressWeights progressWeights = PublishProgressWeights.standard,
     bool online = true,
     DateTime Function() now = DateTime.now,
   }) async {
@@ -207,6 +214,7 @@ final class Transfers {
       publishJournal: publishJournal,
       preparation: preparation,
       cache: cache,
+      progressWeights: progressWeights,
       sourceCopies: platform.sourceCopies,
       unloadWarning: platform.unloadWarning,
       retention: retention,
@@ -629,6 +637,19 @@ final class Transfers {
   ///
   /// Throws a [StateError] when the facade runs no uploads.
   PublishJob? publishJob(PublishJobId id) => _publishJobs.job(id);
+
+  /// Snapshots of every publish job [filter] passes, oldest first, for a
+  /// surface that shows a host's jobs (a banner, a list of posts, the
+  /// bubbles of one conversation by its tag prefix): the current list on
+  /// listen, then the list again whenever one of its jobs changes, its
+  /// progress included. After a restart the list is the journal's, the
+  /// jobs waiting for their publisher among them; a completed job stays
+  /// for [retention].
+  ///
+  /// Throws a [StateError] when the facade runs no uploads.
+  Stream<List<PublishJobSnapshot>> watchJobs([
+    PublishJobFilter filter = const PublishJobFilter(),
+  ]) => _publishJobs.watchJobs(filter);
 
   PublishJobs get _publishJobs =>
       _publish ??

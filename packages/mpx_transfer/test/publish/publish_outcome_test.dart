@@ -228,6 +228,25 @@ void main() {
       expect(again.snapshot.state, const PublishJobState.completed(null));
     });
 
+    test('sending items again holds the progress the job showed', () async {
+      final publisher = FakePublisher()
+        ..answerWith(PublishOutcome.reuploadItems(const ['a']));
+      final h = await publishing([fakeTransport()]);
+      h.transfers.registerPublisher(publisherId, publisher);
+      final job = h.transfers.publish(
+        requestOf([itemOf('a', PublishSource.prepared(preparedOf(10)))]),
+      );
+      final shown = <double>[];
+      final watching = job.watch().listen((s) => shown.add(s.progress));
+      await pumpEventQueue();
+      await watching.cancel();
+      expect(publisher.calls, hasLength(2));
+      for (var i = 1; i < shown.length; i++) {
+        expect(shown[i], greaterThanOrEqualTo(shown[i - 1]));
+      }
+      expect(shown.last, 1);
+    });
+
     test('a second one fails the job at the publish stage', () async {
       final transport = fakeTransport();
       final publisher = FakePublisher()
@@ -395,8 +414,10 @@ void main() {
       () async {
         var prepared = 0;
         final preparation = FakeMediaPreparation(
-          onPrepare: (handle) =>
-              prepared++ == 0 ? handle.fail('noSpace') : handle.complete(),
+          onPrepare: (handle) {
+            // The first waits for the test, the retry's finishes at once.
+            if (prepared++ > 0) handle.complete();
+          },
         );
         final transport = fakeTransport();
         final h = await publishing([transport], preparation: preparation);
@@ -414,11 +435,22 @@ void main() {
           ]),
         );
         await pumpEventQueue();
+        preparation.handles.single
+          ..report(0.5)
+          ..fail('noSpace');
+        await pumpEventQueue();
         expect(job.snapshot.state, isA<PublishJobState$Failed>());
+        final before = job.snapshot.progress;
+        expect(before, greaterThan(0));
         expect(job.retryItem('f'), isFalse, reason: 'f did not fail');
         expect(job.retryItem('p'), isTrue);
         await pumpEventQueue();
         expect(preparation.handles, hasLength(2));
+        expect(
+          job.snapshot.progress,
+          greaterThanOrEqualTo(before),
+          reason: 'a retry from zero holds the shown value',
+        );
         expect(transport.finishes, hasLength(2));
         expect(job.snapshot.state, const PublishJobState.completed(null));
       },

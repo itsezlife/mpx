@@ -77,7 +77,13 @@ final job = transfers.publish(PublishRequest(
 ));
 job.watch().listen((snapshot) {
   // snapshot.state: preparing, uploading, publishing, completed ...
+  // snapshot.progress: 0..1, byte-weighted, never goes back.
 });
+
+// Every job of one conversation, after a restart too.
+transfers
+    .watchJobs(PublishJobFilter(tagPrefix: 'chat:$chatId:'))
+    .listen((jobs) { /* banners, bubbles */ });
 
 // One upload, no publisher: completes once the item is uploaded.
 final avatar = transfers.upload(
@@ -219,6 +225,17 @@ transfers.systemActive.addListener(() {
   finished preparation and the parts already sent; a job rejected at the
   publish stage publishes again and uploads nothing. `removeItem(id)` drops
   an item before the publish.
+- Publish progress: each job and item snapshot carries a `progress`,
+  0..1, byte-weighted (an item weighs its source until its preparation
+  ends, then its upload's bytes), a video's preparation 30 % of its item
+  and a still's or a file's 2 %, the publisher's call the last 5 % of the
+  job; a remote item or a reuse hit is done at once. A re-estimate never
+  lowers it, and a restart starts from what the journal kept.
+  `Transfers.open(progressWeights:)` sets the shares
+  (`PublishProgressWeights`).
+- `watchJobs(filter)`: snapshots of the publish jobs a `PublishJobFilter`
+  passes (tag, tag prefix, publisher, state), answered from the journal
+  after a restart.
 - `retry(id, source:)`: an upload whose source was lost goes again from a
   file the host gives, from zero.
 - `TransferDurability`: `inProcess`, or `system` inside the platform's OS
