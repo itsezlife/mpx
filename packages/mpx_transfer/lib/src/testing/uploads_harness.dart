@@ -12,6 +12,7 @@ import 'package:mpx_transfer/src/transfers.dart';
 import 'package:mpx_transfer/src/upload/upload_engine.dart';
 import 'package:mpx_transfer/src/upload/upload_lane.dart';
 import 'package:mpx_transfer/src/upload/upload_source.dart';
+import 'package:mpx_transfer/src/upload/upload_source_files.dart';
 import 'package:mpx_transfer/src/upload/upload_transport.dart';
 
 /// A [Transfers] whose uploads run through the real upload engine over
@@ -36,6 +37,7 @@ final class UploadsHarness {
     required this.random,
     required this.wait,
     required this.client,
+    required this.files,
   });
 
   /// Opens a harness over [transports]; the job's transport is the first
@@ -44,8 +46,10 @@ final class UploadsHarness {
   /// [wait] waits each retry's backoff (a timer by default; a test passes
   /// one that returns at once, or runs in a fake-async zone). [random]
   /// draws the backoff's jitter. [client] sends part bodies, for a
-  /// transport that sends them. The other parts are those of
-  /// [Transfers.open].
+  /// transport that sends them. [files] tells what each source file is at
+  /// the start of a run (the platform's file system by default; a
+  /// `FakeUploadSourceFiles` for sources that are not real files). The
+  /// other parts are those of [Transfers.open].
   static Future<UploadsHarness> open({
     required PlaybackLifecycleSource lifecycle,
     required List<UploadTransport> transports,
@@ -57,6 +61,7 @@ final class UploadsHarness {
     math.Random? random,
     Future<void> Function(Duration delay)? wait,
     HttpBytesClient? client,
+    UploadSourceFiles? files,
   }) async {
     final memory = MemoryJournalStore();
     final harness = UploadsHarness._(
@@ -70,6 +75,7 @@ final class UploadsHarness {
       random: random ?? math.Random(0),
       wait: wait,
       client: client,
+      files: files,
     );
     await harness._start();
     return harness;
@@ -104,6 +110,9 @@ final class UploadsHarness {
 
   /// Sends part bodies; null when no transport sends them.
   final HttpBytesClient? client;
+
+  /// Tells what each source file is; null for the platform's.
+  final UploadSourceFiles? files;
 
   /// The facade under test; replaced by [restart] and [kill].
   late Transfers transfers;
@@ -184,6 +193,7 @@ final class UploadsHarness {
       transports: transports,
       slots: ConnectionSlots(),
       client: client,
+      files: files,
       retry: retry,
       laneSplit: laneSplit,
       random: random,

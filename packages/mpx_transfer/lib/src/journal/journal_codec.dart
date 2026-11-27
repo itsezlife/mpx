@@ -231,6 +231,7 @@ final class JournalCodec {
       'size': upload.source.size,
       'growing': upload.source.growing,
       'fingerprint': upload.source.fingerprint,
+      'modified': ?upload.source.modified?.toIso8601String(),
     },
     'transportId': upload.transportId,
     'lane': upload.lane.name,
@@ -238,6 +239,7 @@ final class JournalCodec {
     'fileName': ?upload.fileName,
     'contentType': ?upload.contentType,
     'resumeToken': ?upload.resumeToken,
+    'resumeExpiresAt': ?upload.resumeExpiresAt?.toIso8601String(),
     if (upload.parts.isNotEmpty)
       'parts': [
         for (final MapEntry(key: index, value: receipt) in upload.parts.entries)
@@ -254,6 +256,10 @@ final class JournalCodec {
         size: source['size']! as int,
         growing: source['growing']! as bool,
         fingerprint: source['fingerprint']! as String,
+        modified: switch (source['modified']) {
+          final String modified => DateTime.parse(modified),
+          _ => null,
+        },
       ),
       transportId: json['transportId']! as String,
       lane: UploadLane.values.byName(json['lane']! as String),
@@ -261,6 +267,10 @@ final class JournalCodec {
       fileName: json['fileName'] as String?,
       contentType: json['contentType'] as String?,
       resumeToken: json['resumeToken'] as String?,
+      resumeExpiresAt: switch (json['resumeExpiresAt']) {
+        final String expiry => DateTime.parse(expiry),
+        _ => null,
+      },
       parts: {
         for (final part in (json['parts'] as List<Object?>?) ?? const [])
           if (part case [final int index, ...final rest])

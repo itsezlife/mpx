@@ -50,6 +50,11 @@ final class FakeUploadTransport implements UploadTransport {
   /// Whether parts wait for [ack] or [reject].
   bool holdParts;
 
+  /// When the remote end forgets an upload, as each session opened from now
+  /// on tells it ([UploadSession.resumeExpiresAt]); null to say nothing.
+  /// The fake itself forgets nothing: the engine judges the expiry.
+  DateTime? resumeExpiresAt;
+
   final List<FakeUploadOpen> _opens = [];
   final List<FakeUploadPart> _sent = [];
   final List<int> _acknowledged = [];
@@ -126,7 +131,12 @@ final class FakeUploadTransport implements UploadTransport {
         resumeToken != null && acceptsResume && _tokens.contains(resumeToken);
     final token = resumed ? resumeToken : 'fake-token-${_opens.length}';
     _tokens.add(token);
-    return _FakeSession(this, token, resumed: resumed);
+    return _FakeSession(
+      this,
+      token,
+      resumed: resumed,
+      resumeExpiresAt: resumeExpiresAt,
+    );
   }
 
   static const _transient = UploadTransportException(
@@ -189,7 +199,12 @@ final class FakeUploadTransport implements UploadTransport {
 }
 
 final class _FakeSession implements UploadSession {
-  _FakeSession(this._transport, this.resumeToken, {required this.resumed});
+  _FakeSession(
+    this._transport,
+    this.resumeToken, {
+    required this.resumed,
+    required this.resumeExpiresAt,
+  });
 
   final FakeUploadTransport _transport;
 
@@ -200,7 +215,7 @@ final class _FakeSession implements UploadSession {
   final bool resumed;
 
   @override
-  DateTime? get resumeExpiresAt => null;
+  final DateTime? resumeExpiresAt;
 
   @override
   Future<UploadPartAck> sendPart(
