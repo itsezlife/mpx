@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:http_bytes_cache/http_bytes_cache.dart' show RequestPriority;
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_transfer/src/envelope/transfer_envelope.dart';
@@ -5,6 +7,8 @@ import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
 import 'package:mpx_transfer/src/journal/journal_store.dart';
 import 'package:mpx_transfer/src/journal/transfer_journal.dart';
+import 'package:mpx_transfer/src/journal/unload_warning.dart';
+import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
 import 'package:mpx_transfer/src/testing/fake_transfer_result.dart';
 import 'package:mpx_transfer/src/testing/scripted_transfer_runner.dart';
 import 'package:mpx_transfer/src/transfers.dart';
@@ -27,6 +31,9 @@ final class TransfersHarness {
     required this.progressInterval,
     required this.now,
     required this.openStore,
+    required this.openSourceCopies,
+    required this.unloadWarning,
+    required this.sourceCopyLimit,
   });
 
   /// Opens a harness reading the app's lifecycle from [lifecycle].
@@ -34,8 +41,10 @@ final class TransfersHarness {
   /// [cacheKeyOf] maps a key to its cache key (the key's `encoded` form by
   /// default); [store] gives the journal's store at each start (one
   /// [MemoryJournalStore] for every start by default; for a store on disk,
-  /// a new store over the same files each call). The other parts are those
-  /// of [Transfers.open].
+  /// a new store over the same files each call). [sourceCopies] gives the
+  /// upload source copies at each start, as on the web (none by default,
+  /// as on the VM); [unloadWarning] is the page's warning (none by
+  /// default). The other parts are those of [Transfers.open].
   static Future<TransfersHarness> open({
     required PlaybackLifecycleSource lifecycle,
     String Function(MediaKey key)? cacheKeyOf,
@@ -45,6 +54,9 @@ final class TransfersHarness {
     bool online = true,
     DateTime Function()? now,
     JournalStore Function()? store,
+    FutureOr<UploadSourceCopies> Function()? sourceCopies,
+    UnloadWarning? unloadWarning,
+    int sourceCopyLimit = Transfers.defaultSourceCopyLimit,
   }) async {
     final memory = MemoryJournalStore();
     final harness = TransfersHarness._(
@@ -55,6 +67,9 @@ final class TransfersHarness {
       progressInterval: progressInterval,
       now: now ?? DateTime.now,
       openStore: store ?? () => memory,
+      openSourceCopies: sourceCopies,
+      unloadWarning: unloadWarning,
+      sourceCopyLimit: sourceCopyLimit,
     );
     await harness._start(online);
     return harness;
@@ -81,6 +96,15 @@ final class TransfersHarness {
   /// Gives the journal's store at each start.
   final JournalStore Function() openStore;
 
+  /// Gives the upload source copies at each start; null for none.
+  final FutureOr<UploadSourceCopies> Function()? openSourceCopies;
+
+  /// The page's warning before it is left; null for none.
+  final UnloadWarning? unloadWarning;
+
+  /// How many bytes of a job's sources are copied at most.
+  final int sourceCopyLimit;
+
   /// The runner every job's bytes go through; it outlives [restart] and
   /// [kill], as the test that scripts it does.
   final ScriptedTransferRunner runner = ScriptedTransferRunner();
@@ -95,18 +119,21 @@ final class TransfersHarness {
   List<TransferJob> get replayed => List.unmodifiable(_replayed);
   List<TransferJob> _replayed = const [];
 
-  /// Queues an upload: a new job with a new id each call.
+  /// Queues an upload: a new job with a new id each call, reading
+  /// [sources].
   TransferId addUpload({
     String? tag,
     TransferDurability durability = TransferDurability.system,
     RequestPriority priority = RequestPriority.visible,
     int? total,
+    List<SourceBytes> sources = const [],
   }) => transfers.enqueue(
     direction: TransferDirection.upload,
     durability: durability,
     tag: tag,
     priority: priority,
     total: total,
+    sources: sources,
   );
 
   /// Queues the download of [key], or answers the id of the job [key]
@@ -128,9 +155,13 @@ final class TransfersHarness {
     resumeOnStart: resumeOnStart,
   );
 
-  /// Completes when every journal write made so far is flushed; progress
-  /// still waiting for its window is not.
-  Future<void> settle() => _journal.idle;
+  /// Completes when every journal write made so far is flushed and every
+  /// source copy begun has ended; progress still waiting for its window is
+  /// not.
+  Future<void> settle() async {
+    await transfers.debugSourcesCopied;
+    await _journal.idle;
+  }
 
   /// Closes the facade, as the app shutting down would, and opens a new one
   /// over the journal it left; [online] is the connectivity at the new
@@ -158,13 +189,17 @@ final class TransfersHarness {
       resultCodecs: const [FakeTransferResult.codec],
     );
     _replayed = _journal.jobs.toList();
+    final copies = await openSourceCopies?.call();
     return transfers = Transfers.engine(
       cacheKeyOf: cacheKeyOf,
       lifecycle: lifecycle,
       runner: runner,
       journal: _journal,
       envelope: envelope,
+      sourceCopies: copies,
+      unloadWarning: unloadWarning,
       retention: retention,
+      sourceCopyLimit: sourceCopyLimit,
       online: online,
       now: now,
     );

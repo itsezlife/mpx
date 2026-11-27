@@ -34,6 +34,8 @@ dependencies:
   meta: ^1.17.0
   mpx_core:
     path: ../mpx_core
+  # The web journal: OPFS, `Blob` sources and the page's `beforeunload`.
+  web: ^1.1.1
 
 dev_dependencies:
   fake_async: ^1.3.3

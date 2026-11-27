@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -21,16 +22,20 @@ abstract final class JournalStoreContract {
   ///
   /// [storage] is called once per test, inside its `setUp`, for fresh,
   /// empty storage; it answers how to open a store over that storage, and
-  /// each call of the answer is a new start over the same bytes. Clean the
-  /// storage up with `addTearDown` inside [storage].
-  static void run(String name, JournalStore Function() Function() storage) {
+  /// each call of the answer is a new start over the same bytes; storage
+  /// that takes time to make answers a future of it. Clean the storage up
+  /// with `addTearDown` inside [storage].
+  static void run(
+    String name,
+    FutureOr<JournalStore Function()> Function() storage,
+  ) {
     group('JournalStore contract ($name)', () {
       late JournalStore Function() openStore;
       late RecordingDiagnostics recorder;
       final journals = <TransferJournal>[];
 
-      setUp(() {
-        openStore = storage();
+      setUp(() async {
+        openStore = await storage();
         recorder = RecordingDiagnostics.install();
       });
       tearDown(() async {

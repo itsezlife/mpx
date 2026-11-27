@@ -4,6 +4,8 @@ import 'package:mpx_core/mpx_core.dart';
 /// engine reading its jobs back at a start, writing their changes, and
 /// folding the log into a snapshot.
 ///
+/// On the web also an upload job's sources copied into OPFS, or not.
+///
 /// No field carries user content: counts, byte sizes, times and the store
 /// kind; the job id is the event's correlation id.
 enum JournalOp implements DiagnosticOp {
@@ -38,8 +40,26 @@ enum JournalOp implements DiagnosticOp {
 
   /// The storage refused a read or a write (error; `code`, the storage's
   /// error code; job, when the write was one job's). The jobs stay in
-  /// memory, and the next write rewrites the whole journal.
-  writeFailed;
+  /// memory, and the next write rewrites the whole journal. On the web
+  /// also a copy of an upload source that the storage refused, or an OPFS
+  /// that refused to open.
+  writeFailed,
+
+  /// On the web, an upload job's sources were copied into OPFS at its
+  /// creation, so the job survives a reload (debug; `bytes` copied, `ms`;
+  /// job).
+  sourceCopied,
+
+  /// On the web, an upload job's sources are larger together than the copy
+  /// limit, so they were not copied: the job runs from the page's file and
+  /// does not survive a reload (warning; `bytes`, the sources' sum,
+  /// `limit`; job).
+  sourceOverLimit,
+
+  /// On the web, an upload job came back from a reload without a copy of
+  /// its sources (over the limit, no OPFS, or a copy the reload cut short):
+  /// it is failed with `sourceLost` (error; job).
+  sourceLost;
 
   @override
   String get category => 'journal';
