@@ -44,8 +44,9 @@ abstract final class OpfsJournalStorage {
       web.window.navigator.storage.getDirectory().toDart;
 }
 
-/// A [JournalStore] in two OPFS files of [directory]: `journal.snapshot`
-/// and `journal.log`.
+/// A [JournalStore] in two OPFS files of [directory]: `<name>.snapshot`
+/// and `<name>.log`, `journal` unless another [name] is given (the reuse
+/// table's store sits beside the journal's).
 ///
 /// Written on the main thread, which has no synchronous access handle, so
 /// every write goes through a writable stream. A stream's bytes become the
@@ -53,10 +54,13 @@ abstract final class OpfsJournalStorage {
 /// at all, and a snapshot is replaced whole or not at all.
 final class OpfsJournalStore implements JournalStore {
   /// A store in [directory].
-  OpfsJournalStore(this.directory);
+  OpfsJournalStore(this.directory, {this.name = 'journal'});
 
   /// The directory the two files are in.
   final web.FileSystemDirectoryHandle directory;
+
+  /// What the two files are named before their extension.
+  final String name;
 
   @override
   JournalStoreKind get kind => JournalStoreKind.opfs;
@@ -100,7 +104,7 @@ final class OpfsJournalStore implements JournalStore {
       .getFileHandle(name, web.FileSystemGetFileOptions(create: true))
       .toDart;
 
-  static String _nameOf(JournalBlob blob) => 'journal.${blob.name}';
+  String _nameOf(JournalBlob blob) => '$name.${blob.name}';
 }
 
 /// [SourceBytes] of a browser `Blob`: a file the user picked, or the copy

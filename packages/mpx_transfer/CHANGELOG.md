@@ -97,6 +97,16 @@
   and `slotReleased`, and `jobQueued` and `jobStarted` carry an upload's
   `lane`. `debugSnapshot()` gains `uploads` (lanes, parts in flight, part
   retries, restarts from zero) and `connections`.
+- The reuse table (`Transfers.reuse`): the references an upload answered,
+  kept by source (`ReuseKey`: the host's fingerprint, or path, size and
+  modification time, plus the preparation) and transport, beside the
+  journal on the VM and in OPFS on the web, so the same media sent again
+  is neither prepared nor uploaded again. The transport's `reuse`
+  capability judges a stored reference (a lifetime or a validity call);
+  `invalidate` drops an entry; `Transfers.open(reuse:)` takes a
+  `ReusePolicy` to turn it off or set its expiry (7 days by default).
+  `ReuseOp` diagnostics and the `reuse` section of `debugSnapshot()`;
+  `ReuseTableContract` in `testing.dart`.
 - `TransferEnvelope`, the seam of the OS envelope, with its events.
 - `SchedulerOp` and `EnvelopeOp` diagnostics operations.
 - `testing.dart`: `FakeTransferEnvelope`, `ScriptedTransferRunner`,

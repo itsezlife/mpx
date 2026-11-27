@@ -12,19 +12,22 @@
 /// (`TransferEnvelope`) where there is one. Every job is journaled, so
 /// after any kill `Transfers.open` reads the jobs back. Every path reports
 /// through `MpxDiagnostics.current` with this package's `JournalOp`,
-/// `SchedulerOp`, `TransportOp` and `EnvelopeOp`; `debugSnapshot` gives a
+/// `SchedulerOp`, `TransportOp`, `EnvelopeOp` and `ReuseOp`; `debugSnapshot` gives a
 /// debug panel the engine's state.
 ///
 /// An upload reads an `UploadSource` and reaches its remote end through an
 /// `UploadTransport`, which declares what it supports
 /// (`UploadCapabilities`); the engine splits, budgets, retries and
-/// journals the parts, and a completed upload holds a `RemoteRef`.
+/// journals the parts, and a completed upload holds a `RemoteRef`. The
+/// reuse table (`Transfers.reuse`) keeps those references by source, so
+/// the same media sent again is neither prepared nor uploaded again.
 ///
 /// Single-threaded on the UI isolate.
 library;
 
 export 'src/diagnostics/envelope_op.dart';
 export 'src/diagnostics/journal_op.dart';
+export 'src/diagnostics/reuse_op.dart';
 export 'src/diagnostics/scheduler_op.dart';
 export 'src/diagnostics/transfers_debug_snapshot.dart';
 export 'src/diagnostics/transport_op.dart';
@@ -34,6 +37,7 @@ export 'src/envelope/transfer_envelope.dart';
 export 'src/job/transfer_id.dart';
 export 'src/job/transfer_job.dart';
 export 'src/job/transfer_state.dart';
+export 'src/reuse/reuse_table.dart';
 export 'src/transfers.dart';
 export 'src/upload/multipart_upload_transport.dart';
 export 'src/upload/numbered_parts_transport.dart';

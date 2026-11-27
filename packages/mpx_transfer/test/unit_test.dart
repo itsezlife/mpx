@@ -14,6 +14,8 @@ import 'job/transfer_id_test.dart' as transfer_id_test;
 import 'journal/journal_store_contract_test.dart'
     as journal_store_contract_test;
 import 'journal/transfer_journal_test.dart' as transfer_journal_test;
+import 'reuse/reuse_facade_test.dart' as reuse_facade_test;
+import 'reuse/reuse_table_contract_test.dart' as reuse_table_contract_test;
 import 'transfers/journal_diagnostics_test.dart' as journal_diagnostics_test;
 import 'transfers/journal_kill_test.dart' as journal_kill_test;
 import 'transfers/pause_reasons_test.dart' as pause_reasons_test;
@@ -46,6 +48,8 @@ void main() {
   group('transfer_id_test', transfer_id_test.main);
   group('journal_store_contract_test', journal_store_contract_test.main);
   group('transfer_journal_test', transfer_journal_test.main);
+  group('reuse_facade_test', reuse_facade_test.main);
+  group('reuse_table_contract_test', reuse_table_contract_test.main);
   group('journal_diagnostics_test', journal_diagnostics_test.main);
   group('journal_kill_test', journal_kill_test.main);
   group('pause_reasons_test', pause_reasons_test.main);

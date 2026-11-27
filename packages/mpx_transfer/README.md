@@ -140,6 +140,10 @@ transfers.systemActive.addListener(() {
   acknowledgement); resumes within 1.5 h (24 h above 10 MiB). Parts of
   128 KiB (512 KiB above 10 MiB), 8 MiB in flight; `presignedMultipart`
   for S3, R2 and GCS with 8 MiB parts.
+- A reuse table (`reuse`): an upload's references kept by source and
+  transport, so the same media sent again skips preparation and upload
+  while the transport judges them good; on by default for 7 days
+  (`ReusePolicy`), kept beside the journal.
 - `TransferDurability`: `inProcess`, or `system` inside the platform's OS
   envelope (`TransferEnvelope`) where there is one.
 - `Transfers.watch(filter)` by direction, state, tag and durability; a
@@ -158,13 +162,15 @@ transfers.systemActive.addListener(() {
   back failed with `sourceLost`. Leaving the page asks first while a job
   is queued or running.
 - Diagnostics through `MpxDiagnostics.current` (`JournalOp`,
-  `SchedulerOp`, `TransportOp`, `EnvelopeOp`) and `debugSnapshot()` for a
-  debug panel, with journal, uploads and connections sections.
+  `SchedulerOp`, `TransportOp`, `EnvelopeOp`, `ReuseOp`) and
+  `debugSnapshot()` for a debug panel, with journal, uploads, connections
+  and reuse sections.
 - `testing.dart`: `FakeTransferEnvelope`, `ScriptedTransferRunner`,
   `FakeTransferResult`, `MemoryJournalStore`, the `JournalStoreContract`
   every journal store meets, `FakeUploadSourceCopies` with the
   `UploadSourceCopiesContract`, `FakeUnloadWarning`, `FakeUploadTransport`
-  with the `UploadTransportContract` every transport meets,
+  with the `UploadTransportContract` every transport meets, the
+  `ReuseTableContract` the reuse table meets over every store,
   `UploadsHarness`, and `TransfersHarness`, which builds the engine over
   them and restarts or kills it.
 

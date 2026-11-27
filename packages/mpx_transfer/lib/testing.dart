@@ -2,9 +2,10 @@
 /// part, a scripted runner in place of real transfers, a result kind, a
 /// journal store in memory with the contract every journal store meets,
 /// upload source copies and a page warning as the web has them, with the
-/// copies' contract, a harness that builds the engine over them, an upload
-/// source file system with no files, and an upload transport with no remote
-/// end, the contract every transport meets
+/// copies' contract, the contract the reuse table meets over every store,
+/// a harness that builds the engine over them, an upload source file
+/// system with no files, and an upload transport with no remote end, the
+/// contract every transport meets
 /// and a harness that runs uploads through the real upload engine.
 ///
 /// Opt-in: production entry points never export these, and production code
@@ -21,6 +22,7 @@ export 'src/testing/fake_upload_source_copies.dart';
 export 'src/testing/fake_upload_source_files.dart';
 export 'src/testing/fake_upload_transport.dart';
 export 'src/testing/journal_store_contract.dart';
+export 'src/testing/reuse_table_contract.dart';
 export 'src/testing/scripted_transfer_runner.dart';
 export 'src/testing/transfers_harness.dart';
 export 'src/testing/upload_source_copies_contract.dart';

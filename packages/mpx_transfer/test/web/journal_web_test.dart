@@ -73,6 +73,11 @@ void main() {
     return () => OpfsJournalStore(directory);
   });
 
+  ReuseTableContract.run('opfs', () async {
+    final directory = await _freshDirectory();
+    return () => OpfsJournalStore(directory, name: 'reuse');
+  });
+
   JournalStoreContract.run('memory, where the page has no OPFS', () {
     final store = MemoryJournalStore();
     return () => store;

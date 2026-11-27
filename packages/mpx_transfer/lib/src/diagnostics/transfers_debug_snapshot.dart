@@ -18,6 +18,7 @@ final class TransfersDebugSnapshot {
     required this.journal,
     this.uploads,
     this.connections,
+    this.reuse,
   }) : jobs = List.unmodifiable(jobs);
 
   /// Every job not yet completed, oldest first, with its id, tag,
@@ -38,11 +39,45 @@ final class TransfersDebugSnapshot {
   /// that runs no requests of its own.
   final ConnectionsDebugSnapshot? connections;
 
+  /// The reuse table: entries, hits and misses; null for an engine opened
+  /// without one.
+  final ReuseDebugSnapshot? reuse;
+
   @override
   String toString() =>
       'TransfersDebugSnapshot(${jobs.length} jobs, online: $online, '
       '$journal${uploads == null ? '' : ', $uploads'}'
-      '${connections == null ? '' : ', $connections'})';
+      '${connections == null ? '' : ', $connections'}'
+      '${reuse == null ? '' : ', $reuse'})';
+}
+
+/// The reuse table's section of a [TransfersDebugSnapshot].
+@immutable
+final class ReuseDebugSnapshot {
+  /// A snapshot of the table.
+  const ReuseDebugSnapshot({
+    required this.enabled,
+    required this.entries,
+    required this.hits,
+    required this.misses,
+  });
+
+  /// Whether the host has the table on.
+  final bool enabled;
+
+  /// How many sources the table holds references for.
+  final int entries;
+
+  /// Lookups since start that skipped preparation and upload.
+  final int hits;
+
+  /// Lookups since start that found nothing good (the table on).
+  final int misses;
+
+  @override
+  String toString() =>
+      'ReuseDebugSnapshot(enabled: $enabled, $entries entries, '
+      '$hits hits, $misses misses)';
 }
 
 /// The uploads section of a [TransfersDebugSnapshot]: the lanes, and

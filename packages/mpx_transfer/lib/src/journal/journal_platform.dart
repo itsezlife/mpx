@@ -9,14 +9,19 @@ import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
 /// Internal to the package.
 final class JournalPlatform {
   /// The parts of one platform.
-  const JournalPlatform({
+  JournalPlatform({
     required this.store,
+    JournalStore? reuseStore,
     this.sourceCopies,
     this.unloadWarning,
-  });
+  }) : reuseStore = reuseStore ?? MemoryJournalStore();
 
   /// Where the journal's bytes are.
   final JournalStore store;
+
+  /// Where the reuse table's bytes are: beside the journal's, in the same
+  /// kind of storage.
+  final JournalStore reuseStore;
 
   /// Where upload sources are copied at job creation; null where a source
   /// is a file that survives by itself (the VM).

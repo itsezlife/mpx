@@ -546,6 +546,7 @@ engine's state (ADR 0013).
 | Retries beyond parts | Opening and finishing a session are retried like a part, and report `partRetry` / `partGaveUp` with `step: open \| finish`. |
 | Connections | 8 in all, downloads at most 6 and uploads at most 6 (the bytes cache's own upload cap), so neither direction holds every connection. A request holds one while on the wire and none while it waits to retry. |
 | Resume rules | Judged at every run of an upload that already reported progress (after a restart, and after a pause or a retry too), in order: the source file (size and modification time, read at each run on the VM, none on the web, where the source cannot change), then the transport (no resume, no token, or another part size), then its window (`UploadResume.window` counted from the last progress written; `serverExpiry` from the expiry the session gave, journaled with the token; a session that does not continue a token it was offered counts as a closed window). A file gone on the VM fails the job `sourceLost`, retryable. |
+| Reuse table | Kept in its own store beside the journal's (`reuse.snapshot` / `reuse.log` next to `journal.*`, the same frame format), keyed by fingerprint, preparation intent and transport id: a reference means nothing to another transport. The host's expiry defaults to 7 days and is judged against the policy of the run that reads an entry, so a shorter expiry applies at once; the transport's `reuse` capability judges within it. A validity call that throws is a miss that keeps the entry. With the table off nothing is read, stored or dropped. A storage failure reports `journal` `writeFailed` with `table: reuse`. |
 | Job retryable after a give-up | `retryable: true` when the tries ran out on a failure that may pass; `false` for a refusal that cannot (a 4xx other than 408, 425 and 429, or a transport's non-transient error). |
 
 ## Open in implementation
@@ -556,8 +557,8 @@ engine's state (ADR 0013).
   swipe from Recents. No decision here depends on them; the journal resumes
   after any kill.
 - Which `submitAt` default holds on iOS 26 devices.
-- The `reuse` capability's default for the tus adapter, and the reuse
-  table's default expiry (multipart and numbered parts: 24 hours, above).
+- The `reuse` capability's default for the tus adapter (multipart and
+  numbered parts: 24 hours, above; the reuse table's expiry: 7 days, above).
 
 ## Provenance
 
