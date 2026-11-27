@@ -259,6 +259,17 @@ final class TransferJournal {
     _records[record.job.id] = record;
   }
 
+  /// Keeps [handle], the OS envelope job [id] runs in, and writes the job
+  /// at once, so a restart after any kill matches the envelope the native
+  /// part still holds to it.
+  void writeEnvelopeHandle(TransferId id, String handle) {
+    if (_closed) return;
+    final record = _records[id];
+    if (record == null || record.envelopeHandle == handle) return;
+    _records[id] = record.copyWith(envelopeHandle: handle);
+    writeState(record.job);
+  }
+
   /// Changes job [id]'s upload facts in memory with [change]. They reach
   /// storage with the job's next write: the progress or the state the
   /// caller reports right after, so an acknowledged part is written with

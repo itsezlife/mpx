@@ -4,6 +4,7 @@ import 'package:http_bytes_cache/http_bytes_cache.dart' show RequestPriority;
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_transfer/src/download/transfer_downloads.dart';
 import 'package:mpx_transfer/src/envelope/transfer_envelope.dart';
+import 'package:mpx_transfer/src/envelope/transfer_envelope_config.dart';
 import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
 import 'package:mpx_transfer/src/journal/journal_store.dart';
@@ -11,6 +12,7 @@ import 'package:mpx_transfer/src/journal/transfer_journal.dart';
 import 'package:mpx_transfer/src/journal/unload_warning.dart';
 import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
 import 'package:mpx_transfer/src/reuse/reuse_table.dart';
+import 'package:mpx_transfer/src/testing/fake_transfer_envelope.dart';
 import 'package:mpx_transfer/src/testing/fake_transfer_result.dart';
 import 'package:mpx_transfer/src/testing/scripted_transfer_runner.dart';
 import 'package:mpx_transfer/src/transfers.dart';
@@ -29,6 +31,7 @@ final class TransfersHarness {
     required this.lifecycle,
     required this.cacheKeyOf,
     required this.envelope,
+    required this.envelopeConfig,
     required this.retention,
     required this.progressInterval,
     required this.now,
@@ -52,12 +55,16 @@ final class TransfersHarness {
   /// copies at each start, as on the web (none by default, as on the VM);
   /// [unloadWarning] is the page's warning (none by default). [reuseStore]
   /// gives the reuse table's store at each start, as [store] does the
-  /// journal's; [reuse] is the host's say over the table. The other
-  /// parts are those of [Transfers.open].
+  /// journal's; [reuse] is the host's say over the table. [envelopeConfig]
+  /// is what [envelope] shows ([FakeTransferEnvelope.config] unless given);
+  /// [configureEnvelope] false leaves it unconfigured. The other parts are
+  /// those of [Transfers.open].
   static Future<TransfersHarness> open({
     required PlaybackLifecycleSource lifecycle,
     String Function(MediaKey key)? cacheKeyOf,
     TransferEnvelope? envelope,
+    TransferEnvelopeConfig? envelopeConfig,
+    bool configureEnvelope = true,
     Duration retention = Transfers.defaultRetention,
     Duration progressInterval = Transfers.defaultProgressInterval,
     bool online = true,
@@ -76,6 +83,9 @@ final class TransfersHarness {
       lifecycle: lifecycle,
       cacheKeyOf: cacheKeyOf ?? ((key) => key.encoded),
       envelope: envelope,
+      envelopeConfig: configureEnvelope
+          ? envelopeConfig ?? FakeTransferEnvelope.config
+          : null,
       retention: retention,
       progressInterval: progressInterval,
       now: now ?? DateTime.now,
@@ -99,6 +109,9 @@ final class TransfersHarness {
 
   /// The OS envelope, or null for a platform without one.
   final TransferEnvelope? envelope;
+
+  /// What [envelope] shows; null when the host gave no config.
+  final TransferEnvelopeConfig? envelopeConfig;
 
   /// How long completed jobs stay queryable.
   final Duration retention;
@@ -221,6 +234,7 @@ final class TransfersHarness {
       policy: reusePolicy,
       now: now,
     );
+    final live = await Transfers.liveEnvelopesOf(envelope);
     return transfers = Transfers.engine(
       cacheKeyOf: cacheKeyOf,
       lifecycle: lifecycle,
@@ -228,6 +242,8 @@ final class TransfersHarness {
       journal: _journal,
       downloads: downloads,
       envelope: envelope,
+      envelopeConfig: envelopeConfig,
+      liveEnvelopes: live,
       sourceCopies: copies,
       unloadWarning: unloadWarning,
       reuse: reuse,

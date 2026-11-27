@@ -92,6 +92,12 @@ final class PublishJournal {
     return _write({'put': PublishRecordCodec.encode(record)});
   }
 
+  /// Forgets job [id] and writes that; completes once the write is done.
+  Future<void> remove(PublishJobId id) {
+    if (_records.remove(id) == null) return _tail;
+    return _write({'remove': id.value});
+  }
+
   /// Completes when every write made so far has finished.
   Future<void> get idle => _tail;
 

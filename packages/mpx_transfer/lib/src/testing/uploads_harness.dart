@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_transfer/src/engine/connection_slots.dart';
+import 'package:mpx_transfer/src/envelope/transfer_envelope.dart';
+import 'package:mpx_transfer/src/envelope/transfer_envelope_config.dart';
 import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
 import 'package:mpx_transfer/src/journal/journal_record.dart';
@@ -44,6 +46,8 @@ final class UploadsHarness {
     required this.files,
     required this.preparation,
     required this.reusePolicy,
+    required this.envelope,
+    required this.envelopeConfig,
   });
 
   /// Opens a harness over [transports]; the job's transport is the first
@@ -54,8 +58,9 @@ final class UploadsHarness {
   /// draws the backoff's jitter. [client] sends part bodies, for a
   /// transport that sends them. [files] tells what each source file is at
   /// the start of a run (the platform's file system by default; a
-  /// `FakeUploadSourceFiles` for sources that are not real files). The
-  /// other parts are those of [Transfers.open].
+  /// `FakeUploadSourceFiles` for sources that are not real files).
+  /// [envelope] is the OS envelope, showing [envelopeConfig]. The other
+  /// parts are those of [Transfers.open].
   static Future<UploadsHarness> open({
     required PlaybackLifecycleSource lifecycle,
     required List<UploadTransport> transports,
@@ -70,6 +75,8 @@ final class UploadsHarness {
     UploadSourceFiles? files,
     MediaPreparation? preparation,
     ReusePolicy reuse = const ReusePolicy(),
+    TransferEnvelope? envelope,
+    TransferEnvelopeConfig? envelopeConfig,
   }) async {
     final memory = MemoryJournalStore();
     final harness = UploadsHarness._(
@@ -86,6 +93,8 @@ final class UploadsHarness {
       files: files,
       preparation: preparation,
       reusePolicy: reuse,
+      envelope: envelope,
+      envelopeConfig: envelopeConfig,
     );
     await harness._start();
     return harness;
@@ -129,6 +138,12 @@ final class UploadsHarness {
 
   /// The host's say over the reuse table.
   final ReusePolicy reusePolicy;
+
+  /// The OS envelope; null for a platform without one.
+  final TransferEnvelope? envelope;
+
+  /// What [envelope] shows; null for none.
+  final TransferEnvelopeConfig? envelopeConfig;
 
   /// Where the publish jobs' records are kept across restarts.
   final MemoryJournalStore publishStore = MemoryJournalStore();
@@ -231,7 +246,11 @@ final class UploadsHarness {
       wait: wait,
       now: now,
     );
+    final live = await Transfers.liveEnvelopesOf(envelope);
     return transfers = Transfers.engine(
+      envelope: envelope,
+      envelopeConfig: envelopeConfig,
+      liveEnvelopes: live,
       cacheKeyOf: (key) => key.encoded,
       lifecycle: lifecycle,
       runner: _engine,

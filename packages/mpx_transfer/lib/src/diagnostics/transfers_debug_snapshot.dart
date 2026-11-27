@@ -1,4 +1,6 @@
 import 'package:meta/meta.dart';
+import 'package:mpx_transfer/src/envelope/transfer_envelope.dart';
+import 'package:mpx_transfer/src/envelope/transfer_envelope_config.dart';
 import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
 import 'package:mpx_transfer/src/publish/publish_request.dart';
@@ -22,6 +24,7 @@ final class TransfersDebugSnapshot {
     this.connections,
     this.reuse,
     this.publish,
+    this.envelope,
   }) : jobs = List.unmodifiable(jobs);
 
   /// Every job not yet completed, oldest first, with its id, tag,
@@ -51,13 +54,18 @@ final class TransfersDebugSnapshot {
   /// runs no publish jobs.
   final PublishDebugSnapshot? publish;
 
+  /// The OS envelope: its state, kind, handle and jobs, the submission
+  /// policy and counters; null on a platform without one.
+  final EnvelopeDebugSnapshot? envelope;
+
   @override
   String toString() =>
       'TransfersDebugSnapshot(${jobs.length} jobs, online: $online, '
       '$journal${uploads == null ? '' : ', $uploads'}'
       '${connections == null ? '' : ', $connections'}'
       '${reuse == null ? '' : ', $reuse'}'
-      '${publish == null ? '' : ', $publish'})';
+      '${publish == null ? '' : ', $publish'}'
+      '${envelope == null ? '' : ', $envelope'})';
 }
 
 /// The publish section of a [TransfersDebugSnapshot].
@@ -296,4 +304,74 @@ final class JournalDebugSnapshot {
   String toString() =>
       'JournalDebugSnapshot($store, $bytes bytes, '
       '$recordsSinceCompaction since compaction)';
+}
+
+/// Where the OS envelope is, in an [EnvelopeDebugSnapshot].
+enum EnvelopeDebugState {
+  /// The host gave no `TransferEnvelopeConfig`: `system` jobs run in
+  /// process.
+  unconfigured,
+
+  /// No envelope is started.
+  idle,
+
+  /// A start is asked for and not yet answered.
+  starting,
+
+  /// An envelope is started (or armed until the app leaves the
+  /// foreground).
+  started,
+}
+
+/// The envelope section of a [TransfersDebugSnapshot].
+@immutable
+final class EnvelopeDebugSnapshot {
+  /// A snapshot of the envelope.
+  EnvelopeDebugSnapshot({
+    required this.state,
+    required this.rule,
+    required Set<TransferId> jobs,
+    required this.started,
+    required this.endedBySystem,
+    this.kind,
+    this.handle,
+    this.submitAt,
+    this.submitDueAt,
+  }) : jobs = Set.unmodifiable(jobs);
+
+  /// Where the envelope is.
+  final EnvelopeDebugState state;
+
+  /// The start rule in force: the host's, else the platform's.
+  final TransferEnvelopeStartRule rule;
+
+  /// What holds the process now; null when nothing does, or not known.
+  final TransferEnvelopeKind? kind;
+
+  /// The started envelope's handle; null while none is started.
+  final String? handle;
+
+  /// The jobs inside.
+  final Set<TransferId> jobs;
+
+  /// When a continued-processing task is submitted, as the host set it;
+  /// null when unconfigured.
+  final TransferEnvelopeSubmitAt? submitAt;
+
+  /// When the native part means to submit it; null when no submission
+  /// waits.
+  final DateTime? submitDueAt;
+
+  /// Envelopes started (or taken over from an earlier run) since the
+  /// engine's start.
+  final int started;
+
+  /// Envelopes the system ended since the engine's start.
+  final int endedBySystem;
+
+  @override
+  String toString() =>
+      'EnvelopeDebugSnapshot(${state.name}, ${rule.name}, ${kind?.name}, '
+      '${jobs.length} jobs, started: $started, '
+      'endedBySystem: $endedBySystem)';
 }

@@ -220,13 +220,13 @@ void main() {
         op: EnvelopeOp.startRequested,
         level: MpxEventLevel.debug,
         jobId: first,
-        fields: {'jobs': 1},
+        fields: {'jobs': 1, 'rule': 'always'},
       ),
       isMpxEvent(
         op: EnvelopeOp.systemEnded,
         level: MpxEventLevel.warning,
         jobId: first,
-        fields: {'jobs': 1},
+        fields: {'jobs': 1, 'cause': 'stop'},
       ),
       isMpxEvent(op: EnvelopeOp.startRequested),
       isMpxEvent(

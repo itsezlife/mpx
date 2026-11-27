@@ -17,6 +17,7 @@ import 'package:mpx_transfer/src/download/tracked_downloads.dart';
 import 'package:mpx_transfer/src/download/transfer_downloads.dart';
 import 'package:mpx_transfer/src/engine/transfer_runner.dart';
 import 'package:mpx_transfer/src/envelope/transfer_envelope.dart';
+import 'package:mpx_transfer/src/envelope/transfer_envelope_config.dart';
 import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
 import 'package:mpx_transfer/src/job/transfer_state.dart';
@@ -35,6 +36,7 @@ import 'package:mpx_transfer/src/reuse/reuse_table.dart';
 import 'package:mpx_transfer/src/upload/remote_ref.dart';
 import 'package:mpx_transfer/src/upload/resume_outcome.dart';
 import 'package:mpx_transfer/src/upload/upload_engine.dart';
+import 'package:mpx_transfer/src/upload/upload_lane.dart';
 import 'package:mpx_transfer/src/upload/upload_source.dart';
 import 'package:mpx_transfer/src/upload/upload_transport.dart';
 
@@ -68,7 +70,8 @@ final class Transfers {
   /// download jobs move their bytes through them and [runner] moves the
   /// rest; without, [runner] moves every job. With [uploads] and
   /// [publishJournal], the facade runs publish jobs, preparing items
-  /// through [preparation].
+  /// through [preparation]. [liveEnvelopes] are the handles [envelope]
+  /// reported live at the start ([TransferEnvelope.live]).
   @internal
   Transfers.engine({
     required String Function(MediaKey key) cacheKeyOf,
@@ -77,6 +80,8 @@ final class Transfers {
     required TransferJournal journal,
     TransferDownloads? downloads,
     TransferEnvelope? envelope,
+    TransferEnvelopeConfig? envelopeConfig,
+    Set<String> liveEnvelopes = const {},
     UploadSourceCopies? sourceCopies,
     UnloadWarning? unloadWarning,
     UploadEngine? uploads,
@@ -93,6 +98,7 @@ final class Transfers {
        _downloadRunner = downloads == null ? null : DownloadRunner(downloads),
        _journal = journal,
        _envelope = envelope,
+       _envelopeConfig = envelopeConfig,
        _sourceCopies = sourceCopies,
        _unloadWarning = unloadWarning,
        _uploads = uploads,
@@ -113,6 +119,7 @@ final class Transfers {
     }
     _lifecycle.addListener(_onLifecycle);
     _envelopeEvents = envelope?.events.listen(_onEnvelopeEvent);
+    _adoptLiveEnvelope(liveEnvelopes);
     _restore();
     // After the uploads they own are queued again, so each job finds them.
     _publish?.restore();
@@ -131,7 +138,10 @@ final class Transfers {
   /// copies at most ([defaultSourceCopyLimit] unless given).
   /// [progressInterval] is the shortest time between two progress writes
   /// ([defaultProgressInterval] unless given). [envelope] is the platform's
-  /// OS envelope; without one, `system` jobs run in process. [online] is
+  /// OS envelope; without one, `system` jobs run in process. It shows
+  /// [envelopeConfig], the host's localised text and icon and its say over
+  /// when the envelope starts; without a config no envelope starts either,
+  /// reported once as `envelope` `degraded`. [online] is
   /// the connectivity at start; [now] reads the time. [downloads] is what
   /// tracked downloads fetch through ([download], [tracked]); without it the
   /// facade makes no download jobs. [reuse] is the host's say over the
@@ -152,6 +162,7 @@ final class Transfers {
     String? directory,
     TransferDownloads? downloads,
     TransferEnvelope? envelope,
+    TransferEnvelopeConfig? envelopeConfig,
     Duration retention = defaultRetention,
     Duration progressInterval = defaultProgressInterval,
     int sourceCopyLimit = defaultSourceCopyLimit,
@@ -194,6 +205,8 @@ final class Transfers {
       journal: journal,
       downloads: downloads,
       envelope: envelope,
+      envelopeConfig: envelopeConfig,
+      liveEnvelopes: await liveEnvelopesOf(envelope),
       reuse: table,
       uploads: uploads,
       publishJournal: publishJournal,
@@ -205,6 +218,25 @@ final class Transfers {
       online: online,
       now: now,
     );
+  }
+
+  /// The handles [envelope] still holds from an earlier run; none when it
+  /// cannot tell, which is reported (`envelope` `refused`, `code: live`).
+  @internal
+  static Future<Set<String>> liveEnvelopesOf(TransferEnvelope? envelope) async {
+    if (envelope == null) return const {};
+    try {
+      return await envelope.live();
+    } on Object catch (error, stackTrace) {
+      MpxDiagnostics.current.emit(
+        MpxEventLevel.warning,
+        EnvelopeOp.refused,
+        // The error stays out: a platform error may name app state.
+        fields: () => {'code': 'live'},
+        stackTrace: stackTrace,
+      );
+      return const {};
+    }
   }
 
   /// How every kind of result the package's own jobs complete with is
@@ -245,6 +277,7 @@ final class Transfers {
   final DownloadRunner? _downloadRunner;
   final TransferJournal _journal;
   final TransferEnvelope? _envelope;
+  final TransferEnvelopeConfig? _envelopeConfig;
   final UploadSourceCopies? _sourceCopies;
   final UnloadWarning? _unloadWarning;
   final UploadEngine? _uploads;
@@ -274,7 +307,19 @@ final class Transfers {
   final List<_Watch> _watchers = [];
   PublishJobs? _publish;
   StreamSubscription<TransferEnvelopeEvent>? _envelopeEvents;
-  TransferEnvelopeProgress? _envelopeProgress;
+  final StreamController<TransferId> _notificationTaps =
+      StreamController.broadcast();
+
+  /// The envelope started or starting now; null when none is.
+  _EnvelopeSession? _session;
+
+  /// The jobs whose envelope the platform refused in this run: they run in
+  /// process and start no envelope again, though they join one another job
+  /// starts.
+  final Set<TransferId> _declined = {};
+  bool _reportedUnconfigured = false;
+  int _envelopesStarted = 0;
+  int _envelopesEndedBySystem = 0;
   Timer? _pruneTimer;
   TrackedDownloads? _tracked;
 
@@ -336,7 +381,38 @@ final class Transfers {
     connections: _uploads?.slots.debugSnapshot(),
     reuse: _reuse?.debugSnapshot(),
     publish: _publish?.debugSnapshot(),
+    envelope: _envelopeDebugSnapshot(),
   );
+
+  EnvelopeDebugSnapshot? _envelopeDebugSnapshot() {
+    final envelope = _envelope;
+    if (envelope == null) return null;
+    final config = _envelopeConfig;
+    final session = _session;
+    return EnvelopeDebugSnapshot(
+      state: switch (session) {
+        _ when config == null => EnvelopeDebugState.unconfigured,
+        null => EnvelopeDebugState.idle,
+        _EnvelopeSession(handle: null) => EnvelopeDebugState.starting,
+        _ => EnvelopeDebugState.started,
+      },
+      rule: config?.startRule ?? envelope.startRule,
+      kind: session?.kind,
+      handle: session?.handle,
+      jobs: session?.progress.jobs ?? const {},
+      submitAt: config?.submitAt,
+      submitDueAt: session?.submitDueAt,
+      started: _envelopesStarted,
+      endedBySystem: _envelopesEndedBySystem,
+    );
+  }
+
+  /// The jobs whose notification the user tapped, as the envelope's native
+  /// part reports them: each tap sends the [TransferId] the notification
+  /// showed, for the host to route (to the chat a message is sent in, to a
+  /// downloads screen). A broadcast stream; taps before a listener are not
+  /// kept.
+  Stream<TransferId> get notificationTaps => _notificationTaps.stream;
 
   // --- Signals ---------------------------------------------------------------
 
@@ -436,7 +512,9 @@ final class Transfers {
   ///
   /// Applies in every state, a completed job included (it leaves the query
   /// before its retention ends). Answers false for an unknown id.
-  bool cancel(TransferId id) {
+  bool cancel(TransferId id) => _cancel(id, by: 'user');
+
+  bool _cancel(TransferId id, {required String by}) {
     final job = _job(id);
     if (job == null) return false;
     final owner = _journal.record(id)?.upload?.owner;
@@ -451,7 +529,7 @@ final class Transfers {
       jobId: id,
       mediaKey: job.key,
       tag: job.tag,
-      fields: () => {'by': 'user', 'durability': job.durability.name},
+      fields: () => {'by': by, 'durability': job.durability.name},
     );
     _changed();
     return true;
@@ -727,6 +805,7 @@ final class Transfers {
     _unloadWarning?.disarm();
     _lifecycle.removeListener(_onLifecycle);
     unawaited(_envelopeEvents?.cancel());
+    unawaited(_notificationTaps.close());
     _pruneTimer?.cancel();
     _systemActive.dispose();
     _publish?.shutDown();
@@ -759,6 +838,7 @@ final class Transfers {
       },
     );
     _startRun(queued);
+    _reportNoEnvelope(queued);
   }
 
   void _pause(TransferJob job, PauseReason reason) {
@@ -907,34 +987,110 @@ final class Transfers {
   }
 
   void _onEnvelopeEvent(TransferEnvelopeEvent event) {
+    if (_disposed) return;
     switch (event) {
-      case TransferEnvelopeEvent$SystemEnded():
-        final inside = _envelopeProgress?.jobs ?? const {};
-        // The system already ended it: nothing to stop, and a job resumed
-        // later starts a new one.
-        _envelopeProgress = null;
-        final interrupted = inside
-            .map(_job)
-            .nonNulls
-            .where((job) => job.state.isActive)
-            .toList();
+      case TransferEnvelopeEvent$SystemEnded(:final cause):
+        final inside = _session?.progress.jobs ?? const <TransferId>{};
+        _endBySystem(inside, cause);
+      case TransferEnvelopeEvent$UserCancelledAll():
+        _cancelEnvelope();
+      case TransferEnvelopeEvent$NotificationTap(:final id):
         MpxDiagnostics.current.emit(
-          MpxEventLevel.warning,
-          EnvelopeOp.systemEnded,
-          jobId: interrupted.firstOrNull?.id,
-          fields: () => {'jobs': interrupted.length},
+          MpxEventLevel.info,
+          EnvelopeOp.notificationTap,
+          jobId: id,
         );
-        for (final job in interrupted) {
-          _stopRun(job.id);
-          _pause(job, PauseReason.systemInterrupted);
-        }
-      // A user's cancel of the whole envelope and a notification tap reach
-      // owners once the envelope's native parts land; until then nothing
-      // can send them.
-      case TransferEnvelopeEvent$UserCancelledAll() ||
-          TransferEnvelopeEvent$NotificationTap():
-        break;
+        _notificationTaps.add(id);
+      case TransferEnvelopeEvent$Changed(:final kind, :final submitDueAt):
+        final session = _session;
+        if (session == null) return;
+        session
+          ..kind = kind
+          ..submitDueAt = submitDueAt;
     }
+  }
+
+  /// The system ended the envelope over [inside]: nothing is deleted, and
+  /// each of those jobs still moving pauses [PauseReason.systemInterrupted]
+  /// until the app is in the foreground again. Answers how many paused.
+  int _endBySystem(Iterable<TransferId> inside, TransferEnvelopeEndCause cause) {
+    // The system already ended it: nothing to stop, and a job resumed
+    // later starts a new one.
+    if (_session != null) _envelopesEndedBySystem++;
+    _session = null;
+    final interrupted = inside
+        .map(_job)
+        .nonNulls
+        .where((job) => job.state.isActive)
+        .toList();
+    MpxDiagnostics.current.emit(
+      MpxEventLevel.warning,
+      EnvelopeOp.systemEnded,
+      jobId: interrupted.firstOrNull?.id,
+      fields: () => {'jobs': interrupted.length, 'cause': cause.name},
+    );
+    for (final job in interrupted) {
+      _stopRun(job.id);
+      _pause(job, PauseReason.systemInterrupted);
+    }
+    return interrupted.length;
+  }
+
+  /// The user cancelled every job in the envelope from the system's UI:
+  /// each is cancelled, and a publish job one of them belongs to is
+  /// cancelled whole, its other uploads with it, so its owner sees it
+  /// leave.
+  void _cancelEnvelope() {
+    final inside = [...?_session?.progress.jobs];
+    _session = null;
+    MpxDiagnostics.current.emit(
+      MpxEventLevel.info,
+      EnvelopeOp.userCancelledAll,
+      jobId: inside.firstOrNull,
+      fields: () => {'jobs': inside.length},
+    );
+    final cancelled = <TransferId>{...inside};
+    final owners = <PublishJobId>{
+      for (final id in inside)
+        if (_journal.record(id)?.upload?.owner case final owner?)
+          PublishJobId.parse(owner.job),
+    };
+    for (final owner in owners) {
+      cancelled.addAll(_publish?.cancel(owner) ?? const []);
+    }
+    for (final id in cancelled) {
+      _cancel(id, by: 'envelope');
+    }
+  }
+
+  /// Debug builds only: acts as if the system ended the OS envelope now,
+  /// for a debug panel's "simulate a system interruption".
+  ///
+  /// Every `system` job that is queued or running pauses
+  /// [PauseReason.systemInterrupted], as the jobs of a real envelope do
+  /// (on a platform without an envelope too), and the live envelope is
+  /// stopped, as the system would have ended it. The jobs resume once the
+  /// app comes back to the foreground. Answers how many jobs paused; in a
+  /// release build does nothing and answers 0.
+  int debugSimulateSystemInterruption() {
+    var interrupted = 0;
+    assert(() {
+      interrupted = _simulateSystemInterruption();
+      return true;
+    }(), 'never fails: runs the simulation in debug builds only');
+    return interrupted;
+  }
+
+  int _simulateSystemInterruption() {
+    if (_disposed) return 0;
+    final live = _session != null;
+    final interrupted = _endBySystem([
+      for (final job in _journal.jobs)
+        if (job.durability == TransferDurability.system && job.state.isActive)
+          job.id,
+    ], TransferEnvelopeEndCause.simulated);
+    if (live) _envelope?.stop();
+    return interrupted;
   }
 
   // --- Runs ------------------------------------------------------------------
@@ -964,6 +1120,50 @@ final class Transfers {
   }
 
   // --- Store, watchers, envelope, retention -----------------------------------
+
+  /// Takes over the envelope an earlier process left, when a job that was
+  /// moving names one of [live] in its record: the native part kept it
+  /// while Dart was gone. Any other live envelope has no job left and is
+  /// stopped.
+  void _adoptLiveEnvelope(Set<String> live) {
+    final envelope = _envelope;
+    if (envelope == null || live.isEmpty) return;
+    final config = _envelopeConfig;
+    String? handle;
+    if (config != null) {
+      for (final job in _journal.jobs) {
+        if (job.durability != TransferDurability.system ||
+            !job.state.isActive) {
+          continue;
+        }
+        final named = _journal.record(job.id)?.envelopeHandle;
+        if (named != null && live.contains(named)) {
+          handle = named;
+          break;
+        }
+      }
+    }
+    if (config == null || handle == null) {
+      envelope.stop();
+      MpxDiagnostics.current.emit(
+        MpxEventLevel.info,
+        EnvelopeOp.withdrawn,
+        fields: () => {'why': 'drained'},
+      );
+      return;
+    }
+    final inside = _envelopeJobs();
+    final progress = _progressOf(inside);
+    _session = _EnvelopeSession(progress, handle: handle);
+    _envelopesStarted++;
+    envelope.adopt(handle, progress, config);
+    final adopted = handle;
+    MpxDiagnostics.current.emit(
+      MpxEventLevel.info,
+      EnvelopeOp.started,
+      fields: () => {'handle': adopted, 'adopted': true},
+    );
+  }
 
   /// What a previous engine over the same journal left: a job that was moving
   /// starts again, except a download nobody asked to resume, which waits
@@ -1051,20 +1251,23 @@ final class Transfers {
   }
 
   /// Keeps the envelope over the `system` jobs that are queued or running:
-  /// started with the first, updated as they move, stopped when none is
-  /// left.
+  /// started when one of them meets the start rule ([_startsEnvelope]),
+  /// updated as they move (a job the rule would not start joins one
+  /// started), stopped when none is left.
   void _syncEnvelope() {
     final envelope = _envelope;
-    if (envelope == null) return;
-    final inside = [
-      for (final job in _journal.jobs)
-        if (job.durability == TransferDurability.system && job.state.isActive)
-          job,
-    ];
-    final started = _envelopeProgress;
+    final config = _envelopeConfig;
+    if (envelope == null || config == null) return;
+    final inside = _envelopeJobs();
+    final session = _session;
+    if (session == null) {
+      final trigger = inside.where(_startsEnvelope).firstOrNull;
+      if (trigger == null) return;
+      _startEnvelope(envelope, config, trigger, inside);
+      return;
+    }
     if (inside.isEmpty) {
-      if (started == null) return;
-      _envelopeProgress = null;
+      _session = null;
       envelope.stop();
       MpxDiagnostics.current.emit(
         MpxEventLevel.info,
@@ -1073,27 +1276,193 @@ final class Transfers {
       );
       return;
     }
+    final progress = _progressOf(inside);
+    if (progress == session.progress) return;
+    session.progress = progress;
+    envelope.update(progress);
+    _writeEnvelopeHandle(session);
+  }
+
+  void _startEnvelope(
+    TransferEnvelope envelope,
+    TransferEnvelopeConfig config,
+    TransferJob trigger,
+    List<TransferJob> inside,
+  ) {
+    final progress = _progressOf(inside);
+    final session = _session = _EnvelopeSession(progress);
+    final rule = _startRule;
+    MpxDiagnostics.current.emit(
+      MpxEventLevel.debug,
+      EnvelopeOp.startRequested,
+      jobId: trigger.id,
+      fields: () => {'jobs': inside.length, 'rule': rule.name},
+    );
+    unawaited(_awaitStart(envelope.start(progress, config), session));
+  }
+
+  /// Takes the answer of the start of [session]. The envelope may have
+  /// been stopped or ended meanwhile; a refusal still counts.
+  Future<void> _awaitStart(
+    Future<TransferEnvelopeStart> starting,
+    _EnvelopeSession session,
+  ) async {
+    TransferEnvelopeStart answer;
+    try {
+      answer = await starting;
+    } on Object catch (_, stackTrace) {
+      // The error stays out: a platform error may name app state.
+      answer = const TransferEnvelopeStart.refused('error');
+      MpxDiagnostics.current.emit(
+        MpxEventLevel.warning,
+        EnvelopeOp.refused,
+        fields: () => {'code': 'error'},
+        stackTrace: stackTrace,
+      );
+    }
+    if (_disposed) return;
+    final current = identical(_session, session);
+    switch (answer) {
+      case TransferEnvelopeStart$Started(:final handle, :final kind):
+        _envelopesStarted++;
+        MpxDiagnostics.current.emit(
+          MpxEventLevel.info,
+          EnvelopeOp.started,
+          fields: () => {
+            'handle': handle,
+            'kind': ?kind?.name,
+            'adopted': false,
+          },
+        );
+        if (!current) return;
+        session
+          ..handle = handle
+          ..kind = kind;
+        _writeEnvelopeHandle(session);
+      case TransferEnvelopeStart$Refused(:final code):
+        if (code != 'error') {
+          MpxDiagnostics.current.emit(
+            MpxEventLevel.warning,
+            EnvelopeOp.refused,
+            fields: () => {'code': code},
+          );
+        }
+        MpxDiagnostics.current.emit(
+          MpxEventLevel.warning,
+          EnvelopeOp.degraded,
+          jobId: session.progress.jobs.firstOrNull,
+          fields: () => {
+            'from': TransferDurability.system.name,
+            'to': TransferDurability.inProcess.name,
+            'why': 'refused',
+          },
+        );
+        if (!current) return;
+        _declined.addAll(session.progress.jobs);
+        _session = null;
+    }
+  }
+
+  /// Journals the handle of [session], once started, with each job inside.
+  void _writeEnvelopeHandle(_EnvelopeSession session) {
+    final handle = session.handle;
+    if (handle == null) return;
+    for (final id in session.progress.jobs) {
+      _journal.writeEnvelopeHandle(id, handle);
+    }
+  }
+
+  /// The `system` jobs queued or running: what an envelope holds.
+  List<TransferJob> _envelopeJobs() => [
+    for (final job in _journal.jobs)
+      if (job.durability == TransferDurability.system && job.state.isActive)
+        job,
+  ];
+
+  TransferEnvelopeProgress _progressOf(List<TransferJob> inside) {
     final totals = inside.map((job) => job.state.total);
-    final progress = TransferEnvelopeProgress(
+    return TransferEnvelopeProgress(
       jobs: {for (final job in inside) job.id},
       done: inside.fold(0, (sum, job) => sum + job.state.done),
       total: totals.contains(null)
           ? null
           : totals.nonNulls.fold<int>(0, (sum, total) => sum + total),
     );
-    if (progress == started) return;
-    _envelopeProgress = progress;
-    if (started == null) {
-      MpxDiagnostics.current.emit(
-        MpxEventLevel.debug,
-        EnvelopeOp.startRequested,
-        jobId: inside.first.id,
-        fields: () => {'jobs': inside.length},
-      );
-      envelope.start(progress);
-    } else {
-      envelope.update(progress);
+  }
+
+  /// The host's start rule, else the platform's.
+  TransferEnvelopeStartRule get _startRule =>
+      _envelopeConfig?.startRule ??
+      _envelope?.startRule ??
+      TransferEnvelopeStartRule.never;
+
+  /// Whether `system` job [job] starts an envelope by itself.
+  bool _startsEnvelope(TransferJob job) {
+    if (_declined.contains(job.id)) return false;
+    return switch (_startRule) {
+      TransferEnvelopeStartRule.always => true,
+      TransferEnvelopeStartRule.never => false,
+      TransferEnvelopeStartRule.long => _isLong(job),
+    };
+  }
+
+  /// Whether [job] is long: an upload in the big lane (a video, or a file
+  /// over the lane split), or more bytes than the config's
+  /// `longJobBytes`, summed over every upload of the publish job it
+  /// belongs to.
+  bool _isLong(TransferJob job) {
+    final limit =
+        _envelopeConfig?.longJobBytes ??
+        TransferEnvelopeConfig.defaultLongJobBytes;
+    final upload = _journal.record(job.id)?.upload;
+    if (upload?.lane == UploadLane.big) return true;
+    final owner = upload?.owner?.job;
+    if (owner == null) return (job.state.total ?? 0) > limit;
+    var sum = 0;
+    for (final other in _journal.jobs) {
+      if (_journal.record(other.id)?.upload?.owner?.job != owner) continue;
+      sum += other.state.total ?? 0;
     }
+    return sum > limit;
+  }
+
+  /// Reports why queued [job] runs without an envelope, when it does: once
+  /// per run for an unconfigured envelope, else at each queueing.
+  void _reportNoEnvelope(TransferJob job) {
+    if (_session?.progress.jobs.contains(job.id) ?? false) return;
+    if (job.durability == TransferDurability.system &&
+        _envelope != null &&
+        _envelopeConfig == null) {
+      if (_reportedUnconfigured) return;
+      _reportedUnconfigured = true;
+      MpxDiagnostics.current.emit(
+        MpxEventLevel.warning,
+        EnvelopeOp.degraded,
+        jobId: job.id,
+        fields: () => {
+          'from': TransferDurability.system.name,
+          'to': TransferDurability.inProcess.name,
+          'why': 'unconfigured',
+        },
+      );
+      return;
+    }
+    // Refused in this run: reported with the refusal.
+    if (_declined.contains(job.id)) return;
+    final why = switch (job.durability) {
+      TransferDurability.inProcess => 'inProcess',
+      TransferDurability.system when _envelope == null => 'platform',
+      TransferDurability.system => switch (_startRule) {
+        TransferEnvelopeStartRule.never => 'never',
+        _ => 'short',
+      },
+    };
+    MpxDiagnostics.current.emit(
+      MpxEventLevel.debug,
+      EnvelopeOp.notStarted,
+      jobId: job.id,
+      fields: () => {'why': why},
+    );
   }
 
   /// Arms one timer for the completed job whose retention ends first.
@@ -1242,6 +1611,19 @@ bool _sameJobs(List<TransferJob> a, List<TransferJob> b) {
     if (a[i] != b[i]) return false;
   }
   return true;
+}
+
+/// The OS envelope the engine started: its jobs and progress, and once the
+/// start answered, its handle and what holds the process.
+final class _EnvelopeSession {
+  _EnvelopeSession(this.progress, {this.handle});
+
+  TransferEnvelopeProgress progress;
+
+  /// Null while the start has not answered.
+  String? handle;
+  TransferEnvelopeKind? kind;
+  DateTime? submitDueAt;
 }
 
 /// One `watch` listener: its filter and the list it saw last.

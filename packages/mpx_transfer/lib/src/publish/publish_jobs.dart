@@ -239,6 +239,32 @@ final class PublishJobs {
     _checkUploads(id, owner.itemId);
   }
 
+  /// Removes job [id] and answers the uploads it made, for the facade to
+  /// cancel: its preparations stop, its record is forgotten and its
+  /// watchers end, as an owner sees a cancelled job leave. Answers null
+  /// for an unknown job.
+  List<TransferId>? cancel(PublishJobId id) {
+    final record = _journal.record(id);
+    if (record == null) return null;
+    final live = _live.remove(id);
+    if (live != null) {
+      for (final handle in live.preparations.values) {
+        unawaited(handle.cancel());
+      }
+      for (final watch in live.watches) {
+        unawaited(watch.sink.close());
+      }
+    }
+    unawaited(_journal.remove(id));
+    return [
+      for (final item in record.items)
+        if (item.progress case ItemProgress$Uploading(
+          :final file,
+          :final thumbnail,
+        )) ...[file, ?thumbnail],
+    ];
+  }
+
   /// Stops every job: preparations are cancelled (a later start makes them
   /// again) and watchers end. The records stay.
   void shutDown() {

@@ -37,11 +37,12 @@ final class JournalRecord {
   JournalRecord copyWith({
     TransferJob? job,
     JournalUpload? upload,
+    String? envelopeHandle,
     DateTime? lastProgressAt,
   }) => JournalRecord(
     job: job ?? this.job,
     upload: upload ?? this.upload,
-    envelopeHandle: envelopeHandle,
+    envelopeHandle: envelopeHandle ?? this.envelopeHandle,
     lastProgressAt: lastProgressAt ?? this.lastProgressAt,
   );
 
