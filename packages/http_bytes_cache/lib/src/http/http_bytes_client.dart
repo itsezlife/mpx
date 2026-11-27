@@ -856,6 +856,86 @@ final class HttpBytesClient {
     }
   }
 
+  /// Sends a request with no body to [url]: a [method] other than `GET`
+  /// (`HEAD`, `POST`, `DELETE`, `OPTIONS`, ...) with [headers], such as a
+  /// protocol's control call beside its uploads. Completes with the answer:
+  /// its status, headers and body, read whole (a small body).
+  ///
+  /// The middlewares run on the request as for a GET (Bearer headers, the
+  /// connect timeout), with no retry: the caller decides whether a failed
+  /// call is tried again. It holds one of [maxUploads] slots while it runs
+  /// and is never coalesced. A status that is not a success fails as for
+  /// [getBytes], unless [context] sets [HttpBytesContext.validateStatusKey];
+  /// cancelling [cancelToken] aborts it with [HttpBytesException$Cancelled].
+  ///
+  /// Throws an [ArgumentError] for a `GET`, which goes through [getBytes],
+  /// [stream] or [transfer].
+  Future<HttpBytesResponse> request(
+    Uri url, {
+    required String method,
+    Map<String, String>? headers,
+    CancelToken? cancelToken,
+    Map<String, Object?>? context,
+  }) {
+    if (_closed) {
+      throw const HttpBytesException$Internal(
+        code: 'closed',
+        message: 'HttpBytesClient is closed.',
+        statusCode: 0,
+      );
+    }
+    final verb = method.toUpperCase();
+    if (verb == 'GET') {
+      throw ArgumentError.value(method, 'method', 'is GET');
+    }
+    final callerToken = cancelToken ?? CancelToken();
+    final ctx = HttpBytesContext(<String, Object?>{...?context})
+      ..callerCancelToken = callerToken
+      ..noRetry = true;
+    ctx[_kBodiless] = true;
+    final request = http.Request(verb, url);
+    if (headers case final h?) request.headers.addAll(h);
+    return _raceCallerCancel(
+      callerToken,
+      url,
+      () => _handler(HttpBytesRequest(request), ctx),
+    );
+  }
+
+  /// A [request] at the center of the chain: an upload slot, the request
+  /// sent on this isolate, its body read whole.
+  Future<HttpBytesResponse> _sendBodiless(
+    HttpBytesHandler clientSend,
+    HttpBytesRequest request,
+    HttpBytesContext context,
+    CancelToken callerToken,
+  ) async {
+    final flightToken = CancelToken();
+    context.cancelToken = flightToken;
+    final flight = _HttpBytesInFlight(
+      flightToken: flightToken,
+      onAbandoned: () {},
+    )..trackCaller(callerToken);
+    final abortable = http.AbortableRequest(
+      request.method,
+      request.url,
+      abortTrigger: flightToken.whenCancel,
+    )..headers.addAll(request.headers);
+
+    await _slots.acquire(flight, upload: true);
+    try {
+      final response = await clientSend(HttpBytesRequest(abortable), context);
+      final bytes = await response.toBytes();
+      return response.clone(
+        stream: http.ByteStream.fromBytes(bytes),
+        body: bytes,
+        contentLength: bytes.length,
+      );
+    } finally {
+      _slots.release(upload: true);
+    }
+  }
+
   /// One try of [upload] through the middleware chain.
   Future<HttpBytesResponse> _uploadOnce(
     Uri url, {
@@ -1069,6 +1149,9 @@ final class HttpBytesClient {
       if (context[_kUpload] != null) {
         return _sendUpload(request, context, callerToken);
       }
+      if (context[_kBodiless] == true) {
+        return _sendBodiless(clientSend, request, context, callerToken);
+      }
 
       // Explicit override (resolver cacheKey) wins for coalesce; otherwise
       // fingerprint post-middleware URL + headers (Bearer Auth participates;
@@ -1281,6 +1364,9 @@ const _kTransfer = 'httpBytesTransfer';
 
 /// Context slot for the [_UploadPlan] of a [HttpBytesClient.upload] try.
 const _kUpload = 'httpBytesUpload';
+
+/// Context marker for a [HttpBytesClient.request] with no body.
+const _kBodiless = 'httpBytesBodiless';
 
 /// Methods [HttpBytesClient.upload] sends.
 const _uploadMethods = <String>{'POST', 'PUT', 'PATCH'};

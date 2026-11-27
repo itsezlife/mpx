@@ -30,6 +30,10 @@ final class TestAnswer {
 /// A protocol mounted on the server: answers the requests under its path.
 typedef TestProtocol = FutureOr<TestAnswer> Function(ReceivedRequest request);
 
+/// A protocol that reads the request's body itself as it streams in and
+/// answers it, for one that keeps a body broken off midway.
+typedef TestStreamingProtocol = Future<void> Function(HttpRequest request);
+
 /// A local HTTP server for the upload adapters' tests: each adapter's
 /// protocol mounts under a path of its own ([mount]); the server records
 /// every request ([requests]), keeps the files the protocols complete
@@ -48,6 +52,7 @@ final class UploadTestServer {
 
   final HttpServer _server;
   final Map<String, TestProtocol> _protocols = {};
+  final Map<String, TestStreamingProtocol> _streaming = {};
   final List<int> _statuses = [];
   int _holds = 0;
   final List<Completer<void>> _held = [];
@@ -68,6 +73,12 @@ final class UploadTestServer {
   /// Answers requests whose path starts with [path] through [protocol].
   void mount(String path, TestProtocol protocol) => _protocols[path] = protocol;
 
+  /// Hands requests whose path starts with [path] to [protocol] unread: it
+  /// reads the body and answers. [requests], [failNext] and [holdNext] do
+  /// not see them.
+  void mountStreaming(String path, TestStreamingProtocol protocol) =>
+      _streaming[path] = protocol;
+
   /// Answers the next requests with [statuses], one each, before any
   /// protocol sees them.
   void failNext(List<int> statuses) => _statuses.addAll(statuses);
@@ -84,6 +95,18 @@ final class UploadTestServer {
   }
 
   Future<void> _handle(HttpRequest request) async {
+    final streaming = _streaming.entries
+        .where((entry) => request.uri.path.startsWith(entry.key))
+        .map((entry) => entry.value)
+        .firstOrNull;
+    if (streaming != null) {
+      try {
+        await streaming(request);
+      } on Object {
+        // The client went away.
+      }
+      return;
+    }
     final headers = <String, String>{};
     request.headers.forEach((name, values) => headers[name] = values.join(','));
     final body = BytesBuilder(copy: false);

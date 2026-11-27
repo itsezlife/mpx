@@ -26,6 +26,7 @@ import 'resolve/pipeline_test.dart' as pipeline_test;
 import 'resolve/priority_test.dart' as priority_test;
 import 'resolve/progress_fanout_test.dart' as progress_fanout_test;
 import 'resolve/range_request_test.dart' as range_request_test;
+import 'resolve/request_test.dart' as request_test;
 import 'resolve/resolver_test.dart' as resolver_test;
 import 'resolve/slots_test.dart' as slots_test;
 import 'resolve/swr_test.dart' as swr_test;
@@ -62,6 +63,7 @@ void main() => group('Unit', () {
   range_request_test.main();
   transfer_test.main();
   upload_test.main();
+  request_test.main();
   slots_test.main();
   bearer_middleware_test.main();
   conditional_middleware_test.main();

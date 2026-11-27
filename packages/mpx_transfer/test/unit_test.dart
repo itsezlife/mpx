@@ -30,6 +30,7 @@ import 'upload/multipart_upload_transport_test.dart'
     as multipart_upload_transport_test;
 import 'upload/numbered_parts_transport_test.dart'
     as numbered_parts_transport_test;
+import 'upload/tus_upload_transport_test.dart' as tus_upload_transport_test;
 import 'upload/upload_diagnostics_test.dart' as upload_diagnostics_test;
 import 'upload/upload_engine_test.dart' as upload_engine_test;
 import 'upload/upload_kill_test.dart' as upload_kill_test;
@@ -63,6 +64,7 @@ void main() {
     multipart_upload_transport_test.main,
   );
   group('numbered_parts_transport_test', numbered_parts_transport_test.main);
+  group('tus_upload_transport_test', tus_upload_transport_test.main);
   group('upload_diagnostics_test', upload_diagnostics_test.main);
   group('upload_engine_test', upload_engine_test.main);
   group('upload_kill_test', upload_kill_test.main);

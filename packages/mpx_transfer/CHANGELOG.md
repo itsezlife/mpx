@@ -79,6 +79,19 @@
   24 h above; `thumbnail: separate`; a stored reference good for 24 hours.
   `NumberedPartsTransport.presignedMultipart` for S3, R2 and GCS: parts of
   8 MiB, at most 10 000, 32 MiB in flight.
+- `TusUploadTransport`: the tus resumable upload protocol 1.0.0 (core,
+  creation and expiration). A `POST` creates the upload with its length
+  and metadata; each part is a `PATCH` at the server's offset, one at a
+  time (1 MiB parts, 4 MiB above 10 MiB); the upload's URL is the resume
+  token. A restart asks the server's offset (`HEAD`) and sends only what it
+  lacks; an upload the server forgot (404, 410) or whose `Upload-Expires`
+  passed starts again from zero. A part broken off midway goes on from the
+  server's offset. `thumbnail: none`; a stored reference is good while the
+  server still holds the whole upload (`UploadReuse.validity`).
+- `UploadOffsetSession`: a session that tells the remote end's offset, by
+  which the engine resumes instead of the journal's parts.
+  `UploadPartBody.send` takes `from`, to skip the bytes the remote end
+  holds.
 - `UploadTransportContract` checks the `thumbnail` capability (a separate
   thumbnail uploads beside its item) and the `reuse` one (a reference just
   answered is good).

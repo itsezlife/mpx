@@ -383,7 +383,22 @@ final class _UploadRun {
     _session = session;
 
     final resumed = token != null && session.resumed;
-    if (resumed) {
+    // A remote end that keeps the offset is the truth about what it holds;
+    // the journal may be a progress window behind it, or ahead of a remote
+    // end that lost bytes.
+    final remoteOffset = switch (session) {
+      final UploadOffsetSession offsetSession when resumed => math.min(
+        math.max(offsetSession.remoteOffset, 0),
+        _size,
+      ),
+      _ => null,
+    };
+    if (remoteOffset != null) {
+      for (var index = 0; index < _partCount; index++) {
+        if (index * partSize + _lengthOf(index) > remoteOffset) break;
+        _acks[index] = UploadPartAck(receipt: upload.parts[index]);
+      }
+    } else if (resumed) {
       for (final MapEntry(key: index, value: receipt) in upload.parts.entries) {
         if (index < _partCount) _acks[index] = UploadPartAck(receipt: receipt);
       }
@@ -427,7 +442,7 @@ final class _UploadRun {
       fields: () => {
         'transport': transport.id,
         'resumed': resumed,
-        'offset': highWaterMark,
+        'offset': remoteOffset ?? highWaterMark,
         'size': _size,
       },
     );
@@ -727,14 +742,15 @@ final class _UploadRun {
       required method,
       required prefix,
       required suffix,
+      required from,
       headers,
       context,
     }) => _engine._send(
       id,
       _source,
       url,
-      offset: offset,
-      length: length,
+      offset: offset + from,
+      length: length - from,
       prefix: prefix,
       suffix: suffix,
       method: method,
@@ -743,8 +759,10 @@ final class _UploadRun {
       cancelToken: _cancel,
       onBytesSent: (sent, _) {
         if (_ended || !_inFlight.containsKey(index)) return;
-        // The transport's framing is not the file's bytes.
-        _inFlight[index] = (sent - prefix.length).clamp(0, length);
+        // The transport's framing is not the file's bytes; the bytes
+        // skipped are held by the remote end, so done.
+        _inFlight[index] =
+            from + (sent - prefix.length).clamp(0, length - from);
         _reportProgress();
       },
     ),

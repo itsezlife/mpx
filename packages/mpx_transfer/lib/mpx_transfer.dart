@@ -21,6 +21,7 @@
 /// journals the parts, and a completed upload holds a `RemoteRef`. The
 /// reuse table (`Transfers.reuse`) keeps those references by source, so
 /// the same media sent again is neither prepared nor uploaded again.
+/// `TusUploadTransport` speaks the tus resumable upload protocol.
 ///
 /// Single-threaded on the UI isolate.
 library;
@@ -42,6 +43,7 @@ export 'src/transfers.dart';
 export 'src/upload/multipart_upload_transport.dart';
 export 'src/upload/numbered_parts_transport.dart';
 export 'src/upload/remote_ref.dart';
+export 'src/upload/tus_upload_transport.dart';
 export 'src/upload/upload_lane.dart';
 export 'src/upload/upload_source.dart';
 export 'src/upload/upload_transport.dart' hide UploadPartSend;

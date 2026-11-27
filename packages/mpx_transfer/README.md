@@ -92,6 +92,12 @@ final presigned = NumberedPartsTransport.presignedMultipart(
   ),
 );
 
+// A transport for a tus server: resumable, from the server's offset.
+final tus = TusUploadTransport(
+  endpoint: Uri.parse('https://uploads.example.com/files/'),
+  client: httpBytesClient,
+);
+
 // Verbs on one job (`id`, a `TransferId` from a snapshot) answer whether
 // it changed.
 transfers.pause(id);
@@ -144,6 +150,9 @@ transfers.systemActive.addListener(() {
   transport, so the same media sent again skips preparation and upload
   while the transport judges them good; on by default for 7 days
   (`ReusePolicy`), kept beside the journal.
+- `TusUploadTransport`: the tus resumable upload protocol; a restart
+  sends only what the server lacks, an expired or forgotten upload starts
+  again from zero.
 - `TransferDurability`: `inProcess`, or `system` inside the platform's OS
   envelope (`TransferEnvelope`) where there is one.
 - `Transfers.watch(filter)` by direction, state, tag and durability; a

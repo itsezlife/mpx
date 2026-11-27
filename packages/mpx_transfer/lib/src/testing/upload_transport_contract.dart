@@ -44,6 +44,7 @@ abstract final class UploadTransportContract {
             required method,
             required prefix,
             required suffix,
+            required from,
             headers,
             context,
           }) {
@@ -55,8 +56,8 @@ abstract final class UploadTransportContract {
               url,
               body: HttpBytesUploadBody.file(
                 path,
-                offset: offset,
-                length: length,
+                offset: offset + from,
+                length: length - from,
                 prefix: prefix,
                 suffix: suffix,
               ),

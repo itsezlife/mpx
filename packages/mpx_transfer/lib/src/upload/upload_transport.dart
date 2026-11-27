@@ -69,6 +69,23 @@ abstract interface class UploadSession {
   Future<RemoteRef> finish(int finalSize, List<UploadPartAck> parts);
 }
 
+/// An [UploadSession] whose remote end says how much of the file it holds,
+/// for a protocol whose server keeps the upload's offset (a resumable
+/// upload protocol): after a restart the server's offset, not the parts
+/// the journal kept, says what is left to send.
+///
+/// When a resumed session implements it, the engine counts every part that
+/// ends at or before [remoteOffset] as acknowledged and sends the others,
+/// whatever the journal kept: a kill that lost the last progress window
+/// costs no resend, and parts the journal kept that the remote end does
+/// not hold go again. A part [remoteOffset] falls inside is sent whole; the
+/// session sends only its rest ([UploadPartBody.send]'s `from`).
+abstract interface class UploadOffsetSession implements UploadSession {
+  /// The bytes from the file's start the remote end held when the session
+  /// opened.
+  int get remoteOffset;
+}
+
 /// What an upload is, as [UploadTransport.open] is told.
 @immutable
 final class UploadInfo {
@@ -142,6 +159,11 @@ final class UploadPartBody {
   /// after the part's bytes (a multipart form's boundary and headers): small
   /// and held in memory. The request's `Content-Length` counts them; the
   /// part's progress counts only its [length].
+  ///
+  /// [from] skips the part's first bytes, for a remote end that already
+  /// holds them (a try that broke off after the remote end kept some of
+  /// the part): the body is the `length - from` bytes after them. Between
+  /// 0 and [length].
   Future<HttpBytesResponse> send(
     Uri url, {
     String method = 'PUT',
@@ -149,14 +171,19 @@ final class UploadPartBody {
     Map<String, Object?>? context,
     List<int> prefix = const [],
     List<int> suffix = const [],
-  }) => _send(
-    url,
-    method: method,
-    headers: headers,
-    context: context,
-    prefix: prefix,
-    suffix: suffix,
-  );
+    int from = 0,
+  }) {
+    RangeError.checkValueInInterval(from, 0, length, 'from');
+    return _send(
+      url,
+      method: method,
+      headers: headers,
+      context: context,
+      prefix: prefix,
+      suffix: suffix,
+      from: from,
+    );
+  }
 }
 
 /// How an [UploadPartBody] sends: the engine's request, which the
@@ -168,6 +195,7 @@ typedef UploadPartSend =
       required String method,
       required List<int> prefix,
       required List<int> suffix,
+      required int from,
       Map<String, String>? headers,
       Map<String, Object?>? context,
     });

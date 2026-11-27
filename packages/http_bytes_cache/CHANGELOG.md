@@ -14,6 +14,9 @@
   wait between tries. `retry` retries transient failures and timeouts;
   `HttpBytesRetryBackoff.uploadPart` is the preset for parts: five tries in
   all, waits from 1 s, each capped at 30 s.
+- `HttpBytesClient.request`: a request with no body (`HEAD`, `POST`,
+  `DELETE` ...) through the middlewares, sent once, under the upload cap;
+  the answer read whole. For a protocol's control calls beside its uploads.
 - `HttpBytesUploadBody` takes a `prefix` and a `suffix`: small bytes sent
   before and after the range (a multipart form's framing). `contentLength`
   is the whole body, which the request's `Content-Length` and

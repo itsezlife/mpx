@@ -246,6 +246,18 @@ most 10 000, with 32 MiB (four parts) in flight. Larger files grow their
 parts to the next multiple of the base part size that keeps the count
 within the limit.
 
+The tus adapter's `reuse` default is a validity call: a `HEAD` of the
+upload's URL (kept in the reference's `tus.upload` attribute), good while the
+server holds the whole upload and its `Upload-Expires` has not passed. tus
+servers keep completed uploads by their own policy, which a fixed lifetime
+could only guess, and the protocol already answers the question in one small
+request; a server that cannot be reached counts as not holding it, so the
+media goes again rather than as a dead reference. The adapter sends parts one
+at a time (the protocol has no parallel parts without the concatenation
+extension), resumes by the server's offset (`UploadOffsetSession`), not the
+journal's parts, and treats an upload the server forgot (404, 410) or whose
+`Upload-Expires` passed as a restart from zero.
+
 **Reuse table.** Re-sending the same media does not upload it again. Beside
 the journal, `mpx_transfer` keeps a table from source fingerprint plus
 preparation parameters to a `RemoteRef`, with the time it was stored and an
@@ -557,8 +569,6 @@ engine's state (ADR 0013).
   swipe from Recents. No decision here depends on them; the journal resumes
   after any kill.
 - Which `submitAt` default holds on iOS 26 devices.
-- The `reuse` capability's default for the tus adapter (multipart and
-  numbered parts: 24 hours, above; the reuse table's expiry: 7 days, above).
 
 ## Provenance
 
