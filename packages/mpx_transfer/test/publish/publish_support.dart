@@ -92,12 +92,17 @@ Future<UploadsHarness> publishing(
   Duration? progressInterval,
   JournalStore Function()? store,
   PublishProgressWeights progressWeights = PublishProgressWeights.standard,
+  ManualPlaybackLifecycleSource? lifecycle,
+  TransferEnvelope? envelope,
+  TransferEnvelopeConfig? envelopeConfig,
 }) async {
   final built = await UploadsHarness.open(
     store: store,
-    lifecycle: ManualPlaybackLifecycleSource(
-      initial: AppLifecycleState.resumed,
-    ),
+    lifecycle:
+        lifecycle ??
+        ManualPlaybackLifecycleSource(initial: AppLifecycleState.resumed),
+    envelope: envelope,
+    envelopeConfig: envelopeConfig,
     transports: transports,
     now: now,
     progressInterval: progressInterval ?? Transfers.defaultProgressInterval,

@@ -78,7 +78,6 @@ final class FakeTransferEnvelope implements TransferEnvelope {
   /// Whether an envelope is started.
   bool get isStarted => _current != null;
 
-
   /// Keeps the answer of the next start until [answerStart].
   void holdStarts() => _holding = true;
 
@@ -147,8 +146,9 @@ final class FakeTransferEnvelope implements TransferEnvelope {
   /// Sends [event] as the native part would, synchronously. A system end
   /// and a cancel of every job also end the envelope here.
   void emit(TransferEnvelopeEvent event) {
-    if (event case TransferEnvelopeEvent$SystemEnded() ||
-        TransferEnvelopeEvent$UserCancelledAll()) {
+    if (event
+        case TransferEnvelopeEvent$SystemEnded() ||
+            TransferEnvelopeEvent$UserCancelledAll()) {
       _current = null;
       _handle = null;
       leftovers.clear();

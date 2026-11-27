@@ -297,7 +297,10 @@ final class PublishJobs {
         if (item.progress case ItemProgress$Uploading(
           :final file,
           :final thumbnail,
-        )) ...[file, ?thumbnail],
+        )) ...[
+          file,
+          ?thumbnail,
+        ],
     ];
   }
 

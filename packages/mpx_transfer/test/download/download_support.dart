@@ -156,11 +156,13 @@ final class DownloadsHarness {
   /// Opens one in the foreground, disposed after the test.
   static Future<DownloadsHarness> open({
     ManualPlaybackLifecycleSource? lifecycle,
+    TransferEnvelope? envelope,
   }) async {
     final store = FakeStore();
     final fetcher = SteppedFetcher(store.store);
     final built = await support.harness(
       lifecycle: lifecycle,
+      envelope: envelope,
       downloads: TransferDownloads(
         fetcher: fetcher,
         resolver: FakeMediaResolver(const [photoItem, videoItem]),

@@ -152,6 +152,17 @@ transfers.resume(id);
 transfers.retry(id);
 transfers.cancel(id); // removes it
 
+// The OS envelope's text and icon, already localised by the host. Without
+// a config `system` jobs run in process.
+//   Transfers.open(..., envelope: platformEnvelope,
+//       envelopeConfig: TransferEnvelopeConfig(
+//         title: l10n.sendingMedia,
+//         cancelAllLabel: l10n.cancelAll,
+//         progressText: (p) => l10n.filesLeft(p.jobs.length),
+//       ));
+// A tap on the envelope's notification arrives with the job's id.
+transfers.notificationTaps.listen(openChatFor); // the host routes
+
 // On macOS, Windows and Linux there is no OS envelope: quitting ends every
 // job. `systemActive` is true while a `system` job is queued or running, so
 // the host can ask before it quits. (Defined on every platform.)
@@ -225,7 +236,20 @@ transfers.systemActive.addListener(() {
 - `retry(id, source:)`: an upload whose source was lost goes again from a
   file the host gives, from zero.
 - `TransferDurability`: `inProcess`, or `system` inside the platform's OS
-  envelope (`TransferEnvelope`) where there is one.
+  envelope (`TransferEnvelope`) where there is one. Publish job uploads
+  are `system`, downloads `inProcess` unless the host raises one.
+- The envelope starts by the platform's rule (`long`: a video or more than
+  10 MiB over a publish job's uploads; `always`), which the host's
+  `TransferEnvelopeConfig.startRule` overrides down to `never`; shorter
+  jobs join one a long job started. It stops when its jobs drain, and its
+  handle is journaled with each job, so after a kill the next start takes
+  over an envelope the native part still holds. A refused start runs the
+  jobs in process. When the system ends it, its jobs pause
+  `systemInterrupted` and resume in the foreground; nothing is deleted.
+  "Cancel all" from the system's UI cancels every job in it, and each
+  publish job one of them belongs to. `notificationTaps` streams the job a
+  tapped notification showed. `debugSimulateSystemInterruption()` (debug
+  builds) acts out a system end for a debug panel.
 - `Transfers.watch(filter)` by direction, state, tag and durability; a
   completed job stays queryable for 24 hours (`retention`).
 - `pause`, `resume`, `cancel`, `retry`, `setPriority`, and

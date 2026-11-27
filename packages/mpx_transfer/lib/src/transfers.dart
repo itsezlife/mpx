@@ -326,6 +326,11 @@ final class Transfers {
   /// starts.
   final Set<TransferId> _declined = {};
   bool _reportedUnconfigured = false;
+
+  /// Set while the jobs of an envelope the system or the user ended leave
+  /// it one by one: the jobs not yet paused or cancelled must not start a
+  /// new one.
+  bool _envelopeHeld = false;
   int _envelopesStarted = 0;
   int _envelopesEndedBySystem = 0;
   Timer? _pruneTimer;
@@ -1034,7 +1039,10 @@ final class Transfers {
   /// The system ended the envelope over [inside]: nothing is deleted, and
   /// each of those jobs still moving pauses [PauseReason.systemInterrupted]
   /// until the app is in the foreground again. Answers how many paused.
-  int _endBySystem(Iterable<TransferId> inside, TransferEnvelopeEndCause cause) {
+  int _endBySystem(
+    Iterable<TransferId> inside,
+    TransferEnvelopeEndCause cause,
+  ) {
     // The system already ended it: nothing to stop, and a job resumed
     // later starts a new one.
     if (_session != null) _envelopesEndedBySystem++;
@@ -1050,10 +1058,16 @@ final class Transfers {
       jobId: interrupted.firstOrNull?.id,
       fields: () => {'jobs': interrupted.length, 'cause': cause.name},
     );
-    for (final job in interrupted) {
-      _stopRun(job.id);
-      _pause(job, PauseReason.systemInterrupted);
+    _envelopeHeld = true;
+    try {
+      for (final job in interrupted) {
+        _stopRun(job.id);
+        _pause(job, PauseReason.systemInterrupted);
+      }
+    } finally {
+      _envelopeHeld = false;
     }
+    _syncEnvelope();
     return interrupted.length;
   }
 
@@ -1079,9 +1093,15 @@ final class Transfers {
     for (final owner in owners) {
       cancelled.addAll(_publish?.cancel(owner) ?? const []);
     }
-    for (final id in cancelled) {
-      _cancel(id, by: 'envelope');
+    _envelopeHeld = true;
+    try {
+      for (final id in cancelled) {
+        _cancel(id, by: 'envelope');
+      }
+    } finally {
+      _envelopeHeld = false;
     }
+    _syncEnvelope();
   }
 
   /// Debug builds only: acts as if the system ended the OS envelope now,
@@ -1278,7 +1298,9 @@ final class Transfers {
   void _syncEnvelope() {
     final envelope = _envelope;
     final config = _envelopeConfig;
-    if (envelope == null || config == null) return;
+    if (envelope == null || config == null || _envelopeHeld || _disposed) {
+      return;
+    }
     final inside = _envelopeJobs();
     final session = _session;
     if (session == null) {

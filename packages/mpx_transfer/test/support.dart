@@ -12,6 +12,8 @@ import 'package:mpx_transfer/testing.dart';
 Future<TransfersHarness> harness({
   ManualPlaybackLifecycleSource? lifecycle,
   TransferEnvelope? envelope,
+  TransferEnvelopeConfig? envelopeConfig,
+  bool configureEnvelope = true,
   Duration? retention,
   bool online = true,
   DateTime Function()? now,
@@ -25,6 +27,8 @@ Future<TransfersHarness> harness({
   final built = await TransfersHarness.open(
     lifecycle: source,
     envelope: envelope,
+    envelopeConfig: envelopeConfig,
+    configureEnvelope: configureEnvelope,
     retention: retention ?? Transfers.defaultRetention,
     progressInterval: progressInterval ?? Transfers.defaultProgressInterval,
     online: online,

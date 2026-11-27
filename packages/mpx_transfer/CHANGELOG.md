@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- OS envelope: `TransferEnvelopeConfig` (title, text, cancel-all label,
+  progress text, icon, `startRule`, `longJobBytes` 10 MiB, `submitAt`
+  `afterDelay(10 s)` or `onResignActive`) through
+  `Transfers.open(envelopeConfig:)`; without one `system` jobs run in
+  process, reported once. The engine starts the envelope by the start rule
+  (`long`, `always`, `never`), stops it when its jobs drain, and journals
+  its handle with each job, taking over a live one after a restart. A
+  refused start runs its jobs in process. A system end pauses every job
+  inside `systemInterrupted`; a cancel of all from the system's UI cancels
+  them and their publish jobs. `Transfers.notificationTaps`,
+  `debugSimulateSystemInterruption()` and `debugSnapshot().envelope`.
+  Breaking for `TransferEnvelope` implementers: `startRule`, `live`,
+  `adopt`, and `start` takes the config and answers
+  `TransferEnvelopeStart`; `systemEnded` carries a cause, and a `changed`
+  event reports the kind and the submission time.
+
 - Publish progress: `PublishJobSnapshot.progress` and
   `PublishItemSnapshot.progress`, 0..1 and byte-weighted, on `watch()` and
   `watchItem(id)`. Before its preparation ends an item weighs its source's
