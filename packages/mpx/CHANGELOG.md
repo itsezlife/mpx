@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The bytes cache reports through `MpxDiagnostics.current`:
+  `CacheDiagnosticsBridge.policy`, which `MpxStack.create` installs as
+  `BytesDiagnostics.current`, turns each bytes event into an `MpxEvent` of
+  category `cache` (`CacheOp`, the bytes operation in `fields.bytesOp`)
+  with its level and stack trace, and drops its message, which can carry
+  keys and URLs. A host that opens the bytes cache itself installs the
+  same policy. Breaking: `MpxStack.create(diagnostics:)` is gone; set
+  `MpxDiagnostics.current` instead.
 - `MpxStack` repeats what failed for want of a network when the device's
   `network` signal comes back from `none` (`AssetCacheScope.connectivityRestored`):
   an avatar or a picture asked for offline loads once the network is back,

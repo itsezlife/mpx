@@ -20,6 +20,9 @@ void main() {
   late List<String> requested;
 
   setUp(() {
+    // The stack installs its bridge as the bytes cache's policy.
+    final previousBytesDiagnostics = BytesDiagnostics.current;
+    addTearDown(() => BytesDiagnostics.current = previousBytesDiagnostics);
     signals = FakeDeviceSignals();
     requested = [];
     client = HttpBytesClient(
@@ -67,6 +70,28 @@ void main() {
     );
     signals.network.value = NetworkClass.metered;
     expect(policy.network, NetworkClass.metered);
+  });
+
+  testWidgets('the bytes cache reports through the mpx policy', (tester) async {
+    await create();
+    expect(BytesDiagnostics.current, same(CacheDiagnosticsBridge.policy));
+
+    final diagnostics = RecordingDiagnostics.install();
+    BytesDiagnostics.current.report(
+      const BytesLogEvent(
+        level: BytesLogLevel.error,
+        message: 'write failed for https://cdn.test/loop',
+        op: BytesLogOp.writeThrough,
+      ),
+    );
+    expect(
+      diagnostics.events.single,
+      isMpxEvent(
+        level: MpxEventLevel.error,
+        op: CacheOp.writeThrough,
+        fields: {'bytesOp': 'write_through'},
+      ),
+    );
   });
 
   testWidgets('a host policy reaches the scope', (tester) async {
