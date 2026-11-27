@@ -3,7 +3,7 @@ import 'dart:ui' show AppLifecycleState;
 
 import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:http_bytes_cache/http_bytes_cache.dart'
-    show BytesCacheKey, HttpBytesClient, RequestPriority;
+    show BytesCacheKey, HttpBytesClient, IBytesStore, RequestPriority;
 import 'package:meta/meta.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_transfer/src/diagnostics/envelope_op.dart';
@@ -72,8 +72,9 @@ final class Transfers {
   /// download jobs move their bytes through them and [runner] moves the
   /// rest; without, [runner] moves every job. With [uploads] and
   /// [publishJournal], the facade runs publish jobs, preparing items
-  /// through [preparation]. [liveEnvelopes] are the handles [envelope]
-  /// reported live at the start ([TransferEnvelope.live]).
+  /// through [preparation] and aliasing their server keys in [cache]
+  /// (`downloads.store` unless given). [liveEnvelopes] are the handles
+  /// [envelope] reported live at the start ([TransferEnvelope.live]).
   @internal
   Transfers.engine({
     required String Function(MediaKey key) cacheKeyOf,
@@ -90,12 +91,14 @@ final class Transfers {
     ReuseTable? reuse,
     PublishJournal? publishJournal,
     MediaPreparation? preparation,
+    IBytesStore? cache,
     PublishProgressWeights progressWeights = PublishProgressWeights.standard,
     this.retention = defaultRetention,
     this.sourceCopyLimit = defaultSourceCopyLimit,
     bool online = true,
     DateTime Function() now = DateTime.now,
   }) : _cacheKeyOf = cacheKeyOf,
+       _cache = cache ?? downloads?.store,
        _lifecycle = lifecycle,
        _runner = runner,
        _downloadRunner = downloads == null ? null : DownloadRunner(downloads),
@@ -158,7 +161,11 @@ final class Transfers {
   /// of publish jobs that need it; without one such a job is refused.
   /// [progressWeights] weigh a publish job's progress
   /// ([PublishProgressWeights.standard] unless given). Publish jobs are
-  /// kept beside the journal too.
+  /// kept beside the journal too. Once a publisher answers published, each
+  /// server key it gave is aliased to its item's local key in [cache], both
+  /// through [cacheKeyOf]: the bytes cache the composition root's fetcher
+  /// reads, `downloads.store` unless given. Without either, no alias is
+  /// made.
   ///
   /// A journal that cannot be read is reported (`journal` `writeFailed`)
   /// and the engine runs in memory for this run, with no jobs.
@@ -176,6 +183,7 @@ final class Transfers {
     List<UploadTransport> transports = const [],
     HttpBytesClient? client,
     MediaPreparation? preparation,
+    IBytesStore? cache,
     PublishProgressWeights progressWeights = PublishProgressWeights.standard,
     bool online = true,
     DateTime Function() now = DateTime.now,
@@ -218,6 +226,7 @@ final class Transfers {
       uploads: uploads,
       publishJournal: publishJournal,
       preparation: preparation,
+      cache: cache,
       progressWeights: progressWeights,
       sourceCopies: platform.sourceCopies,
       unloadWarning: platform.unloadWarning,
@@ -280,6 +289,7 @@ final class Transfers {
   Duration get progressInterval => _journal.progressInterval;
 
   final String Function(MediaKey key) _cacheKeyOf;
+  final IBytesStore? _cache;
   final PlaybackLifecycleSource _lifecycle;
   final TransferRunner _runner;
   final DownloadRunner? _downloadRunner;
@@ -527,6 +537,7 @@ final class Transfers {
   /// before its retention ends). Answers false for an unknown id.
   bool cancel(TransferId id) => _cancel(id, by: 'user');
 
+  /// [cancel], reported as made [by] the user or the job's owner.
   bool _cancel(TransferId id, {required String by}) {
     final job = _job(id);
     if (job == null) return false;
@@ -1733,5 +1744,17 @@ final class _PublishHost implements PublishUploadHost {
     total: upload.source.size,
     upload: upload,
     id: id,
+  );
+
+  @override
+  bool retryUpload(TransferId id) => _engine.retry(id);
+
+  @override
+  void cancelUpload(TransferId id) => _engine._cancel(id, by: 'owner');
+
+  @override
+  Future<bool>? alias(MediaKey local, MediaKey server) => _engine._cache?.alias(
+    BytesCacheKey(_engine._cacheKeyOf(local)),
+    BytesCacheKey(_engine._cacheKeyOf(server)),
   );
 }

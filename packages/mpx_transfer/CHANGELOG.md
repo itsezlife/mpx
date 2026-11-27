@@ -18,6 +18,25 @@
   `TransferEnvelopeStart`; `systemEnded` carries a cause, and a `changed`
   event reports the kind and the submission time.
 
+- Publish outcomes: `PublishOutcome.reuploadItems(ids)` (the items' reuse
+  entries dropped, the items uploaded again and published again with the
+  same key; honoured once, a second one fails the job) and
+  `PublishOutcome.rejected(reason:, retryable:)` (failed at the publish
+  stage). After `published`, each server key is aliased to its item's
+  local key in the bytes cache, both through `cacheKeyOf`, once the
+  completion is journaled; a kill in between applies the aliases at the
+  next start. `Transfers.open(cache:)` names that cache (`downloads.store`
+  by default); `PublishJobSnapshot.aliasesApplied` tells when it is done.
+- `PublishJob.retry()`, `retryItem(id)` and `removeItem(id)`: a retry
+  repeats only what failed, keeping finished preparations and journaled
+  uploads (a failed upload goes on from its parts); the per-item policy
+  holds the publish until a failed item is retried or removed. The last
+  item of a job is not removed yet.
+- Diagnostics: `PublishOp.aliasApplied`, `reuploadRefused`, `retry` and
+  `itemRemoved`; `outcome` reports `rejected` as a warning and
+  `reuploadItems` with its item count. An upload a publish job cancels is
+  reported `cancelled` with `by: owner`.
+- `UploadsHarness.open(cache:)`.
 - Publish progress: `PublishJobSnapshot.progress` and
   `PublishItemSnapshot.progress`, 0..1 and byte-weighted, on `watch()` and
   `watchItem(id)`. Before its preparation ends an item weighs its source's

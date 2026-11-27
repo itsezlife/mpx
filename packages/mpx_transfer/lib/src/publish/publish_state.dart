@@ -454,6 +454,7 @@ final class PublishJobSnapshot {
     required this.createdAt,
     this.tag,
     this.publisher,
+    this.aliasesApplied = false,
     this.progress = 0,
   }) : items = List.unmodifiable(items);
 
@@ -474,6 +475,13 @@ final class PublishJobSnapshot {
 
   /// When the job was made.
   final DateTime createdAt;
+
+  /// Whether the job completed and every server key its publisher gave is
+  /// aliased to its item's local key in the bytes cache: from then on the
+  /// content answers by its server key, and an item's upload has nothing
+  /// left to show. False while the job runs, and between its completion
+  /// and the last alias.
+  final bool aliasesApplied;
 
   /// How much of the job is done, 0..1: its items by their bytes, then the
   /// publisher's call (`PublishProgressWeights`). Never lower than in an
@@ -497,6 +505,7 @@ final class PublishJobSnapshot {
       other.tag == tag &&
       other.publisher == publisher &&
       other.createdAt == createdAt &&
+      other.aliasesApplied == aliasesApplied &&
       other.progress == progress;
 
   @override
@@ -507,6 +516,7 @@ final class PublishJobSnapshot {
     tag,
     publisher,
     createdAt,
+    aliasesApplied,
     progress,
   );
 

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui' show AppLifecycleState;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http_bytes_cache/http_bytes_cache.dart' show IBytesStore;
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
 import 'package:mpx_transfer/mpx_transfer.dart';
@@ -91,6 +92,7 @@ Future<UploadsHarness> publishing(
   DateTime Function()? now,
   Duration? progressInterval,
   JournalStore Function()? store,
+  IBytesStore? cache,
   PublishProgressWeights progressWeights = PublishProgressWeights.standard,
   ManualPlaybackLifecycleSource? lifecycle,
   TransferEnvelope? envelope,
@@ -98,6 +100,7 @@ Future<UploadsHarness> publishing(
 }) async {
   final built = await UploadsHarness.open(
     store: store,
+    cache: cache,
     lifecycle:
         lifecycle ??
         ManualPlaybackLifecycleSource(initial: AppLifecycleState.resumed),

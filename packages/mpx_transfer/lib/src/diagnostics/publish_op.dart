@@ -35,9 +35,31 @@ enum PublishOp implements DiagnosticOp {
   attempt,
 
   /// The publisher answered (info; `outcome`, `retryable`, `serverKeys`,
-  /// the number of keys; job, tag). A publisher that threw is an error
-  /// with `outcome: error`.
-  outcome;
+  /// the number of keys; job, tag). A `rejected` answer is a warning, a
+  /// `reuploadItems` one adds `items`, the number of items sent again, and
+  /// a publisher that threw is an error with `outcome: error`.
+  outcome,
+
+  /// After a `published` answer, one item's server key was aliased to its
+  /// local key in the bytes cache (debug; `result`: `aliased`,
+  /// `nothingHeld` when the local key held no bytes, `noCache` when the
+  /// facade has no bytes cache, `unknownItem` for a key of an item the job
+  /// does not have; job, item, key). An alias that threw is a warning with
+  /// `result: failed`.
+  aliasApplied,
+
+  /// A second `reuploadItems` answer, which fails the job at the publish
+  /// stage (error; job, tag).
+  reuploadRefused,
+
+  /// The host retried a failed job or item (info; `stage`, the failed
+  /// step; `items`, the items sent back to work; job, tag, and the item
+  /// for an item's retry).
+  retry,
+
+  /// The host removed an item from a job (info; `by`: `host`; job, item,
+  /// key, tag).
+  itemRemoved;
 
   @override
   String get category => 'publish';

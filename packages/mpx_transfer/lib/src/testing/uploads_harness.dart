@@ -49,6 +49,7 @@ final class UploadsHarness {
     required this.reusePolicy,
     required this.envelope,
     required this.envelopeConfig,
+    required this.cache,
     required this.progressWeights,
   });
 
@@ -62,7 +63,8 @@ final class UploadsHarness {
   /// the start of a run (the platform's file system by default; a
   /// `FakeUploadSourceFiles` for sources that are not real files).
   /// [envelope] is the OS envelope, showing [envelopeConfig]. The other
-  /// parts are those of [Transfers.open].
+  /// parts are those of [Transfers.open]; [cache] is the bytes cache
+  /// publish jobs alias their server keys in.
   static Future<UploadsHarness> open({
     required PlaybackLifecycleSource lifecycle,
     required List<UploadTransport> transports,
@@ -79,6 +81,7 @@ final class UploadsHarness {
     ReusePolicy reuse = const ReusePolicy(),
     TransferEnvelope? envelope,
     TransferEnvelopeConfig? envelopeConfig,
+    IBytesStore? cache,
     PublishProgressWeights progressWeights = PublishProgressWeights.standard,
   }) async {
     final memory = MemoryJournalStore();
@@ -98,6 +101,7 @@ final class UploadsHarness {
       reusePolicy: reuse,
       envelope: envelope,
       envelopeConfig: envelopeConfig,
+      cache: cache,
       progressWeights: progressWeights,
     );
     await harness._start();
@@ -148,6 +152,9 @@ final class UploadsHarness {
 
   /// What [envelope] shows; null for none.
   final TransferEnvelopeConfig? envelopeConfig;
+
+  /// The bytes cache server keys are aliased in; null for none.
+  final IBytesStore? cache;
 
   /// How publish jobs weigh their progress.
   final PublishProgressWeights progressWeights;
@@ -266,6 +273,7 @@ final class UploadsHarness {
       reuse: _reuse,
       publishJournal: _publish,
       preparation: preparation,
+      cache: cache,
       progressWeights: progressWeights,
       now: now,
     );

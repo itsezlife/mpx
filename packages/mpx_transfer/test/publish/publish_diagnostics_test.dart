@@ -96,6 +96,14 @@ void main() {
         jobId: job.id,
         fields: {'outcome': 'published', 'retryable': false, 'serverKeys': 1},
       ),
+      isMpxEvent(
+        level: MpxEventLevel.debug,
+        op: PublishOp.aliasApplied,
+        jobId: job.id,
+        itemId: 'a',
+        mediaKey: keyOf('a'),
+        fields: {'result': 'noCache'},
+      ),
     ]);
   });
 

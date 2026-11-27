@@ -19,6 +19,7 @@ import 'publish/publish_envelope_test.dart' as publish_envelope_test;
 import 'publish/publish_job_test.dart' as publish_job_test;
 import 'publish/publish_kill_test.dart' as publish_kill_test;
 import 'publish/publish_open_test.dart' as publish_open_test;
+import 'publish/publish_outcome_test.dart' as publish_outcome_test;
 import 'publish/publish_progress_test.dart' as publish_progress_test;
 import 'publish/publish_watch_jobs_test.dart' as publish_watch_jobs_test;
 import 'reuse/reuse_facade_test.dart' as reuse_facade_test;
@@ -63,6 +64,7 @@ void main() {
   group('publish_job_test', publish_job_test.main);
   group('publish_kill_test', publish_kill_test.main);
   group('publish_open_test', publish_open_test.main);
+  group('publish_outcome_test', publish_outcome_test.main);
   group('publish_progress_test', publish_progress_test.main);
   group('publish_watch_jobs_test', publish_watch_jobs_test.main);
   group('reuse_facade_test', reuse_facade_test.main);
