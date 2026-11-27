@@ -14,6 +14,10 @@
   wait between tries. `retry` retries transient failures and timeouts;
   `HttpBytesRetryBackoff.uploadPart` is the preset for parts: five tries in
   all, waits from 1 s, each capped at 30 s.
+- `HttpBytesUploadBody` takes a `prefix` and a `suffix`: small bytes sent
+  before and after the range (a multipart form's framing). `contentLength`
+  is the whole body, which the request's `Content-Length` and
+  `onBytesSent` count.
 - `HttpBytesRetryBackoff.minDelay`: a floor under every jittered wait
   (zero by default, which keeps full jitter and the same delays as before).
 - One connection cap for both directions: `maxConcurrent` is now 8 in all,

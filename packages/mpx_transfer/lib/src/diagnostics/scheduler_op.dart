@@ -4,6 +4,9 @@ import 'package:mpx_core/mpx_core.dart';
 /// `scheduler`: transfer jobs entering the engine and moving between
 /// states.
 ///
+/// Every event of a job carries its `durability`, so a log shows why
+/// `Transfers.systemActive` changed.
+///
 /// No field carries user content: ids and the host's tag are the event's
 /// correlation ids, sizes are byte counts.
 enum SchedulerOp implements DiagnosticOp {
@@ -13,7 +16,7 @@ enum SchedulerOp implements DiagnosticOp {
   jobQueued,
 
   /// A job moved its first bytes of an attempt (debug; `lane` for an
-  /// upload; `waitedMs` since it was queued, its lane's wait included;
+  /// upload; `durability`; `waitedMs` since it was queued, its lane's wait included;
   /// job, tag).
   jobStarted,
 
@@ -26,7 +29,7 @@ enum SchedulerOp implements DiagnosticOp {
   /// `cap`; job).
   slotReleased,
 
-  /// A job paused (info; `reason`; job, key, tag).
+  /// A job paused (info; `reason`, `durability`; job, key, tag).
   paused,
 
   /// A paused job went back to queued (info; `reason`, the pause reason it
@@ -36,14 +39,14 @@ enum SchedulerOp implements DiagnosticOp {
   /// A job's priority changed (debug; `from`, `to`; job, key).
   priorityChanged,
 
-  /// A job was cancelled and removed (info; `by`; job, key, tag).
+  /// A job was cancelled and removed (info; `by`, `durability`; job, key, tag).
   cancelled,
 
-  /// A job's attempt failed (error; `kind`, `retryable`, `done`, `total`
+  /// A job's attempt failed (error; `kind`, `durability`, `retryable`, `done`, `total`
   /// when known; job, key, tag).
   failed,
 
-  /// A job completed (info; `bytes`, `ms` since it was made; job, key, tag).
+  /// A job completed (info; `durability`, `bytes`, `ms` since it was made; job, key, tag).
   completed,
 
   /// The composition root reported connectivity (info; `online`,

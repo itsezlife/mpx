@@ -7,7 +7,8 @@ import 'package:mpx_core/testing.dart';
 import 'package:mpx_transfer/mpx_transfer.dart';
 import 'package:mpx_transfer/testing.dart';
 
-import '../support/numbered_parts_server.dart';
+import '../support/numbered_parts_protocol.dart';
+import '../support/upload_test_server.dart';
 
 const int _kib = 1024;
 const int _mib = 1024 * 1024;
@@ -100,11 +101,13 @@ void main() {
   });
 
   group('over the local server', () {
-    late NumberedPartsServer server;
+    late UploadTestServer server;
+    late NumberedPartsProtocol protocol;
     late HttpBytesClient client;
 
     setUp(() async {
-      server = await NumberedPartsServer.start(minPartSize: _part);
+      server = await UploadTestServer.start();
+      protocol = NumberedPartsProtocol(server, minPartSize: _part);
       client = HttpBytesClient(
         transfers: const HttpBytesTransfers(landBytes: 64 * 1024),
       );
@@ -118,16 +121,16 @@ void main() {
     UploadTransportContract.run(
       'NumberedPartsTransport, numbered endpoint',
       transport: () =>
-          numberedTransport(server, smallPartSize: _part, bytesInFlight: 0),
+          numberedTransport(protocol, smallPartSize: _part, bytesInFlight: 0),
       client: () => client,
-      received: (ref) async => server.file(ref.id),
+      received: (ref) async => server.files[ref.id],
     );
 
     UploadTransportContract.run(
       'NumberedPartsTransport, presigned multipart',
-      transport: () => presignedTransport(server, partSize: _part),
+      transport: () => presignedTransport(protocol, partSize: _part),
       client: () => client,
-      received: (ref) async => server.file(ref.id),
+      received: (ref) async => server.files[ref.id],
     );
 
     late RecordingDiagnostics recorder;
@@ -178,24 +181,24 @@ void main() {
     test('presigned multipart end to end: initiate, signed part PUTs in '
         'parallel, complete with every part and its ETag in order', () async {
       final h = await harness(
-        presignedTransport(server, partSize: _part, bytesInFlight: 3 * _part),
+        presignedTransport(protocol, partSize: _part, bytesInFlight: 3 * _part),
       );
-      server.holdParts(0);
+      protocol.holdParts(0);
       final (:source, :bytes) = await fileOf(5 * _part + 100);
       final id = h.upload(source);
-      await until(() => server.concurrentParts == 3);
-      server.releaseHeld();
+      await until(() => protocol.concurrentParts == 3);
+      protocol.releaseHeld();
 
       expect(
         await settled(h, id),
-        TransferState.completed(RemoteRef('media/object.bin')),
+        TransferState.completed(RemoteRef('media/object-1.bin')),
       );
-      expect(server.presignedStarts, 1);
-      expect(server.completions.single, [1, 2, 3, 4, 5, 6]);
-      expect(server.file('media/object.bin'), bytes);
-      expect(server.maxConcurrentParts, 3);
+      expect(protocol.presignedStarts, 1);
+      expect(protocol.completions.single, [1, 2, 3, 4, 5, 6]);
+      expect(server.files['media/object-1.bin'], bytes);
+      expect(protocol.maxConcurrentParts, 3);
       expect([
-        for (final part in server.received) part.length,
+        for (final part in protocol.received) part.length,
       ], unorderedEquals([for (var i = 0; i < 5; i++) _part, 100]));
     });
 
@@ -203,33 +206,33 @@ void main() {
         'budget', () async {
       final h = await harness(
         numberedTransport(
-          server,
+          protocol,
           smallPartSize: _part,
           bytesInFlight: 4 * _part,
         ),
       );
-      server.holdParts(0);
+      protocol.holdParts(0);
       final (:source, :bytes) = await fileOf(10 * _part);
       final id = h.upload(source);
 
-      await until(() => server.concurrentParts == 4);
+      await until(() => protocol.concurrentParts == 4);
       await Future<void>.delayed(const Duration(milliseconds: 100));
-      expect(server.concurrentParts, 4);
-      server.releaseHeld();
+      expect(protocol.concurrentParts, 4);
+      protocol.releaseHeld();
 
       expect(await settled(h, id), isA<TransferState$Completed>());
-      expect(server.maxConcurrentParts, 4);
-      expect(server.completions.single, [for (var n = 1; n <= 10; n++) n]);
+      expect(protocol.maxConcurrentParts, 4);
+      expect(protocol.completions.single, [for (var n = 1; n <= 10; n++) n]);
       final ref = (await stateIn(h.transfers, id))! as TransferState$Completed;
-      expect(server.file((ref.result as RemoteRef).id), bytes);
+      expect(server.files[(ref.result as RemoteRef).id], bytes);
     });
 
     test('a failed part request is tried again with one partRetry, and the '
         'events carry no URL, upload id or receipt', () async {
       final h = await harness(
-        numberedTransport(server, smallPartSize: _part, bytesInFlight: 0),
+        numberedTransport(protocol, smallPartSize: _part, bytesInFlight: 0),
       );
-      server.failParts(1, status: 503);
+      protocol.failParts(1, status: 503);
       final (:source, bytes: _) = await fileOf(3 * _part);
       final id = h.upload(source);
 
@@ -264,14 +267,15 @@ void main() {
         partSize: _part,
         start: (_) async => 'unknown',
         partRequest: (part) => NumberedPartRequest(
-          server.base.replace(
-            path: '/bucket/k',
-            queryParameters: {
-              'partNumber': '${part.number}',
-              'uploadId': part.uploadId,
-              'X-Amz-Signature': 'wrong',
-            },
-          ),
+          server
+              .url('/bucket/k')
+              .replace(
+                queryParameters: {
+                  'partNumber': '${part.number}',
+                  'uploadId': part.uploadId,
+                  'X-Amz-Signature': 'wrong',
+                },
+              ),
         ),
         complete: (_) async => RemoteRef('k'),
       );
@@ -297,66 +301,66 @@ void main() {
     test('a kill, then a restart within the window, sends only the parts '
         'not acknowledged and completes with every part', () async {
       final h = await harness(
-        numberedTransport(server, smallPartSize: _part, bytesInFlight: 0),
+        numberedTransport(protocol, smallPartSize: _part, bytesInFlight: 0),
       );
-      server.holdParts(3);
+      protocol.holdParts(3);
       final (:source, :bytes) = await fileOf(8 * _part);
       final id = h.upload(source);
       await until(
-        () => server.concurrentParts == 1 && server.received.length == 3,
+        () => protocol.concurrentParts == 1 && protocol.received.length == 3,
       );
       await until(() => h.uploadOf(id)!.parts.length == 3);
       await h.settle();
 
       now = now.add(const Duration(minutes: 80));
       await h.kill();
-      final before = server.received.length;
-      server.releaseHeld();
+      final before = protocol.received.length;
+      protocol.releaseHeld();
 
       final state = await settled(h, id);
       expect(state, isA<TransferState$Completed>());
-      expect(server.numberedStarts, 1);
+      expect(protocol.numberedStarts, 1);
       final sentAfter = [
-        for (final part in server.received.skip(before)) part.number,
+        for (final part in protocol.received.skip(before)) part.number,
       ];
       // Part 4 was on the wire at the kill: it lands from the killed run
       // as well as from the new one.
       expect(sentAfter.where((n) => n != 4), [5, 6, 7, 8]);
       expect(sentAfter, contains(4));
-      expect(server.completions.single, [for (var n = 1; n <= 8; n++) n]);
+      expect(protocol.completions.single, [for (var n = 1; n <= 8; n++) n]);
       final ref = (state! as TransferState$Completed).result as RemoteRef;
-      expect(server.file(ref.id), bytes);
+      expect(server.files[ref.id], bytes);
     });
 
     test('a kill, then a restart after the window, starts the upload from '
         'zero', () async {
       final h = await harness(
-        numberedTransport(server, smallPartSize: _part, bytesInFlight: 0),
+        numberedTransport(protocol, smallPartSize: _part, bytesInFlight: 0),
       );
-      server.holdParts(3);
+      protocol.holdParts(3);
       final (:source, :bytes) = await fileOf(8 * _part);
       final id = h.upload(source);
-      await until(() => server.received.length == 3);
+      await until(() => protocol.received.length == 3);
       await until(() => h.uploadOf(id)!.parts.length == 3);
       await h.settle();
 
       now = now.add(const Duration(minutes: 91));
       await h.kill();
-      final before = server.received.length;
-      server.releaseHeld();
+      final before = protocol.received.length;
+      protocol.releaseHeld();
 
       final state = await settled(h, id);
       expect(state, isA<TransferState$Completed>());
-      expect(server.numberedStarts, 2);
+      expect(protocol.numberedStarts, 2);
       expect(
         [
-          for (final part in server.received.skip(before))
+          for (final part in protocol.received.skip(before))
             if (part.uploadId != 'n0') part.number,
         ],
         [for (var n = 1; n <= 8; n++) n],
       );
       final ref = (state! as TransferState$Completed).result as RemoteRef;
-      expect(server.file(ref.id), bytes);
+      expect(server.files[ref.id], bytes);
     }, skip: 'Until the engine applies the resume window at a restart.');
   });
 }

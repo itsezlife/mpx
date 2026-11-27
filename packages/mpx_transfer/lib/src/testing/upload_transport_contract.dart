@@ -39,7 +39,14 @@ abstract final class UploadTransportContract {
       }
 
       UploadPartBody body(String path, int offset, int length) =>
-          UploadPartBody(length, (url, {required method, headers, context}) {
+          UploadPartBody(length, (
+            url, {
+            required method,
+            required prefix,
+            required suffix,
+            headers,
+            context,
+          }) {
             final sender = http;
             if (sender == null) {
               throw StateError('The contract was given no client.');
@@ -50,6 +57,8 @@ abstract final class UploadTransportContract {
                 path,
                 offset: offset,
                 length: length,
+                prefix: prefix,
+                suffix: suffix,
               ),
               method: method,
               headers: headers,
@@ -177,6 +186,52 @@ abstract final class UploadTransportContract {
         ]);
         final json = RemoteRef.codec.encode(ref)!;
         expect(RemoteRef.codec.decode(json), ref);
+      });
+
+      test('a separate thumbnail goes as an upload of its own, beside the '
+          "item's", () async {
+        if (subject.capabilities.thumbnail == UploadThumbnail.none) {
+          markTestSkipped('The remote end makes its own thumbnail.');
+          return;
+        }
+        final item = await file(severalParts());
+        final thumbnail = await file(100);
+        final itemInfo = infoOf(item.source.size);
+        final thumbnailInfo = infoOf(thumbnail.source.size);
+        final itemSession = await subject.open(itemInfo);
+        final thumbnailSession = await subject.open(thumbnailInfo);
+        final thumbnailRef = await thumbnailSession
+            .finish(thumbnail.source.size, [
+              for (var i = 0; i < thumbnailInfo.partCount; i++)
+                await send(
+                  thumbnailSession,
+                  thumbnailInfo,
+                  thumbnail.source.path,
+                  i,
+                ),
+            ]);
+        final itemRef = await itemSession.finish(item.source.size, [
+          for (var i = 0; i < itemInfo.partCount; i++)
+            await send(itemSession, itemInfo, item.source.path, i),
+        ]);
+        expect(itemRef, isNot(thumbnailRef));
+        await expectReceived(itemRef, item.bytes);
+        await expectReceived(thumbnailRef, thumbnail.bytes);
+      });
+
+      test('judges a reference it just answered good for reuse', () async {
+        final (:source, bytes: _) = await file(10);
+        final info = infoOf(source.size);
+        final session = await subject.open(info);
+        final ref = await session.finish(source.size, [
+          await send(session, info, source.path, 0),
+        ]);
+        switch (subject.capabilities.reuse) {
+          case UploadReuse$Lifetime(:final lifetime):
+            expect(lifetime, greaterThanOrEqualTo(Duration.zero));
+          case UploadReuse$Validity(:final isValid):
+            expect(await isValid(ref), isTrue);
+        }
       });
     });
   }

@@ -712,8 +712,9 @@ final class HttpBytesClient {
   ///
   /// The body streams from its source as the connection takes it: on the
   /// VM the transfer worker reads the file range, on the web `fetch` reads
-  /// a slice of the OPFS file or the blob. [onBytesSent] hears the bytes
-  /// sent so far against the body's length: 0 first, growing in steps of
+  /// a slice of the OPFS file or the blob, with the body's prefix before
+  /// and its suffix after. [onBytesSent] hears the bytes sent so far
+  /// against the body's `contentLength`: 0 first, growing in steps of
   /// [HttpBytesTransfers.landBytes], the last report the length (on the web,
   /// which reports no upload progress, 0 then the length). A try that is
   /// retried starts again from 0.
@@ -780,10 +781,10 @@ final class HttpBytesClient {
           op: BytesLogOp.uploadStarted,
           message:
               'upload $verb ${url.scheme}://${url.host}: '
-              '${body.length} bytes, try ${attempt + 1}',
+              '${body.contentLength} bytes, try ${attempt + 1}',
           fields: <String, Object>{
             'method': verb,
-            'bytes': body.length,
+            'bytes': body.contentLength,
             'attempt': attempt + 1,
           },
         ),
@@ -900,7 +901,7 @@ final class HttpBytesClient {
 
     await _slots.acquire(flight, upload: true);
     try {
-      final length = plan.body.length;
+      final length = plan.body.contentLength;
       plan.onBytesSent?.call(0, length);
       final UploadAnswer answer;
       try {

@@ -223,6 +223,29 @@ with a slice of the OPFS file or a `Blob`.
 A changed source or an expired window restarts the upload from zero; it does
 not fail it. Download freshness stays with the bytes cache.
 
+The multipart adapter's `reuse` default is a lifetime of 24 hours, the
+journal's retention: the adapter knows nothing of how long the remote end
+keeps a file, so the default covers sending the same media again soon and
+bounds the risk of a stale reference; a host whose server keeps files longer,
+or can be asked, passes its own `UploadReuse`. It sends the whole file as one
+part, its form framing as the part body's prefix and suffix, and carries the
+`RemoteRef` in that part's receipt, so `finish` needs nothing the journal does
+not keep.
+
+The numbered-parts adapter's `reuse` default is the same 24 hours, also the
+longest time it trusts the remote end to keep an unfinished upload (its big
+file window). Its upload id is the session's resume token, so the host's
+start answers whatever its server needs to find the upload again (for
+presigned multipart, the object key with the store's upload id). Each part
+keeps its receipt (the `ETag` by default), and the completion lists every
+part's number, from 1, and receipt in order, those of an earlier session
+included. S3, R2 and GCS refuse parts under 5 MiB but the last and take at
+most 10 000, so the 128 KiB / 512 KiB defaults fit a host's own protocol
+only: `NumberedPartsTransport.presignedMultipart` sends parts of 8 MiB, at
+most 10 000, with 32 MiB (four parts) in flight. Larger files grow their
+parts to the next multiple of the base part size that keeps the count
+within the limit.
+
 **Reuse table.** Re-sending the same media does not upload it again. Beside
 the journal, `mpx_transfer` keeps a table from source fingerprint plus
 preparation parameters to a `RemoteRef`, with the time it was stored and an
@@ -532,8 +555,8 @@ engine's state (ADR 0013).
   swipe from Recents. No decision here depends on them; the journal resumes
   after any kill.
 - Which `submitAt` default holds on iOS 26 devices.
-- The `reuse` capability's default per adapter, and the reuse table's
-  default expiry.
+- The `reuse` capability's default for the tus adapter, and the reuse
+  table's default expiry (multipart and numbered parts: 24 hours, above).
 
 ## Provenance
 

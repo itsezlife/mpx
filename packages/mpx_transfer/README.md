@@ -70,12 +70,45 @@ transfers
       }
     });
 
+// A transport for a server that takes the file in one multipart POST.
+final multipart = MultipartUploadTransport(
+  request: (info) => MultipartUploadRequest(
+    uploadUrl,
+    headers: {'authorization': 'Bearer $token'},
+    fields: {'album': '7'},
+  ),
+  remoteRef: (response) => RemoteRef(parseFileId(response.body!)),
+);
+
+// A transport for S3, R2 or GCS presigned multipart: the host's server
+// creates the upload, presigns each part's PUT and completes it.
+final presigned = NumberedPartsTransport.presignedMultipart(
+  start: (info) => api.createUpload(info.size), // key and upload id
+  partRequest: (part) async => NumberedPartRequest(
+    await api.presignPart(part.uploadId, part.number),
+  ),
+  complete: (completion) async => RemoteRef(
+    await api.completeUpload(completion.uploadId, completion.parts),
+  ),
+);
+
 // Verbs on one job (`id`, a `TransferId` from a snapshot) answer whether
 // it changed.
 transfers.pause(id);
 transfers.resume(id);
 transfers.retry(id);
 transfers.cancel(id); // removes it
+
+// On macOS, Windows and Linux there is no OS envelope: quitting ends every
+// job. `systemActive` is true while a `system` job is queued or running, so
+// the host can ask before it quits. (Defined on every platform.)
+if (transfers.systemActive.value) {
+  final quit = await confirmQuit(); // the host's own dialog
+  if (!quit) return;
+}
+transfers.systemActive.addListener(() {
+  // e.g. show or hide a "transfers running" hint
+});
 ```
 
 ## Features
@@ -98,6 +131,13 @@ transfers.cancel(id); // removes it
   transport's token after a restart, sending only what is missing. Two
   lanes (small up to 10 MiB, big), one job each, under 8 shared
   connections. A completed upload holds a `RemoteRef`.
+- `MultipartUploadTransport`: the file in one `multipart/form-data`
+  request, with the host's URL, headers and form fields per upload.
+- `NumberedPartsTransport`: numbered parts in parallel through three host
+  calls (start, a request for part N, complete with every part's
+  acknowledgement); resumes within 1.5 h (24 h above 10 MiB). Parts of
+  128 KiB (512 KiB above 10 MiB), 8 MiB in flight; `presignedMultipart`
+  for S3, R2 and GCS with 8 MiB parts.
 - `TransferDurability`: `inProcess`, or `system` inside the platform's OS
   envelope (`TransferEnvelope`) where there is one.
 - `Transfers.watch(filter)` by direction, state, tag and durability; a

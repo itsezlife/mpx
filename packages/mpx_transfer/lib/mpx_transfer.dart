@@ -35,6 +35,7 @@ export 'src/job/transfer_id.dart';
 export 'src/job/transfer_job.dart';
 export 'src/job/transfer_state.dart';
 export 'src/transfers.dart';
+export 'src/upload/multipart_upload_transport.dart';
 export 'src/upload/numbered_parts_transport.dart';
 export 'src/upload/remote_ref.dart';
 export 'src/upload/upload_lane.dart';

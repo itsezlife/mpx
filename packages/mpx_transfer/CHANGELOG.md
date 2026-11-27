@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `Transfers.systemActive`: a `ValueListenable<bool>`, true while a `system`
+  job is queued or running, for a host's quit confirmation on desktop
+  platforms, which have no OS envelope. The `scheduler` events of a job
+  carry its `durability`.
 - The package: a single plugin for Android, iOS, macOS, Windows, Linux and
   the web, its native parts empty for now.
 - `Transfers`: the facade, opened with `Transfers.open`, with
@@ -58,6 +62,26 @@
   not kept, and runs upload jobs in two lanes (`UploadLane`, split at
   10 MiB), one job each, under 8 shared connections (6 at most per
   direction).
+- `MultipartUploadTransport`: an upload in one `multipart/form-data`
+  request. The host's `request(info)` gives the URL, method, headers, form
+  fields and the file's field, name and type per upload; `remoteRef` reads
+  the answer into the `RemoteRef`. One part of the whole file, no resume (a
+  restart sends it again from byte 0), `thumbnail: none`, and a stored
+  reference good for 24 hours by default (`defaultReuse`).
+  `UploadPartBody.send` takes a transport's `prefix` and `suffix` framing.
+- `NumberedPartsTransport`: an upload in numbered parts sent in parallel,
+  through the host's `start` (answers the upload id, also the resume
+  token), `partRequest` (the URL, method and headers of part N, from 1)
+  and `complete` (every part's number and receipt in order, to a
+  `RemoteRef`); a part's receipt is its `ETag` by default (`receiptOf`).
+  Parts of 128 KiB, 512 KiB above 10 MiB, growing past 4000 parts; 8 MiB
+  in flight; resume within 1.5 h for files up to the 10 MiB lane split,
+  24 h above; `thumbnail: separate`; a stored reference good for 24 hours.
+  `NumberedPartsTransport.presignedMultipart` for S3, R2 and GCS: parts of
+  8 MiB, at most 10 000, 32 MiB in flight.
+- `UploadTransportContract` checks the `thumbnail` capability (a separate
+  thumbnail uploads beside its item) and the `reuse` one (a reference just
+  answered is good).
 - `TransportOp` diagnostics operations; `SchedulerOp` gains `slotAcquired`
   and `slotReleased`, and `jobQueued` and `jobStarted` carry an upload's
   `lane`. `debugSnapshot()` gains `uploads` (lanes, parts in flight, part
