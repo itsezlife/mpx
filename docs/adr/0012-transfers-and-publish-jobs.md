@@ -165,6 +165,16 @@ upload's `completed` to `sent` until the publish's alias applies, then to
 - After a restart, `origin: user` downloads resume from the cache's data.
   `origin: auto` downloads (auto-download, a visible surface) come back
   `paused(awaitingResume)`. `resumeOnStart` overrides this per job.
+- A download job fetches through the composition root's own
+  `ContentFetcher` and `MediaResolver` (`TransferDownloads`), with
+  `FetchRequest.whole`, so it is the cache's fetch made a job: the same
+  priority queue, cap and ranged resume. `FetchRequest.priority` is fixed
+  for a fetch, so `setPriority` asks again at the new priority while the
+  request still waits for a slot and applies to the next run once bytes
+  move; the fetch seam has no urgency below preload, so a background
+  download is asked at preload.
+- `binding.mapped` is reported by the `TrackedTransfers` implementation,
+  which knows the job and its state, not by the binding.
 
 ### Uploads
 

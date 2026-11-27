@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:http_bytes_cache/http_bytes_cache.dart' show RequestPriority;
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_transfer/src/download/transfer_downloads.dart';
 import 'package:mpx_transfer/src/envelope/transfer_envelope.dart';
 import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
@@ -31,6 +32,7 @@ final class TransfersHarness {
     required this.progressInterval,
     required this.now,
     required this.openStore,
+    required this.downloads,
     required this.openSourceCopies,
     required this.unloadWarning,
     required this.sourceCopyLimit,
@@ -41,10 +43,12 @@ final class TransfersHarness {
   /// [cacheKeyOf] maps a key to its cache key (the key's `encoded` form by
   /// default); [store] gives the journal's store at each start (one
   /// [MemoryJournalStore] for every start by default; for a store on disk,
-  /// a new store over the same files each call). [sourceCopies] gives the
-  /// upload source copies at each start, as on the web (none by default,
-  /// as on the VM); [unloadWarning] is the page's warning (none by
-  /// default). The other parts are those of [Transfers.open].
+  /// a new store over the same files each call). With [downloads], download
+  /// jobs move their bytes through them, as [Transfers.open]'s do, and only
+  /// uploads go through [runner]. [sourceCopies] gives the upload source
+  /// copies at each start, as on the web (none by default, as on the VM);
+  /// [unloadWarning] is the page's warning (none by default). The other
+  /// parts are those of [Transfers.open].
   static Future<TransfersHarness> open({
     required PlaybackLifecycleSource lifecycle,
     String Function(MediaKey key)? cacheKeyOf,
@@ -54,6 +58,7 @@ final class TransfersHarness {
     bool online = true,
     DateTime Function()? now,
     JournalStore Function()? store,
+    TransferDownloads? downloads,
     FutureOr<UploadSourceCopies> Function()? sourceCopies,
     UnloadWarning? unloadWarning,
     int sourceCopyLimit = Transfers.defaultSourceCopyLimit,
@@ -67,6 +72,7 @@ final class TransfersHarness {
       progressInterval: progressInterval,
       now: now ?? DateTime.now,
       openStore: store ?? () => memory,
+      downloads: downloads,
       openSourceCopies: sourceCopies,
       unloadWarning: unloadWarning,
       sourceCopyLimit: sourceCopyLimit,
@@ -95,6 +101,9 @@ final class TransfersHarness {
 
   /// Gives the journal's store at each start.
   final JournalStore Function() openStore;
+
+  /// What download jobs fetch through, or null when [runner] moves them.
+  final TransferDownloads? downloads;
 
   /// Gives the upload source copies at each start; null for none.
   final FutureOr<UploadSourceCopies> Function()? openSourceCopies;
@@ -186,7 +195,7 @@ final class TransfersHarness {
       retention: retention,
       progressInterval: progressInterval,
       now: now,
-      resultCodecs: const [FakeTransferResult.codec],
+      resultCodecs: const [...Transfers.resultCodecs, FakeTransferResult.codec],
     );
     _replayed = _journal.jobs.toList();
     final copies = await openSourceCopies?.call();
@@ -195,6 +204,7 @@ final class TransfersHarness {
       lifecycle: lifecycle,
       runner: runner,
       journal: _journal,
+      downloads: downloads,
       envelope: envelope,
       sourceCopies: copies,
       unloadWarning: unloadWarning,

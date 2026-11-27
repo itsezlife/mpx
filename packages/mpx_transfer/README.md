@@ -5,9 +5,10 @@ must keep. Each job has one state, a `TransferId`, the host's opaque tag and
 a durability, and every job is found through one observable query on one
 facade, `Transfers`.
 
-Early: this release holds the state model, the verbs, the query and the
-journal that brings every job back after a kill. Downloads, uploads,
-publish jobs and the native OS envelopes arrive in the releases after it.
+Early: this release holds the state model, the verbs, the query, the
+journal that brings every job back after a kill, and tracked downloads.
+Uploads, publish jobs and the native OS envelopes arrive in the releases
+after it.
 
 ## Install
 
@@ -36,7 +37,23 @@ final transfers = await Transfers.open(
   // The bytes cache's directory; the journal sits in `mpx_transfer` below
   // it. Ignored on the web, where the journal is in OPFS.
   directory: cacheDirectory,
+  // What tracked downloads fetch through: the pipeline's own pieces.
+  downloads: TransferDownloads(
+    fetcher: fetcher,
+    resolver: resolver,
+    store: bytesStore,
+  ),
 );
+
+// The core's seam over the same jobs, for the asset cache scope.
+final scope = AssetCacheScope(
+  producer: pipeline,
+  clock: clock,
+  tracked: transfers.tracked,
+);
+
+// A download the user asked for: resumes by itself after a restart.
+final id = transfers.download(key);
 
 // Fed from the device signal the asset cache scope reads.
 transfers.connectivityChanged(online: false);
@@ -70,6 +87,11 @@ transfers.cancel(id); // removes it
   removes the job; there is no cancelled state.
 - `TransferId`: a download's is derived from its cache key, so one key has
   one job; an upload's is new for every job.
+- Tracked downloads: `download(key, origin:)` and `tracked`, the core's
+  `TrackedTransfers`. One job per key, the bytes in the bytes cache,
+  served by its priority queue; a user download resumes after a restart,
+  an auto download waits (`awaitingResume`) until a surface watches it;
+  `leaseFile` lends the cached file.
 - `TransferDurability`: `inProcess`, or `system` inside the platform's OS
   envelope (`TransferEnvelope`) where there is one.
 - `Transfers.watch(filter)` by direction, state, tag and durability; a

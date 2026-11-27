@@ -88,6 +88,7 @@ final class TransferJob {
     TransferState? state,
     RequestPriority? priority,
     DateTime? updatedAt,
+    bool? resumeOnStart,
   }) => TransferJob(
     id: id,
     direction: direction,
@@ -98,7 +99,7 @@ final class TransferJob {
     tag: tag,
     key: key,
     priority: priority ?? this.priority,
-    resumeOnStart: resumeOnStart,
+    resumeOnStart: resumeOnStart ?? this.resumeOnStart,
   );
 
   @override

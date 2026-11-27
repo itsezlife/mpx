@@ -254,7 +254,7 @@ void main() {
   });
 
   group('diagnostics', () {
-    test('a tracked download, its mapping and a forwarded cancel', () async {
+    test('a tracked download and a forwarded cancel', () async {
       final diagnostics = RecordingDiagnostics.install();
       final binding = harness.attach();
       await harness.settle();
@@ -271,22 +271,15 @@ void main() {
           fields: {'origin': 'auto'},
         ),
         isMpxEvent(
-          level: MpxEventLevel.trace,
-          op: BindingOp.mapped,
-          mediaKey: _key,
-          fields: {'transfer': 'waiting'},
-        ),
-        isMpxEvent(op: BindingOp.mapped, fields: {'transfer': 'receiving'}),
-        isMpxEvent(
           level: MpxEventLevel.info,
           op: BindingOp.cancelForwarded,
           mediaKey: _key,
           fields: {'direction': 'download'},
         ),
-        isMpxEvent(op: BindingOp.mapped, fields: {'transfer': 'awaitingUser'}),
         isMpxEvent(op: BindingOp.trackedDownload, fields: {'origin': 'user'}),
-        isMpxEvent(op: BindingOp.mapped, fields: {'transfer': 'waiting'}),
       ]);
+      // The mapping is the seam implementation's to report.
+      expect(diagnostics.whereOp(BindingOp.mapped), isEmpty);
       expect(diagnostics.errors, isEmpty);
     });
 

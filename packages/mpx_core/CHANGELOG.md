@@ -11,7 +11,8 @@
   transfer from `watch`; cancel goes to `cancel(key)`. Thumbnails, previews,
   glyphs and surfaces without such a control stay the scope's own fetches,
   and a scope without the seam downloads as before. The bindings report
-  `binding.trackedDownload`, `mapped`, `cancelForwarded` and `untracked`.
+  `binding.trackedDownload`, `cancelForwarded` and `untracked`;
+  `binding.mapped` is the seam implementation's to report, with the job.
 - `AssetTransfer.sending(sent, total)` and `AssetTransfer.sent`: an upload
   whose source is the content, and its end before the content is
   published. Only a tracked transfer reports them; a status control shows

@@ -30,6 +30,17 @@
 - `TransferJob`, `TransferId` (derived from the cache key for a download),
   `TransferState` with `PauseReason` and `TransferFailureKind`,
   `TransferDurability`, `TransferDirection`, `TransferFilter`.
+- Tracked downloads: `Transfers.download(key, origin:, resumeOnStart:,
+  priority:)` and `Transfers.tracked`, the core's `TrackedTransfers` over
+  the same jobs, for `AssetCacheScope(tracked:)` and savers. One job per
+  key; the bytes stay in the bytes cache, fetched through the host's
+  `ContentFetcher` and `MediaResolver` (`TransferDownloads`, passed to
+  `Transfers.open(downloads:)`), so the cache's priority queue and
+  connection cap serve them. After a restart a user download resumes from
+  the cached bytes; an auto download waits paused `awaitingResume` until a
+  surface watches its key. `cancel(key)` pauses for the user; `leaseFile`
+  lends the cached file once whole. `DownloadedContent` is the result.
+  Diagnostics: `scheduler.downloadRequested` and `binding.mapped`.
 - `TransferEnvelope`, the seam of the OS envelope, with its events.
 - `SchedulerOp` and `EnvelopeOp` diagnostics operations.
 - `testing.dart`: `FakeTransferEnvelope`, `ScriptedTransferRunner`,
@@ -37,4 +48,4 @@
   `FakeUploadSourceCopies`, `UploadSourceCopiesContract`,
   `FakeUnloadWarning`, and
   `TransfersHarness` (opened with `TransfersHarness.open`; `restart`,
-  `kill`, `settle`, `replayed`).
+  `kill`, `settle`, `replayed`; `downloads` to run download jobs for real).

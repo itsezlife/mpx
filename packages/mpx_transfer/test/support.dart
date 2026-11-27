@@ -17,6 +17,7 @@ Future<TransfersHarness> harness({
   DateTime Function()? now,
   Duration? progressInterval,
   JournalStore Function()? store,
+  TransferDownloads? downloads,
 }) async {
   final source =
       lifecycle ??
@@ -29,6 +30,7 @@ Future<TransfersHarness> harness({
     online: online,
     now: now,
     store: store,
+    downloads: downloads,
   );
   addTearDown(() => built.transfers.dispose());
   return built;

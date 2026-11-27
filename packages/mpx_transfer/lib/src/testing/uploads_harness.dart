@@ -9,7 +9,6 @@ import 'package:mpx_transfer/src/journal/journal_record.dart';
 import 'package:mpx_transfer/src/journal/journal_store.dart';
 import 'package:mpx_transfer/src/journal/transfer_journal.dart';
 import 'package:mpx_transfer/src/transfers.dart';
-import 'package:mpx_transfer/src/upload/remote_ref.dart';
 import 'package:mpx_transfer/src/upload/upload_engine.dart';
 import 'package:mpx_transfer/src/upload/upload_lane.dart';
 import 'package:mpx_transfer/src/upload/upload_source.dart';
@@ -177,7 +176,7 @@ final class UploadsHarness {
       retention: Transfers.defaultRetention,
       progressInterval: progressInterval,
       now: now,
-      resultCodecs: const [RemoteRef.codec],
+      resultCodecs: Transfers.resultCodecs,
     );
     _replayed = _journal.jobs.toList();
     _engine = UploadEngine(

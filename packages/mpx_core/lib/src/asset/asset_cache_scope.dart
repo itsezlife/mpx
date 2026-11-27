@@ -1537,13 +1537,9 @@ final class _Content {
     final value = watched.value;
     final previous = _trackedValue;
     if (value == previous) return;
+    // The seam's implementation reports the mapping (`BindingOp.mapped`):
+    // it knows the job and its state, the binding only the value.
     _trackedValue = value;
-    MpxDiagnostics.current.emit(
-      MpxEventLevel.trace,
-      BindingOp.mapped,
-      mediaKey: key,
-      fields: () => {'transfer': _transferName(value)},
-    );
     switch (value) {
       case AssetTransfer$Waiting() ||
           AssetTransfer$Receiving() ||
@@ -1614,16 +1610,6 @@ final class _Content {
     );
     scope.tracked?.cancel(key);
   }
-
-  static String _transferName(AssetTransfer transfer) => switch (transfer) {
-    AssetTransfer$None() => 'none',
-    AssetTransfer$Waiting() => 'waiting',
-    AssetTransfer$Receiving() => 'receiving',
-    AssetTransfer$AwaitingUser() => 'awaitingUser',
-    AssetTransfer$Failed() => 'failed',
-    AssetTransfer$Sending() => 'sending',
-    AssetTransfer$Sent() => 'sent',
-  };
 
   // --- Transfer -------------------------------------------------------------
 

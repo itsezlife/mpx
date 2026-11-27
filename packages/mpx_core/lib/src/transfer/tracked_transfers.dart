@@ -39,8 +39,10 @@ enum TransferOrigin {
 /// | Uploaded, not yet published | `AssetTransfer.sent` |
 /// | Downloaded, or published | `AssetTransfer.none` |
 ///
-/// `TrackedTransfersContract` (in `testing.dart`) holds every implementation
-/// to this.
+/// The implementation reports each change of a watched key's value as
+/// `BindingOp.mapped` (with the job's state and id), since only it knows the
+/// job. `TrackedTransfersContract` (in `testing.dart`) holds every
+/// implementation to this.
 ///
 /// Single-threaded, on the UI isolate.
 abstract interface class TrackedTransfers {
