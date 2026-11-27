@@ -12,8 +12,9 @@ enum TransportOp implements DiagnosticOp {
   /// `offset`, the bytes known sent from the start; `size`; job).
   sessionOpened,
 
-  /// A part went out, once per try (trace; `index`, `offset`, `bytes`,
-  /// `inFlight`, the bytes outstanding with it; job).
+  /// A part went out, once per try (trace; `index`, `offset`, `bytes`;
+  /// `inFlight`, the bytes of the parts started and not yet acknowledged,
+  /// this one with them, against the transport's budget; job).
   partSent,
 
   /// A part was acknowledged (trace; `index`, `ms` since its try went out;

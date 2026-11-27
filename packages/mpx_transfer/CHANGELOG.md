@@ -41,11 +41,34 @@
   surface watches its key. `cancel(key)` pauses for the user; `leaseFile`
   lends the cached file once whole. `DownloadedContent` is the result.
   Diagnostics: `scheduler.downloadRequested` and `binding.mapped`.
+- The upload engine, inside the package until publish jobs bring its public
+  entry. `UploadSource` (`finished`, and `growing`, which is refused with an
+  `UnsupportedError` for now; `UploadSource.fromBytes` writes in-memory
+  bytes to a temp file). The `UploadTransport` seam: `open(info,
+  resumeToken:)` gives an `UploadSession` with `sendPart(index, offset,
+  bytes, last:)` and `finish(finalSize, parts)`, which answers a
+  `RemoteRef`; part bytes come as an `UploadPartBody` the engine streams
+  from the file (the bytes cache's transfer worker on the VM, `fetch` with
+  a `Blob` slice on the web). `UploadCapabilities`: part size by file size,
+  a bytes-in-flight budget, `UploadResume`, known size required, head
+  last, `UploadThumbnail`, `UploadReuse`. The engine retries a part five
+  tries in all (the bytes cache's `uploadPart` backoff), keeps each
+  acknowledged part, with its receipt, in the job's next progress write,
+  reopens with the resume token after a restart and sends only the parts
+  not kept, and runs upload jobs in two lanes (`UploadLane`, split at
+  10 MiB), one job each, under 8 shared connections (6 at most per
+  direction).
+- `TransportOp` diagnostics operations; `SchedulerOp` gains `slotAcquired`
+  and `slotReleased`, and `jobQueued` and `jobStarted` carry an upload's
+  `lane`. `debugSnapshot()` gains `uploads` (lanes, parts in flight, part
+  retries, restarts from zero) and `connections`.
 - `TransferEnvelope`, the seam of the OS envelope, with its events.
 - `SchedulerOp` and `EnvelopeOp` diagnostics operations.
 - `testing.dart`: `FakeTransferEnvelope`, `ScriptedTransferRunner`,
   `FakeTransferResult`, `MemoryJournalStore`, `JournalStoreContract`,
   `FakeUploadSourceCopies`, `UploadSourceCopiesContract`,
-  `FakeUnloadWarning`, and
+  `FakeUnloadWarning`, `FakeUploadTransport` with the
+  `UploadTransportContract`, `UploadsHarness` (uploads through the real
+  engine), and
   `TransfersHarness` (opened with `TransfersHarness.open`; `restart`,
   `kill`, `settle`, `replayed`; `downloads` to run download jobs for real).

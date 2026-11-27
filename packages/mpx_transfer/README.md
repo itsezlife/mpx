@@ -92,6 +92,12 @@ transfers.cancel(id); // removes it
   served by its priority queue; a user download resumes after a restart,
   an auto download waits (`awaitingResume`) until a surface watches it;
   `leaseFile` lends the cached file.
+- Uploads through any `UploadTransport`: the engine splits the file by the
+  transport's part size, keeps its bytes-in-flight budget, retries a part
+  five tries in all, journals every acknowledged part and resumes with the
+  transport's token after a restart, sending only what is missing. Two
+  lanes (small up to 10 MiB, big), one job each, under 8 shared
+  connections. A completed upload holds a `RemoteRef`.
 - `TransferDurability`: `inProcess`, or `system` inside the platform's OS
   envelope (`TransferEnvelope`) where there is one.
 - `Transfers.watch(filter)` by direction, state, tag and durability; a
@@ -110,14 +116,15 @@ transfers.cancel(id); // removes it
   back failed with `sourceLost`. Leaving the page asks first while a job
   is queued or running.
 - Diagnostics through `MpxDiagnostics.current` (`JournalOp`,
-  `SchedulerOp`, `EnvelopeOp`) and `debugSnapshot()` for a debug panel,
-  with a journal section.
+  `SchedulerOp`, `TransportOp`, `EnvelopeOp`) and `debugSnapshot()` for a
+  debug panel, with journal, uploads and connections sections.
 - `testing.dart`: `FakeTransferEnvelope`, `ScriptedTransferRunner`,
   `FakeTransferResult`, `MemoryJournalStore`, the `JournalStoreContract`
   every journal store meets, `FakeUploadSourceCopies` with the
-  `UploadSourceCopiesContract`, `FakeUnloadWarning`, and
-  `TransfersHarness`, which builds the engine over them and restarts or
-  kills it.
+  `UploadSourceCopiesContract`, `FakeUnloadWarning`, `FakeUploadTransport`
+  with the `UploadTransportContract` every transport meets,
+  `UploadsHarness`, and `TransfersHarness`, which builds the engine over
+  them and restarts or kills it.
 
 ## Docs
 

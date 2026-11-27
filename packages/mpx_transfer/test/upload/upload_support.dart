@@ -40,12 +40,14 @@ Future<UploadsHarness> uploads(
   DateTime Function()? now,
   Duration? progressInterval,
   int? laneSplit,
+  JournalStore Function()? store,
 }) async {
   final built = await UploadsHarness.open(
     lifecycle: ManualPlaybackLifecycleSource(
       initial: AppLifecycleState.resumed,
     ),
     transports: transports,
+    store: store,
     now: now,
     progressInterval: progressInterval ?? Transfers.defaultProgressInterval,
     laneSplit: laneSplit ?? UploadLane.defaultSplit,

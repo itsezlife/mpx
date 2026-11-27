@@ -58,7 +58,7 @@ final class FakeUploadTransport implements UploadTransport {
   final Map<int, Queue<Exception>> _partFailures = {};
   final Queue<Exception> _openFailures = Queue();
   final Queue<Exception> _finishFailures = Queue();
-  final Map<int, Completer<UploadPartAck>> _held = {};
+  final List<(int, Completer<UploadPartAck>)> _held = [];
   int _bytesInFlight = 0;
   int _maxBytesInFlight = 0;
 
@@ -80,8 +80,9 @@ final class FakeUploadTransport implements UploadTransport {
   /// The bytes in flight now.
   int get bytesInFlight => _bytesInFlight;
 
-  /// The indexes of the held parts, waiting for [ack] or [reject].
-  List<int> get held => List.unmodifiable(_held.keys);
+  /// The indexes of the held parts, oldest first, waiting for [ack] or
+  /// [reject]; one index appears once per upload holding it.
+  List<int> get held => [for (final (index, _) in _held) index];
 
   /// The next [times] tries of part [index] fail with [error] (by default
   /// a transient [UploadTransportException]).
@@ -106,13 +107,13 @@ final class FakeUploadTransport implements UploadTransport {
     }
   }
 
-  /// Acknowledges held part [index] with [receipt] (`receipt-<index>` by
-  /// default).
+  /// Acknowledges the oldest held part [index] with [receipt]
+  /// (`receipt-<index>` by default).
   void ack(int index, {String? receipt}) => _takeHeld(
     index,
   ).complete(UploadPartAck(receipt: receipt ?? _receipt(index)));
 
-  /// Fails held part [index]'s try with [error].
+  /// Fails the oldest held part [index]'s try with [error].
   void reject(int index, [Exception? error]) =>
       _takeHeld(index).completeError(error ?? _transient);
 
@@ -135,8 +136,14 @@ final class FakeUploadTransport implements UploadTransport {
 
   static String _receipt(int index) => 'receipt-$index';
 
-  Completer<UploadPartAck> _takeHeld(int index) =>
-      _held.remove(index) ?? (throw StateError('Part $index is not held.'));
+  Completer<UploadPartAck> _takeHeld(int index) {
+    for (final entry in _held) {
+      if (entry.$1 != index) continue;
+      _held.remove(entry);
+      return entry.$2;
+    }
+    throw StateError('Part $index is not held.');
+  }
 
   Future<UploadPartAck> _sendPart(
     int index,
@@ -160,7 +167,8 @@ final class FakeUploadTransport implements UploadTransport {
       if (failures != null && failures.isNotEmpty) throw failures.removeFirst();
       final UploadPartAck ack;
       if (holdParts) {
-        final completer = _held[index] = Completer<UploadPartAck>();
+        final completer = Completer<UploadPartAck>();
+        _held.add((index, completer));
         ack = await completer.future;
       } else {
         ack = UploadPartAck(receipt: _receipt(index));

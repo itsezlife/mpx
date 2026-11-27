@@ -57,7 +57,9 @@ final class ConnectionSlots {
 
   /// A slot for a request of job [job] in [direction], once one is free.
   Future<ConnectionSlot> acquire(TransferDirection direction, TransferId job) {
-    if (_waiters.isEmpty && _fits(direction)) {
+    // Every waiter is at a cap (a freed slot would have gone to it), so a
+    // request that fits takes its slot past them.
+    if (_fits(direction)) {
       return Future.value(_take(direction, job));
     }
     final waiter = _Waiter(direction, job);

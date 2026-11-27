@@ -23,7 +23,12 @@ import 'transfers/transfer_envelope_test.dart' as transfer_envelope_test;
 import 'transfers/transfer_verbs_test.dart' as transfer_verbs_test;
 import 'transfers/transfer_watch_test.dart' as transfer_watch_test;
 import 'transfers/upload_source_copies_test.dart' as upload_source_copies_test;
+import 'upload/upload_diagnostics_test.dart' as upload_diagnostics_test;
 import 'upload/upload_engine_test.dart' as upload_engine_test;
+import 'upload/upload_kill_test.dart' as upload_kill_test;
+import 'upload/upload_lanes_test.dart' as upload_lanes_test;
+import 'upload/upload_transport_contract_test.dart'
+    as upload_transport_contract_test;
 
 void main() {
   group(
@@ -42,6 +47,10 @@ void main() {
   group('transfer_envelope_test', transfer_envelope_test.main);
   group('transfer_verbs_test', transfer_verbs_test.main);
   group('transfer_watch_test', transfer_watch_test.main);
+  group('upload_diagnostics_test', upload_diagnostics_test.main);
   group('upload_engine_test', upload_engine_test.main);
+  group('upload_kill_test', upload_kill_test.main);
+  group('upload_lanes_test', upload_lanes_test.main);
+  group('upload_transport_contract_test', upload_transport_contract_test.main);
   group('upload_source_copies_test', upload_source_copies_test.main);
 }

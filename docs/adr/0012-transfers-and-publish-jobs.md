@@ -183,8 +183,11 @@ growing (bytes available so far, a final size later, a head that may be
 rewritten: ADR 0007's output seam). In-memory bytes go through a temp file.
 
 **Transport.** `UploadTransport.open(info, resumeToken?)` returns a session;
-`sendPart(index, offset, bytes, last)` sends one part; `finish(finalSize)`
-returns a `RemoteRef`. A session may give a `resumeToken`, which the journal
+`sendPart(index, offset, bytes, last)` sends one part; `finish(finalSize,
+parts)` returns a `RemoteRef`, given every part's acknowledgement in index
+order (a protocol that completes with the part list, such as presigned
+multipart, needs them after a restart too, so the engine journals each
+acknowledgement's receipt). A session may give a `resumeToken`, which the journal
 keeps. Each transport declares its capabilities:
 
 | Capability | Use |
@@ -510,6 +513,16 @@ engine's state (ADR 0013).
   from the last run can publish, and returns server keys from them.
 - mpx's glossary gains: transfer job, tracked download, journal, upload
   transport, reuse table, durability, OS envelope, publish job, publisher.
+
+## Settled in implementation
+
+| Point | Settled |
+| --- | --- |
+| Acknowledged parts in the journal | Kept with the job's next progress write, not written one by one: a kill loses at most one window of acknowledgements, whose parts are sent again (idempotent by index and offset). Each part keeps the receipt its acknowledgement carried; the record also keeps the part size, and a transport that now declares another size starts the upload from zero. |
+| Part bodies | A transport never reads the file: it receives an `UploadPartBody` whose `send(url, method, headers)` runs the engine's request (VM: a file range on the transfer worker; web: a `Blob` slice of the page's source or its OPFS copy). The engine retries; the body sends once. |
+| Retries beyond parts | Opening and finishing a session are retried like a part, and report `partRetry` / `partGaveUp` with `step: open \| finish`. |
+| Connections | 8 in all, downloads at most 6 and uploads at most 6 (the bytes cache's own upload cap), so neither direction holds every connection. A request holds one while on the wire and none while it waits to retry. |
+| Job retryable after a give-up | `retryable: true` when the tries ran out on a failure that may pass; `false` for a refusal that cannot (a 4xx other than 408, 425 and 429, or a transport's non-transient error). |
 
 ## Open in implementation
 
