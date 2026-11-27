@@ -20,6 +20,9 @@ import 'social/status_adapter_test.dart' as status_adapter;
 import 'social/status_html_test.dart' as status_html;
 import 'social/timeline_controller_test.dart' as timeline_controller;
 import 'social/volume_rise_test.dart' as volume_rise;
+import 'transfers/dev_upload_server_test.dart' as dev_upload_server;
+import 'transfers/transfers_page_test.dart' as transfers_page;
+import 'transfers/transfers_root_test.dart' as transfers_root;
 import 'video_through_stack_test.dart' as video_through_stack;
 
 void main() {
@@ -43,5 +46,8 @@ void main() {
   group('social volume rise', volume_rise.main);
   group('social status html', status_html.main);
   group('social timeline controller', timeline_controller.main);
+  group('transfers dev upload server', dev_upload_server.main);
+  group('transfers page', transfers_page.main);
+  group('transfers root', transfers_root.main);
   group('video through the stack', video_through_stack.main);
 }

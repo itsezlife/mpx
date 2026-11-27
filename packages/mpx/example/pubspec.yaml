@@ -13,6 +13,8 @@ environment:
 dependencies:
   # State of the social feed: sealed-phase controllers.
   control: ^1.0.0-dev.1
+  # The transfers demo's fingerprint of a picked file: a digest, no name.
+  crypto: ^3.0.6
   # Value equality of the social feed's domain models.
   equatable: ^2.0.7
   file_selector: ^1.1.0
@@ -53,6 +55,9 @@ dependencies:
   # SVG as a media kind: the network, bundled and tinted SVG tiles.
   mpx_svg:
     path: ../../mpx_svg
+  # The transfers demo: publish jobs, tracked downloads, the OS envelope.
+  mpx_transfer:
+    path: ../../mpx_transfer
   mpx_ui:
     path: ../../mpx_ui
   mpx_video_decoder:
@@ -66,6 +71,9 @@ dependencies:
   timeago: ^3.7.1
   # Links of a post's text open in the browser.
   url_launcher: ^6.3.1
+  # The transfers demo on the web: its settings in local storage, a reload
+  # for the debug panel's kill.
+  web: ^1.1.1
 
 dev_dependencies:
   build_runner: ^2.4.13
