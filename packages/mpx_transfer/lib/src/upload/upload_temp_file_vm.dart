@@ -14,3 +14,26 @@ Future<String> $writeUploadTempFile(
   await file.writeAsBytes(bytes, flush: true);
   return file.path;
 }
+
+/// Deletes [directory] and everything in it; a directory that is not there
+/// is already deleted.
+Future<void> $deleteUploadTempDirectory(String directory) async {
+  try {
+    await Directory(directory).delete(recursive: true);
+  } on PathNotFoundException {
+    // Not there: already deleted.
+  }
+}
+
+/// The names of the directories in [directory]; none when it is not there.
+Future<List<String>> $uploadTempDirectories(String directory) async {
+  try {
+    return [
+      await for (final entry in Directory(directory).list())
+        if (entry is Directory)
+          entry.uri.pathSegments.lastWhere((segment) => segment.isNotEmpty),
+    ];
+  } on PathNotFoundException {
+    return const [];
+  }
+}

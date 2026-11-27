@@ -11,6 +11,7 @@ import 'package:mpx_transfer/src/job/transfer_job.dart';
 import 'package:mpx_transfer/src/journal/journal_record.dart';
 import 'package:mpx_transfer/src/journal/journal_store.dart';
 import 'package:mpx_transfer/src/journal/transfer_journal.dart';
+import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
 import 'package:mpx_transfer/src/publish/publish_journal.dart';
 import 'package:mpx_transfer/src/publish/publish_progress.dart';
 import 'package:mpx_transfer/src/reuse/reuse_table.dart';
@@ -53,6 +54,8 @@ final class UploadsHarness {
     required this.cache,
     required this.progressWeights,
     required this.downloads,
+    required this.sourceCopies,
+    required this.sourceDirectory,
   });
 
   /// Opens a harness over [transports]; the job's transport is the first
@@ -68,6 +71,10 @@ final class UploadsHarness {
   /// parts are those of [Transfers.open]; [cache] is the bytes cache
   /// publish jobs alias their server keys in (`downloads.store` unless
   /// given); [downloads], tracked downloads beside the uploads.
+  /// [sourceCopies] makes the engine read page sources as on the web,
+  /// copied there (give the same fake to every start, as OPFS outlives a
+  /// reload); [sourceDirectory] is where the engine writes sources held in
+  /// memory as files, as on the VM.
   static Future<UploadsHarness> open({
     required PlaybackLifecycleSource lifecycle,
     required List<UploadTransport> transports,
@@ -87,6 +94,8 @@ final class UploadsHarness {
     IBytesStore? cache,
     PublishProgressWeights progressWeights = PublishProgressWeights.standard,
     TransferDownloads? downloads,
+    UploadSourceCopies? sourceCopies,
+    String? sourceDirectory,
   }) async {
     final memory = MemoryJournalStore();
     final harness = UploadsHarness._(
@@ -108,6 +117,8 @@ final class UploadsHarness {
       cache: cache,
       progressWeights: progressWeights,
       downloads: downloads,
+      sourceCopies: sourceCopies,
+      sourceDirectory: sourceDirectory,
     );
     await harness._start();
     return harness;
@@ -166,6 +177,12 @@ final class UploadsHarness {
 
   /// What tracked downloads fetch through; null for a facade without them.
   final TransferDownloads? downloads;
+
+  /// Where page sources are copied, as on the web; null for the VM.
+  final UploadSourceCopies? sourceCopies;
+
+  /// Where the engine writes sources held in memory; null for none.
+  final String? sourceDirectory;
 
   /// Where the publish jobs' records are kept across restarts.
   final MemoryJournalStore publishStore = MemoryJournalStore();
@@ -262,6 +279,8 @@ final class UploadsHarness {
       slots: ConnectionSlots(),
       client: client,
       files: files,
+      sourceCopies: sourceCopies,
+      sourceDirectory: sourceDirectory,
       retry: retry,
       laneSplit: laneSplit,
       random: random,
@@ -284,6 +303,7 @@ final class UploadsHarness {
       cache: cache,
       progressWeights: progressWeights,
       downloads: downloads,
+      sourceCopies: sourceCopies,
       now: now,
     );
   }

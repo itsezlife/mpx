@@ -14,6 +14,7 @@ final class JournalPlatform {
     JournalStore? reuseStore,
     JournalStore? publishStore,
     this.sourceCopies,
+    this.sourceDirectory,
     this.unloadWarning,
   }) : reuseStore = reuseStore ?? MemoryJournalStore(),
        publishStore = publishStore ?? MemoryJournalStore();
@@ -32,6 +33,11 @@ final class JournalPlatform {
   /// Where upload sources are copied at job creation; null where a source
   /// is a file that survives by itself (the VM).
   final UploadSourceCopies? sourceCopies;
+
+  /// Where the engine writes upload sources it holds in memory as files
+  /// of its own, so a kill resumes them; null where an upload reads its
+  /// source as the page holds it (the web).
+  final String? sourceDirectory;
 
   /// The warning before the page is left; null where there is no page.
   final UnloadWarning? unloadWarning;

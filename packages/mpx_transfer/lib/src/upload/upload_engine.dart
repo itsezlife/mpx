@@ -20,6 +20,7 @@ import 'package:mpx_transfer/src/upload/upload_lane.dart';
 import 'package:mpx_transfer/src/upload/upload_part_source.dart';
 import 'package:mpx_transfer/src/upload/upload_source.dart';
 import 'package:mpx_transfer/src/upload/upload_source_files.dart';
+import 'package:mpx_transfer/src/upload/upload_temp_file.dart';
 import 'package:mpx_transfer/src/upload/upload_transport.dart';
 
 /// The runner of upload jobs: it splits each job's file into the parts its
@@ -65,6 +66,7 @@ final class UploadEngine implements TransferRunner {
     HttpBytesClient? client,
     UploadSourceCopies? sourceCopies,
     UploadSourceFiles? files,
+    String? sourceDirectory,
     this.retry = HttpBytesRetryBackoff.uploadPart,
     this.laneSplit = UploadLane.defaultSplit,
     math.Random? random,
@@ -77,6 +79,7 @@ final class UploadEngine implements TransferRunner {
        slots = slots ?? ConnectionSlots(),
        _client = client,
        _sourceCopies = sourceCopies,
+       _sourceDirectory = sourceDirectory,
        _files = files ?? $platformUploadSourceFiles(),
        _random = random ?? math.Random(),
        _wait = wait ?? Future<void>.delayed,
@@ -98,6 +101,7 @@ final class UploadEngine implements TransferRunner {
   final HttpBytesClient? _client;
   final UploadSourceCopies? _sourceCopies;
   final UploadSourceFiles? _files;
+  final String? _sourceDirectory;
   final Map<TransferId, SourceBytes> _pageSources = {};
   final math.Random _random;
   final Future<void> Function(Duration delay) _wait;
@@ -183,6 +187,45 @@ final class UploadEngine implements TransferRunner {
   /// reload the job reads its copy in OPFS instead.
   void keepPageSource(TransferId id, SourceBytes bytes) =>
       _pageSources[id] = bytes;
+
+  /// Whether an upload reads its source as the page holds it
+  /// ([keepPageSource], then its copy): true on the web, which keeps
+  /// source copies; false on the VM, where an upload reads a file.
+  bool get readsPageSources => _sourceCopies != null;
+
+  /// Writes [bytes] to a file of the engine's own, kept for [owner] (a
+  /// publish job) until [releaseSources]; answers its path. The VM only,
+  /// where an upload reads a file: a source held in memory becomes one, so
+  /// a kill resumes it.
+  ///
+  /// Throws a [StateError] when the engine was given no directory for
+  /// them, and whatever the file system throws.
+  Future<String> writeSource(String owner, SourceBytes bytes) async {
+    final directory =
+        _sourceDirectory ??
+        (throw StateError('No directory is wired for upload sources.'));
+    return $writeUploadTempFile(
+      await bytes.read(),
+      directory: '$directory/$owner',
+    );
+  }
+
+  /// Deletes every file [writeSource] wrote for [owner].
+  Future<void> releaseSources(String owner) async {
+    final directory = _sourceDirectory;
+    if (directory == null) return;
+    await $deleteUploadTempDirectory('$directory/$owner');
+  }
+
+  /// Deletes the files [writeSource] wrote for every owner not in [keep]:
+  /// those a kill left behind.
+  Future<void> sweepSources(Set<String> keep) async {
+    final directory = _sourceDirectory;
+    if (directory == null) return;
+    for (final owner in await $uploadTempDirectories(directory)) {
+      if (!keep.contains(owner)) await releaseSources(owner);
+    }
+  }
 
   /// The uploads section of a debug snapshot.
   UploadsDebugSnapshot debugSnapshot() => UploadsDebugSnapshot(
@@ -478,9 +521,19 @@ final class _UploadRun {
   }
 
   /// Reads the file [journaled] names as it is now: the same file, a
-  /// changed one (with its new size and time), or none. Where the engine
-  /// reads no file system the file is the journaled one.
+  /// changed one (with its new size and time), or none. Where uploads
+  /// read page sources (the web) the source is there when the page's own
+  /// or its copy is; where the engine reads no file system the file is the
+  /// journaled one.
   Future<_SourceCheck> _readSource(JournalSource journaled) async {
+    if (_engine._sourceCopies case final copies?) {
+      // The page's source, or its copy: neither changes once kept, and
+      // without either nothing can be sent.
+      final held =
+          _engine._pageSources.containsKey(id) ||
+          await copies.read(id, 0) != null;
+      return held ? _SourceRead(journaled, same: true) : const _SourceGone();
+    }
     final files = _engine._files;
     if (files == null) return _SourceRead(journaled, same: true);
     final UploadSourceStat? stat;

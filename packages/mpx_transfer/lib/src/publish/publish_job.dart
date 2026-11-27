@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
+import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
 import 'package:mpx_transfer/src/publish/publish_jobs.dart';
 import 'package:mpx_transfer/src/publish/publish_request.dart';
 import 'package:mpx_transfer/src/publish/publish_state.dart';
@@ -52,8 +53,15 @@ final class PublishJob {
   /// job failed by the item (whole-job policy) runs again; one with another
   /// failed item fails again at once.
   ///
+  /// With [source] the item's file uploads from it, from zero: the host's
+  /// way back from a source lost (on the web, a reload that kept no copy;
+  /// the user picks the file again). It replaces the item's page source
+  /// (`PublishItem.pageSource`) too; on the VM it is written to a file
+  /// first.
+  ///
   /// Answers false for an item that has not failed or a completed job.
-  bool retryItem(String itemId) => _jobs.retryItem(id, itemId);
+  bool retryItem(String itemId, {SourceBytes? source}) =>
+      _jobs.retryItem(id, itemId, source: source);
 
   /// Removes item [itemId] from the job: its uploads and its preparation
   /// stop, and the job goes on with the other items, publishing once each

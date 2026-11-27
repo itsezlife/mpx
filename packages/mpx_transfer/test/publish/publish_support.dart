@@ -97,6 +97,9 @@ Future<UploadsHarness> publishing(
   ManualPlaybackLifecycleSource? lifecycle,
   TransferEnvelope? envelope,
   TransferEnvelopeConfig? envelopeConfig,
+  UploadSourceFiles? files,
+  UploadSourceCopies? sourceCopies,
+  String? sourceDirectory,
 }) async {
   final built = await UploadsHarness.open(
     store: store,
@@ -110,9 +113,11 @@ Future<UploadsHarness> publishing(
     now: now,
     progressInterval: progressInterval ?? Transfers.defaultProgressInterval,
     wait: (_) async {},
-    files: sourceFiles,
+    files: files ?? sourceFiles,
     preparation: preparation,
     progressWeights: progressWeights,
+    sourceCopies: sourceCopies,
+    sourceDirectory: sourceDirectory,
   );
   addTearDown(() => built.transfers.dispose());
   return built;

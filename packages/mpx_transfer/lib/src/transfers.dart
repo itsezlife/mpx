@@ -218,6 +218,7 @@ final class Transfers {
       transports: transports,
       client: client,
       sourceCopies: platform.sourceCopies,
+      sourceDirectory: platform.sourceDirectory,
       now: now,
     );
     return Transfers.engine(
@@ -517,24 +518,44 @@ final class Transfers {
   /// Puts failed job [id] back in the queue for another attempt.
   ///
   /// For an upload, [source] replaces the file it reads: the host's way
-  /// back from a lost source (the user picked the file again). The upload
-  /// then starts from zero, since parts sent from one file say nothing
-  /// about another; the job and its id stay. A download ignores it.
+  /// back from a lost source (the user picked the file again). On the web,
+  /// where an upload reads the page's source, [pageSource] does the same
+  /// (a picked `File` again), copied as a new upload's source is. The
+  /// upload then starts from zero, since parts sent from one file say
+  /// nothing about another; the job and its id stay. A download ignores
+  /// both. Give one of them: a [pageSource] on the VM, where an upload
+  /// reads a file, throws an [ArgumentError] (write it to a file with
+  /// `UploadSource.fromBytes` and give that).
   ///
   /// Answers whether the job changed: false for an unknown id or a job that
   /// has not failed.
-  bool retry(TransferId id, {UploadSource$Finished? source}) {
+  bool retry(
+    TransferId id, {
+    UploadSource$Finished? source,
+    SourceBytes? pageSource,
+  }) {
+    if (source != null && pageSource != null) {
+      throw ArgumentError('Give a source or a page source, not both.');
+    }
+    if (pageSource != null && !(_uploads?.readsPageSources ?? false)) {
+      throw ArgumentError.value(
+        pageSource,
+        'pageSource',
+        'is for the web; on the VM give a file as source',
+      );
+    }
     final job = _job(id);
     if (job == null || job.state is! TransferState$Failed) return false;
     var total = job.state.total;
-    if (source != null && _journal.record(id)?.upload != null) {
-      total = source.size;
+    final size = source?.size ?? pageSource?.size;
+    if (size != null && _journal.record(id)?.upload != null) {
+      total = size;
       _journal.amendUpload(
         id,
         (upload) => upload.copyWith(
           source: JournalSource(
-            path: source.path,
-            size: source.size,
+            path: source?.path ?? upload.source.path,
+            size: size,
             fingerprint: upload.source.fingerprint,
           ),
           parts: const {},
@@ -542,6 +563,10 @@ final class Transfers {
           clearResumeToken: true,
         ),
       );
+      if (pageSource != null) {
+        _uploads?.keepPageSource(id, pageSource);
+        _copySources(id, [pageSource]);
+      }
     }
     _queue(job.copyWith(state: TransferState.queued(total: total)));
     return true;
@@ -1578,7 +1603,7 @@ final class Transfers {
   /// sources meanwhile, so nothing waits for the copy.
   void _copySources(TransferId id, List<SourceBytes> sources) {
     final copies = _sourceCopies;
-    if (copies == null) return;
+    if (copies == null || sources.isEmpty) return;
     final bytes = sources.fold(0, (sum, source) => sum + source.size);
     if (bytes > sourceCopyLimit) {
       MpxDiagnostics.current.emit(
@@ -1592,6 +1617,9 @@ final class Transfers {
     final began = _now();
     final copy = () async {
       try {
+        // A retry's new source replaces the copy of the one before; the
+        // old copy goes first, so a reload in between finds none.
+        if (copies.holds(id)) await copies.delete(id);
         if (!await copies.copy(id, sources)) return;
       } on Object catch (error, stackTrace) {
         _emitSourceFailure(copies, error, stackTrace, id);
@@ -1763,6 +1791,7 @@ final class _PublishHost implements PublishUploadHost {
     required TransferDurability durability,
     String? tag,
     MediaKey? key,
+    SourceBytes? pageSource,
   }) => _engine.enqueue(
     direction: TransferDirection.upload,
     durability: durability,
@@ -1771,10 +1800,15 @@ final class _PublishHost implements PublishUploadHost {
     total: upload.source.size,
     upload: upload,
     id: id,
+    sources: [?pageSource],
   );
 
   @override
-  bool retryUpload(TransferId id) => _engine.retry(id);
+  bool retryUpload(
+    TransferId id, {
+    UploadSource$Finished? source,
+    SourceBytes? pageSource,
+  }) => _engine.retry(id, source: source, pageSource: pageSource);
 
   @override
   void cancelUpload(TransferId id) => _engine._cancel(id, by: 'owner');

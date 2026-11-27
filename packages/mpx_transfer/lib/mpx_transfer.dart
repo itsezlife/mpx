@@ -52,6 +52,7 @@ export 'src/envelope/transfer_envelope_config.dart';
 export 'src/job/transfer_id.dart';
 export 'src/job/transfer_job.dart';
 export 'src/job/transfer_state.dart';
+export 'src/journal/upload_source_copies.dart' show SourceBytes;
 export 'src/publish/publish_job.dart';
 export 'src/publish/publish_progress.dart' show PublishProgressWeights;
 export 'src/publish/publish_request.dart';

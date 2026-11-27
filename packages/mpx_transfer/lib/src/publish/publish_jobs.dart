@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_transfer/src/diagnostics/journal_op.dart';
 import 'package:mpx_transfer/src/diagnostics/publish_op.dart';
 import 'package:mpx_transfer/src/diagnostics/transfers_debug_snapshot.dart';
 import 'package:mpx_transfer/src/diagnostics/transport_op.dart';
@@ -10,6 +11,7 @@ import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
 import 'package:mpx_transfer/src/job/transfer_state.dart';
 import 'package:mpx_transfer/src/journal/journal_record.dart';
+import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
 import 'package:mpx_transfer/src/publish/publish_job.dart';
 import 'package:mpx_transfer/src/publish/publish_journal.dart';
 import 'package:mpx_transfer/src/publish/publish_progress.dart';
@@ -40,11 +42,16 @@ abstract interface class PublishUploadHost {
     required TransferDurability durability,
     String? tag,
     MediaKey? key,
+    SourceBytes? pageSource,
   });
 
-  /// Queues failed upload [id] again, keeping what it sent; answers whether
-  /// it changed.
-  bool retryUpload(TransferId id);
+  /// Queues failed upload [id] again, keeping what it sent, or from zero
+  /// over a new [source] file or [pageSource]; answers whether it changed.
+  bool retryUpload(
+    TransferId id, {
+    UploadSource$Finished? source,
+    SourceBytes? pageSource,
+  });
 
   /// Cancels upload [id] for the job that owns it.
   void cancelUpload(TransferId id);
@@ -311,6 +318,16 @@ final class PublishJobs {
   /// Picks up every job the journal holds, after the facade queued the
   /// uploads it read back.
   void restore() {
+    // Files written for jobs a kill ended, or that ended since, go; a
+    // failed job may still be retried.
+    unawaited(
+      _reportingRelease(
+        _uploads.sweepSources({
+          for (final record in _journal.records)
+            if (record.end is! PublishJobState$Completed) record.id,
+        }),
+      ),
+    );
     for (final record in [..._journal.records]) {
       if (record.end is PublishJobState$Completed &&
           record.aliases.isNotEmpty) {
@@ -352,6 +369,7 @@ final class PublishJobs {
       }
     }
     unawaited(_journal.remove(id));
+    _releaseSources(id);
     _progress.remove(id);
     _host.publishChanged();
     for (final watch in [..._jobsWatches]) {
@@ -547,7 +565,10 @@ final class PublishJobs {
       case ItemProgress$Prepared(:final media, :final reuseKey):
         await _upload(id, item.item, media, reuseKey);
       case ItemProgress$Uploading():
-        if (reopened) _retryFailedUploads(item);
+        if (reopened) {
+          await _retryFailedUploads(id, item);
+          if (!_running(id)) return;
+        }
         if (restored || reopened) _queueMissingUploads(id, item);
         _checkUploads(id, itemId);
       case ItemProgress$Uploaded() || ItemProgress$Failed():
@@ -725,14 +746,31 @@ final class PublishJobs {
       return;
     }
     final fileId = TransferId.issue();
+    final PreparedMedia sent;
+    final SourceBytes? pageSource;
+    try {
+      (sent, pageSource) = await _fileSourceOf(id, fileId, item, media);
+    } on Object catch (_, stackTrace) {
+      if (!_running(id)) return;
+      _failItem(
+        id,
+        item,
+        PublishStage.upload,
+        'sourceUnwritable',
+        true,
+        stackTrace: stackTrace,
+      );
+      return;
+    }
+    if (!_running(id)) return;
     TransferId? thumbnailId;
     final JournalUpload file;
     JournalUpload? thumbnail;
     try {
-      file = _describeFile(id, item, media);
+      file = _describeFile(id, item, sent);
       if (transport.capabilities.thumbnail == UploadThumbnail.separate &&
-          media.thumbnailPath != null) {
-        final stat = await _uploads.stat(media.thumbnailPath!);
+          sent.thumbnailPath != null) {
+        final stat = await _uploads.stat(sent.thumbnailPath!);
         if (!_running(id)) return;
         if (stat == null) {
           _failItem(
@@ -745,7 +783,7 @@ final class PublishJobs {
           return;
         }
         thumbnailId = TransferId.issue();
-        thumbnail = _describeThumbnail(id, item, media, stat.size);
+        thumbnail = _describeThumbnail(id, item, sent, stat.size);
       }
     } on Object catch (_, stackTrace) {
       _failItem(
@@ -767,7 +805,7 @@ final class PublishJobs {
           .withItem(
             item.itemId,
             ItemProgress$Uploading(
-              media,
+              sent,
               file: fileId,
               thumbnail: thumbnailId,
               reuseKey: reuseKey,
@@ -776,7 +814,7 @@ final class PublishJobs {
           ),
     );
     if (!_running(id)) return;
-    _enqueue(record, item, fileId, file);
+    _enqueue(record, item, fileId, file, pageSource: pageSource);
     if (thumbnail != null) {
       MpxDiagnostics.current.emit(
         MpxEventLevel.debug,
@@ -790,6 +828,71 @@ final class PublishJobs {
     _emitStage(id, item, before, _itemStateOf(id, item));
     _checkUploads(id, item.itemId);
   }
+
+  /// What upload [fileId] of [media]'s file reads, and the media as it is
+  /// journaled.
+  ///
+  /// The bytes the page holds come first: the prepared bytes, else the
+  /// item's page source where the upload sends the item's own file (the
+  /// host's prepared media, or an original the preparation kept). Where
+  /// uploads read page sources (the web) the upload takes them as they
+  /// are. Elsewhere (the VM) a file at the media's path wins, and without
+  /// one the bytes are written to a file of the engine's own for job [id],
+  /// which the media then names. Without such bytes the upload reads the
+  /// media's path.
+  Future<(PreparedMedia, SourceBytes?)> _fileSourceOf(
+    PublishJobId id,
+    TransferId fileId,
+    PublishItem item,
+    PreparedMedia media,
+  ) async {
+    final page = switch (media.bytes) {
+      final bytes? => SourceBytes.memory(bytes),
+      null when media.isOriginal || item.source is PublishSource$Prepared =>
+        item.pageSource,
+      null => null,
+    };
+    if (page == null) return (media, null);
+    if (_uploads.readsPageSources) {
+      return (_mediaAt(media, media.path, page.size, bytes: media.bytes), page);
+    }
+    if (await _uploads.stat(media.path) != null) return (media, null);
+    final began = _now();
+    final path = await _uploads.writeSource(id, page);
+    MpxDiagnostics.current.emit(
+      MpxEventLevel.debug,
+      JournalOp.sourceCopied,
+      jobId: fileId,
+      fields: () => {
+        'bytes': page.size,
+        'ms': _now().difference(began).inMilliseconds,
+      },
+    );
+    return (_mediaAt(media, path, page.size), null);
+  }
+
+  /// [media] as the file at [path], [size] bytes long, holding [bytes] in
+  /// memory.
+  static PreparedMedia _mediaAt(
+    PreparedMedia media,
+    String path,
+    int size, {
+    Uint8List? bytes,
+  }) => PreparedMedia(
+    kind: media.kind,
+    path: path,
+    isOriginal: media.isOriginal,
+    byteSize: size,
+    mimeType: media.mimeType,
+    dimensions: media.dimensions,
+    duration: media.duration,
+    thumbnailPath: media.thumbnailPath,
+    thumbnail: media.thumbnail,
+    thumbnailDimensions: media.thumbnailDimensions,
+    hasAudio: media.hasAudio,
+    animated: media.animated,
+    bytes: bytes,
+  );
 
   /// The upload of [media]'s file: a video waits in the big lane, any
   /// other file by its size.
@@ -832,8 +935,9 @@ final class PublishJobs {
     PublishRecord record,
     PublishItem item,
     TransferId id,
-    JournalUpload upload,
-  ) {
+    JournalUpload upload, {
+    SourceBytes? pageSource,
+  }) {
     _$enqueuing = true;
     try {
       _host.enqueueUpload(
@@ -842,6 +946,7 @@ final class PublishJobs {
         durability: record.durability,
         tag: record.tag,
         key: item.key,
+        pageSource: pageSource,
       );
     } finally {
       _$enqueuing = false;
@@ -921,16 +1026,50 @@ final class PublishJobs {
   }
 
   /// Queues again each failed upload of uploading [item], keeping its
-  /// journaled parts.
-  void _retryFailedUploads(PublishItemRecord item) {
+  /// journaled parts; the file's from zero over the new source a retry of
+  /// the item gave ([retryItem]), written to a file first on the VM.
+  Future<void> _retryFailedUploads(
+    PublishJobId id,
+    PublishItemRecord item,
+  ) async {
     final progress = item.progress as ItemProgress$Uploading;
+    final given = _liveOf(id).newSources.remove(item.item.itemId);
+    UploadSource$Finished? file;
+    SourceBytes? pageSource;
+    if (given != null && !_uploads.readsPageSources) {
+      try {
+        file = UploadSource$Finished(
+          await _uploads.writeSource(id, given),
+          size: given.size,
+        );
+      } on Object catch (_, stackTrace) {
+        if (!_running(id)) return;
+        _failItem(
+          id,
+          item.item,
+          PublishStage.upload,
+          'sourceUnwritable',
+          true,
+          stackTrace: stackTrace,
+        );
+        return;
+      }
+      if (!_running(id)) return;
+    } else {
+      pageSource = given;
+    }
     // Each retry is news the item would read with its other upload still
     // failed, failing it again.
     _$enqueuing = true;
     try {
       for (final upload in [progress.file, ?progress.thumbnail]) {
         if (_host.recordOf(upload)?.job.state is TransferState$Failed) {
-          _host.retryUpload(upload);
+          final isFile = upload == progress.file;
+          _host.retryUpload(
+            upload,
+            source: isFile ? file : null,
+            pageSource: isFile ? pageSource : null,
+          );
         }
       }
     } finally {
@@ -1276,6 +1415,7 @@ final class PublishJobs {
         final written = _put(done);
         _changed(id);
         _releaseGroup(done);
+        _releaseSources(id);
         await written;
         await _applyAliases(id);
       case PublishOutcome$Rejected(:final reason, :final retryable):
@@ -1457,7 +1597,7 @@ final class PublishJobs {
   }
 
   /// See [PublishJob.retryItem].
-  bool retryItem(PublishJobId id, String itemId) {
+  bool retryItem(PublishJobId id, String itemId, {SourceBytes? source}) {
     final record = _journal.record(id);
     if (_disposed || record == null) return false;
     if (record.end case final end? when end is! PublishJobState$Failed) {
@@ -1465,7 +1605,14 @@ final class PublishJobs {
     }
     final item = _itemRecord(id, itemId);
     if (item?.progress case ItemProgress$Failed(:final stage)) {
-      _reopen(record, [itemId], stage: stage, itemId: itemId);
+      if (source != null) _liveOf(id).newSources[itemId] = source;
+      _reopen(
+        record,
+        [itemId],
+        stage: stage,
+        itemId: itemId,
+        pageSource: source,
+      );
       return true;
     }
     return false;
@@ -1654,6 +1801,7 @@ final class PublishJobs {
     List<String> reset, {
     required PublishStage stage,
     String? itemId,
+    SourceBytes? pageSource,
   }) {
     final id = record.id;
     final reopened = record.copyWith(
@@ -1663,7 +1811,11 @@ final class PublishJobs {
             ItemProgress$Failed(:final before)
                 when reset.contains(item.item.itemId) =>
               PublishItemRecord(
-                item.item,
+                // A new source replaces the item's page source too, for
+                // an upload it has not made yet.
+                pageSource == null
+                    ? item.item
+                    : item.item.withPageSource(pageSource),
                 before ?? const ItemProgress$Waiting(),
               ),
             _ => item,
@@ -1713,8 +1865,33 @@ final class PublishJobs {
 
   void _end(PublishRecord record, PublishJobState end) {
     unawaited(_put(record.copyWith(end: end, updatedAt: _now())));
+    // A failed job may be retried; a completed one sends nothing again.
+    if (end is PublishJobState$Completed) _releaseSources(record.id);
     _changed(record.id);
     _releaseGroup(record);
+  }
+
+  /// Deletes the files written for job [id]'s sources.
+  void _releaseSources(PublishJobId id) =>
+      unawaited(_reportingRelease(_uploads.releaseSources(id), id: id));
+
+  /// Waits for [release] and reports its failure: a file left behind.
+  static Future<void> _reportingRelease(
+    Future<void> release, {
+    PublishJobId? id,
+  }) async {
+    try {
+      await release;
+    } on Object catch (_, stackTrace) {
+      MpxDiagnostics.current.emit(
+        MpxEventLevel.error,
+        JournalOp.writeFailed,
+        jobId: id,
+        // The error stays out: a file system error names a path.
+        fields: () => {'code': 'source_delete'},
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   // --- State -----------------------------------------------------------------
@@ -2008,6 +2185,10 @@ final class _Live {
 
   /// Whether `awaitingPublisher` was reported in this run.
   bool reportedAwaiting = false;
+
+  /// The source a retry of an item gave, by item id, until its failed
+  /// file upload is queued again over it.
+  final Map<String, SourceBytes> newSources = {};
 
   /// Whether the job's current wait for its ordering group was reported.
   bool reportedGroupWait = false;
