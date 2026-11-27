@@ -96,29 +96,21 @@ void main() {
       );
     });
 
-    test('a 50 MiB range streams with flat memory, its progress growing '
-        'to the length', () async {
+    test('a 50 MiB range streams, held back by a stalled receiver, its '
+        'progress growing to the length', () async {
       const length = 50 * 1024 * 1024;
       const offset = 3;
+      // What a stalled receiver lets the sender get ahead by: the socket
+      // buffers and the pipeline in between, far below the range. A range
+      // read whole before sending would report all 50 MiB at once.
+      const slack = 16 * 1024 * 1024;
       final file = patternFile('${dir.path}/large', length + offset);
-      server.keepUpTo = 0;
+      server
+        ..keepUpTo = 0
+        ..holdAfter = 1024 * 1024;
       final progress = <(int, int?)>[];
-      // A first upload warms the worker's and the server's heaps and
-      // buffers; memory is read after it and at its peak during the second.
-      // A range held in memory would add its 50 MiB.
-      await client.upload(
-        server.url(),
-        body: HttpBytesUploadBody.file(file.path, length: 16 * 1024 * 1024),
-      );
-      server.received.clear();
-      final baseline = ProcessInfo.currentRss;
-      var peak = baseline;
-      final sampler = Timer.periodic(const Duration(milliseconds: 5), (_) {
-        peak = math.max(peak, ProcessInfo.currentRss);
-      });
-      addTearDown(sampler.cancel);
 
-      await client.upload(
+      final upload = client.upload(
         server.url(),
         body: HttpBytesUploadBody.file(
           file.path,
@@ -127,14 +119,21 @@ void main() {
         ),
         onBytesSent: (sent, total) => progress.add((sent, total)),
       );
-      sampler.cancel();
-      peak = math.max(peak, ProcessInfo.currentRss);
+      await server.held.future;
+      // Long enough for a sender that does not wait to run far ahead.
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      final aheadWhileStalled =
+          progress.last.$1 - server.received.single.length;
+      expect(aheadWhileStalled, lessThan(slack));
+      expect(progress.last.$1, lessThan(length));
+
+      server.release.complete();
+      await upload;
 
       final received = server.received.single;
       expect(received.length, length);
       expect(received.first, offset % 251);
       expect(received.last, (offset + length - 1) % 251);
-      expect(peak - baseline, lessThan(40 * 1024 * 1024));
       expect(progress.first, (0, length));
       expect(progress.last, (length, length));
       expect(progress.length, greaterThan(10));
