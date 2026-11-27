@@ -182,6 +182,31 @@ void main() {
         throwsFormatException,
       );
     });
+
+    test('a failed read names the key and carries the map read', () {
+      final missing = <String, Object?>{'v': 1};
+      expect(
+        () => PreparationEncoding.decodeInput(missing),
+        throwsA(
+          isA<FormatException>()
+              .having((error) => error.message, 'message', contains('"path"'))
+              .having((error) => error.source, 'source', same(missing)),
+        ),
+      );
+      final wrong = <String, Object?>{'v': 1, 'as': 'photo', 'highQuality': 1};
+      expect(
+        () => PreparationEncoding.decodeIntent(wrong),
+        throwsA(
+          isA<FormatException>()
+              .having(
+                (error) => error.message,
+                'message',
+                contains('"highQuality"'),
+              )
+              .having((error) => error.source, 'source', same(wrong)),
+        ),
+      );
+    });
   });
 
   group('CompressionPreset', () {

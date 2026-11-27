@@ -7,6 +7,7 @@ import 'package:mpx_transfer/src/job/transfer_job.dart';
 import 'package:mpx_transfer/src/job/transfer_state.dart';
 import 'package:mpx_transfer/src/journal/journal_frames.dart';
 import 'package:mpx_transfer/src/journal/journal_record.dart';
+import 'package:mpx_transfer/src/journal/json_fields.dart';
 import 'package:mpx_transfer/src/upload/upload_lane.dart';
 
 /// How one kind of [TransferResult] is written into the journal and read
@@ -72,9 +73,44 @@ typedef JournalRead = ({
   int tornBytes,
 });
 
-/// The journal's entries in [JournalFrames], one entry a frame. Times are
-/// ISO 8601, which keeps whether a time was UTC, so a record reads back
-/// equal to the one written.
+/// The journal's entries in [JournalFrames], one entry a frame.
+///
+/// ## Entries
+///
+/// | Entry | Frame payload |
+/// |---|---|
+/// | [JournalEntry$Header] | `{"header": generation}` |
+/// | [JournalEntry$Put] | `{"put": record}` |
+/// | [JournalEntry$Remove] | `{"remove": id}` |
+///
+/// A record is the job (`id`, `direction`, `durability`, `priority`,
+/// `tag?`, `key?`, `resumeOnStart`, `createdAt`, `updatedAt`, `state`),
+/// then `upload?`, `envelopeHandle?` and `lastProgressAt?`. A `state` is
+/// tagged by `is` (`queued`, `running`, `paused`, `failed`, `completed`);
+/// a completed one holds `result`, `{kind, value}`, the value written by
+/// the [TransferResultCodec] of that kind. An `upload` holds its `source`
+/// (`path`, `size`, `growing`, `fingerprint`, `modified?`), the transport
+/// and its resume state, its acknowledged `parts` and its `owner?`.
+///
+/// ## Encoding
+///
+/// Enums by name; times in ISO 8601, which keeps whether a time was UTC,
+/// so a record reads back equal to the one written. A field at its default
+/// (null, false, 0, empty) is left out.
+///
+/// ## Decoding
+///
+/// A missing field reads as its default where the encoder leaves it out;
+/// a missing required field, a wrong type, an unknown name or tag, or a
+/// result kind no codec knows makes the frame unreadable: [decode] skips it
+/// and counts it in [JournalRead.skipped]. A part of an unknown shape is
+/// dropped alone, since the upload sends it again.
+///
+/// ## Versioning
+///
+/// Records carry no version: a field is only ever added, read as its
+/// default when an older record lacks it. A record an older build cannot
+/// read (a new state tag, a new result kind) is skipped by that build.
 final class JournalCodec {
   /// A codec that writes and reads results through [resultCodecs].
   JournalCodec(Iterable<TransferResultCodec> resultCodecs)
@@ -107,20 +143,20 @@ final class JournalCodec {
   // --- Entries ---------------------------------------------------------------
 
   Map<String, Object?> _entryToJson(JournalEntry entry) => switch (entry) {
-    JournalEntry$Header(:final generation) => {'header': generation},
-    JournalEntry$Put(:final record) => {'put': _recordToJson(record)},
-    JournalEntry$Remove(:final id) => {'remove': id.value},
+    JournalEntry$Header(:final generation) => {_Key.header: generation},
+    JournalEntry$Put(:final record) => {_Key.put: _recordToJson(record)},
+    JournalEntry$Remove(:final id) => {_Key.remove: id.value},
   };
 
   /// The entry [payload] holds, or null when it cannot be read back.
   JournalEntry? _tryEntry(Object? payload) {
     try {
       return switch (payload) {
-        {'header': final int generation} => JournalEntry$Header(generation),
-        {'put': final Map<String, Object?> record} => JournalEntry$Put(
-          _recordFromJson(record),
+        {_Key.header: final int generation} => JournalEntry$Header(generation),
+        {_Key.put: final Map<String, Object?> record} => JournalEntry$Put(
+          _recordFromJson(JsonFields(record)),
         ),
-        {'remove': final String id} => JournalEntry$Remove(
+        {_Key.remove: final String id} => JournalEntry$Remove(
           TransferId.parse(id),
         ),
         _ => null,
@@ -137,49 +173,49 @@ final class JournalCodec {
   Map<String, Object?> _recordToJson(JournalRecord record) {
     final job = record.job;
     return {
-      'id': job.id.value,
-      'direction': job.direction.name,
-      'durability': job.durability.name,
-      'priority': job.priority.name,
-      'tag': ?job.tag,
-      'key': ?job.key?.encoded,
-      'resumeOnStart': job.resumeOnStart,
-      'createdAt': job.createdAt.toIso8601String(),
-      'updatedAt': job.updatedAt.toIso8601String(),
-      'state': _stateToJson(job.state),
-      if (record.upload case final upload?) 'upload': _uploadToJson(upload),
-      'envelopeHandle': ?record.envelopeHandle,
-      'lastProgressAt': ?record.lastProgressAt?.toIso8601String(),
+      _Key.id: job.id.value,
+      _Key.direction: job.direction.name,
+      _Key.durability: job.durability.name,
+      _Key.priority: job.priority.name,
+      _Key.tag: ?job.tag,
+      _Key.key: ?job.key?.encoded,
+      _Key.resumeOnStart: job.resumeOnStart,
+      _Key.createdAt: job.createdAt.toIso8601String(),
+      _Key.updatedAt: job.updatedAt.toIso8601String(),
+      _Key.state: _stateToJson(job.state),
+      if (record.upload case final upload?) _Key.upload: _uploadToJson(upload),
+      _Key.envelopeHandle: ?record.envelopeHandle,
+      _Key.lastProgressAt: ?record.lastProgressAt?.toIso8601String(),
     };
   }
 
-  JournalRecord _recordFromJson(Map<String, Object?> json) => JournalRecord(
+  JournalRecord _recordFromJson(JsonFields json) => JournalRecord(
     job: TransferJob(
-      id: TransferId.parse(json['id']! as String),
-      direction: TransferDirection.values.byName(json['direction']! as String),
-      durability: TransferDurability.values.byName(
-        json['durability']! as String,
-      ),
-      priority: RequestPriority.values.byName(json['priority']! as String),
-      tag: json['tag'] as String?,
-      key: switch (json['key']) {
-        final String encoded => MediaKey.parse(encoded),
-        _ => null,
+      id: TransferId.parse(json.string(_Key.id)),
+      direction: json.byName(TransferDirection.values, _Key.direction),
+      durability: json.byName(TransferDurability.values, _Key.durability),
+      priority: json.byName(RequestPriority.values, _Key.priority),
+      tag: json.optionalString(_Key.tag),
+      key: switch (json.optionalString(_Key.key)) {
+        final encoded? =>
+          MediaKey.tryParse(encoded) ??
+              (throw FormatException(
+                'Expected a media key under "${_Key.key}".',
+                json.json,
+              )),
+        null => null,
       },
-      resumeOnStart: json['resumeOnStart']! as bool,
-      createdAt: DateTime.parse(json['createdAt']! as String),
-      updatedAt: DateTime.parse(json['updatedAt']! as String),
-      state: _stateFromJson(json['state']! as Map<String, Object?>),
+      resumeOnStart: json.flag(_Key.resumeOnStart),
+      createdAt: json.time(_Key.createdAt),
+      updatedAt: json.time(_Key.updatedAt),
+      state: _stateFromJson(json.object(_Key.state)),
     ),
-    upload: switch (json['upload']) {
-      final Map<String, Object?> upload => _uploadFromJson(upload),
-      _ => null,
+    upload: switch (json.optionalObject(_Key.upload)) {
+      final upload? => _uploadFromJson(upload),
+      null => null,
     },
-    envelopeHandle: json['envelopeHandle'] as String?,
-    lastProgressAt: switch (json['lastProgressAt']) {
-      final String time => DateTime.parse(time),
-      _ => null,
-    },
+    envelopeHandle: json.optionalString(_Key.envelopeHandle),
+    lastProgressAt: json.optionalTime(_Key.lastProgressAt),
   );
 
   // --- Uploads ---------------------------------------------------------------
@@ -187,75 +223,68 @@ final class JournalCodec {
   /// A part is `[index]`, or `[index, receipt]` when the remote end gave
   /// one: the list stays short for a transport that gives none.
   Map<String, Object?> _uploadToJson(JournalUpload upload) => {
-    'source': {
-      'path': upload.source.path,
-      'size': upload.source.size,
-      'growing': upload.source.growing,
-      'fingerprint': upload.source.fingerprint,
-      'modified': ?upload.source.modified?.toIso8601String(),
+    _Key.source: {
+      _Key.path: upload.source.path,
+      _Key.size: upload.source.size,
+      _Key.growing: upload.source.growing,
+      _Key.fingerprint: upload.source.fingerprint,
+      _Key.modified: ?upload.source.modified?.toIso8601String(),
     },
-    'transportId': upload.transportId,
-    'lane': upload.lane.name,
-    'partSize': upload.partSize,
-    'fileName': ?upload.fileName,
-    'contentType': ?upload.contentType,
-    'resumeToken': ?upload.resumeToken,
-    'resumeExpiresAt': ?upload.resumeExpiresAt?.toIso8601String(),
+    _Key.transportId: upload.transportId,
+    _Key.lane: upload.lane.name,
+    _Key.partSize: upload.partSize,
+    _Key.fileName: ?upload.fileName,
+    _Key.contentType: ?upload.contentType,
+    _Key.resumeToken: ?upload.resumeToken,
+    _Key.resumeExpiresAt: ?upload.resumeExpiresAt?.toIso8601String(),
     if (upload.parts.isNotEmpty)
-      'parts': [
+      _Key.parts: [
         for (final MapEntry(key: index, value: receipt) in upload.parts.entries)
           [index, ?receipt],
       ],
-    if (upload.highWaterMark != 0) 'highWaterMark': upload.highWaterMark,
+    if (upload.highWaterMark != 0) _Key.highWaterMark: upload.highWaterMark,
     if (upload.owner case final owner?)
-      'owner': {
-        'job': owner.job,
-        'item': owner.itemId,
-        'role': owner.role.name,
+      _Key.owner: {
+        _Key.job: owner.job,
+        _Key.item: owner.itemId,
+        _Key.role: owner.role.name,
       },
   };
 
-  JournalUpload _uploadFromJson(Map<String, Object?> json) {
-    final source = json['source']! as Map<String, Object?>;
+  JournalUpload _uploadFromJson(JsonFields json) {
+    final source = json.object(_Key.source);
     return JournalUpload(
       source: JournalSource(
-        path: source['path']! as String,
-        size: source['size']! as int,
-        growing: source['growing']! as bool,
-        fingerprint: source['fingerprint']! as String,
-        modified: switch (source['modified']) {
-          final String modified => DateTime.parse(modified),
-          _ => null,
-        },
+        path: source.string(_Key.path),
+        size: source.integer(_Key.size),
+        growing: source.flag(_Key.growing),
+        fingerprint: source.string(_Key.fingerprint),
+        modified: source.optionalTime(_Key.modified),
       ),
-      transportId: json['transportId']! as String,
-      lane: UploadLane.values.byName(json['lane']! as String),
-      partSize: json['partSize']! as int,
-      fileName: json['fileName'] as String?,
-      contentType: json['contentType'] as String?,
-      resumeToken: json['resumeToken'] as String?,
-      resumeExpiresAt: switch (json['resumeExpiresAt']) {
-        final String expiry => DateTime.parse(expiry),
-        _ => null,
-      },
+      transportId: json.string(_Key.transportId),
+      lane: json.byName(UploadLane.values, _Key.lane),
+      partSize: json.integer(_Key.partSize),
+      fileName: json.optionalString(_Key.fileName),
+      contentType: json.optionalString(_Key.contentType),
+      resumeToken: json.optionalString(_Key.resumeToken),
+      resumeExpiresAt: json.optionalTime(_Key.resumeExpiresAt),
       parts: {
-        for (final part in (json['parts'] as List<Object?>?) ?? const [])
-          if (part case [final int index, ...final rest])
-            index: rest.isEmpty ? null : rest.first! as String,
+        // A part of another shape is dropped, not the record: the part is
+        // sent again.
+        for (final part in json.optionalList(_Key.parts))
+          if (part case [final int index])
+            index: null
+          else if (part case [final int index, final String receipt])
+            index: receipt,
       },
-      highWaterMark: json['highWaterMark'] as int? ?? 0,
-      owner: switch (json['owner']) {
-        {
-          'job': final String job,
-          'item': final String item,
-          'role': final String role,
-        } =>
-          JournalUploadOwner(
-            job: job,
-            itemId: item,
-            role: UploadRole.values.byName(role),
-          ),
-        _ => null,
+      highWaterMark: json.optionalInteger(_Key.highWaterMark) ?? 0,
+      owner: switch (json.optionalObject(_Key.owner)) {
+        final owner? => JournalUploadOwner(
+          job: owner.string(_Key.job),
+          itemId: owner.string(_Key.item),
+          role: owner.byName(UploadRole.values, _Key.role),
+        ),
+        null => null,
       },
     );
   }
@@ -263,18 +292,21 @@ final class JournalCodec {
   // --- States ----------------------------------------------------------------
 
   Map<String, Object?> _stateToJson(TransferState state) => switch (state) {
-    TransferState$Queued(:final total) => {'is': 'queued', 'total': ?total},
+    TransferState$Queued(:final total) => {
+      _Key.variant: _Is.queued,
+      _Key.total: ?total,
+    },
     TransferState$Running(:final done, :final total, :final estimated) => {
-      'is': 'running',
-      'done': done,
-      'total': ?total,
-      if (estimated) 'estimated': true,
+      _Key.variant: _Is.running,
+      _Key.done: done,
+      _Key.total: ?total,
+      if (estimated) _Key.estimated: true,
     },
     TransferState$Paused(:final reason, :final done, :final total) => {
-      'is': 'paused',
-      'reason': reason.name,
-      'done': done,
-      'total': ?total,
+      _Key.variant: _Is.paused,
+      _Key.reason: reason.name,
+      _Key.done: done,
+      _Key.total: ?total,
     },
     TransferState$Failed(
       :final kind,
@@ -283,50 +315,53 @@ final class JournalCodec {
       :final total,
     ) =>
       {
-        'is': 'failed',
-        'kind': kind.name,
-        'retryable': retryable,
-        'done': done,
-        'total': ?total,
+        _Key.variant: _Is.failed,
+        _Key.kind: kind.name,
+        _Key.retryable: retryable,
+        _Key.done: done,
+        _Key.total: ?total,
       },
     TransferState$Completed(:final result) => {
-      'is': 'completed',
-      'result': _resultToJson(result),
+      _Key.variant: _Is.completed,
+      _Key.result: _resultToJson(result),
     },
   };
 
-  TransferState _stateFromJson(Map<String, Object?> json) {
-    final total = json['total'] as int?;
-    final done = json['done'] as int? ?? 0;
-    return switch (json['is']) {
-      'queued' => TransferState.queued(total: total),
-      'running' => TransferState.running(
+  TransferState _stateFromJson(JsonFields json) {
+    final total = json.optionalInteger(_Key.total);
+    final done = json.optionalInteger(_Key.done) ?? 0;
+    return switch (json.string(_Key.variant)) {
+      _Is.queued => TransferState.queued(total: total),
+      _Is.running => TransferState.running(
         done: done,
         total: total,
-        estimated: json['estimated'] as bool? ?? false,
+        estimated: json.optionalFlag(_Key.estimated),
       ),
-      'paused' => TransferState.paused(
-        reason: PauseReason.values.byName(json['reason']! as String),
-        done: done,
-        total: total,
-      ),
-      'failed' => TransferState.failed(
-        kind: TransferFailureKind.values.byName(json['kind']! as String),
-        retryable: json['retryable']! as bool,
+      _Is.paused => TransferState.paused(
+        reason: json.byName(PauseReason.values, _Key.reason),
         done: done,
         total: total,
       ),
-      'completed' => TransferState.completed(
-        _resultFromJson(json['result']! as Map<String, Object?>),
+      _Is.failed => TransferState.failed(
+        kind: json.byName(TransferFailureKind.values, _Key.kind),
+        retryable: json.flag(_Key.retryable),
+        done: done,
+        total: total,
       ),
-      final other => throw FormatException('Unknown transfer state.', other),
+      _Is.completed => TransferState.completed(
+        _resultFromJson(json.object(_Key.result)),
+      ),
+      final other => throw FormatException(
+        'Unknown transfer state "$other" under "${_Key.variant}".',
+        json.json,
+      ),
     };
   }
 
   Map<String, Object?> _resultToJson(TransferResult result) {
     for (final codec in _results.values) {
       if (codec.encode(result) case final json?) {
-        return {'kind': codec.kind, 'value': json};
+        return {_Key.kind: codec.kind, _Key.value: json};
       }
     }
     throw ArgumentError.value(
@@ -336,11 +371,78 @@ final class JournalCodec {
     );
   }
 
-  TransferResult _resultFromJson(Map<String, Object?> json) {
-    final kind = json['kind']! as String;
+  TransferResult _resultFromJson(JsonFields json) {
+    final kind = json.string(_Key.kind);
     final codec =
         _results[kind] ??
-        (throw FormatException('No codec for the result kind.', kind));
-    return codec.decode(json['value']! as Map<String, Object?>);
+        (throw FormatException(
+          'No codec for the result kind "$kind" under "${_Key.kind}".',
+          json.json,
+        ));
+    return codec.decode(json.object(_Key.value).json);
   }
+}
+
+/// Field names shared by both directions.
+abstract final class _Key {
+  // An entry.
+  static const String header = 'header';
+  static const String put = 'put';
+  static const String remove = 'remove';
+
+  // A record.
+  static const String id = 'id';
+  static const String direction = 'direction';
+  static const String durability = 'durability';
+  static const String priority = 'priority';
+  static const String tag = 'tag';
+  static const String key = 'key';
+  static const String resumeOnStart = 'resumeOnStart';
+  static const String createdAt = 'createdAt';
+  static const String updatedAt = 'updatedAt';
+  static const String state = 'state';
+  static const String upload = 'upload';
+  static const String envelopeHandle = 'envelopeHandle';
+  static const String lastProgressAt = 'lastProgressAt';
+
+  // An upload.
+  static const String source = 'source';
+  static const String path = 'path';
+  static const String size = 'size';
+  static const String growing = 'growing';
+  static const String fingerprint = 'fingerprint';
+  static const String modified = 'modified';
+  static const String transportId = 'transportId';
+  static const String lane = 'lane';
+  static const String partSize = 'partSize';
+  static const String fileName = 'fileName';
+  static const String contentType = 'contentType';
+  static const String resumeToken = 'resumeToken';
+  static const String resumeExpiresAt = 'resumeExpiresAt';
+  static const String parts = 'parts';
+  static const String highWaterMark = 'highWaterMark';
+  static const String owner = 'owner';
+  static const String job = 'job';
+  static const String item = 'item';
+  static const String role = 'role';
+
+  // A state.
+  static const String variant = 'is';
+  static const String total = 'total';
+  static const String done = 'done';
+  static const String estimated = 'estimated';
+  static const String reason = 'reason';
+  static const String kind = 'kind';
+  static const String retryable = 'retryable';
+  static const String result = 'result';
+  static const String value = 'value';
+}
+
+/// The `is` tags of a state.
+abstract final class _Is {
+  static const String queued = 'queued';
+  static const String running = 'running';
+  static const String paused = 'paused';
+  static const String failed = 'failed';
+  static const String completed = 'completed';
 }
