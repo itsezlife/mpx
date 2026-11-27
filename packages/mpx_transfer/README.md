@@ -234,8 +234,19 @@ transfers.systemActive.addListener(() {
   item, `perItem` lets the rest upload and holds the publish.
   `PublishJob.retry()` / `retryItem(id)` repeat only what failed, keeping a
   finished preparation and the parts already sent; a job rejected at the
-  publish stage publishes again and uploads nothing. `removeItem(id)` drops
-  an item before the publish.
+  publish stage publishes again and uploads nothing.
+- Ordering groups: jobs that share an `orderingGroup` publish in the order
+  they were made, while preparation and upload stay parallel. A failed job
+  holds no one; retried, it goes to the end of the group.
+- Hold and commit: a `hold: true` job prepares and uploads, and publishes
+  on `commit(payload:)`. Until then `addItem`, `removeItem`, `reorder`,
+  `setPayload` and `cancel` apply (`snapshot.held`); once it publishes,
+  only `removeItem` and `cancel`.
+- Item cancel: `removeItem(id)`, or a cancel of one of the item's uploads,
+  drops the item and the rest publish. A job left with no items is
+  `awaitingOwner` and publishes nothing, after a restart too, until its
+  owner commits or cancels it. `PublishJob.cancel()` removes a job in any
+  state, with its uploads.
 - Publish progress: each job and item snapshot carries a `progress`,
   0..1, byte-weighted (an item weighs its source until its preparation
   ends, then its upload's bytes), a video's preparation 30 % of its item

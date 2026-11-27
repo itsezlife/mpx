@@ -22,7 +22,9 @@ enum PublishStage {
 /// Where a publish job is.
 ///
 /// - [preparing] while any item still prepares, [uploading] while any
-///   still uploads, [publishing] while the publisher's call is under way;
+///   still uploads, [publishing] once everything is uploaded, while the
+///   publisher's call is under way or the job waits for the jobs ahead of
+///   it in its ordering group;
 /// - [awaitingPublisher] when everything is uploaded and no publisher is
 ///   registered under the job's id;
 /// - [awaitingOwner] when every item was removed and the owner decides;
@@ -118,8 +120,9 @@ final class PublishJobState$AwaitingPublisher extends PublishJobState {
   String toString() => 'PublishJobState.awaitingPublisher';
 }
 
-/// [PublishJobState.awaitingOwner]. Declared here; entered once items can
-/// be removed from a job.
+/// [PublishJobState.awaitingOwner]: the job's last item was removed, and
+/// it publishes nothing until its owner commits it (publishing what is
+/// left: the payload alone, or new items of a held job) or cancels it.
 final class PublishJobState$AwaitingOwner extends PublishJobState {
   /// See [PublishJobState.awaitingOwner].
   const PublishJobState$AwaitingOwner();
@@ -390,8 +393,8 @@ final class PublishItemState$Failed extends PublishItemState {
       'PublishItemState.failed(${stage.name}, $reason, $retryable)';
 }
 
-/// [PublishItemState.removed]. Declared here; entered once items can be
-/// removed from a job.
+/// [PublishItemState.removed]: the item left its job. A job's snapshot no
+/// longer lists it; `PublishJob.watchItem` gives this state last.
 final class PublishItemState$Removed extends PublishItemState {
   /// See [PublishItemState.removed].
   const PublishItemState$Removed();
@@ -456,6 +459,7 @@ final class PublishJobSnapshot {
     this.publisher,
     this.aliasesApplied = false,
     this.progress = 0,
+    this.held = false,
   }) : items = List.unmodifiable(items);
 
   /// The job's identity.
@@ -488,6 +492,12 @@ final class PublishJobSnapshot {
   /// earlier snapshot, a restart included; 1 once [state] is completed.
   final double progress;
 
+  /// Whether the job was made with `hold` and is not committed yet: it
+  /// prepares and uploads, but publishes only once the host commits it.
+  /// [state] goes on reading its items meanwhile (`uploading` once every
+  /// item is uploaded).
+  final bool held;
+
   /// The item [itemId], or null when the job has none of that id.
   PublishItemSnapshot? item(String itemId) {
     for (final item in items) {
@@ -506,7 +516,8 @@ final class PublishJobSnapshot {
       other.publisher == publisher &&
       other.createdAt == createdAt &&
       other.aliasesApplied == aliasesApplied &&
-      other.progress == progress;
+      other.progress == progress &&
+      other.held == held;
 
   @override
   int get hashCode => Object.hash(
@@ -518,6 +529,7 @@ final class PublishJobSnapshot {
     createdAt,
     aliasesApplied,
     progress,
+    held,
   );
 
   @override

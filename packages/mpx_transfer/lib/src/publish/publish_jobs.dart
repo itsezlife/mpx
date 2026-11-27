@@ -77,6 +77,11 @@ abstract interface class PublishUploadHost {
 ///   until it is retried or removed. A retry takes each failed item back to
 ///   where it failed (a finished preparation and every journaled upload
 ///   kept) and, for a job failed at the publish stage, publishes again.
+/// - **Order, hold, removal.** Jobs of one ordering group publish in the
+///   order of their places in its line, which a job takes when it joins
+///   (made, committed, retried after failing); a held job publishes once
+///   committed; an item removed leaves the record, and a job left with
+///   none waits for its owner.
 /// - **Journal.** Every step is kept in [journal]. An item's upload ids
 ///   are written before its uploads are queued, so a restart finds every
 ///   upload its item names, or queues it again under the same id. A
@@ -228,17 +233,40 @@ final class PublishJobs {
 
   /// See [PublishJob.watchItem].
   Stream<PublishItemSnapshot> watchItem(PublishJobId id, String itemId) =>
-      watch(id)
-          .map(
-            (job) =>
-                job.item(itemId) ??
-                (throw ArgumentError.value(
-                  itemId,
-                  'itemId',
-                  'is not in the job',
-                )),
-          )
-          .distinct();
+      Stream.multi((sink) {
+        PublishItemSnapshot? last;
+        late final StreamSubscription<PublishJobSnapshot> jobs;
+        jobs = watch(id).listen(
+          (job) {
+            final item = job.item(itemId);
+            if (item == null) {
+              final seen = last;
+              if (seen == null) {
+                sink.addError(
+                  ArgumentError.value(itemId, 'itemId', 'is not in the job'),
+                );
+              } else {
+                sink.add(
+                  PublishItemSnapshot(
+                    itemId: itemId,
+                    key: seen.key,
+                    state: const PublishItemState.removed(),
+                    progress: seen.progress,
+                  ),
+                );
+              }
+              unawaited(jobs.cancel());
+              unawaited(sink.close());
+              return;
+            }
+            if (item == last) return;
+            sink.add(last = item);
+          },
+          onError: sink.addError,
+          onDone: () => unawaited(sink.close()),
+        );
+        sink.onCancel = jobs.cancel;
+      });
 
   /// The publish section of a debug snapshot.
   PublishDebugSnapshot debugSnapshot() => PublishDebugSnapshot(
@@ -295,9 +323,9 @@ final class PublishJobs {
   /// Removes job [id] and answers the uploads it made, for the facade to
   /// cancel: its preparations stop, its record is forgotten, its watchers
   /// end and `watchJobs` lists it no more, as an owner sees a cancelled job
-  /// leave. Answers null
-  /// for an unknown job.
-  List<TransferId>? cancel(PublishJobId id) {
+  /// leave; the jobs behind it in its ordering group go on. [by] is
+  /// `owner` or `envelope`, for its event. Answers null for an unknown job.
+  List<TransferId>? cancel(PublishJobId id, {required String by}) {
     final record = _journal.record(id);
     if (record == null) return null;
     final live = _live.remove(id);
@@ -310,6 +338,7 @@ final class PublishJobs {
       }
     }
     unawaited(_journal.remove(id));
+    _progress.remove(id);
     for (final watch in [..._jobsWatches]) {
       if (!watch.last.any((job) => job.id == id)) continue;
       watch.last = [
@@ -318,16 +347,27 @@ final class PublishJobs {
       ];
       watch.sink.add(watch.last);
     }
-    return [
-      for (final item in record.items)
-        if (item.progress case ItemProgress$Uploading(
-          :final file,
-          :final thumbnail,
-        )) ...[
-          file,
-          ?thumbnail,
-        ],
-    ];
+    MpxDiagnostics.current.emit(
+      MpxEventLevel.info,
+      PublishOp.cancelled,
+      jobId: id,
+      tag: record.tag,
+      fields: () => {'by': by, 'items': record.items.length},
+    );
+    if (!_disposed) _releaseGroup(record);
+    return [for (final item in record.items) ..._uploadsOf(item)];
+  }
+
+  /// See [PublishJob.cancel]: the job is removed and its uploads cancelled,
+  /// whatever its state.
+  bool cancelByOwner(PublishJobId id) {
+    if (_disposed) return false;
+    final uploads = cancel(id, by: 'owner');
+    if (uploads == null) return false;
+    for (final upload in uploads) {
+      if (_host.recordOf(upload) != null) _host.cancelUpload(upload);
+    }
+    return true;
   }
 
   /// Stops every job: preparations are cancelled (a later start makes them
@@ -367,43 +407,22 @@ final class PublishJobs {
   }) {
     if (_disposed) throw StateError('The facade was disposed.');
     final id = PublishJobId.issue();
-    final ids = <String>{};
-    for (final item in items) {
-      if (!ids.add(item.itemId)) {
-        throw ArgumentError.value(item.itemId, 'items', 'repeats an item id');
-      }
-    }
-    if (_preparation == null) {
-      for (final item in items) {
-        if (item.source is! PublishSource$Prepare) continue;
-        MpxDiagnostics.current.emit(
-          MpxEventLevel.error,
-          PublishPreparationOp.refusedNoSeam,
-          jobId: id,
-          itemId: item.itemId,
-        );
-        throw PreparationUnavailable(item.itemId);
-      }
-    }
-    final uploads = items.any((item) => item.source is! PublishSource$Remote);
     final carrier = transport ?? _uploads.transportIds.firstOrNull;
-    if (uploads && (carrier == null || _uploads.transport(carrier) == null)) {
-      throw ArgumentError.value(
-        transport,
-        'transport',
-        'is not one of the facade transports',
-      );
-    }
+    _checkItems(id, items, const [], carrier, transport);
+    final uploads = items.any((item) => item.source is! PublishSource$Remote);
     final now = _now();
     final record = PublishRecord(
       id: id,
       tag: tag,
       publisher: publisher,
-      transport: uploads ? carrier : null,
+      // A held job may take items to upload later.
+      transport: uploads || hold ? carrier : null,
       payload: payload,
       durability: durability,
       failurePolicy: failurePolicy,
       orderingGroup: orderingGroup,
+      // A held job joins its group's line when it is committed.
+      groupOrder: orderingGroup == null || hold ? null : _nextGroupOrder(),
       hold: hold,
       idempotencyKey: idempotencyKey ?? _newKey(),
       keyFromRequest: idempotencyKey != null,
@@ -436,6 +455,55 @@ final class PublishJobs {
     }
     _advance(id);
     return PublishJob(this, id);
+  }
+
+  /// Refuses [items] for job [id], which already has [existing]: an item id
+  /// given twice, an item that needs preparation on a facade without it,
+  /// or an item to upload with no transport ([carrier], from [transport]).
+  void _checkItems(
+    PublishJobId id,
+    List<PublishItem> items,
+    List<PublishItemRecord> existing,
+    String? carrier,
+    String? transport,
+  ) {
+    final ids = {for (final item in existing) item.item.itemId};
+    for (final item in items) {
+      if (!ids.add(item.itemId)) {
+        throw ArgumentError.value(item.itemId, 'items', 'repeats an item id');
+      }
+    }
+    if (_preparation == null) {
+      for (final item in items) {
+        if (item.source is! PublishSource$Prepare) continue;
+        MpxDiagnostics.current.emit(
+          MpxEventLevel.error,
+          PublishPreparationOp.refusedNoSeam,
+          jobId: id,
+          itemId: item.itemId,
+        );
+        throw PreparationUnavailable(item.itemId);
+      }
+    }
+    final uploads = items.any((item) => item.source is! PublishSource$Remote);
+    if (uploads && (carrier == null || _uploads.transport(carrier) == null)) {
+      throw ArgumentError.value(
+        transport,
+        'transport',
+        'is not one of the facade transports',
+      );
+    }
+  }
+
+  /// The place at the end of every ordering group's line. One counter for
+  /// all groups, read from the records, so it survives a restart and only
+  /// the order within a group means anything.
+  int _nextGroupOrder() {
+    var last = 0;
+    for (final record in _journal.records) {
+      if (record.groupOrder case final order? when order > last) last = order;
+    }
+    return last + 1;
   }
 
   static String _newKey() => [
@@ -916,6 +984,7 @@ final class PublishJobs {
         thumbnail: thumbnailRef,
         media: progress.media,
         reuseKey: progress.reuseKey,
+        uploads: [progress.file, ?thumbnailId],
       ),
     );
   }
@@ -1016,7 +1085,9 @@ final class PublishJobs {
         }
       }
     }
-    if (!record.items.every((item) => item.progress is ItemProgress$Uploaded)) {
+    if (record.awaitingOwner ||
+        !record.items.every((item) => item.progress is ItemProgress$Uploaded) ||
+        (record.hold && !record.committed)) {
       _changed(id);
       return;
     }
@@ -1025,6 +1096,23 @@ final class PublishJobs {
       _end(record, const PublishJobState.completed(null));
       return;
     }
+    if (live.attempting) return;
+    final ahead = _aheadInGroup(record);
+    if (ahead > 0) {
+      if (!live.reportedGroupWait) {
+        live.reportedGroupWait = true;
+        MpxDiagnostics.current.emit(
+          MpxEventLevel.debug,
+          PublishOp.groupWait,
+          jobId: id,
+          tag: record.tag,
+          fields: () => {'ahead': ahead},
+        );
+      }
+      _changed(id);
+      return;
+    }
+    live.reportedGroupWait = false;
     final publisher = _publishers[name];
     if (publisher == null) {
       if (!live.reportedAwaiting) {
@@ -1040,8 +1128,42 @@ final class PublishJobs {
       _changed(id);
       return;
     }
-    if (live.attempting) return;
     unawaited(_attempt(record, publisher));
+  }
+
+  /// How many jobs of [record]'s ordering group are ahead of it in the
+  /// line and still on their way to publish. A job that failed, completed,
+  /// waits for its owner or was cancelled holds no one; a held job joins
+  /// the line only when committed.
+  int _aheadInGroup(PublishRecord record) {
+    final group = record.orderingGroup;
+    final place = record.groupOrder;
+    if (group == null || place == null) return 0;
+    var ahead = 0;
+    for (final other in _journal.records) {
+      if (other.orderingGroup != group ||
+          other.end != null ||
+          other.awaitingOwner) {
+        continue;
+      }
+      if (other.groupOrder case final order? when order < place) ahead++;
+    }
+    return ahead;
+  }
+
+  /// Lets the jobs behind [record] in its ordering group go on, once it no
+  /// longer holds them.
+  void _releaseGroup(PublishRecord record) {
+    final group = record.orderingGroup;
+    if (group == null || record.groupOrder == null) return;
+    for (final other in [..._journal.records]) {
+      if (other.id == record.id ||
+          other.orderingGroup != group ||
+          other.end != null) {
+        continue;
+      }
+      _advance(other.id);
+    }
   }
 
   Future<void> _attempt(PublishRecord before, Publisher publisher) async {
@@ -1138,6 +1260,7 @@ final class PublishJobs {
         );
         final written = _put(done);
         _changed(id);
+        _releaseGroup(done);
         await written;
         await _applyAliases(id);
       case PublishOutcome$Rejected(:final reason, :final retryable):
@@ -1333,43 +1456,30 @@ final class PublishJobs {
     return false;
   }
 
-  /// See [PublishJob.removeItem].
-  bool removeItem(PublishJobId id, String itemId) {
+  /// See [PublishJob.removeItem]; [by] is `host` for the host's verb and
+  /// `cell` for a cancel of one of the item's uploads.
+  bool removeItem(PublishJobId id, String itemId, {String by = 'host'}) {
     final record = _journal.record(id);
     if (_disposed || record == null || record.end != null) return false;
     final item = _itemRecord(id, itemId);
-    // An empty job waits for its owner; until that state exists, the last
-    // item stays.
-    if (item == null || record.items.length == 1) return false;
+    if (item == null) return false;
     final live = _liveOf(id);
     if (live.preparations.remove(itemId) case final handle?) {
       unawaited(handle.cancel());
     }
+    final left = [
+      for (final other in record.items)
+        if (other.item.itemId != itemId) other,
+    ];
     // The item leaves the record first, so its cancelled uploads are not
     // read as its failure.
-    unawaited(
-      _put(
-        record.copyWith(
-          items: [
-            for (final other in record.items)
-              if (other.item.itemId != itemId) other,
-          ],
-          updatedAt: _now(),
-        ),
-      ),
+    final removed = record.copyWith(
+      items: left,
+      awaitingOwner: left.isEmpty ? true : null,
+      updatedAt: _now(),
     );
-    final uploads = switch (item.progress) {
-      ItemProgress$Uploading(:final file, :final thumbnail) => [
-        file,
-        ?thumbnail,
-      ],
-      ItemProgress$Failed(
-        before: ItemProgress$Uploading(:final file, :final thumbnail),
-      ) =>
-        [file, ?thumbnail],
-      _ => const <TransferId>[],
-    };
-    for (final upload in uploads) {
+    unawaited(_put(removed));
+    for (final upload in _uploadsOf(item)) {
       if (_host.recordOf(upload) != null) _host.cancelUpload(upload);
     }
     MpxDiagnostics.current.emit(
@@ -1379,11 +1489,140 @@ final class PublishJobs {
       itemId: itemId,
       mediaKey: item.item.key,
       tag: record.tag,
-      fields: () => {'by': 'host'},
+      fields: () => {'by': by},
+    );
+    if (left.isEmpty) {
+      // The engine never cancels an empty job: whether nothing is left to
+      // send is the owner's call.
+      MpxDiagnostics.current.emit(
+        MpxEventLevel.info,
+        PublishOp.awaitingOwner,
+        jobId: id,
+        tag: record.tag,
+      );
+      _changed(id);
+      _releaseGroup(removed);
+      return true;
+    }
+    _advance(id);
+    return true;
+  }
+
+  /// One of item [owner]'s uploads was cancelled on its own (a cell's
+  /// cancel by the item's key): the item leaves its job, and the rest
+  /// publish.
+  void uploadCancelled(JournalUploadOwner owner) {
+    if (_disposed) return;
+    final id = PublishJobId.parse(owner.job);
+    if (removeItem(id, owner.itemId, by: 'cell')) return;
+    // An ended job keeps its item; one still running reads the loss.
+    if (_live.containsKey(id)) _checkUploads(id, owner.itemId);
+  }
+
+  /// See [PublishJob.addItem].
+  bool addItem(PublishJobId id, PublishItem item) {
+    final record = _journal.record(id);
+    if (_disposed || record == null || !_beforeCommit(record)) return false;
+    _checkItems(id, [item], record.items, record.transport, record.transport);
+    unawaited(
+      _put(
+        record.copyWith(
+          items: [
+            ...record.items,
+            PublishItemRecord(item, const ItemProgress$Waiting()),
+          ],
+          awaitingOwner: false,
+          updatedAt: _now(),
+        ),
+      ),
+    );
+    unawaited(_runItem(id, item.itemId));
+    _advance(id);
+    return true;
+  }
+
+  /// See [PublishJob.reorder].
+  bool reorder(PublishJobId id, List<String> itemIds) {
+    final record = _journal.record(id);
+    if (_disposed || record == null || !_beforeCommit(record)) return false;
+    final byId = {for (final item in record.items) item.item.itemId: item};
+    if (itemIds.length != byId.length ||
+        !itemIds.every(byId.containsKey) ||
+        itemIds.toSet().length != itemIds.length) {
+      throw ArgumentError.value(
+        itemIds,
+        'itemIds',
+        "is not an order of the job's items",
+      );
+    }
+    unawaited(
+      _put(
+        record.copyWith(
+          items: [for (final itemId in itemIds) byId[itemId]!],
+          updatedAt: _now(),
+        ),
+      ),
+    );
+    _changed(id);
+    return true;
+  }
+
+  /// See [PublishJob.setPayload].
+  bool setPayload(PublishJobId id, Uint8List payload) {
+    final record = _journal.record(id);
+    if (_disposed || record == null || !_beforeCommit(record)) return false;
+    unawaited(
+      _put(
+        record.copyWith(
+          payload: Uint8List.fromList(payload),
+          updatedAt: _now(),
+        ),
+      ),
+    );
+    return true;
+  }
+
+  /// See [PublishJob.commit].
+  bool commit(PublishJobId id, Uint8List? payload) {
+    final record = _journal.record(id);
+    if (_disposed || record == null || record.end != null) return false;
+    if (!_beforeCommit(record) && !record.awaitingOwner) return false;
+    final committed = record.copyWith(
+      payload: payload == null ? null : Uint8List.fromList(payload),
+      committed: record.hold ? true : null,
+      awaitingOwner: false,
+      // The owner's decision is a new send: it joins the end of the line.
+      groupOrder: record.orderingGroup == null ? null : _nextGroupOrder(),
+      updatedAt: _now(),
+    );
+    unawaited(_put(committed));
+    MpxDiagnostics.current.emit(
+      MpxEventLevel.info,
+      PublishOp.committed,
+      jobId: id,
+      tag: record.tag,
+      fields: () => {'items': committed.items.length},
     );
     _advance(id);
     return true;
   }
+
+  /// Whether [record] is a held job not yet committed, which takes every
+  /// change of its items and payload.
+  static bool _beforeCommit(PublishRecord record) =>
+      record.end == null && record.hold && !record.committed;
+
+  /// Upload ids [item] holds: its file and thumbnail while it uploads,
+  /// when it failed uploading, or once they completed.
+  static List<TransferId> _uploadsOf(PublishItemRecord item) =>
+      switch (item.progress) {
+        ItemProgress$Uploading(:final file, :final thumbnail) ||
+        ItemProgress$Failed(
+          before: ItemProgress$Uploading(:final file, :final thumbnail),
+        ) => [file, ?thumbnail],
+        ItemProgress$Uploaded(:final uploads) => uploads,
+        _ => const <TransferId>[],
+      };
 
   /// The stage of the first failed item of [record].
   static PublishStage _failedStage(PublishRecord record) {
@@ -1415,6 +1654,12 @@ final class PublishJobs {
             _ => item,
           },
       ],
+      // A failed job no longer held its group: retried, it joins the end
+      // of the line.
+      groupOrder:
+          record.end is PublishJobState$Failed && record.groupOrder != null
+          ? _nextGroupOrder()
+          : null,
       clearEnd: true,
       updatedAt: _now(),
     );
@@ -1427,7 +1672,9 @@ final class PublishJobs {
       tag: record.tag,
       fields: () => {'stage': stage.name, 'items': reset.length},
     );
-    final live = _liveOf(id)..reportedAwaiting = false;
+    final live = _liveOf(id)
+      ..reportedAwaiting = false
+      ..reportedGroupWait = false;
     for (final (index, item) in reopened.items.indexed) {
       if (!reset.contains(item.item.itemId)) continue;
       _emitStage(
@@ -1452,6 +1699,7 @@ final class PublishJobs {
   void _end(PublishRecord record, PublishJobState end) {
     unawaited(_put(record.copyWith(end: end, updatedAt: _now())));
     _changed(record.id);
+    _releaseGroup(record);
   }
 
   // --- State -----------------------------------------------------------------
@@ -1476,6 +1724,7 @@ final class PublishJobs {
       ),
       aliasesApplied:
           record.end is PublishJobState$Completed && record.aliases.isEmpty,
+      held: record.hold && !record.committed,
     );
   }
 
@@ -1614,6 +1863,7 @@ final class PublishJobs {
     if (record.end case final end?) return end;
     final live = _live[record.id];
     if (live?.attempting ?? false) return const PublishJobState.publishing();
+    if (record.awaitingOwner) return const PublishJobState.awaitingOwner();
     final progress = [for (final item in record.items) item.progress];
     if (progress.any((p) => p is ItemProgress$Waiting)) {
       return const PublishJobState.preparing();
@@ -1633,8 +1883,10 @@ final class PublishJobs {
     )) {
       return const PublishJobState.uploading();
     }
-    if (progress.any((p) => p is ItemProgress$Failed)) {
-      // Per-item policy: publish waits for the host.
+    if (progress.any((p) => p is ItemProgress$Failed) ||
+        (record.hold && !record.committed)) {
+      // Per-item policy: publish waits for the host; a held job, for its
+      // commit.
       return const PublishJobState.uploading();
     }
     final publisher = record.publisher;
@@ -1646,8 +1898,10 @@ final class PublishJobs {
 
   // --- Plumbing --------------------------------------------------------------
 
+  /// Whether job [id] still goes on: not ended, and not cancelled (a
+  /// cancelled job has no record).
   bool _running(PublishJobId id) =>
-      !_disposed && _journal.record(id)?.end == null;
+      !_disposed && (_journal.record(id)?.isRunning ?? false);
 
   _Live _liveOf(PublishJobId id) => _live.putIfAbsent(id, _Live.new);
 
@@ -1738,6 +1992,9 @@ final class _Live {
 
   /// Whether `awaitingPublisher` was reported in this run.
   bool reportedAwaiting = false;
+
+  /// Whether the job's current wait for its ordering group was reported.
+  bool reportedGroupWait = false;
 }
 
 /// One `watch` listener and the snapshot it saw last.

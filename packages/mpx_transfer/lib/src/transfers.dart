@@ -534,7 +534,9 @@ final class Transfers {
   /// no cancelled state; watchers see the job leave.
   ///
   /// Applies in every state, a completed job included (it leaves the query
-  /// before its retention ends). Answers false for an unknown id.
+  /// before its retention ends). An upload of a publish job's item takes
+  /// the item out of its job, which goes on with the rest
+  /// (`PublishJob.removeItem`). Answers false for an unknown id.
   bool cancel(TransferId id) => _cancel(id, by: 'user');
 
   /// [cancel], reported as made [by] the user or the job's owner.
@@ -545,7 +547,15 @@ final class Transfers {
     _stopRun(id);
     _queuedAt.remove(id);
     _journal.remove(id);
-    if (owner != null) _publish?.uploadChanged(job, owner);
+    if (owner != null) {
+      // A user's cancel of one upload drops its item from the job; the
+      // job's own cancels only tell it.
+      if (by == 'user') {
+        _publish?.uploadCancelled(owner);
+      } else {
+        _publish?.uploadChanged(job, owner);
+      }
+    }
     _deleteSources(id);
     MpxDiagnostics.current.emit(
       MpxEventLevel.info,
@@ -1102,7 +1112,7 @@ final class Transfers {
           PublishJobId.parse(owner.job),
     };
     for (final owner in owners) {
-      cancelled.addAll(_publish?.cancel(owner) ?? const []);
+      cancelled.addAll(_publish?.cancel(owner, by: 'envelope') ?? const []);
     }
     _envelopeHeld = true;
     try {
