@@ -101,10 +101,7 @@ final class IosTransferEnvelope implements TransferEnvelope {
   Stream<TransferEnvelopeEvent> get events => _events.stream;
 
   @override
-  Future<Set<String>> live() async {
-    final attached = await _attach();
-    return {?attached.handle};
-  }
+  Future<Set<String>> live() async => (await _attach()).live;
 
   @override
   Future<TransferEnvelopeStart> start(
@@ -114,7 +111,12 @@ final class IosTransferEnvelope implements TransferEnvelope {
     _progress = progress;
     _config = config;
     await _attach();
-    final reply = await _channel.invokeMapMethod<String, Object?>('arm');
+    final Map<String, Object?>? reply;
+    try {
+      reply = await _channel.invokeMapMethod<String, Object?>('arm');
+    } on MissingPluginException {
+      return const TransferEnvelopeStart.refused('platform');
+    }
     final handle = reply?['handle'];
     if (handle is! String) return const TransferEnvelopeStart.refused('error');
     _arm(handle, config, progress);
@@ -135,7 +137,7 @@ final class IosTransferEnvelope implements TransferEnvelope {
   ) {
     final attached = _attached;
     _arm(handle, config, progress);
-    if (attached == null || attached.handle != handle) return;
+    if (attached == null || !attached.live.contains(handle)) return;
     _kind = attached.kind;
     if (_kind == TransferEnvelopeKind.continuedProcessing) _startPushing();
     if (!attached.foreground) _scheduleSubmission(resignedActive: true);
@@ -162,7 +164,8 @@ final class IosTransferEnvelope implements TransferEnvelope {
       case 'held':
         if (args['handle'] != _handle) return null;
         _hold(_kindOf(args['kind']));
-      case 'ended':
+      // The seam event, shaped as on Android.
+      case 'event' when args['type'] == 'systemEnded':
         if (args['handle'] != _handle || _handle == null) return null;
         _disarm();
         _events.add(
@@ -425,22 +428,32 @@ final class IosTransferEnvelope implements TransferEnvelope {
   /// continued-processing tasks exist here, and the records it kept while
   /// no Dart side was attached, which are emitted now.
   Future<_Attached> _attach() => _attaching ??= () async {
+    final Map<String, Object?>? reply;
     try {
-      final reply = await _channel.invokeMapMethod<String, Object?>('attach', {
-        'nativeLogBytes': nativeLogBytes,
+      reply = await _channel.invokeMapMethod<String, Object?>('attach', {
+        'logBytes': nativeLogBytes,
       });
-      final attached = _Attached(
-        handle: reply?['handle'] as String?,
-        kind: _kindOf(reply?['kind']),
-        foreground: reply?['foreground'] != false,
-        continued: reply?['continued'] == true,
-      );
-      _merge(reply?['records']);
-      return _attached = attached;
+    } on MissingPluginException {
+      // No native part (a host or test without the plugin): nothing holds
+      // the process, and nothing is submitted.
+      return _attached = _Attached.none();
     } on Object {
       _attaching = null;
       rethrow;
     }
+    final live = reply?['live'];
+    final attached = _Attached(
+      live: {
+        if (live is List)
+          for (final handle in live)
+            if (handle is String) handle,
+      },
+      kind: _kindOf(reply?['kind']),
+      foreground: reply?['foreground'] != false,
+      continued: reply?['continued'] == true,
+    );
+    _merge(reply?['records']);
+    return _attached = attached;
   }();
 
   void _merge(Object? records) {
@@ -466,8 +479,13 @@ final class IosTransferEnvelope implements TransferEnvelope {
           fields: {
             if (fields is Map)
               for (final MapEntry(:key, :value) in fields.entries)
-                if (key is String && (value is num || value is String))
-                  key: value as Object,
+                if (key is String)
+                  if (value case final num number)
+                    key: number
+                  else if (value case final bool flag)
+                    key: flag
+                  else if (value case final String text)
+                    key: MpxEvent.clip(text),
             'native': true,
           },
         ),
@@ -514,15 +532,22 @@ final class IosTransferEnvelope implements TransferEnvelope {
 /// What the native part answered when this side attached.
 final class _Attached {
   _Attached({
-    required this.handle,
+    required this.live,
     required this.kind,
     required this.foreground,
     required this.continued,
   });
 
+  /// No native part answered.
+  _Attached.none()
+    : live = const {},
+      kind = null,
+      foreground = true,
+      continued = false;
+
   /// The envelope it still holds armed, from before a restart of the Dart
-  /// side; null when none.
-  final String? handle;
+  /// side (at most one); empty when none.
+  final Set<String> live;
 
   /// What held the process then.
   final TransferEnvelopeKind? kind;

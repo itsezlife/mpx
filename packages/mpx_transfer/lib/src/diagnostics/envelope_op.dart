@@ -26,10 +26,6 @@ enum EnvelopeOp implements DiagnosticOp {
   /// `submitFailed`).
   degraded,
 
-  /// The engine's progress was pushed to the platform's progress UI
-  /// (trace; `fraction` when the total is known, `jobs`).
-  progressPushed,
-
   /// The system ended the envelope; its jobs paused (warning; `jobs`,
   /// `cause`; the first job).
   systemEnded,
@@ -47,9 +43,13 @@ enum EnvelopeOp implements DiagnosticOp {
   /// showed).
   notificationTap,
 
-  /// The records the native part kept while no Dart side was attached were
-  /// emitted, each with its original time and `native: true` (info;
-  /// `records`, `oldestAgeS`).
+  /// The native part showed new progress in the platform's UI (trace;
+  /// `jobs`, `fraction` when the size is known; the job shown).
+  progressPushed,
+
+  /// The records the native part kept while Dart was not running were
+  /// reported, each with its own time and `native: true` (info; `records`,
+  /// `oldestAgeS`).
   nativeMerged;
 
   @override

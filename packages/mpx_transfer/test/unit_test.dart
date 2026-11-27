@@ -10,7 +10,6 @@ import 'download/tracked_download_diagnostics_test.dart'
     as tracked_download_diagnostics_test;
 import 'download/tracked_download_view_test.dart' as tracked_download_view_test;
 import 'download/tracked_downloads_test.dart' as tracked_downloads_test;
-import 'envelope/ios_transfer_envelope_test.dart' as ios_transfer_envelope_test;
 import 'job/transfer_id_test.dart' as transfer_id_test;
 import 'journal/journal_store_contract_test.dart'
     as journal_store_contract_test;
@@ -20,13 +19,19 @@ import 'publish/publish_envelope_test.dart' as publish_envelope_test;
 import 'publish/publish_job_test.dart' as publish_job_test;
 import 'publish/publish_kill_test.dart' as publish_kill_test;
 import 'publish/publish_open_test.dart' as publish_open_test;
+import 'publish/publish_order_hold_cancel_test.dart'
+    as publish_order_hold_cancel_test;
 import 'publish/publish_outcome_test.dart' as publish_outcome_test;
 import 'publish/publish_progress_test.dart' as publish_progress_test;
 import 'publish/publish_watch_jobs_test.dart' as publish_watch_jobs_test;
 import 'reuse/reuse_facade_test.dart' as reuse_facade_test;
 import 'reuse/reuse_table_contract_test.dart' as reuse_table_contract_test;
+import 'transfers/android_transfer_envelope_test.dart'
+    as android_transfer_envelope_test;
 import 'transfers/envelope_interruptions_test.dart'
     as envelope_interruptions_test;
+import 'transfers/ios_transfer_envelope_test.dart'
+    as ios_transfer_envelope_test;
 import 'transfers/journal_diagnostics_test.dart' as journal_diagnostics_test;
 import 'transfers/journal_kill_test.dart' as journal_kill_test;
 import 'transfers/pause_reasons_test.dart' as pause_reasons_test;
@@ -57,7 +62,6 @@ void main() {
   );
   group('tracked_download_view_test', tracked_download_view_test.main);
   group('tracked_downloads_test', tracked_downloads_test.main);
-  group('ios_transfer_envelope_test', ios_transfer_envelope_test.main);
   group('transfer_id_test', transfer_id_test.main);
   group('journal_store_contract_test', journal_store_contract_test.main);
   group('transfer_journal_test', transfer_journal_test.main);
@@ -66,12 +70,15 @@ void main() {
   group('publish_job_test', publish_job_test.main);
   group('publish_kill_test', publish_kill_test.main);
   group('publish_open_test', publish_open_test.main);
+  group('publish_order_hold_cancel_test', publish_order_hold_cancel_test.main);
   group('publish_outcome_test', publish_outcome_test.main);
   group('publish_progress_test', publish_progress_test.main);
   group('publish_watch_jobs_test', publish_watch_jobs_test.main);
   group('reuse_facade_test', reuse_facade_test.main);
   group('reuse_table_contract_test', reuse_table_contract_test.main);
+  group('android_transfer_envelope_test', android_transfer_envelope_test.main);
   group('envelope_interruptions_test', envelope_interruptions_test.main);
+  group('ios_transfer_envelope_test', ios_transfer_envelope_test.main);
   group('journal_diagnostics_test', journal_diagnostics_test.main);
   group('journal_kill_test', journal_kill_test.main);
   group('pause_reasons_test', pause_reasons_test.main);

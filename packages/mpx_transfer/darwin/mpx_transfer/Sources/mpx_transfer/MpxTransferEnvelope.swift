@@ -90,9 +90,9 @@ final class MpxTransferEnvelope {
     switch call.method {
     case "attach":
       attached = true
-      if let limit = args["nativeLogBytes"] as? Int, limit > 0 { log.limit = limit }
+      if let limit = args["logBytes"] as? Int, limit > 0 { log.limit = limit }
       result([
-        "handle": handle as Any,
+        "live": handle.map { [$0] } ?? [],
         "kind": heldKind as Any,
         "foreground": !inBackground,
         "continued": MpxTransferEnvelope.continuedSupported,
@@ -344,7 +344,7 @@ final class MpxTransferEnvelope {
     log.record("systemEnded", level: "warning", fields: fields, keep: !attached)
     letGo()
     handle = nil
-    send("ended", ["handle": armed, "cause": cause])
+    send("event", ["type": "systemEnded", "handle": armed, "cause": cause])
   }
 
   private func send(_ method: String, _ args: [String: Any]) {

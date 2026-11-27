@@ -44,6 +44,9 @@ android {
         getByName("main") {
             java.srcDirs("src/main/kotlin")
         }
+        getByName("test") {
+            java.srcDirs("src/test/kotlin")
+        }
     }
 
     defaultConfig {
@@ -52,3 +55,7 @@ android {
     }
 }
 
+dependencies {
+    // JVM unit tests (src/test): the envelope's rules and its ring log.
+    testImplementation("junit:junit:4.13.2")
+}

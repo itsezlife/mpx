@@ -34,7 +34,10 @@ final class PublishRecord {
     this.publisher,
     this.transport,
     this.orderingGroup,
+    this.groupOrder,
     this.hold = false,
+    this.committed = false,
+    this.awaitingOwner = false,
     this.attempts = 0,
     this.reuploads = 0,
     Map<String, MediaKey> aliases = const {},
@@ -67,8 +70,22 @@ final class PublishRecord {
   /// The job's ordering group, when it has one.
   final String? orderingGroup;
 
+  /// The job's place in [orderingGroup]'s line: it publishes after every
+  /// job of the group with a lower place that is still on its way. Taken
+  /// when the job joins the line (made, committed, or retried after it
+  /// failed), so a job that joins again goes to the end; null outside a
+  /// line (no group, or held and not committed yet).
+  final int? groupOrder;
+
   /// Whether the job publishes only once committed.
   final bool hold;
+
+  /// Whether the host committed a held job.
+  final bool committed;
+
+  /// Whether the job's last item was removed and it waits for its owner to
+  /// commit or cancel it. A job made with no items never waits so.
+  final bool awaitingOwner;
 
   /// The key every publish attempt carries.
   final String idempotencyKey;
@@ -103,10 +120,17 @@ final class PublishRecord {
   /// restart's progress starts from, so the ring does not go back.
   final double progress;
 
+  /// Whether the job goes on: it has not ended.
+  bool get isRunning => end == null;
+
   /// This record with the given parts replaced; [clearEnd] reopens an
   /// ended job.
   PublishRecord copyWith({
     List<PublishItemRecord>? items,
+    Uint8List? payload,
+    int? groupOrder,
+    bool? committed,
+    bool? awaitingOwner,
     int? attempts,
     int? reuploads,
     Map<String, MediaKey>? aliases,
@@ -119,11 +143,14 @@ final class PublishRecord {
     tag: tag,
     publisher: publisher,
     transport: transport,
-    payload: payload,
+    payload: payload ?? this.payload,
     durability: durability,
     failurePolicy: failurePolicy,
     orderingGroup: orderingGroup,
+    groupOrder: groupOrder ?? this.groupOrder,
     hold: hold,
+    committed: committed ?? this.committed,
+    awaitingOwner: awaitingOwner ?? this.awaitingOwner,
     idempotencyKey: idempotencyKey,
     keyFromRequest: keyFromRequest,
     createdAt: createdAt,
@@ -222,7 +249,13 @@ final class ItemProgress$Uploaded extends ItemProgress {
     this.reused = false,
     this.media,
     this.reuseKey,
+    this.uploads = const [],
   });
+
+  /// The completed uploads that sent the item, its file's and its
+  /// thumbnail's: what a cancel of the job or a removal of the item drops.
+  /// Empty for a remote item or a reuse hit.
+  final List<TransferId> uploads;
 
   /// The prepared file that was sent; null for a remote item or a reuse
   /// hit, which sent nothing.
@@ -284,7 +317,10 @@ abstract final class PublishRecordCodec {
     'durability': record.durability.name,
     'failurePolicy': record.failurePolicy.name,
     'orderingGroup': ?record.orderingGroup,
+    'groupOrder': ?record.groupOrder,
     if (record.hold) 'hold': true,
+    if (record.committed) 'committed': true,
+    if (record.awaitingOwner) 'awaitingOwner': true,
     'idempotencyKey': record.idempotencyKey,
     'keyFromRequest': record.keyFromRequest,
     'createdAt': record.createdAt.toIso8601String(),
@@ -319,7 +355,10 @@ abstract final class PublishRecordCodec {
         json['failurePolicy']! as String,
       ),
       orderingGroup: json['orderingGroup'] as String?,
+      groupOrder: json['groupOrder'] as int?,
       hold: json['hold'] as bool? ?? false,
+      committed: json['committed'] as bool? ?? false,
+      awaitingOwner: json['awaitingOwner'] as bool? ?? false,
       idempotencyKey: json['idempotencyKey']! as String,
       keyFromRequest: json['keyFromRequest']! as bool,
       createdAt: DateTime.parse(json['createdAt']! as String),
@@ -395,6 +434,7 @@ abstract final class PublishRecordCodec {
           :final reused,
           :final media,
           :final reuseKey,
+          :final uploads,
         ) =>
           {
             'is': 'uploaded',
@@ -404,6 +444,8 @@ abstract final class PublishRecordCodec {
             if (media != null)
               'media': PreparationEncoding.encodePrepared(media),
             'reuseKey': ?reuseKey?.encoded,
+            if (uploads.isNotEmpty)
+              'uploads': [for (final upload in uploads) upload.value],
           },
         ItemProgress$Failed(
           :final stage,
@@ -479,6 +521,11 @@ abstract final class PublishRecordCodec {
         reused: progress['reused'] as bool? ?? false,
         media: media(),
         reuseKey: reuseKey(),
+        uploads: [
+          for (final upload
+              in progress['uploads'] as List<Object?>? ?? const [])
+            TransferId.parse(upload! as String),
+        ],
       ),
       'failed' => ItemProgress$Failed(
         stage: PublishStage.values.byName(progress['stage']! as String),

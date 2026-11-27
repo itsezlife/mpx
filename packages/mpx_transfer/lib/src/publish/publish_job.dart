@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:meta/meta.dart';
 import 'package:mpx_transfer/src/publish/publish_jobs.dart';
 import 'package:mpx_transfer/src/publish/publish_request.dart';
@@ -28,8 +30,10 @@ final class PublishJob {
   /// whenever it changes. Ends when the engine shuts down.
   Stream<PublishJobSnapshot> watch() => _jobs.watch(id);
 
-  /// Snapshots of item [itemId], as [watch] gives the job's. Throws an
-  /// [ArgumentError] on listen for an id the job does not have.
+  /// Snapshots of item [itemId], as [watch] gives the job's. Once the item
+  /// leaves the job (removed, or one of its uploads cancelled) the last
+  /// snapshot is `removed` and the stream ends. Throws an [ArgumentError]
+  /// on listen for an id the job does not have.
   Stream<PublishItemSnapshot> watchItem(String itemId) =>
       _jobs.watchItem(id, itemId);
 
@@ -51,14 +55,55 @@ final class PublishJob {
   /// Answers false for an item that has not failed or a completed job.
   bool retryItem(String itemId) => _jobs.retryItem(id, itemId);
 
-  /// Removes item [itemId] from the job before it publishes: its uploads
-  /// and its preparation stop, and the job goes on with the other items,
-  /// publishing once each of them is uploaded. With the per-item policy,
-  /// that is how a host gives up on a failed item.
+  /// Removes item [itemId] from the job: its uploads and its preparation
+  /// stop, and the job goes on with the other items, publishing once each
+  /// of them is uploaded. With the per-item policy, that is how a host
+  /// gives up on a failed item. Allowed until the job ends, during the
+  /// publisher's call too (the remote end then deals with an item it was
+  /// sent).
   ///
-  /// Answers false for an unknown item, a job that ended, or the job's
-  /// last item.
+  /// Removing the last item leaves the job `awaitingOwner`: it publishes
+  /// nothing until its owner [commit]s it (the payload alone, or, for a
+  /// held job, the items it adds) or [cancel]s it; the engine never
+  /// decides that for it. A cancel of one of the item's uploads
+  /// (`Transfers.cancel`) removes the item the same way.
+  ///
+  /// Answers false for an unknown item or a job that ended.
   bool removeItem(String itemId) => _jobs.removeItem(id, itemId);
+
+  /// Adds [item] at the end of a held job not committed yet; it prepares
+  /// and uploads at once. A job waiting for its owner goes on.
+  ///
+  /// Answers false once the job publishes (it was made without `hold`, or
+  /// committed) or ended. Throws as `Transfers.publish` does for a bad
+  /// item: an id the job has, an item that needs preparation on a facade
+  /// without it, or an item to upload when the facade has no transport.
+  bool addItem(PublishItem item) => _jobs.addItem(id, item);
+
+  /// Puts the items of a held job not committed yet in the order of
+  /// [itemIds], each of the job's item ids once (an [ArgumentError]
+  /// otherwise). Answers false once the job publishes or ended.
+  bool reorder(List<String> itemIds) => _jobs.reorder(id, itemIds);
+
+  /// Replaces the payload of a held job not committed yet. Answers false
+  /// once the job publishes or ended.
+  bool setPayload(Uint8List payload) => _jobs.setPayload(id, payload);
+
+  /// Lets the job publish: a held job once its items are uploaded, a job
+  /// waiting for its owner with what it has left. With [payload] the job
+  /// publishes that instead of the one it has. In an ordering group the job
+  /// takes its place at the end of the line now.
+  ///
+  /// Answers false for any other job: one that already publishes or ended.
+  bool commit({Uint8List? payload}) => _jobs.commit(id, payload);
+
+  /// Cancels the job in any state: its preparations stop, its uploads are
+  /// cancelled (what a held job uploaded included), and it is removed, so
+  /// its watchers end and `Transfers.watchJobs` lists it no more. Jobs
+  /// behind it in its ordering group go on.
+  ///
+  /// Answers false for a job the engine no longer has.
+  bool cancel() => _jobs.cancelByOwner(id);
 
   @override
   bool operator ==(Object other) => other is PublishJob && other.id == id;

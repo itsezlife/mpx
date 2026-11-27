@@ -130,7 +130,19 @@ void main() {
     final answer = await envelope.start(_progress(0), _config);
     expect(answer, const TransferEnvelopeStart.started('ios-1'));
     expect([for (final call in native.calls) call.method], ['attach', 'arm']);
-    expect(native.calls.first.arguments, {'nativeLogBytes': 2 * 1024 * 1024});
+    expect(native.calls.first.arguments, {'logBytes': 2 * 1024 * 1024});
+  });
+
+  test('without a native part nothing is live and a start is refused '
+      'platform', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_channel, null);
+    final envelope = IosTransferEnvelope(channel: _channel);
+    expect(await envelope.live(), isEmpty);
+    expect(
+      await envelope.start(_progress(0), _config),
+      const TransferEnvelopeStart.refused('platform'),
+    );
   });
 
   group('afterDelay (default)', () {
@@ -393,7 +405,11 @@ void main() {
         async.elapse(const Duration(seconds: 10));
         native
           ..send('held', {'handle': 'ios-1', 'kind': 'continuedProcessing'})
-          ..send('ended', {'handle': 'ios-1', 'cause': 'stop'});
+          ..send('event', {
+            'type': 'systemEnded',
+            'handle': 'ios-1',
+            'cause': 'stop',
+          });
         async.flushMicrotasks();
         expect(
           events.last,
@@ -405,7 +421,11 @@ void main() {
         // Disarmed: later calls about that envelope change nothing.
         final count = events.length;
         native
-          ..send('ended', {'handle': 'ios-1', 'cause': 'expiry'})
+          ..send('event', {
+            'type': 'systemEnded',
+            'handle': 'ios-1',
+            'cause': 'expiry',
+          })
           ..send('lifecycle', {'state': 'active'});
         async
           ..flushMicrotasks()
@@ -455,7 +475,11 @@ void main() {
       async.elapse(const Duration(seconds: 30));
       expect(native.named('submit'), hasLength(1));
 
-      native.send('ended', {'handle': 'ios-1', 'cause': 'expiry'});
+      native.send('event', {
+        'type': 'systemEnded',
+        'handle': 'ios-1',
+        'cause': 'expiry',
+      });
       async.flushMicrotasks();
       expect(
         events.last,
@@ -581,7 +605,7 @@ void main() {
       native.attach = {
         'foreground': false,
         'continued': true,
-        'handle': 'ios-9',
+        'live': ['ios-9'],
         'kind': 'bgTask',
       };
       final envelope = IosTransferEnvelope(channel: _channel);
@@ -617,7 +641,11 @@ void main() {
     lifecycle.emit(AppLifecycleState.hidden);
     native
       ..send('lifecycle', {'state': 'background', 'kind': 'bgTask'})
-      ..send('ended', {'handle': 'ios-1', 'cause': 'expiry'});
+      ..send('event', {
+        'type': 'systemEnded',
+        'handle': 'ios-1',
+        'cause': 'expiry',
+      });
     await pumpEventQueue();
 
     expect(

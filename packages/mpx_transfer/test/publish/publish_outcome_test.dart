@@ -528,17 +528,20 @@ void main() {
       },
     );
 
-    test('the last item is not removed, nor an item of an ended job', () async {
-      final h = await publishing([fakeTransport()]);
-      h.transfers.registerPublisher(publisherId, FakePublisher());
-      final job = h.transfers.publish(
-        perItem([itemOf('a', PublishSource.prepared(preparedOf(10)))]),
-      );
-      expect(job.removeItem('a'), isFalse);
-      expect(job.removeItem('nope'), isFalse);
-      await pumpEventQueue();
-      expect(job.snapshot.state, const PublishJobState.completed(null));
-    });
+    test(
+      'an unknown item and an item of an ended job are not removed',
+      () async {
+        final h = await publishing([fakeTransport()]);
+        h.transfers.registerPublisher(publisherId, FakePublisher());
+        final job = h.transfers.publish(
+          perItem([itemOf('a', PublishSource.prepared(preparedOf(10)))]),
+        );
+        expect(job.removeItem('nope'), isFalse);
+        await pumpEventQueue();
+        expect(job.snapshot.state, const PublishJobState.completed(null));
+        expect(job.removeItem('a'), isFalse);
+      },
+    );
   });
 
   group('kills', () {

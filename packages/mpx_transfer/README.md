@@ -6,9 +6,8 @@ a durability, and every job is found through one observable query on one
 facade, `Transfers`.
 
 Early: this release holds the state model, the verbs, the query, the
-journal that brings every job back after a kill, and tracked downloads.
-Uploads, publish jobs and the native OS envelopes arrive in the releases
-after it.
+journal that brings every job back after a kill, tracked downloads,
+uploads, publish jobs and the Android and iOS OS envelopes.
 
 ## Install
 
@@ -156,9 +155,14 @@ transfers.retry(id);
 transfers.cancel(id); // removes it
 
 // The OS envelope's text and icon, already localised by the host. Without
-// a config `system` jobs run in process.
-// On iOS the envelope is `IosTransferEnvelope()` (host setup below).
-//   Transfers.open(..., envelope: platformEnvelope,
+// a config `system` jobs run in process. Host setup: "Android" and
+// "iOS" below.
+//   Transfers.open(...,
+//       envelope: Platform.isAndroid
+//           ? AndroidTransferEnvelope()
+//           : Platform.isIOS
+//           ? IosTransferEnvelope()
+//           : null,
 //       envelopeConfig: TransferEnvelopeConfig(
 //         title: l10n.sendingMedia,
 //         cancelAllLabel: l10n.cancelAll,
@@ -178,6 +182,78 @@ transfers.systemActive.addListener(() {
   // e.g. show or hide a "transfers running" hint
 });
 ```
+
+## Android
+
+`AndroidTransferEnvelope` keeps `system` jobs running with the app in the
+background and the screen off: a user-initiated data transfer job on
+Android 14 and later, a `dataSync` foreground service before, with one
+notification for every job inside it (the engine's progress, "cancel all",
+a tap that opens the app and arrives on `notificationTaps`). It starts when
+a long job is created while the app is visible (a video, or more than
+`longJobBytes`, 10 MiB), and ends when its jobs drain.
+
+The plugin's manifest declares the job service, the foreground service and
+the cancel receiver, and no permissions. A host that wants `system`
+transfers adds them to its own `AndroidManifest.xml`:
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Android 14 and later: the user-initiated data transfer job. -->
+    <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
+    <!-- Before Android 14: the dataSync foreground service. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Android 13 and later: the notification in the drawer (without it
+         the job shows in the Task Manager only). Ask for it at run time. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+</manifest>
+```
+
+Without them the platform refuses the envelope; the plugin catches the
+refusal (`envelope` `refused`, then `degraded`) and the jobs run in
+process. An app published on Google Play that targets Android 14 or later
+also declares the `dataSync` foreground service type in Play Console
+(App content, Foreground service permissions): a short description of the
+user-started upload, the impact of deferring it, and a video of a user
+starting a transfer and the notification that follows.
+
+The notification's title, text, "cancel all" label, progress line and
+small icon (a drawable or mipmap name) come from `TransferEnvelopeConfig`;
+the title also names the notification channel. The system ends the
+envelope after a time limit, a quota or a lost network, which pauses its
+jobs `systemInterrupted`; a low-memory kill is reported at the next start.
+The native side logs every envelope event to logcat (tag `mpx_transfer`)
+and, while Dart is not running, to a ring file of at most 2 MiB
+(`nativeLogBytes`), merged into diagnostics at the next start.
+
+## iOS
+
+`IosTransferEnvelope` holds the process for `system` jobs once the app
+leaves the foreground: a background task (about 30 s), and on iOS 26 and
+later a continued-processing task whose title, text and progress the
+system shows in a Live Activity (no widget extension). Features below.
+
+For `system` transfers in the background on iOS 26 and later, the app's
+`Info.plist` names the task identifier and the background mode. Without
+the identifier the background task (about 30 s) still holds the process,
+and each submission is reported refused (`noIdentifier`).
+
+```xml
+<key>BGTaskSchedulerPermittedIdentifiers</key>
+<array>
+  <string>$(PRODUCT_BUNDLE_IDENTIFIER).mpx.transfer.*</string>
+</array>
+<key>UIBackgroundModes</key>
+<array>
+  <string>processing</string>
+</array>
+```
+
+The plugin registers each task under that prefix itself. iOS 15 is the
+floor; an app built with an SDK older than iOS 26's has the background
+task only.
 
 ## Features
 
@@ -235,8 +311,19 @@ transfers.systemActive.addListener(() {
   item, `perItem` lets the rest upload and holds the publish.
   `PublishJob.retry()` / `retryItem(id)` repeat only what failed, keeping a
   finished preparation and the parts already sent; a job rejected at the
-  publish stage publishes again and uploads nothing. `removeItem(id)` drops
-  an item before the publish.
+  publish stage publishes again and uploads nothing.
+- Ordering groups: jobs that share an `orderingGroup` publish in the order
+  they were made, while preparation and upload stay parallel. A failed job
+  holds no one; retried, it goes to the end of the group.
+- Hold and commit: a `hold: true` job prepares and uploads, and publishes
+  on `commit(payload:)`. Until then `addItem`, `removeItem`, `reorder`,
+  `setPayload` and `cancel` apply (`snapshot.held`); once it publishes,
+  only `removeItem` and `cancel`.
+- Item cancel: `removeItem(id)`, or a cancel of one of the item's uploads,
+  drops the item and the rest publish. A job left with no items is
+  `awaitingOwner` and publishes nothing, after a restart too, until its
+  owner commits or cancels it. `PublishJob.cancel()` removes a job in any
+  state, with its uploads.
 - Publish progress: each job and item snapshot carries a `progress`,
   0..1, byte-weighted (an item weighs its source until its preparation
   ends, then its upload's bytes), a video's preparation 30 % of its item
@@ -307,28 +394,6 @@ transfers.systemActive.addListener(() {
   `FakePublisher`, answering each call on script, `UploadsHarness`, which
   runs uploads and publish jobs through the real engine, and `TransfersHarness`, which builds the engine over
   them and restarts or kills it.
-
-## iOS host setup
-
-For `system` transfers in the background on iOS 26 and later, the app's
-`Info.plist` names the task identifier and the background mode. Without
-the identifier the background task (about 30 s) still holds the process,
-and each submission is reported refused (`noIdentifier`).
-
-```xml
-<key>BGTaskSchedulerPermittedIdentifiers</key>
-<array>
-  <string>$(PRODUCT_BUNDLE_IDENTIFIER).mpx.transfer.*</string>
-</array>
-<key>UIBackgroundModes</key>
-<array>
-  <string>processing</string>
-</array>
-```
-
-The plugin registers each task under that prefix itself. iOS 15 is the
-floor; an app built with an SDK older than iOS 26's has the background
-task only.
 
 ## Docs
 

@@ -12,6 +12,31 @@
   at the next start. `EnvelopeOp.progressPushed` and `nativeMerged`. The
   host adds the task identifier and the `processing` background mode
   (README).
+- Android OS envelope: `AndroidTransferEnvelope`, a user-initiated data
+  transfer job on Android 14 and later and a `dataSync` foreground service
+  before, started for a long job while the app is visible, with one
+  notification for every job inside (mirrored progress, "cancel all", a tap
+  to `notificationTaps`). The plugin's manifest declares the components
+  only; without the host's permissions (README, "Android") the refusal is
+  caught and the jobs run in process. System ends (a time limit, a stop, a
+  low-memory kill seen at the next start) are reported; native events go
+  to logcat (`mpx_transfer`) and, while Dart is not running, to a 2 MiB
+  ring merged at the next start. `EnvelopeOp` gains `progressPushed` and
+  `nativeMerged`.
+- Ordering groups: jobs sharing an `orderingGroup` publish in creation
+  order; a failed job lets later ones go on and, retried, publishes after
+  them. The order is journaled.
+- Hold and commit: a `hold: true` job publishes only on
+  `PublishJob.commit(payload:)`; before that `addItem`, `reorder`,
+  `setPayload`, `removeItem` and `cancel` apply. `PublishJobSnapshot.held`.
+- Item cancel: `removeItem` takes the last item too, leaving the job
+  `awaitingOwner` until its owner commits or cancels it; a
+  `Transfers.cancel` of an item's upload now removes the item (it used to
+  fail it). `PublishJob.cancel()` removes the job and its uploads.
+  `watchItem` ends with a `removed` snapshot.
+- Diagnostics: `PublishOp.groupWait`, `committed`, `awaitingOwner` and
+  `cancelled` (`by: owner` or `envelope`); `itemRemoved` reports
+  `by: host` or `cell`.
 
 - OS envelope: `TransferEnvelopeConfig` (title, text, cancel-all label,
   progress text, icon, `startRule`, `longJobBytes` 10 MiB, `submitAt`
