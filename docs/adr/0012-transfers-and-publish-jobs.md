@@ -522,6 +522,7 @@ engine's state (ADR 0013).
 | Part bodies | A transport never reads the file: it receives an `UploadPartBody` whose `send(url, method, headers)` runs the engine's request (VM: a file range on the transfer worker; web: a `Blob` slice of the page's source or its OPFS copy). The engine retries; the body sends once. |
 | Retries beyond parts | Opening and finishing a session are retried like a part, and report `partRetry` / `partGaveUp` with `step: open \| finish`. |
 | Connections | 8 in all, downloads at most 6 and uploads at most 6 (the bytes cache's own upload cap), so neither direction holds every connection. A request holds one while on the wire and none while it waits to retry. |
+| Resume rules | Judged at every run of an upload that already reported progress (after a restart, and after a pause or a retry too), in order: the source file (size and modification time, read at each run on the VM, none on the web, where the source cannot change), then the transport (no resume, no token, or another part size), then its window (`UploadResume.window` counted from the last progress written; `serverExpiry` from the expiry the session gave, journaled with the token; a session that does not continue a token it was offered counts as a closed window). A file gone on the VM fails the job `sourceLost`, retryable. |
 | Job retryable after a give-up | `retryable: true` when the tries ran out on a failure that may pass; `false` for a refusal that cannot (a 4xx other than 408, 425 and 429, or a transport's non-transient error). |
 
 ## Open in implementation

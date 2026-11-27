@@ -15,9 +15,11 @@ import 'package:mpx_transfer/src/journal/journal_record.dart';
 import 'package:mpx_transfer/src/journal/transfer_journal.dart';
 import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
 import 'package:mpx_transfer/src/upload/remote_ref.dart';
+import 'package:mpx_transfer/src/upload/resume_outcome.dart';
 import 'package:mpx_transfer/src/upload/upload_lane.dart';
 import 'package:mpx_transfer/src/upload/upload_part_source.dart';
 import 'package:mpx_transfer/src/upload/upload_source.dart';
+import 'package:mpx_transfer/src/upload/upload_source_files.dart';
 import 'package:mpx_transfer/src/upload/upload_transport.dart';
 
 /// The runner of upload jobs: it splits each job's file into the parts its
@@ -37,10 +39,16 @@ import 'package:mpx_transfer/src/upload/upload_transport.dart';
 ///   is tried again after [retry]'s backoff, five tries in all with the
 ///   default preset, then the upload fails.
 /// - **Journal.** An acknowledged part is kept with the job's next progress
-///   write, so a kill loses at most one progress window of them; a restart
-///   reopens with the journaled resume token and sends only the parts not
-///   kept. A transport that cannot reopen, or a session that does not
-///   continue, starts the upload from zero.
+///   write, so a kill loses at most one progress window of them.
+/// - **Resume.** A run of an upload that ran before (after a restart, a
+///   pause or a retry) reopens with the journaled resume token and sends
+///   only the parts not kept, when the source file is unchanged (its size
+///   and modification time, read through [UploadSourceFiles]) and the
+///   transport's freshness window ([UploadCapabilities.resume]) is open.
+///   A changed file, a closed window, a transport that cannot reopen or a
+///   remote end that no longer has the upload start it from zero, under
+///   the same job; none of them fails it. A file that is gone fails the job
+///   with its source lost, retryable once the file is back.
 ///
 /// Part bodies go out through [client]: on the VM on the bytes cache's
 /// transfer worker, streamed from the file at the source's path; on the web
@@ -56,6 +64,7 @@ final class UploadEngine implements TransferRunner {
     ConnectionSlots? slots,
     HttpBytesClient? client,
     UploadSourceCopies? sourceCopies,
+    UploadSourceFiles? files,
     this.retry = HttpBytesRetryBackoff.uploadPart,
     this.laneSplit = UploadLane.defaultSplit,
     math.Random? random,
@@ -68,6 +77,7 @@ final class UploadEngine implements TransferRunner {
        slots = slots ?? ConnectionSlots(),
        _client = client,
        _sourceCopies = sourceCopies,
+       _files = files ?? platformUploadSourceFiles(),
        _random = random ?? math.Random(),
        _wait = wait ?? Future<void>.delayed,
        _now = now;
@@ -87,6 +97,7 @@ final class UploadEngine implements TransferRunner {
   final Map<String, UploadTransport> _transports;
   final HttpBytesClient? _client;
   final UploadSourceCopies? _sourceCopies;
+  final UploadSourceFiles? _files;
   final Map<TransferId, SourceBytes> _pageSources = {};
   final math.Random _random;
   final Future<void> Function(Duration delay) _wait;
@@ -291,13 +302,36 @@ final class _UploadRun {
 
   Future<void> begin() async {
     _began = _engine._now();
-    final upload = _journal.record(id)?.upload;
+    final record = _journal.record(id);
+    final upload = record?.upload;
     final transport = _engine._transports[upload?.transportId];
     if (upload == null || transport == null) {
       _gaveUpOpening(upload == null ? 'no_upload' : 'unknown_transport');
       return _fail(TransferFailureKind.local, retryable: false);
     }
-    _source = upload.source;
+    // A run after one that reported progress continues an upload the
+    // remote end may hold part of; a first run has nothing to judge.
+    final ranBefore = record!.lastProgressAt != null;
+
+    final JournalSource source;
+    var changed = false;
+    switch (await _readSource(upload.source)) {
+      case _SourceGone(:final stackTrace):
+        if (_ended) return;
+        if (ranBefore) {
+          _decided(ResumeOutcome.sourceLost, 0, stackTrace: stackTrace);
+        } else {
+          _gaveUpOpening('source_lost', stackTrace: stackTrace);
+        }
+        // Retryable: the host may put the file back, or the job's owner
+        // may give it again.
+        return _fail(TransferFailureKind.sourceLost, retryable: true);
+      case _SourceRead(source: final read, :final same):
+        source = read;
+        changed = !same;
+    }
+    if (_ended) return;
+    _source = source;
     // A transport is asked again at each run: its declaration may have
     // changed since the job was made.
     final partSize = transport.capabilities.partSize(_size);
@@ -309,13 +343,16 @@ final class _UploadRun {
     _budget = transport.capabilities.bytesInFlight;
     _partCount = _size == 0 ? 1 : (_size + partSize - 1) ~/ partSize;
 
-    // Parts acknowledged under another split name other bytes, so only an
-    // upload split the same way may continue.
-    final token =
-        transport.capabilities.resume is UploadResume$None ||
-            upload.partSize != partSize
-        ? null
-        : upload.resumeToken;
+    final outcome = ranBefore
+        ? _judge(
+            transport,
+            upload,
+            partSize,
+            changed: changed,
+            lastMoved: record.lastProgressAt!,
+          )
+        : null;
+    final token = outcome == ResumeOutcome.resumed ? upload.resumeToken : null;
     final info = UploadInfo(
       size: _size,
       partSize: partSize,
@@ -348,20 +385,32 @@ final class _UploadRun {
       if (!_acks.containsKey(index)) _pending.add(index);
     }
     final highWaterMark = _highWaterMark();
+    // A restart from zero drops the parts acknowledged before: they belong
+    // to a session, or a file, that is no longer the upload's.
     _journal.amendUpload(
       id,
       (upload) => JournalUpload(
-        source: upload.source,
+        source: source,
         transportId: upload.transportId,
         lane: upload.lane,
         partSize: partSize,
         fileName: upload.fileName,
         contentType: upload.contentType,
         resumeToken: session.resumeToken,
+        resumeExpiresAt: session.resumeExpiresAt,
         parts: _receipts(),
         highWaterMark: highWaterMark,
       ),
     );
+    if (outcome != null) {
+      // A token offered and refused: the remote end's window had closed.
+      _decided(
+        outcome == ResumeOutcome.resumed && !resumed
+            ? ResumeOutcome.windowExpired
+            : outcome,
+        highWaterMark,
+      );
+    }
     MpxDiagnostics.current.emit(
       MpxEventLevel.debug,
       TransportOp.sessionOpened,
@@ -378,6 +427,84 @@ final class _UploadRun {
     _reportProgress();
     _pump();
   }
+
+  /// Reads the file [journaled] names as it is now: the same file, a
+  /// changed one (with its new size and time), or none. Where the engine
+  /// reads no file system the file is the journaled one.
+  Future<_SourceCheck> _readSource(JournalSource journaled) async {
+    final files = _engine._files;
+    if (files == null) return _SourceRead(journaled, same: true);
+    final UploadSourceStat? stat;
+    try {
+      stat = await files.stat(journaled.path);
+    } on Object catch (_, stackTrace) {
+      // A file that cannot be read is gone for this upload, as one that is
+      // not there; the job's failure reports it with this trace.
+      return _SourceGone(stackTrace);
+    }
+    if (stat == null) return const _SourceGone();
+    // No time is kept before the first run reads one, so then only the
+    // size tells.
+    final same =
+        stat.size == journaled.size &&
+        (journaled.modified == null || stat.modified == journaled.modified);
+    return _SourceRead(
+      JournalSource(
+        path: journaled.path,
+        size: stat.size,
+        fingerprint: journaled.fingerprint,
+        growing: journaled.growing,
+        modified: stat.modified,
+      ),
+      same: same,
+    );
+  }
+
+  /// Whether an upload that ran before continues: the rules in order, the
+  /// file first, then the transport, then its freshness window.
+  ResumeOutcome _judge(
+    UploadTransport transport,
+    JournalUpload upload,
+    int partSize, {
+    required bool changed,
+    required DateTime lastMoved,
+  }) {
+    if (changed) return ResumeOutcome.sourceChanged;
+    final resume = transport.capabilities.resume;
+    // Parts acknowledged under another split name other bytes, so only an
+    // upload split the same way may continue.
+    if (resume is UploadResume$None ||
+        upload.resumeToken == null ||
+        upload.partSize != partSize) {
+      return ResumeOutcome.noResume;
+    }
+    final now = _engine._now();
+    final open = switch (resume) {
+      UploadResume$None() => false,
+      UploadResume$Unlimited() => true,
+      UploadResume$Window(:final window) =>
+        now.difference(lastMoved) < window(_size),
+      UploadResume$ServerExpiry() => switch (upload.resumeExpiresAt) {
+        final expires? => now.isBefore(expires),
+        // The remote end did not say: it judges when it reopens.
+        null => true,
+      },
+    };
+    return open ? ResumeOutcome.resumed : ResumeOutcome.windowExpired;
+  }
+
+  /// A lost source is the one outcome that fails the job, so it reports
+  /// as an error; every other outcome goes on.
+  void _decided(ResumeOutcome outcome, int offset, {StackTrace? stackTrace}) =>
+      MpxDiagnostics.current.emit(
+        outcome == ResumeOutcome.sourceLost
+            ? MpxEventLevel.error
+            : MpxEventLevel.info,
+        TransportOp.resumeDecision,
+        jobId: id,
+        fields: () => {'outcome': outcome.name, 'offset': offset},
+        stackTrace: stackTrace,
+      );
 
   /// Starts the next parts while the bytes outstanding stay within the
   /// budget; finishes once every part is acknowledged.
@@ -573,12 +700,14 @@ final class _UploadRun {
     }
   }
 
-  void _gaveUpOpening(String code) => MpxDiagnostics.current.emit(
-    MpxEventLevel.error,
-    TransportOp.partGaveUp,
-    jobId: id,
-    fields: () => {'step': _Step.open.name, 'attempts': 0, 'code': code},
-  );
+  void _gaveUpOpening(String code, {StackTrace? stackTrace}) =>
+      MpxDiagnostics.current.emit(
+        MpxEventLevel.error,
+        TransportOp.partGaveUp,
+        jobId: id,
+        fields: () => {'step': _Step.open.name, 'attempts': 0, 'code': code},
+        stackTrace: stackTrace,
+      );
 
   // --- Parts -----------------------------------------------------------------
 
@@ -634,6 +763,28 @@ final class _UploadRun {
     }
     _sink.progress(done, total: _size);
   }
+}
+
+/// The source file of an upload as a run finds it.
+sealed class _SourceCheck {
+  const _SourceCheck();
+}
+
+/// No file is there.
+final class _SourceGone extends _SourceCheck {
+  const _SourceGone([this.stackTrace]);
+
+  /// Where reading the file failed, when it failed rather than found none.
+  final StackTrace? stackTrace;
+}
+
+/// The file is there: [source] as it is now, [same] when it is the file the
+/// journal named.
+final class _SourceRead extends _SourceCheck {
+  const _SourceRead(this.source, {required this.same});
+
+  final JournalSource source;
+  final bool same;
 }
 
 /// What a failed try was, as the engine judges whether to try again.

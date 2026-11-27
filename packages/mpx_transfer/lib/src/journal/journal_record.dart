@@ -75,6 +75,7 @@ final class JournalUpload {
     this.fileName,
     this.contentType,
     this.resumeToken,
+    this.resumeExpiresAt,
     Map<int, String?> parts = const {},
     this.highWaterMark = 0,
   }) : parts = Map.unmodifiable(parts);
@@ -102,6 +103,10 @@ final class JournalUpload {
   /// The transport's token for reopening an interrupted upload.
   final String? resumeToken;
 
+  /// When the remote end forgets the upload [resumeToken] reopens, as its
+  /// session said; null when it did not say.
+  final DateTime? resumeExpiresAt;
+
   /// The parts the remote end acknowledged, by index, each with the
   /// receipt it answered (an ETag, a part id), or null when it gave none.
   final Map<int, String?> parts;
@@ -111,20 +116,22 @@ final class JournalUpload {
   final int highWaterMark;
 
   /// This upload with the given parts replaced; [clearResumeToken] drops
-  /// the token.
+  /// the token and its expiry.
   JournalUpload copyWith({
+    JournalSource? source,
     String? resumeToken,
     bool clearResumeToken = false,
     Map<int, String?>? parts,
     int? highWaterMark,
   }) => JournalUpload(
-    source: source,
+    source: source ?? this.source,
     transportId: transportId,
     lane: lane,
     partSize: partSize,
     fileName: fileName,
     contentType: contentType,
     resumeToken: clearResumeToken ? null : resumeToken ?? this.resumeToken,
+    resumeExpiresAt: clearResumeToken ? null : resumeExpiresAt,
     parts: parts ?? this.parts,
     highWaterMark: highWaterMark ?? this.highWaterMark,
   );
@@ -139,6 +146,7 @@ final class JournalUpload {
       other.fileName == fileName &&
       other.contentType == contentType &&
       other.resumeToken == resumeToken &&
+      other.resumeExpiresAt == resumeExpiresAt &&
       _sameParts(other.parts, parts) &&
       other.highWaterMark == highWaterMark;
 
@@ -151,6 +159,7 @@ final class JournalUpload {
     fileName,
     contentType,
     resumeToken,
+    resumeExpiresAt,
     Object.hashAllUnordered(
       parts.entries.map((part) => Object.hash(part.key, part.value)),
     ),
@@ -181,6 +190,7 @@ final class JournalSource {
     required this.size,
     required this.fingerprint,
     this.growing = false,
+    this.modified,
   });
 
   /// Where the file is.
@@ -193,9 +203,16 @@ final class JournalSource {
   /// Whether the file was still being written.
   final bool growing;
 
-  /// What identifies the file's content: the host's value, or its size and
-  /// modification time.
+  /// What identifies the file's content: the host's value, else its size.
+  /// Whether the file at [path] changed under a running upload is told by
+  /// [size] and [modified].
   final String fingerprint;
+
+  /// When the file was last written, as the engine read it when the upload
+  /// last began; null before the first run, or where the engine reads no
+  /// file system (the web). With [size] it tells at a restart whether the
+  /// file is still the one the acknowledged parts came from.
+  final DateTime? modified;
 
   @override
   bool operator ==(Object other) =>
@@ -203,8 +220,9 @@ final class JournalSource {
       other.path == path &&
       other.size == size &&
       other.growing == growing &&
-      other.fingerprint == fingerprint;
+      other.fingerprint == fingerprint &&
+      other.modified == modified;
 
   @override
-  int get hashCode => Object.hash(path, size, growing, fingerprint);
+  int get hashCode => Object.hash(path, size, growing, fingerprint, modified);
 }

@@ -58,6 +58,17 @@
   not kept, and runs upload jobs in two lanes (`UploadLane`, split at
   10 MiB), one job each, under 8 shared connections (6 at most per
   direction).
+- Resume rules: a run of an upload that ran before continues with its
+  token only when the source file is unchanged (its size and modification
+  time, kept in the journal) and the transport's window is open
+  (`UploadResume.window` by size since the upload last moved, or the
+  remote end's expiry the session gave, journaled with the token). A
+  changed file, a closed window, a transport without resume, or a remote
+  end that no longer has the upload start it from zero under the same job,
+  its acknowledged parts dropped; none of them fails it. A file that is
+  gone fails the job `sourceLost`, retryable once the file is back.
+  `TransportOp.resumeDecision` reports the outcome. `FakeUploadTransport`
+  gains `resumeExpiresAt`.
 - `TransportOp` diagnostics operations; `SchedulerOp` gains `slotAcquired`
   and `slotReleased`, and `jobQueued` and `jobStarted` carry an upload's
   `lane`. `debugSnapshot()` gains `uploads` (lanes, parts in flight, part
@@ -67,7 +78,8 @@
 - `testing.dart`: `FakeTransferEnvelope`, `ScriptedTransferRunner`,
   `FakeTransferResult`, `MemoryJournalStore`, `JournalStoreContract`,
   `FakeUploadSourceCopies`, `UploadSourceCopiesContract`,
-  `FakeUnloadWarning`, `FakeUploadTransport` with the
+  `FakeUnloadWarning`, `FakeUploadSourceFiles` (over the
+  `UploadSourceFiles` seam), `FakeUploadTransport` with the
   `UploadTransportContract`, `UploadsHarness` (uploads through the real
   engine), and
   `TransfersHarness` (opened with `TransfersHarness.open`; `restart`,

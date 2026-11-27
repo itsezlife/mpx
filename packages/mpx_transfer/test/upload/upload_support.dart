@@ -8,9 +8,18 @@ import 'package:mpx_transfer/testing.dart';
 /// 64 KiB, the fake transport's default part size.
 const int part = FakeUploadTransport.defaultPartSize;
 
-/// A finished source of [size] bytes; the fake transport never reads it.
-UploadSource sourceOf(int size) =>
-    UploadSource.finished('/uploads/source.bin', size: size);
+/// The source files of the tests' uploads, which no test writes to disk.
+final FakeUploadSourceFiles sourceFiles = FakeUploadSourceFiles();
+
+int _sources = 0;
+
+/// A finished source of [size] bytes at a path of its own, put in
+/// [sourceFiles]; the fake transport never reads it.
+UploadSource sourceOf(int size) {
+  final path = '/uploads/source-${_sources++}.bin';
+  sourceFiles.put(path, size: size);
+  return UploadSource.finished(path, size: size);
+}
 
 /// A fake transport that splits every file into parts of [partSize] and
 /// keeps up to [bytesInFlight] outstanding.
@@ -32,8 +41,8 @@ FakeUploadTransport fakeTransport({
 );
 
 /// An uploads harness in the foreground over [transports], whose retry
-/// waits return at once and are recorded in [waits]; disposed after the
-/// test.
+/// waits return at once and are recorded in [waits], reading source files
+/// from [files] ([sourceFiles] by default); disposed after the test.
 Future<UploadsHarness> uploads(
   List<UploadTransport> transports, {
   List<Duration>? waits,
@@ -41,6 +50,7 @@ Future<UploadsHarness> uploads(
   Duration? progressInterval,
   int? laneSplit,
   JournalStore Function()? store,
+  UploadSourceFiles? files,
 }) async {
   final built = await UploadsHarness.open(
     lifecycle: ManualPlaybackLifecycleSource(
@@ -52,6 +62,7 @@ Future<UploadsHarness> uploads(
     progressInterval: progressInterval ?? Transfers.defaultProgressInterval,
     laneSplit: laneSplit ?? UploadLane.defaultSplit,
     wait: (delay) async => waits?.add(delay),
+    files: files ?? sourceFiles,
   );
   addTearDown(() => built.transfers.dispose());
   return built;
