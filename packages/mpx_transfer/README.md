@@ -70,12 +70,33 @@ transfers
       }
     });
 
+// A transport for a server that takes the file in one multipart POST.
+final multipart = MultipartUploadTransport(
+  request: (info) => MultipartUploadRequest(
+    uploadUrl,
+    headers: {'authorization': 'Bearer $token'},
+    fields: {'album': '7'},
+  ),
+  remoteRef: (response) => RemoteRef(parseFileId(response.body!)),
+);
+
 // Verbs on one job (`id`, a `TransferId` from a snapshot) answer whether
 // it changed.
 transfers.pause(id);
 transfers.resume(id);
 transfers.retry(id);
 transfers.cancel(id); // removes it
+
+// On macOS, Windows and Linux there is no OS envelope: quitting ends every
+// job. `systemActive` is true while a `system` job is queued or running, so
+// the host can ask before it quits. (Defined on every platform.)
+if (transfers.systemActive.value) {
+  final quit = await confirmQuit(); // the host's own dialog
+  if (!quit) return;
+}
+transfers.systemActive.addListener(() {
+  // e.g. show or hide a "transfers running" hint
+});
 ```
 
 ## Features
@@ -95,9 +116,13 @@ transfers.cancel(id); // removes it
 - Uploads through any `UploadTransport`: the engine splits the file by the
   transport's part size, keeps its bytes-in-flight budget, retries a part
   five tries in all, journals every acknowledged part and resumes with the
-  transport's token after a restart, sending only what is missing. Two
+  transport's token after a restart, sending only what is missing, while
+  the file is unchanged and the transport's window open; otherwise the
+  upload starts again from zero, never failing for it. Two
   lanes (small up to 10 MiB, big), one job each, under 8 shared
   connections. A completed upload holds a `RemoteRef`.
+- `MultipartUploadTransport`: the file in one `multipart/form-data`
+  request, with the host's URL, headers and form fields per upload.
 - A reuse table (`reuse`): an upload's references kept by source and
   transport, so the same media sent again skips preparation and upload
   while the transport judges them good; on by default for 7 days

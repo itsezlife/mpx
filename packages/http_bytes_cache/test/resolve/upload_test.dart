@@ -68,6 +68,37 @@ void main() {
       expect(response.body, '{"id":7}'.codeUnits);
     });
 
+    test('sends the prefix, then the range, then the suffix, and counts '
+        'them all in the length and the progress', () async {
+      final file = patternFile('${dir.path}/framed', 10000);
+      final prefix = 'head-'.codeUnits;
+      final suffix = '-tail'.codeUnits;
+      final progress = <(int, int?)>[];
+
+      await client.upload(
+        server.url(),
+        body: HttpBytesUploadBody.file(
+          file.path,
+          offset: 100,
+          length: 300,
+          prefix: prefix,
+          suffix: suffix,
+        ),
+        onBytesSent: (sent, total) => progress.add((sent, total)),
+      );
+
+      final received = server.received.single;
+      expect(received.headers['content-length'], '310');
+      expect(received.kept.toBytes(), [
+        ...prefix,
+        ...file.readAsBytesSync().sublist(100, 400),
+        ...suffix,
+      ]);
+      expect(progress.first, (0, 310));
+      expect(progress.last, (310, 310));
+      expect(eventsOf(BytesLogOp.uploadStarted).single.fields['bytes'], 310);
+    });
+
     test('sends POST, PUT and PATCH, and refuses other methods', () async {
       final file = patternFile('${dir.path}/small', 100);
       for (final method in ['POST', 'PUT', 'PATCH']) {

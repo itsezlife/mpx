@@ -44,6 +44,21 @@ void main() {
       expect(progress, [(0, 5000), (5000, 5000)]);
     });
 
+    test('sends a prefix and a suffix around the slice', () async {
+      final blob = web.Blob([bytes.toJS].toJS);
+      final response = await client.upload(
+        url,
+        body: HttpBytesUploadBody.blob(
+          blob,
+          offset: 10,
+          length: 20,
+          prefix: const [1, 2],
+          suffix: const [3],
+        ),
+      );
+      expect(response.body, [1, 2, ...bytes.sublist(10, 30), 3]);
+    });
+
     test('sends a slice of an OPFS file', () async {
       final root = await web.window.navigator.storage.getDirectory().toDart;
       final directory = await root

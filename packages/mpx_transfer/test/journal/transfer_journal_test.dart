@@ -63,11 +63,12 @@ void main() {
           resumeOnStart: false,
         ),
         upload: JournalUpload(
-          source: const JournalSource(
+          source: JournalSource(
             path: '/tmp/source.mp4',
             size: 42,
             growing: true,
             fingerprint: '42-1700000000',
+            modified: _t0.subtract(const Duration(minutes: 5)),
           ),
           transportId: 'tus',
           lane: UploadLane.big,
@@ -75,6 +76,7 @@ void main() {
           fileName: 'source.mp4',
           contentType: 'video/mp4',
           resumeToken: 'token',
+          resumeExpiresAt: _t0.add(const Duration(hours: 24)),
           parts: const {0: 'etag-0', 1: null, 3: 'etag-3'},
           highWaterMark: 16,
         ),

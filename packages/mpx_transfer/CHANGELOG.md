@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `Transfers.systemActive`: a `ValueListenable<bool>`, true while a `system`
+  job is queued or running, for a host's quit confirmation on desktop
+  platforms, which have no OS envelope. The `scheduler` events of a job
+  carry its `durability`.
 - The package: a single plugin for Android, iOS, macOS, Windows, Linux and
   the web, its native parts empty for now.
 - `Transfers`: the facade, opened with `Transfers.open`, with
@@ -58,6 +62,27 @@
   not kept, and runs upload jobs in two lanes (`UploadLane`, split at
   10 MiB), one job each, under 8 shared connections (6 at most per
   direction).
+- `MultipartUploadTransport`: an upload in one `multipart/form-data`
+  request. The host's `request(info)` gives the URL, method, headers, form
+  fields and the file's field, name and type per upload; `remoteRef` reads
+  the answer into the `RemoteRef`. One part of the whole file, no resume (a
+  restart sends it again from byte 0), `thumbnail: none`, and a stored
+  reference good for 24 hours by default (`defaultReuse`).
+  `UploadPartBody.send` takes a transport's `prefix` and `suffix` framing.
+- `UploadTransportContract` checks the `thumbnail` capability (a separate
+  thumbnail uploads beside its item) and the `reuse` one (a reference just
+  answered is good).
+- Resume rules: a run of an upload that ran before continues with its
+  token only when the source file is unchanged (its size and modification
+  time, kept in the journal) and the transport's window is open
+  (`UploadResume.window` by size since the upload last moved, or the
+  remote end's expiry the session gave, journaled with the token). A
+  changed file, a closed window, a transport without resume, or a remote
+  end that no longer has the upload start it from zero under the same job,
+  its acknowledged parts dropped; none of them fails it. A file that is
+  gone fails the job `sourceLost`, retryable once the file is back.
+  `TransportOp.resumeDecision` reports the outcome. `FakeUploadTransport`
+  gains `resumeExpiresAt`.
 - `TransportOp` diagnostics operations; `SchedulerOp` gains `slotAcquired`
   and `slotReleased`, and `jobQueued` and `jobStarted` carry an upload's
   `lane`. `debugSnapshot()` gains `uploads` (lanes, parts in flight, part
@@ -77,7 +102,8 @@
 - `testing.dart`: `FakeTransferEnvelope`, `ScriptedTransferRunner`,
   `FakeTransferResult`, `MemoryJournalStore`, `JournalStoreContract`,
   `FakeUploadSourceCopies`, `UploadSourceCopiesContract`,
-  `FakeUnloadWarning`, `FakeUploadTransport` with the
+  `FakeUnloadWarning`, `FakeUploadSourceFiles` (over the
+  `UploadSourceFiles` seam), `FakeUploadTransport` with the
   `UploadTransportContract`, `UploadsHarness` (uploads through the real
   engine), and
   `TransfersHarness` (opened with `TransfersHarness.open`; `restart`,

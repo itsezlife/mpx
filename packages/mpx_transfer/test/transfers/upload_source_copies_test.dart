@@ -110,11 +110,19 @@ void main() {
     expect(recorder.whereOp(JournalOp.sourceLost), [
       isMpxEvent(level: MpxEventLevel.error, jobId: id, fields: isEmpty),
     ]);
+    expect(recorder.whereOp(TransportOp.resumeDecision), [
+      isMpxEvent(
+        level: MpxEventLevel.error,
+        jobId: id,
+        fields: {'outcome': 'sourceLost', 'offset': 0},
+      ),
+    ]);
 
     // Already lost: the next reload says nothing more.
     recorder.clear();
     await h.kill();
     expect(recorder.whereOp(JournalOp.sourceLost), isEmpty);
+    expect(recorder.whereOp(TransportOp.resumeDecision), isEmpty);
   });
 
   test('a job of exactly the limit is copied', () async {

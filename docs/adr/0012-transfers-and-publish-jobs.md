@@ -223,6 +223,15 @@ with a slice of the OPFS file or a `Blob`.
 A changed source or an expired window restarts the upload from zero; it does
 not fail it. Download freshness stays with the bytes cache.
 
+The multipart adapter's `reuse` default is a lifetime of 24 hours, the
+journal's retention: the adapter knows nothing of how long the remote end
+keeps a file, so the default covers sending the same media again soon and
+bounds the risk of a stale reference; a host whose server keeps files longer,
+or can be asked, passes its own `UploadReuse`. It sends the whole file as one
+part, its form framing as the part body's prefix and suffix, and carries the
+`RemoteRef` in that part's receipt, so `finish` needs nothing the journal does
+not keep.
+
 **Reuse table.** Re-sending the same media does not upload it again. Beside
 the journal, `mpx_transfer` keeps a table from source fingerprint plus
 preparation parameters to a `RemoteRef`, with the time it was stored and an
@@ -522,6 +531,7 @@ engine's state (ADR 0013).
 | Part bodies | A transport never reads the file: it receives an `UploadPartBody` whose `send(url, method, headers)` runs the engine's request (VM: a file range on the transfer worker; web: a `Blob` slice of the page's source or its OPFS copy). The engine retries; the body sends once. |
 | Retries beyond parts | Opening and finishing a session are retried like a part, and report `partRetry` / `partGaveUp` with `step: open \| finish`. |
 | Connections | 8 in all, downloads at most 6 and uploads at most 6 (the bytes cache's own upload cap), so neither direction holds every connection. A request holds one while on the wire and none while it waits to retry. |
+| Resume rules | Judged at every run of an upload that already reported progress (after a restart, and after a pause or a retry too), in order: the source file (size and modification time, read at each run on the VM, none on the web, where the source cannot change), then the transport (no resume, no token, or another part size), then its window (`UploadResume.window` counted from the last progress written; `serverExpiry` from the expiry the session gave, journaled with the token; a session that does not continue a token it was offered counts as a closed window). A file gone on the VM fails the job `sourceLost`, retryable. |
 | Reuse table | Kept in its own store beside the journal's (`reuse.snapshot` / `reuse.log` next to `journal.*`, the same frame format), keyed by fingerprint, preparation intent and transport id: a reference means nothing to another transport. The host's expiry defaults to 7 days and is judged against the policy of the run that reads an entry, so a shorter expiry applies at once; the transport's `reuse` capability judges within it. A validity call that throws is a miss that keeps the entry. With the table off nothing is read, stored or dropped. A storage failure reports `journal` `writeFailed` with `table: reuse`. |
 | Job retryable after a give-up | `retryable: true` when the tries ran out on a failure that may pass; `false` for a refusal that cannot (a 4xx other than 408, 425 and 429, or a transport's non-transient error). |
 
@@ -533,7 +543,8 @@ engine's state (ADR 0013).
   swipe from Recents. No decision here depends on them; the journal resumes
   after any kill.
 - Which `submitAt` default holds on iOS 26 devices.
-- The `reuse` capability's default per adapter.
+- The `reuse` capability's default for the tus and numbered-parts adapters
+  (multipart: 24 hours, above).
 
 ## Provenance
 

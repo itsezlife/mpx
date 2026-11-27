@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
+import 'dart:typed_data';
 
 import 'package:http_bytes_cache/src/http/http_bytes_transfer.dart';
 import 'package:http_bytes_cache/src/http/http_bytes_upload.dart';
@@ -55,7 +56,16 @@ final class _FetchUploadSender implements UploadSender {
         'the source has ${source.size} bytes, the body ends at $end',
       );
     }
-    final slice = source.slice(body.offset, end);
+    final range = source.slice(body.offset, end);
+    final slice = body.prefix.isEmpty && body.suffix.isEmpty
+        ? range
+        : web.Blob(
+            <JSAny>[
+              Uint8List.fromList(body.prefix).toJS,
+              range,
+              Uint8List.fromList(body.suffix).toJS,
+            ].toJS,
+          );
     final requestHeaders = web.Headers();
     for (final MapEntry(:key, :value) in headers.entries) {
       requestHeaders.append(key, value);
@@ -73,7 +83,7 @@ final class _FetchUploadSender implements UploadSender {
             ),
           )
           .toDart;
-      onSent(body.length);
+      onSent(body.contentLength);
       final buffer = await response.arrayBuffer().toDart;
       final answerHeaders = <String, String>{};
       response.headers.callMethodVarArgs<JSAny?>('forEach'.toJS, [

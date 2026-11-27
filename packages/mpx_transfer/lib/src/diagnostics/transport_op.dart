@@ -1,13 +1,19 @@
 import 'package:mpx_core/mpx_core.dart';
 
 /// The diagnostics operations of an upload's transport, category
-/// `transport`: a session opening, its parts going out and coming back,
+/// `transport`: whether an interrupted upload continues, a session opening, its parts going out and coming back,
 /// and the upload finishing.
 ///
 /// No field carries user content: indexes, offsets, byte counts, times,
 /// HTTP statuses and short error codes; the transport by its id, which
 /// names a protocol. Paths, URLs, resume tokens and receipts stay out.
 enum TransportOp implements DiagnosticOp {
+  /// A run of an upload that ran before began, and the engine judged
+  /// whether it continues (info; `outcome`: `resumed`, `sourceChanged`,
+  /// `windowExpired`, `noResume` or `sourceLost`; `offset`, the bytes the
+  /// upload continues after, 0 when it starts from zero; job).
+  resumeDecision,
+
   /// A session opened (debug; `transport`, the transport's id; `resumed`;
   /// `offset`, the bytes known sent from the start; `size`; job).
   sessionOpened,

@@ -49,7 +49,7 @@ void main() {
         level: MpxEventLevel.debug,
         jobId: id,
         tag: 't',
-        fields: {'waitedMs': 250},
+        fields: {'durability': 'system', 'waitedMs': 250},
       ),
     ]);
   });
@@ -64,7 +64,7 @@ void main() {
         level: MpxEventLevel.info,
         jobId: id,
         tag: 't',
-        fields: {'reason': 'user'},
+        fields: {'reason': 'user', 'durability': 'system'},
       ),
     ]);
     expect(recorder.whereOp(SchedulerOp.resumed), [
@@ -72,7 +72,7 @@ void main() {
         level: MpxEventLevel.info,
         jobId: id,
         tag: 't',
-        fields: {'reason': 'user'},
+        fields: {'reason': 'user', 'durability': 'system'},
       ),
     ]);
   });
@@ -132,7 +132,7 @@ void main() {
         level: MpxEventLevel.info,
         jobId: id,
         tag: 't',
-        fields: {'by': 'user'},
+        fields: {'by': 'user', 'durability': 'system'},
       ),
     ]);
   });
@@ -148,7 +148,13 @@ void main() {
         jobId: id,
         mediaKey: photo,
         tag: 't',
-        fields: {'kind': 'server', 'retryable': false, 'done': 7, 'total': 9},
+        fields: {
+          'kind': 'server',
+          'durability': 'inProcess',
+          'retryable': false,
+          'done': 7,
+          'total': 9,
+        },
       ),
     ]);
   });
@@ -176,7 +182,7 @@ void main() {
         level: MpxEventLevel.info,
         jobId: id,
         tag: 't',
-        fields: {'bytes': 100, 'ms': 2000},
+        fields: {'durability': 'system', 'bytes': 100, 'ms': 2000},
       ),
     ]);
   });
