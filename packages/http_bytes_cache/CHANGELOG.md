@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- `HttpBytesClient.upload`: a `POST`, `PUT` or `PATCH` whose body streams
+  from a byte range of a file (`HttpBytesUploadBody.file`), or on the web of
+  a `Blob` (`HttpBytesUploadBody.blob`). On the VM the transfer worker reads
+  the range and sends it, so the bytes never enter the calling isolate and
+  a 50 MiB body goes out through a bounded buffer; a client given no
+  `HttpBytesTransfers` spawns the worker with the defaults for it. On the
+  web the slice goes to `fetch` (a path names an OPFS file). The answer's
+  status, headers and small body come back. `onBytesSent` reports the bytes
+  sent at the transfers' cadence; the `CancelToken` aborts the body or a
+  wait between tries. `retry` retries transient failures and timeouts;
+  `HttpBytesRetryBackoff.uploadPart` is the preset for parts: five tries in
+  all, waits from 1 s, each capped at 30 s.
+- `HttpBytesRetryBackoff.minDelay`: a floor under every jittered wait
+  (zero by default, which keeps full jitter and the same delays as before).
+- One connection cap for both directions: `maxConcurrent` is now 8 in all,
+  of which GETs take at most `maxDownloads` (6) and uploads at most
+  `maxUploads` (6), so each direction keeps 2 however busy the other is.
+  A client that only GETs still runs 6 at once; one built with
+  `maxConcurrent: n` below 6 runs `n` as before.
+- `BytesLogEvent.fields`: structured detail (numbers and short strings, no
+  URL, header or path). Uploads report `BytesLogOp.uploadStarted`,
+  `uploadRetry` (with the attempt and the delay) and `uploadGaveUp`.
+
 - A transfer aborted before or while its body is written no longer surfaces
   as an uncaught error. A download cancelled between its head and its write
   (a preload whose item left the window, a tile scrolled away) failed the

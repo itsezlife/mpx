@@ -4,15 +4,27 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:http_bytes_cache/src/http/http_bytes_transfer.dart';
+import 'package:http_bytes_cache/src/http/http_bytes_upload.dart';
 import 'package:http_bytes_cache/src/http/transfer_worker.dart';
 import 'package:http_bytes_cache/src/isolate_controller.dart';
 
 /// Whether this platform runs transfers on a worker isolate.
 const bool $canTransfer = true;
 
+/// Whether an upload can send an [HttpBytesUploadBody$Blob]: not on the VM.
+const bool $canSendBlobs = false;
+
 /// A [TransferWorker] over one isolate, spawned on the first GET.
 TransferWorker $transferWorker(HttpBytesTransfers config) =>
     _IsolateTransferWorker(config);
+
+/// Uploads go out from the transfer [worker]: one isolate and one HTTP
+/// stack for both directions.
+UploadSender $uploadSender(TransferWorker Function() worker) => worker();
+
+/// Biggest answer body an upload keeps; a server sending more fails the
+/// upload rather than filling the worker's memory.
+const _maxAnswerBytes = 1024 * 1024;
 
 final class _IsolateTransferWorker implements TransferWorker {
   _IsolateTransferWorker(this._config);
@@ -23,6 +35,7 @@ final class _IsolateTransferWorker implements TransferWorker {
   StreamSubscription<_Out>? _replies;
   final _heads = <int, Completer<TransferHead>>{};
   final _bodies = <int, _Body>{};
+  final _uploads = <int, _PendingUpload>{};
   var _nextId = 0;
   var _closed = false;
 
@@ -70,7 +83,40 @@ final class _IsolateTransferWorker implements TransferWorker {
     return head.future;
   }
 
-  bool _owns(int id) => _heads.containsKey(id) || _bodies.containsKey(id);
+  bool _owns(int id) =>
+      _heads.containsKey(id) ||
+      _bodies.containsKey(id) ||
+      _uploads.containsKey(id);
+
+  @override
+  Future<UploadAnswer> upload({
+    required String method,
+    required Uri url,
+    required Map<String, String> headers,
+    required HttpBytesUploadBody body,
+    required Future<void> abort,
+    required void Function(int sent) onSent,
+  }) async {
+    final path = switch (body) {
+      HttpBytesUploadBody$File(:final path) => path,
+      HttpBytesUploadBody$Blob() => throw UnsupportedError(
+        'A blob body is for the web; on the VM upload a file.',
+      ),
+    };
+    final worker = await _worker();
+    final id = _nextId++;
+    final pending = _uploads[id] = _PendingUpload(onSent);
+    worker.add(
+      _Upload(id, method, url, headers, path, body.offset, body.length),
+    );
+    unawaited(
+      abort.then((_) {
+        if (_closed || !_owns(id)) return;
+        worker.add(_Abort(id));
+      }),
+    );
+    return pending.answer.future;
+  }
 
   @override
   Future<void> write(
@@ -142,11 +188,29 @@ final class _IsolateTransferWorker implements TransferWorker {
         body.chain.then((_) {
           body.end();
         }, onError: (Object _) {});
+      case _Sent(:final id, :final sent):
+        _uploads[id]?.onSent(sent);
+      case _Answer(:final id, :final statusCode, :final headers, :final body):
+        _uploads
+            .remove(id)
+            ?.answer
+            .complete(
+              UploadAnswer(
+                statusCode: statusCode,
+                headers: headers,
+                body: body,
+              ),
+            );
       case _Failed(:final id, :final kind, :final message):
         final failure = TransferFailed(kind, message);
         final head = _heads.remove(id);
         if (head != null) {
           head.completeError(failure);
+          return;
+        }
+        final upload = _uploads.remove(id);
+        if (upload != null) {
+          upload.answer.completeError(failure);
           return;
         }
         final body = _bodies.remove(id);
@@ -165,8 +229,12 @@ final class _IsolateTransferWorker implements TransferWorker {
     for (final body in _bodies.values) {
       body.end(failure);
     }
+    for (final upload in _uploads.values) {
+      upload.answer.completeError(failure);
+    }
     _heads.clear();
     _bodies.clear();
+    _uploads.clear();
     _controller = null;
     _spawning = null;
   }
@@ -216,6 +284,14 @@ final class _Body {
   });
 }
 
+/// An upload waiting for its answer, seen from the calling isolate.
+final class _PendingUpload {
+  _PendingUpload(this.onSent);
+
+  final void Function(int sent) onSent;
+  final Completer<UploadAnswer> answer = Completer<UploadAnswer>();
+}
+
 // --- Protocol (data, not control flow) ---
 
 final class _Config {
@@ -240,6 +316,24 @@ final class _Write extends _In {
   const _Write(super.id, this.path, this.offset);
   final String path;
   final int offset;
+}
+
+final class _Upload extends _In {
+  const _Upload(
+    super.id,
+    this.method,
+    this.url,
+    this.headers,
+    this.path,
+    this.offset,
+    this.length,
+  );
+  final String method;
+  final Uri url;
+  final Map<String, String> headers;
+  final String path;
+  final int offset;
+  final int length;
 }
 
 final class _Abort extends _In {
@@ -268,6 +362,18 @@ final class _Done extends _Out {
   const _Done(super.id);
 }
 
+final class _Sent extends _Out {
+  const _Sent(super.id, this.sent);
+  final int sent;
+}
+
+final class _Answer extends _Out {
+  const _Answer(super.id, this.statusCode, this.headers, this.body);
+  final int statusCode;
+  final Map<String, String> headers;
+  final Uint8List body;
+}
+
 final class _Failed extends _Out {
   const _Failed(super.id, this.kind, this.message);
   final TransferFailure kind;
@@ -289,6 +395,32 @@ final class _Running {
   bool aborted = false;
 }
 
+/// One upload on the worker, aborted through [abort].
+final class _Sending {
+  final Completer<void> abort = Completer<void>();
+  Timer? idle;
+}
+
+/// A request whose body is a stream the client pulls as the socket takes
+/// it, so a range of any size goes out through a bounded buffer.
+/// [http.StreamedRequest] would take the bytes through a sink with no back
+/// pressure, and buffer as much as the file reads faster than the network.
+final class _StreamBodyRequest extends http.BaseRequest
+    implements http.Abortable {
+  _StreamBodyRequest(super.method, super.url, this._body, this.abortTrigger);
+
+  final Stream<List<int>> _body;
+
+  @override
+  final Future<void>? abortTrigger;
+
+  @override
+  http.ByteStream finalize() {
+    super.finalize();
+    return http.ByteStream(_body);
+  }
+}
+
 Future<void> _transferHandler(
   _Config config,
   Stream<_In> messages,
@@ -296,8 +428,16 @@ Future<void> _transferHandler(
 ) async {
   final client = config.client();
   final running = <int, _Running>{};
+  final uploads = <int, _Sending>{};
 
   void abort(int id) {
+    final upload = uploads.remove(id);
+    if (upload != null) {
+      upload.idle?.cancel();
+      if (!upload.abort.isCompleted) upload.abort.complete();
+      send(_Failed(id, TransferFailure.cancelled, 'aborted'));
+      return;
+    }
     final transfer = running.remove(id);
     if (transfer == null) return;
     transfer
@@ -428,8 +568,106 @@ Future<void> _transferHandler(
     );
   }
 
+  Future<void> upload(_Upload message) async {
+    final id = message.id;
+    final sending = uploads[id] = _Sending();
+
+    void fail(TransferFailure kind, String why) {
+      if (uploads.remove(id) == null) return;
+      sending.idle?.cancel();
+      if (!sending.abort.isCompleted) sending.abort.complete();
+      send(_Failed(id, kind, why));
+    }
+
+    // One idle gap for the whole exchange: the body going out, the wait for
+    // the head while the server takes it in, and the answer's body.
+    void armIdle() {
+      sending.idle?.cancel();
+      sending.idle = Timer(config.receiveTimeout, () {
+        fail(
+          TransferFailure.timeout,
+          'no progress for ${config.receiveTimeout.inMilliseconds} ms',
+        );
+      });
+    }
+
+    final end = message.offset + message.length;
+    try {
+      final available = await File(message.path).length();
+      if (available < end) {
+        fail(
+          TransferFailure.io,
+          'the file has $available bytes, the body ends at $end',
+        );
+        return;
+      }
+    } on FileSystemException catch (error) {
+      fail(TransferFailure.io, '$error');
+      return;
+    }
+    if (!uploads.containsKey(id)) return;
+
+    var sent = 0;
+    var reported = 0;
+    final body = File(message.path).openRead(message.offset, end).map((
+      chunk,
+    ) {
+      armIdle();
+      sent += chunk.length;
+      // Reported in steps of landBytes, the cadence transfers land at, and
+      // once at the end.
+      if (sent - reported >= config.landBytes || sent == message.length) {
+        reported = sent;
+        send(_Sent(id, sent));
+      }
+      return chunk;
+    });
+    final request =
+        _StreamBodyRequest(
+            message.method,
+            message.url,
+            body,
+            sending.abort.future,
+          )
+          ..headers.addAll(message.headers)
+          ..contentLength = message.length
+          // A redirect would have to send the body again, which a stream
+          // cannot.
+          ..followRedirects = false;
+    armIdle();
+    try {
+      final response = await client.send(request);
+      armIdle();
+      final answer = BytesBuilder(copy: false);
+      await for (final chunk in response.stream) {
+        armIdle();
+        answer.add(chunk);
+        if (answer.length > _maxAnswerBytes) {
+          fail(
+            TransferFailure.network,
+            'the answer body is over $_maxAnswerBytes bytes',
+          );
+          return;
+        }
+      }
+      if (uploads.remove(id) == null) return;
+      sending.idle?.cancel();
+      send(
+        _Answer(id, response.statusCode, response.headers, answer.takeBytes()),
+      );
+    } on Object catch (error) {
+      fail(switch (error) {
+        http.RequestAbortedException() => TransferFailure.cancelled,
+        FileSystemException() => TransferFailure.io,
+        _ => TransferFailure.network,
+      }, '$error');
+    }
+  }
+
   await for (final message in messages) {
     switch (message) {
+      case _Upload():
+        unawaited(upload(message));
       case _Get():
         unawaited(get(message));
       case _Write():

@@ -69,6 +69,9 @@ void main() {
       BytesLogOp.quotaTrim,
       BytesLogOp.rangedCommit,
       BytesLogOp.nativeFetch,
+      BytesLogOp.uploadStarted,
+      BytesLogOp.uploadRetry,
+      BytesLogOp.uploadGaveUp,
     ];
     expect(known.map(CacheOp.of).toSet(), hasLength(known.length));
     expect(known.map(CacheOp.of), isNot(contains(CacheOp.other)));
@@ -84,6 +87,40 @@ void main() {
     expect(
       diagnostics.events.single,
       isMpxEvent(op: CacheOp.other, fields: {'bytesOp': 'future_op'}),
+    );
+  });
+
+  test("carries the bytes event's fields, an upload retry's attempt and "
+      'delay among them', () {
+    final diagnostics = RecordingDiagnostics.install();
+
+    CacheDiagnosticsBridge.forward(
+      const BytesLogEvent(
+        level: BytesLogLevel.warning,
+        message: 'upload POST https://upload.test try 2 failed',
+        op: BytesLogOp.uploadRetry,
+        fields: {
+          'attempt': 2,
+          'delayMs': 1500,
+          'status': 503,
+          'code': 'service_unavailable',
+        },
+      ),
+    );
+
+    expect(
+      diagnostics.events.single,
+      isMpxEvent(
+        level: MpxEventLevel.warning,
+        op: CacheOp.uploadRetry,
+        fields: {
+          'attempt': 2,
+          'delayMs': 1500,
+          'status': 503,
+          'code': 'service_unavailable',
+          'bytesOp': 'upload_retry',
+        },
+      ),
     );
   });
 

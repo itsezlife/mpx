@@ -143,6 +143,20 @@ extension type const BytesLogOp(String value) implements String {
   /// A fetch a native reader asked for failed; the blocked readers inside it
   /// returned a failure.
   static const nativeFetch = BytesLogOp('native_fetch');
+
+  /// An upload ([HttpBytesClient.upload]) starts sending its body: one per
+  /// try. Fields: `method`, `bytes`, `attempt` (1 for the first try).
+  static const uploadStarted = BytesLogOp('upload_started');
+
+  /// An upload's try failed and another follows after a wait. Fields:
+  /// `attempt` (the try that failed), `delayMs`, `status` (0 without an
+  /// answer) and `code`.
+  static const uploadRetry = BytesLogOp('upload_retry');
+
+  /// An upload failed for good: not retryable, out of retries, or out of
+  /// its backoff's budget. Fields: `attempts`, `status`, `code`. A cancelled
+  /// upload reports nothing.
+  static const uploadGaveUp = BytesLogOp('upload_gave_up');
 }
 
 /// Soft-path report from the bytes resolve ladder (failures and audible resolve
@@ -155,6 +169,7 @@ final class BytesLogEvent {
     required this.message,
     required this.op,
     this.stackTrace,
+    this.fields = const <String, Object>{},
   });
 
   /// Warning vs error.
@@ -168,4 +183,9 @@ final class BytesLogEvent {
 
   /// Present when the failure carried a stack.
   final StackTrace? stackTrace;
+
+  /// Structured detail for hosts that route events: numbers, booleans and
+  /// short strings, never a URL, a header, a path or payload bytes. Empty
+  /// for the ops that carry everything in [message].
+  final Map<String, Object> fields;
 }

@@ -41,6 +41,15 @@ enum CacheOp implements DiagnosticOp {
   /// A fetch a native reader asked for failed.
   nativeFetch,
 
+  /// An upload started a try.
+  uploadStarted,
+
+  /// An upload's try failed and another follows after a wait.
+  uploadRetry,
+
+  /// An upload failed for good.
+  uploadGaveUp,
+
   /// An operation this version does not know yet; `fields.bytesOp` names
   /// it.
   other;
@@ -62,6 +71,9 @@ enum CacheOp implements DiagnosticOp {
     BytesLogOp.quotaTrim => quotaTrim,
     BytesLogOp.rangedCommit => rangedCommit,
     BytesLogOp.nativeFetch => nativeFetch,
+    BytesLogOp.uploadStarted => uploadStarted,
+    BytesLogOp.uploadRetry => uploadRetry,
+    BytesLogOp.uploadGaveUp => uploadGaveUp,
     _ => other,
   };
 }
@@ -71,9 +83,10 @@ enum CacheOp implements DiagnosticOp {
 /// `mpx_core` and `http_bytes_cache` do not depend on each other, so the
 /// composition root joins their diagnostics: [policy] is a
 /// `BytesDiagnostics` that turns each `BytesLogEvent` into an `MpxEvent` of
-/// category `cache` ([CacheOp]), the bytes operation in `fields.bytesOp`,
-/// with its level and stack trace. The event's message is dropped, since it
-/// can carry cache keys and URLs. `MpxStack.create` installs [policy] as
+/// category `cache` ([CacheOp]), the bytes operation in `fields.bytesOp`
+/// beside the event's own fields (an upload's attempt and delay), with its
+/// level and stack trace. The event's message is dropped, since it can
+/// carry cache keys and URLs. `MpxStack.create` installs [policy] as
 /// `BytesDiagnostics.current`; a host that opens the bytes cache itself
 /// installs it the same way.
 abstract final class CacheDiagnosticsBridge {
@@ -89,7 +102,15 @@ abstract final class CacheDiagnosticsBridge {
         BytesLogLevel.error => MpxEventLevel.error,
       },
       CacheOp.of(event.op),
-      fields: () => {'bytesOp': MpxEvent.clip(event.op.value)},
+      fields: () => {
+        for (final MapEntry(:key, :value) in event.fields.entries)
+          key: switch (value) {
+            final String text => MpxEvent.clip(text),
+            num() || bool() => value,
+            _ => MpxEvent.clip('$value'),
+          },
+        'bytesOp': MpxEvent.clip(event.op.value),
+      },
       stackTrace: event.stackTrace,
     );
   }
