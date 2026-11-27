@@ -38,6 +38,7 @@ A new test file is added there; a test restores any global state it changes.
 | `packages/mpx_ui` | Optional: fullscreen viewer, feed widgets | [0006](docs/adr/0006-viewer.md) |
 | `packages/mpx_library` | Optional plugin: device media library, file intake, library keys and fetcher | [0011](docs/adr/0011-library-and-picking.md) |
 | `packages/mpx_capture` | Optional plugin: compression, still preparation, camera session, round video | [0007](docs/adr/0007-capture.md), [0011](docs/adr/0011-library-and-picking.md) |
+| `packages/mpx_transfer` | Optional plugin: transfer jobs (uploads, tracked downloads), their state and query on the `Transfers` facade, the OS envelope seam | [0012](docs/adr/0012-transfers-and-publish-jobs.md) |
 | `packages/mpx` | Plugin: composition root, fetch adapter, device signals | [0001](docs/adr/0001-package-topology.md) |
 
 Dependency direction (arrows point at the dependency; ADR 0001):
@@ -48,7 +49,7 @@ mpx_player                    -> mpx_core, http_bytes_cache
 mpx_library                   -> mpx_core
 mpx_ui                        -> mpx_player, mpx_core, mpx_library
 mpx_capture, mpx              -> mpx_core, http_bytes_cache
-mpx_transfer                  -> mpx_core, http_bytes_cache   (ADR 0012, not landed yet)
+mpx_transfer                  -> mpx_core, http_bytes_cache
 ```
 
 ## Rules held by convention
