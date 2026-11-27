@@ -1,0 +1,5 @@
+Licence not chosen yet.
+
+Each mpx package carries its own LICENSE and NOTICE before its first publish
+(ADR 0008). Until then this package is not licensed for use outside the mpx
+repository.

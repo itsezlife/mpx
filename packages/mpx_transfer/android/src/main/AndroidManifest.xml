@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The OS envelope's components (the user-initiated job service and the
+         dataSync foreground service) land with the Android envelope. The
+         plugin declares components only, never permissions. -->
+</manifest>
