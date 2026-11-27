@@ -4,3 +4,6 @@ Future<int> lengthOf(String path) async => 0;
 
 /// Nothing to delete on the web.
 void delete(String path) {}
+
+/// Nothing to write on the web: a thumbnail stays in memory.
+bool write(String path, List<int> bytes) => false;

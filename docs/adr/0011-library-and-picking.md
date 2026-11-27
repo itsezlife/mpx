@@ -143,8 +143,8 @@ or high quality), as video (a preset), as file (original bytes, a thumbnail
 only). The result is a `PreparedMedia`: a local key or file lease,
 dimensions, duration, thumbnail bytes, MIME, `hasAudio`, progress and cancel.
 
-`mpx_capture` implements `mpx_core`'s `MediaPreparation` seam over
-`MediaPreparer`: `prepare(input, intent)` returns a handle with progress,
+`mpx_capture` implements `mpx_core`'s `MediaPreparation` seam
+(`CaptureMediaPreparation`) over `MediaPreparer`: `prepare(input, intent)` returns a handle with progress,
 cancel and the prepared file. A host passes it to the users that need
 preparation (a publish job, ADR 0012); none of them depends on
 `mpx_capture` (ADR 0001, *Core seams between optional packages*).
@@ -297,7 +297,9 @@ save (progress, result).
 - chat_scroll_view moves its mpx pin once these land (its ADR 046).
 - `PreparationPolicy` gains a video concurrency limit, default 1; the
   per-platform policies (`$Android`, `$IOS`, `$Desktop`, `$Web`) keep it at
-  1 unless a host overrides it.
+  1 unless a host overrides it. The field is `videoConcurrency`, beside
+  `concurrency`; a video takes a slot of each, and a video waiting for its
+  slot lets later stills and files by.
 - `mpx_capture` ships the `MediaPreparation` implementation and runs the
   core seam's contract suite against it. `PreparationInput`,
   `PreparationIntent`, `CompressionPreset` and `PreparedMedia` move into
@@ -372,8 +374,6 @@ save (progress, result).
 ## Open in implementation
 
 - How the opt-in defines reach Swift Package Manager builds.
-- The name of the preparation policy's video concurrency field (beside its
-  `concurrency`); the decision is only that it is separate and defaults to 1.
 - Whether the grid's swipe select auto-scroll speed comes from the policy or a
   fixed curve.
 - A macOS library adapter over PhotoKit.

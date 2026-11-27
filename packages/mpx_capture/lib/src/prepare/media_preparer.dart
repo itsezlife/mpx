@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:collection';
 
+import 'package:mpx_capture/src/diagnostics/preparation_op.dart';
 import 'package:mpx_capture/src/job/capture_job.dart';
+import 'package:mpx_capture/src/prepare/failure_code.dart';
 import 'package:mpx_capture/src/prepare/preparation_codec.dart';
 import 'package:mpx_capture/src/prepare/preparation_policy.dart';
 import 'package:mpx_capture/src/prepare/prepared_files_io.dart'
@@ -29,6 +31,8 @@ final class PreparationJob {
   bool _cancelled = false;
   CaptureJob? _compression;
   Future<void> Function()? _onCancel;
+  void Function(double fraction)? _onProgress;
+  void Function(PreparedMedia? media, CaptureException? error)? _onSettled;
 
   /// Progress, from 0 to 1.
   Stream<double> get progress => _progress.stream;
@@ -59,18 +63,21 @@ final class PreparationJob {
     if (isDone || fraction <= _latest) return;
     _latest = fraction.clamp(0, 1);
     _progress.add(_latest);
+    _onProgress?.call(_latest);
   }
 
   void _complete(PreparedMedia media) {
     if (isDone) return;
     _report(1);
     _result.complete(media);
+    _onSettled?.call(media, null);
     unawaited(_progress.close());
   }
 
   void _fail(CaptureException error, [StackTrace? stackTrace]) {
     if (isDone) return;
     _result.completeError(error, stackTrace);
+    _onSettled?.call(null, error);
     unawaited(_progress.close());
   }
 }
@@ -80,7 +87,9 @@ final class PreparationJob {
 /// passed through, thumbnails and facts read.
 ///
 /// Items run [PreparationPolicy.concurrency] at a time (two for every
-/// built-in policy); later ones queue in call order. The work runs off the
+/// built-in policy) and videos [PreparationPolicy.videoConcurrency] at a
+/// time (one), a video holding a slot of each; later ones queue in call
+/// order, a video waiting for its slot letting the items behind it by. The work runs off the
 /// UI isolate, in the platform codecs. Written files land in
 /// [outputDirectory]; the host deletes them once uploaded.
 final class MediaPreparer {
@@ -103,32 +112,97 @@ final class MediaPreparer {
 
   final Queue<_Pending> _queue = Queue();
   int _running = 0;
+  int _runningVideos = 0;
+  int _count = 0;
   int _written = 0;
 
   /// Starts preparing [input] as [intent] says, by [policy].
+  ///
+  /// With [thumbnailFile] a thumbnail the preparer made is also written as
+  /// a file in [outputDirectory] and named by `PreparedMedia.thumbnailPath`
+  /// (the host deletes it with the output; cancel and failure delete it).
   PreparationJob prepare(
     PreparationInput input,
     PreparationIntent intent,
-    PreparationPolicy policy,
-  ) {
+    PreparationPolicy policy, {
+    bool thumbnailFile = false,
+  }) {
     final job = PreparationJob._();
-    final pending = _Pending(input, intent, policy, job);
+    final pending = _Pending(
+      input,
+      intent,
+      policy,
+      job,
+      number: _count++,
+      thumbnailFile: thumbnailFile,
+    );
     job._onCancel = () async => _queue.remove(pending);
+    job._onProgress = (fraction) => _emit(
+      MpxEventLevel.trace,
+      PreparationOp.progress,
+      pending,
+      {'fraction': fraction},
+    );
+    job._onSettled = (media, error) => _settled(pending, media, error);
+    _emit(MpxEventLevel.debug, PreparationOp.queued, pending, {
+      if (pending.isVideo)
+        'waitingForVideoSlot': _runningVideos >= policy.videoConcurrency,
+    });
     _queue.add(pending);
     _pump();
     return job;
   }
 
   void _pump() {
-    while (_queue.isNotEmpty && _running < _queue.first.policy.concurrency) {
-      final next = _queue.removeFirst();
+    for (final next in _queue.toList()) {
+      if (_running >= next.policy.concurrency) continue;
+      if (next.isVideo && _runningVideos >= next.policy.videoConcurrency) {
+        continue;
+      }
+      _queue.remove(next);
       _running++;
+      if (next.isVideo) _runningVideos++;
       unawaited(
         _run(next).whenComplete(() {
           _running--;
+          if (next.isVideo) _runningVideos--;
           _pump();
         }),
       );
+    }
+  }
+
+  void _emit(
+    MpxEventLevel level,
+    PreparationOp op,
+    _Pending item, [
+    Map<String, Object> fields = const {},
+    Object? error,
+    StackTrace? stackTrace,
+  ]) => MpxDiagnostics.current.emit(
+    level,
+    op,
+    fields: () => {'n': item.number, 'kind': item.kind, ...fields},
+    error: error,
+    stackTrace: stackTrace,
+  );
+
+  void _settled(_Pending item, PreparedMedia? media, CaptureException? error) {
+    final ms = item.age.inMilliseconds;
+    switch ((media, error)) {
+      case (final media?, _):
+        _emit(MpxEventLevel.info, PreparationOp.finished, item, {
+          'bytes': media.byteSize,
+          'ms': ms,
+          'original': media.isOriginal,
+        });
+      case (_, CaptureCancelled()):
+        _emit(MpxEventLevel.info, PreparationOp.cancelled, item, {'ms': ms});
+      default:
+        _emit(MpxEventLevel.error, PreparationOp.failed, item, {
+          'code': captureFailureCode(error),
+          'ms': ms,
+        }, error);
     }
   }
 
@@ -136,6 +210,9 @@ final class MediaPreparer {
     final job = item.job;
     if (job.isDone) return;
     final written = <String>[];
+    _emit(MpxEventLevel.debug, PreparationOp.started, item, {
+      'waitedMs': item.age.inMilliseconds,
+    });
     try {
       final media = switch (item.intent) {
         PreparationIntent$Photo(:final highQuality) => await _photo(
@@ -154,7 +231,7 @@ final class MediaPreparer {
         _delete(written);
         return;
       }
-      job._complete(media);
+      job._complete(_withThumbnailFile(item, media, written));
     } on CaptureException catch (error, stackTrace) {
       _delete(written);
       job._fail(error, stackTrace);
@@ -162,6 +239,34 @@ final class MediaPreparer {
       _delete(written);
       job._fail(CaptureFailed('$error'), stackTrace);
     }
+  }
+
+  // The thumbnail as a file beside the outputs, when the item asked for it.
+  PreparedMedia _withThumbnailFile(
+    _Pending item,
+    PreparedMedia media,
+    List<String> written,
+  ) {
+    final bytes = media.thumbnail;
+    if (!item.thumbnailFile || bytes == null) return media;
+    final path = _nextOutput('jpg');
+    if (!files.write(path, bytes)) return media;
+    written.add(path);
+    return PreparedMedia(
+      kind: media.kind,
+      path: media.path,
+      isOriginal: media.isOriginal,
+      byteSize: media.byteSize,
+      mimeType: media.mimeType,
+      dimensions: media.dimensions,
+      duration: media.duration,
+      thumbnailPath: path,
+      thumbnail: bytes,
+      thumbnailDimensions: media.thumbnailDimensions,
+      hasAudio: media.hasAudio,
+      animated: media.animated,
+      bytes: media.bytes,
+    );
   }
 
   // --- Photo ---
@@ -369,7 +474,26 @@ final class MediaPreparer {
 }
 
 final class _Pending {
-  _Pending(this.input, this.intent, this.policy, this.job);
+  _Pending(
+    this.input,
+    this.intent,
+    this.policy,
+    this.job, {
+    required this.number,
+    required this.thumbnailFile,
+  });
+
+  final int number;
+  final bool thumbnailFile;
+  final Stopwatch _age = Stopwatch()..start();
+
+  Duration get age => _age.elapsed;
+  bool get isVideo => intent is PreparationIntent$Video;
+  String get kind => switch (intent) {
+    PreparationIntent$Photo() => 'photo',
+    PreparationIntent$Video() => 'video',
+    PreparationIntent$File() => 'file',
+  };
 
   final PreparationInput input;
   final PreparationIntent intent;

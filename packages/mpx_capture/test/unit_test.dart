@@ -15,6 +15,10 @@ import 'camera/fake_camera_ownership_contract_test.dart'
     as fake_camera_ownership_contract_test;
 import 'camera/fake_camera_session_contract_test.dart'
     as fake_camera_session_contract_test;
+import 'prepare/capture_media_preparation_contract_test.dart'
+    as capture_media_preparation_contract_test;
+import 'prepare/capture_media_preparation_test.dart'
+    as capture_media_preparation_test;
 import 'prepare/fake_preparation_codec_contract_test.dart'
     as fake_preparation_codec_contract_test;
 import 'prepare/media_preparer_test.dart' as media_preparer_test;
@@ -42,6 +46,11 @@ void main() {
   );
   group('compression_preset_test', compression_preset_test.main);
   group('preparation_policy_test', preparation_policy_test.main);
+  group(
+    'capture_media_preparation_contract_test',
+    capture_media_preparation_contract_test.main,
+  );
+  group('capture_media_preparation_test', capture_media_preparation_test.main);
   group(
     'fake_preparation_codec_contract_test',
     fake_preparation_codec_contract_test.main,

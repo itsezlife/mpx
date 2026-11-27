@@ -503,6 +503,7 @@ final class PreparationPolicy {
     required this.thumbnail,
     required this.video,
     this.concurrency = 2,
+    this.videoConcurrency = 1,
   });
 
   /// Android's values.
@@ -596,6 +597,12 @@ final class PreparationPolicy {
 
   /// How many items prepare at once.
   final int concurrency;
+
+  /// How many videos prepare at once, within [concurrency]: a video takes a
+  /// slot of each, so it waits for either. Stills and files do not count
+  /// against it. One for every built-in policy; a host that wants more
+  /// passes its own.
+  final int videoConcurrency;
 
   /// The plan for a still [source], at standard or [highQuality].
   StillPlan planStill(StillSource source, {bool highQuality = false}) =>
