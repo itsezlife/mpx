@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:meta/meta.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
+import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
 
 /// The identity of one publish job, issued by the engine when the job is
 /// made: unique across runs, so an owner keeps it to find the job again
@@ -143,6 +144,7 @@ final class PublishItem {
     required this.source,
     this.fingerprint,
     this.fileName,
+    this.pageSource,
   });
 
   /// The host's id for the item, opaque to the engine and unique within
@@ -164,6 +166,30 @@ final class PublishItem {
   /// The file's name for the remote end, when the host gives one.
   final String? fileName;
 
+  /// The item's bytes as the page holds them (a picked `File` on the web),
+  /// where there is no file at the item's path: what its upload reads when
+  /// it uploads the item's own file, the host's prepared media or an
+  /// original the preparation kept. Prepared bytes
+  /// (`PreparedMedia.bytes`) come first.
+  ///
+  /// Never journaled: it lives as long as the page. On the web the upload
+  /// copies it when it is made, so a reload resumes from the copy; an item
+  /// whose upload was not made yet, or whose copy is gone, fails with its
+  /// source lost, and `PublishJob.retryItem(source:)` gives it again. On
+  /// the VM the engine writes it to a file of its own first.
+  final SourceBytes? pageSource;
+
+  /// This item with [pageSource] in place of its own.
+  PublishItem withPageSource(SourceBytes? pageSource) => PublishItem(
+    itemId: itemId,
+    key: key,
+    source: source,
+    fingerprint: fingerprint,
+    fileName: fileName,
+    pageSource: pageSource,
+  );
+
+  // The page source by identity: the same bytes held twice are two holds.
   @override
   bool operator ==(Object other) =>
       other is PublishItem &&
@@ -171,10 +197,18 @@ final class PublishItem {
       other.key == key &&
       other.source == source &&
       other.fingerprint == fingerprint &&
-      other.fileName == fileName;
+      other.fileName == fileName &&
+      identical(other.pageSource, pageSource);
 
   @override
-  int get hashCode => Object.hash(itemId, key, source, fingerprint, fileName);
+  int get hashCode => Object.hash(
+    itemId,
+    key,
+    source,
+    fingerprint,
+    fileName,
+    identityHashCode(pageSource),
+  );
 
   @override
   String toString() => 'PublishItem($itemId, $source)';

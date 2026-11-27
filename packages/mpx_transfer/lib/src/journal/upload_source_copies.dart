@@ -1,14 +1,28 @@
 import 'dart:typed_data';
 
 import 'package:mpx_transfer/src/job/transfer_id.dart';
+import 'package:mpx_transfer/src/journal/source_bytes_blob.dart';
 
 /// The bytes of one upload source as the page holds them: a file the user
-/// picked, or bytes in memory.
+/// picked, or bytes in memory. A host gives one where an upload has no
+/// file to read (`PublishItem.pageSource`, `Transfers.retry`), and makes it
+/// with [SourceBytes.blob] or [SourceBytes.memory]: the engine reads no
+/// other kind.
 ///
 /// On the web a source has no path that outlives the page, so the engine
-/// copies it ([UploadSourceCopies]) at job creation; on the VM a source is
-/// a file at its path and is never copied.
+/// copies it ([UploadSourceCopies]) when its upload is made and reads the
+/// copy after a reload. On the VM an upload reads a file, so the engine
+/// writes in-memory bytes to a file of its own first.
 abstract interface class SourceBytes {
+  /// The [bytes] in memory.
+  factory SourceBytes.memory(Uint8List bytes) = MemorySourceBytes;
+
+  /// A browser `Blob` (a picked `File`), held as long as the page is. The
+  /// web only: typed [Object] so the VM compiles without the browser's
+  /// types. Throws an [ArgumentError] for anything but a `Blob`, and an
+  /// [UnsupportedError] on the VM.
+  factory SourceBytes.blob(Object blob) => $blobSourceBytes(blob);
+
   /// How many bytes the source holds.
   int get size;
 

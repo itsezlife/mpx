@@ -1,0 +1,11 @@
+import 'dart:js_interop';
+
+import 'package:mpx_transfer/src/journal/opfs_journal_storage.dart';
+import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
+import 'package:web/web.dart' as web;
+
+/// [blob], a browser `Blob` (a picked `File`), as an upload source.
+SourceBytes $blobSourceBytes(Object blob) => switch (blob) {
+  final JSAny js when js.isA<web.Blob>() => BlobSourceBytes(js as web.Blob),
+  _ => throw ArgumentError.value(blob.runtimeType, 'blob', 'is not a Blob'),
+};
