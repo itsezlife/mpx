@@ -13,6 +13,21 @@
   to logcat (`mpx_transfer`) and, while Dart is not running, to a 2 MiB
   ring merged at the next start. `EnvelopeOp` gains `progressPushed` and
   `nativeMerged`.
+- Ordering groups: jobs sharing an `orderingGroup` publish in creation
+  order; a failed job lets later ones go on and, retried, publishes after
+  them. The order is journaled.
+- Hold and commit: a `hold: true` job publishes only on
+  `PublishJob.commit(payload:)`; before that `addItem`, `reorder`,
+  `setPayload`, `removeItem` and `cancel` apply. `PublishJobSnapshot.held`.
+- Item cancel: `removeItem` takes the last item too, leaving the job
+  `awaitingOwner` until its owner commits or cancels it; a
+  `Transfers.cancel` of an item's upload now removes the item (it used to
+  fail it). `PublishJob.cancel()` removes the job and its uploads.
+  `watchItem` ends with a `removed` snapshot.
+- Diagnostics: `PublishOp.groupWait`, `committed`, `awaitingOwner` and
+  `cancelled` (`by: owner` or `envelope`); `itemRemoved` reports
+  `by: host` or `cell`.
+
 - OS envelope: `TransferEnvelopeConfig` (title, text, cancel-all label,
   progress text, icon, `startRule`, `longJobBytes` 10 MiB, `submitAt`
   `afterDelay(10 s)` or `onResignActive`) through

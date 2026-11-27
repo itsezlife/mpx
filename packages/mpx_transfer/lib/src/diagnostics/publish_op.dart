@@ -57,9 +57,27 @@ enum PublishOp implements DiagnosticOp {
   /// for an item's retry).
   retry,
 
-  /// The host removed an item from a job (info; `by`: `host`; job, item,
-  /// key, tag).
-  itemRemoved;
+  /// Everything is uploaded and jobs made earlier in the job's ordering
+  /// group have not published or failed yet, so the job waits for them
+  /// (debug; `ahead`, how many; job, tag). Reported once per wait.
+  groupWait,
+
+  /// The host committed a held job, or a job waiting for its owner, and it
+  /// publishes (info; `items`; job, tag).
+  committed,
+
+  /// An item left its job (info; `by`: `host` for `PublishJob.removeItem`,
+  /// `cell` for a cancel of one of the item's uploads; job, item, key,
+  /// tag).
+  itemRemoved,
+
+  /// The job's last item was removed: it publishes nothing until its owner
+  /// commits or cancels it (info; job, tag).
+  awaitingOwner,
+
+  /// The job was cancelled and removed (info; `by`: `owner` or `envelope`;
+  /// `items`, the items it still had; job, tag).
+  cancelled;
 
   @override
   String get category => 'publish';
