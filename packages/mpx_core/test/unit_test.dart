@@ -74,6 +74,10 @@ import 'pool/frame_pool_test.dart' as frame_pool_test;
 import 'pool/frame_slot_allocator_test.dart' as frame_slot_allocator_test;
 import 'pool/list_frame_page_memory_test.dart' as list_frame_page_memory_test;
 import 'pool/pixel_upload_test.dart' as pixel_upload_test;
+import 'preparation/fake_media_preparation_test.dart'
+    as fake_media_preparation_test;
+import 'preparation/preparation_encoding_test.dart'
+    as preparation_encoding_test;
 import 'preset/asset_presets_test.dart' as asset_presets_test;
 import 'texture/fake_frame_texture_host_contract_test.dart'
     as fake_frame_texture_host_contract_test;
@@ -84,6 +88,9 @@ import 'texture/platform/platform_host_contract_test.dart'
 import 'texture/platform/platform_host_test.dart' as platform_host_test;
 import 'texture/platform/texture_table_test.dart' as texture_table_test;
 import 'texture/texture_frame_region_test.dart' as texture_frame_region_test;
+import 'transfer/fake_tracked_transfers_test.dart'
+    as fake_tracked_transfers_test;
+import 'transfer/tracked_download_test.dart' as tracked_download_test;
 import 'widget/asset_cache_provider_test.dart' as asset_cache_provider_test;
 import 'widget/asset_view_round_test.dart' as asset_view_round_test;
 import 'widget/asset_view_status_test.dart' as asset_view_status_test;
@@ -184,4 +191,8 @@ void main() {
   group('asset_view_test', asset_view_test.main);
   group('media_loading_style_test', media_loading_style_test.main);
   group('viewport_visibility_test', viewport_visibility_test.main);
+  group('fake_media_preparation_test', fake_media_preparation_test.main);
+  group('preparation_encoding_test', preparation_encoding_test.main);
+  group('fake_tracked_transfers_test', fake_tracked_transfers_test.main);
+  group('tracked_download_test', tracked_download_test.main);
 }

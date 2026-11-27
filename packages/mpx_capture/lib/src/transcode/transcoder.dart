@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:mpx_capture/src/job/capture_job.dart';
 import 'package:mpx_capture/src/preset/compression_preset.dart';
+import 'package:mpx_core/mpx_core.dart';
 
 /// One video to compress before send.
 @immutable

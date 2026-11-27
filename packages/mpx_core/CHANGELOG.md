@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- Tracked transfers: the `TrackedTransfers` seam (`download(key, origin:)`
+  with `TransferOrigin.user` / `auto`, `watch(key)`, `cancel(key)`,
+  `leaseFile(key)` lending a `ContentFileLease`). `AssetCacheScope(tracked:)`
+  takes one: the download of a surface attached with `tracksTransfer: true`
+  (an `AssetView` whose status is the full or the compact control) goes
+  through it, once per content, and every surface of the content reads its
+  transfer from `watch`; cancel goes to `cancel(key)`. Thumbnails, previews,
+  glyphs and surfaces without such a control stay the scope's own fetches,
+  and a scope without the seam downloads as before. The bindings report
+  `binding.trackedDownload`, `mapped`, `cancelForwarded` and `untracked`.
+- `AssetTransfer.sending(sent, total)` and `AssetTransfer.sent`: an upload
+  whose source is the content, and its end before the content is
+  published. Only a tracked transfer reports them; a status control shows
+  them as it shows none for now. Code that switches exhaustively over
+  `AssetTransfer` needs the two cases.
+- Media preparation: the `MediaPreparation` seam (`prepare(input, intent)`
+  returning a `PreparationHandle` with progress, the `PreparedMedia` and
+  cancel; failures `PreparationCancelled` and `PreparationFailed(code)`).
+  `PreparationInput`, `PreparationIntent`, `CompressionPreset`,
+  `PreparedKind` and `PreparedMedia` moved here from `mpx_capture`, compare
+  by value, and `PreparedMedia` gained `thumbnailPath`.
+  `PreparationEncoding` is their stored form, version 1, for journals and
+  reuse tables.
+- `testing.dart`: `FakeTrackedTransfers`, `FakeMediaPreparation`, and the
+  `TrackedTransfersContract` and `MediaPreparationContract` suites.
 - Diagnostics events: `MpxDiagnostics.current`, one process-wide policy the
   host sets at start (`silent` by default, `developer` logging under `mpx`,
   or `onEvent` with a `minLevel`), and `MpxEvent` (level, an operation from

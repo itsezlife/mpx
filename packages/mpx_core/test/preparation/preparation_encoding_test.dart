@@ -1,0 +1,199 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mpx_core/mpx_core.dart';
+
+// Through JSON text, as a journal line would hold it.
+Map<String, Object?> _stored(Map<String, Object?> encoded) =>
+    (jsonDecode(jsonEncode(encoded)) as Map).cast<String, Object?>();
+
+void main() {
+  group('PreparationEncoding', () {
+    test('an input round-trips, with and without its facts', () {
+      const full = PreparationInput(
+        '/picked/a.heic',
+        mimeType: 'image/heic',
+        byteSize: 1234,
+      );
+      const bare = PreparationInput('/picked/b.bin');
+
+      for (final input in [full, bare]) {
+        expect(
+          PreparationEncoding.decodeInput(
+            _stored(PreparationEncoding.encodeInput(input)),
+          ),
+          input,
+        );
+      }
+    });
+
+    test('every intent round-trips, every preset included', () {
+      final intents = <PreparationIntent>[
+        const PreparationIntent.photo(),
+        const PreparationIntent.photo(highQuality: true),
+        const PreparationIntent.video(),
+        for (final preset in CompressionPreset.values)
+          PreparationIntent.video(preset: preset),
+        const PreparationIntent.file(),
+      ];
+
+      for (final intent in intents) {
+        expect(
+          PreparationEncoding.decodeIntent(
+            _stored(PreparationEncoding.encodeIntent(intent)),
+          ),
+          intent,
+        );
+      }
+    });
+
+    test('a prepared item round-trips its file and facts', () {
+      const video = PreparedMedia(
+        kind: PreparedKind.video,
+        path: '/out/1.mp4',
+        isOriginal: false,
+        byteSize: 5000000,
+        mimeType: 'video/mp4',
+        dimensions: MediaDimensions(1280, 720),
+        duration: Duration(milliseconds: 12345),
+        thumbnailPath: '/out/1.jpg',
+        thumbnailDimensions: MediaDimensions(320, 180),
+        hasAudio: true,
+      );
+      const original = PreparedMedia(
+        kind: PreparedKind.file,
+        path: '/picked/doc.pdf',
+        isOriginal: true,
+        byteSize: 42,
+        animated: true,
+      );
+
+      for (final media in [video, original]) {
+        expect(
+          PreparationEncoding.decodePrepared(
+            _stored(PreparationEncoding.encodePrepared(media)),
+          ),
+          media,
+        );
+      }
+    });
+
+    test('in-memory bytes are not stored', () {
+      final media = PreparedMedia(
+        kind: PreparedKind.photo,
+        path: '/out/2.jpg',
+        isOriginal: false,
+        byteSize: 3,
+        thumbnail: Uint8List.fromList([1, 2]),
+        bytes: Uint8List.fromList([1, 2, 3]),
+      );
+
+      final decoded = PreparationEncoding.decodePrepared(
+        _stored(PreparationEncoding.encodePrepared(media)),
+      );
+
+      expect(decoded.thumbnail, isNull);
+      expect(decoded.bytes, isNull);
+      expect(decoded.path, '/out/2.jpg');
+    });
+
+    test('the stored form is pinned: version 1, names and keys', () {
+      expect(PreparationEncoding.version, 1);
+      expect(
+        PreparationEncoding.encodeIntent(
+          const PreparationIntent.video(preset: CompressionPreset.medium),
+        ),
+        {'v': 1, 'as': 'video', 'preset': 'medium'},
+      );
+      expect(
+        PreparationEncoding.encodeIntent(const PreparationIntent.photo()),
+        {'v': 1, 'as': 'photo', 'highQuality': false},
+      );
+      expect(PreparationEncoding.encodeIntent(const PreparationIntent.file()), {
+        'v': 1,
+        'as': 'file',
+      });
+      expect(
+        PreparationEncoding.encodeInput(
+          const PreparationInput('/a', byteSize: 1),
+        ),
+        {'v': 1, 'path': '/a', 'mimeType': null, 'byteSize': 1},
+      );
+      expect(
+        PreparationEncoding.decodePrepared({
+          'v': 1,
+          'kind': 'photo',
+          'path': '/out/3.jpg',
+          'isOriginal': false,
+          'byteSize': 10,
+          'width': 4,
+          'height': 3,
+          'durationUs': null,
+          'hasAudio': false,
+          'animated': false,
+        }),
+        const PreparedMedia(
+          kind: PreparedKind.photo,
+          path: '/out/3.jpg',
+          isOriginal: false,
+          byteSize: 10,
+          dimensions: MediaDimensions(4, 3),
+        ),
+      );
+    });
+
+    test('an unknown version, a missing key or an unknown name is a '
+        'FormatException', () {
+      expect(
+        () => PreparationEncoding.decodeIntent({'v': 2, 'as': 'file'}),
+        throwsFormatException,
+      );
+      expect(
+        () => PreparationEncoding.decodeIntent({'as': 'file'}),
+        throwsFormatException,
+      );
+      expect(
+        () => PreparationEncoding.decodeIntent({'v': 1, 'as': 'sticker'}),
+        throwsFormatException,
+      );
+      expect(
+        () => PreparationEncoding.decodeIntent({
+          'v': 1,
+          'as': 'video',
+          'preset': 'ultra',
+        }),
+        throwsFormatException,
+      );
+      expect(
+        () => PreparationEncoding.decodeInput({'v': 1}),
+        throwsFormatException,
+      );
+      expect(
+        () => PreparationEncoding.decodePrepared({
+          'v': 1,
+          'kind': 'photo',
+          'path': '/a',
+          'isOriginal': false,
+          'byteSize': '10',
+          'hasAudio': false,
+          'animated': false,
+        }),
+        throwsFormatException,
+      );
+    });
+  });
+
+  group('CompressionPreset', () {
+    test('its names are its stored identity', () {
+      expect(CompressionPreset.values.map((preset) => preset.name), [
+        'tiny',
+        'veryLow',
+        'low',
+        'medium',
+        'high',
+        'veryHigh',
+      ]);
+    });
+  });
+}

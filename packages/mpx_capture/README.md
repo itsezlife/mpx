@@ -18,6 +18,9 @@ dependencies:
 
 ```dart
 import 'package:mpx_capture/mpx_capture.dart';
+// CompressionPreset, PreparationInput, PreparationIntent and PreparedMedia
+// are mpx_core's.
+import 'package:mpx_core/mpx_core.dart';
 
 const transcoder = PlatformTranscoder();
 final source = await transcoder.probe(pickedPath);

@@ -155,6 +155,13 @@ upload's `completed` to `sent` until the publish's alias applies, then to
 
 - The job holds state; the bytes are the bytes cache's data. Parallel parts
   and ranged resume stay inside the download.
+- A binding with a status control is one attached with `tracksTransfer`
+  (`AssetCacheScope.attach`): `AssetView` sets it for the full and the
+  compact control, which offer download and cancel, and not for the bare
+  arc, which offers neither. The scope asks `download(key)` once per
+  content where it would have fetched the content itself, and its attempts
+  fetch only the stand-ins until the job's `watch` goes from receiving to
+  `none`; then they start again and read the cached bytes.
 - After a restart, `origin: user` downloads resume from the cache's data.
   `origin: auto` downloads (auto-download, a visible surface) come back
   `paused(awaitingResume)`. `resumeOnStart` overrides this per job.
