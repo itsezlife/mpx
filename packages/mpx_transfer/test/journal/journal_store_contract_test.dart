@@ -17,4 +17,9 @@ void main() {
     // would open them.
     return () => FileJournalStore('${directory.path}/journal');
   });
+
+  UploadSourceCopiesContract.run('fake', () {
+    final copies = FakeUploadSourceCopies();
+    return () async => copies;
+  });
 }

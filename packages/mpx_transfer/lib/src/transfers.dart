@@ -6,6 +6,7 @@ import 'package:http_bytes_cache/http_bytes_cache.dart'
 import 'package:meta/meta.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_transfer/src/diagnostics/envelope_op.dart';
+import 'package:mpx_transfer/src/diagnostics/journal_op.dart';
 import 'package:mpx_transfer/src/diagnostics/scheduler_op.dart';
 import 'package:mpx_transfer/src/diagnostics/transfers_debug_snapshot.dart';
 import 'package:mpx_transfer/src/download/download_runner.dart';
@@ -20,6 +21,8 @@ import 'package:mpx_transfer/src/job/transfer_state.dart';
 import 'package:mpx_transfer/src/journal/journal_codec.dart';
 import 'package:mpx_transfer/src/journal/platform_journal_store.dart';
 import 'package:mpx_transfer/src/journal/transfer_journal.dart';
+import 'package:mpx_transfer/src/journal/unload_warning.dart';
+import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
 
 /// The one facade of the transfer engine: every transfer job, its verbs and
 /// the query over them.
@@ -37,7 +40,10 @@ import 'package:mpx_transfer/src/journal/transfer_journal.dart';
 /// change is written at once and progress at most every
 /// [defaultProgressInterval], so after any kill the next [open] reads the
 /// jobs back, and the queries answer from the journal at every durability
-/// level. Every change is reported through `MpxDiagnostics.current`
+/// level. On the web the journal is in OPFS (in memory where the page has
+/// none), an upload's sources are copied there at its creation up to
+/// [sourceCopyLimit], and leaving the page asks first while a job is
+/// queued or running. Every change is reported through `MpxDiagnostics.current`
 /// (categories `journal`, `scheduler` and `envelope`).
 ///
 /// Single-threaded on the UI isolate. Call [dispose] when the app shuts
@@ -55,7 +61,10 @@ final class Transfers {
     required TransferJournal journal,
     TransferDownloads? downloads,
     TransferEnvelope? envelope,
+    UploadSourceCopies? sourceCopies,
+    UnloadWarning? unloadWarning,
     this.retention = defaultRetention,
+    this.sourceCopyLimit = defaultSourceCopyLimit,
     bool online = true,
     DateTime Function() now = DateTime.now,
   }) : _cacheKeyOf = cacheKeyOf,
@@ -64,6 +73,8 @@ final class Transfers {
        _downloadRunner = downloads == null ? null : DownloadRunner(downloads),
        _journal = journal,
        _envelope = envelope,
+       _sourceCopies = sourceCopies,
+       _unloadWarning = unloadWarning,
        _online = online,
        _now = now,
        _lastLifecycle = lifecycle.state {
@@ -78,8 +89,12 @@ final class Transfers {
   ///
   /// [directory] is the bytes cache's directory: on the VM the journal is
   /// kept in `mpx_transfer` below it, and a missing [directory] throws an
-  /// [ArgumentError]; on the web it is ignored. [retention] is how long a
+  /// [ArgumentError]; on the web it is ignored, and the journal is kept in
+  /// `mpx_transfer` at the OPFS root, beside the bytes cache's store, or in
+  /// memory where the page has no OPFS. [retention] is how long a
   /// completed job stays queryable ([defaultRetention] unless given).
+  /// [sourceCopyLimit] is how many bytes of an upload job's sources the web
+  /// copies at most ([defaultSourceCopyLimit] unless given).
   /// [progressInterval] is the shortest time between two progress writes
   /// ([defaultProgressInterval] unless given). [envelope] is the platform's
   /// OS envelope; without one, `system` jobs run in process. [online] is
@@ -97,11 +112,13 @@ final class Transfers {
     TransferEnvelope? envelope,
     Duration retention = defaultRetention,
     Duration progressInterval = defaultProgressInterval,
+    int sourceCopyLimit = defaultSourceCopyLimit,
     bool online = true,
     DateTime Function() now = DateTime.now,
   }) async {
+    final platform = await openJournalPlatform(directory);
     final journal = await TransferJournal.open(
-      platformJournalStore(directory),
+      platform.store,
       retention: retention,
       progressInterval: progressInterval,
       now: now,
@@ -114,7 +131,10 @@ final class Transfers {
       journal: journal,
       downloads: downloads,
       envelope: envelope,
+      sourceCopies: platform.sourceCopies,
+      unloadWarning: platform.unloadWarning,
       retention: retention,
+      sourceCopyLimit: sourceCopyLimit,
       online: online,
       now: now,
     );
@@ -135,8 +155,18 @@ final class Transfers {
   static const Duration defaultProgressInterval =
       TransferJournal.defaultProgressInterval;
 
+  /// How many bytes of an upload job's sources the web copies into OPFS
+  /// at most by default: 500 MiB, the sum of the job's sources.
+  static const int defaultSourceCopyLimit = 500 * 1024 * 1024;
+
   /// How long a completed job stays queryable after it completed.
   final Duration retention;
+
+  /// How many bytes of an upload job's sources, together, the web copies
+  /// into OPFS at the job's creation. A job over it runs from the page's
+  /// file, and after a reload comes back failed with
+  /// [TransferFailureKind.sourceLost].
+  final int sourceCopyLimit;
 
   /// The shortest time between two progress writes to the journal.
   Duration get progressInterval => _journal.progressInterval;
@@ -147,7 +177,12 @@ final class Transfers {
   final DownloadRunner? _downloadRunner;
   final TransferJournal _journal;
   final TransferEnvelope? _envelope;
+  final UploadSourceCopies? _sourceCopies;
+  final UnloadWarning? _unloadWarning;
   final DateTime Function() _now;
+
+  /// The source copies under way; see [debugSourcesCopied].
+  final Set<Future<void>> _$copies = {};
 
   bool _online;
   AppLifecycleState? _lastLifecycle;
@@ -290,6 +325,7 @@ final class Transfers {
     _stopRun(id);
     _queuedAt.remove(id);
     _journal.remove(id);
+    _deleteSources(id);
     MpxDiagnostics.current.emit(
       MpxEventLevel.info,
       SchedulerOp.cancelled,
@@ -437,10 +473,15 @@ final class Transfers {
     RequestPriority priority = RequestPriority.visible,
     int? total,
     bool resumeOnStart = true,
+    List<SourceBytes> sources = const [],
   }) {
     assert(
       direction == TransferDirection.upload || key != null,
       'A download needs the key of the content it fetches.',
+    );
+    assert(
+      direction == TransferDirection.upload || sources.isEmpty,
+      'Only an upload has sources.',
     );
     final id = switch (direction) {
       TransferDirection.download => TransferId.forDownload(_cacheKeyOf(key!)),
@@ -462,7 +503,16 @@ final class Transfers {
         resumeOnStart: resumeOnStart,
       ),
     );
+    if (direction == TransferDirection.upload) _copySources(id, sources);
     return id;
+  }
+
+  /// Completes once every source copy begun so far has ended.
+  @internal
+  Future<void> get debugSourcesCopied async {
+    while (_$copies.isNotEmpty) {
+      await Future.wait([..._$copies]);
+    }
   }
 
   /// Stops listening to the lifecycle and the envelope, ends every query
@@ -484,6 +534,7 @@ final class Transfers {
   void _shutDown() {
     if (_disposed) return;
     _disposed = true;
+    _unloadWarning?.disarm();
     _lifecycle.removeListener(_onLifecycle);
     unawaited(_envelopeEvents?.cancel());
     _pruneTimer?.cancel();
@@ -594,6 +645,7 @@ final class Transfers {
     _endRun(run);
     final now = _now();
     _put(job.copyWith(state: TransferState.completed(result), updatedAt: now));
+    _deleteSources(job.id);
     MpxDiagnostics.current.emit(
       MpxEventLevel.info,
       SchedulerOp.completed,
@@ -719,6 +771,7 @@ final class Transfers {
   /// starts again when the app is already in the foreground.
   void _restore() {
     _prune();
+    _loseSources();
     for (final job in [..._journal.jobs]) {
       if (job.state case TransferState$Paused(
         reason: PauseReason.systemInterrupted,
@@ -763,7 +816,19 @@ final class Transfers {
       watch.controller.add(next);
     }
     _syncEnvelope();
+    _syncUnloadWarning();
     _schedulePrune();
+  }
+
+  /// Arms the page's warning while any job is queued or running.
+  void _syncUnloadWarning() {
+    final warning = _unloadWarning;
+    if (warning == null) return;
+    if (_journal.jobs.any((job) => job.state.isActive)) {
+      warning.arm();
+    } else {
+      warning.disarm();
+    }
   }
 
   /// Keeps the envelope over the `system` jobs that are queued or running:
@@ -831,7 +896,119 @@ final class Transfers {
   }
 
   /// Forgets the completed jobs past [retention]; answers whether any were.
-  bool _prune() => _journal.prune(retention).isNotEmpty;
+  bool _prune() {
+    final pruned = _journal.prune(retention);
+    pruned.forEach(_deleteSources);
+    return pruned.isNotEmpty;
+  }
+
+  // --- Upload sources on the web -----------------------------------------------
+
+  /// Copies the [sources] of new upload [id] so the job survives a reload,
+  /// when they fit [sourceCopyLimit] together. The job runs from the page's
+  /// sources meanwhile, so nothing waits for the copy.
+  void _copySources(TransferId id, List<SourceBytes> sources) {
+    final copies = _sourceCopies;
+    if (copies == null) return;
+    final bytes = sources.fold(0, (sum, source) => sum + source.size);
+    if (bytes > sourceCopyLimit) {
+      MpxDiagnostics.current.emit(
+        MpxEventLevel.warning,
+        JournalOp.sourceOverLimit,
+        jobId: id,
+        fields: () => {'bytes': bytes, 'limit': sourceCopyLimit},
+      );
+      return;
+    }
+    final began = _now();
+    final copy = () async {
+      try {
+        if (!await copies.copy(id, sources)) return;
+      } on Object catch (error, stackTrace) {
+        _emitSourceFailure(copies, error, stackTrace, id);
+        return;
+      }
+      // Cancelled, or ended by the engine, while it copied.
+      if (_disposed || _job(id) == null) {
+        _deleteSources(id);
+        return;
+      }
+      MpxDiagnostics.current.emit(
+        MpxEventLevel.debug,
+        JournalOp.sourceCopied,
+        jobId: id,
+        fields: () => {
+          'bytes': bytes,
+          'ms': _now().difference(began).inMilliseconds,
+        },
+      );
+    }();
+    _$copies.add(copy);
+    unawaited(copy.whenComplete(() => _$copies.remove(copy)));
+  }
+
+  /// At a start, fails every upload job whose sources were not kept, and
+  /// deletes the copies no job needs any more.
+  void _loseSources() {
+    final copies = _sourceCopies;
+    if (copies == null) return;
+    for (final job in [..._journal.jobs]) {
+      if (job.direction != TransferDirection.upload || copies.holds(job.id)) {
+        continue;
+      }
+      switch (job.state) {
+        case TransferState$Completed() ||
+            TransferState$Failed(kind: TransferFailureKind.sourceLost):
+          continue;
+        default:
+          break;
+      }
+      _put(
+        job.copyWith(
+          state: TransferState.failed(
+            kind: TransferFailureKind.sourceLost,
+            retryable: false,
+            done: job.state.done,
+            total: job.state.total,
+          ),
+          updatedAt: _now(),
+        ),
+      );
+      MpxDiagnostics.current.emit(
+        MpxEventLevel.error,
+        JournalOp.sourceLost,
+        jobId: job.id,
+      );
+    }
+    for (final id in [...copies.held]) {
+      if (_job(id)?.state case null || TransferState$Completed()) {
+        _deleteSources(id);
+      }
+    }
+  }
+
+  void _deleteSources(TransferId id) {
+    final copies = _sourceCopies;
+    if (copies == null || !copies.holds(id)) return;
+    unawaited(
+      copies.delete(id).catchError((Object error, StackTrace stackTrace) {
+        _emitSourceFailure(copies, error, stackTrace, id);
+      }),
+    );
+  }
+
+  static void _emitSourceFailure(
+    UploadSourceCopies copies,
+    Object error,
+    StackTrace stackTrace,
+    TransferId id,
+  ) => MpxDiagnostics.current.emit(
+    MpxEventLevel.error,
+    JournalOp.writeFailed,
+    jobId: id,
+    fields: () => {'code': copies.errorCode(error)},
+    stackTrace: stackTrace,
+  );
 }
 
 bool _sameJobs(List<TransferJob> a, List<TransferJob> b) {

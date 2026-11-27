@@ -35,7 +35,7 @@ final transfers = await Transfers.open(
   cacheKeyOf: (key) => key.encoded,
   lifecycle: WidgetsPlaybackLifecycleSource(),
   // The bytes cache's directory; the journal sits in `mpx_transfer` below
-  // it. Ignored on the web.
+  // it. Ignored on the web, where the journal is in OPFS.
   directory: cacheDirectory,
   // What tracked downloads fetch through: the pipeline's own pieces.
   downloads: TransferDownloads(
@@ -102,14 +102,22 @@ transfers.cancel(id); // removes it
   folded into a snapshot at each start. A state change is written and
   flushed at once, progress at most every 250 ms (`progressInterval`), so
   a kill loses at most one window of progress; a record cut short by a
-  kill is dropped. On the web it is in memory until the OPFS store lands.
+  kill is dropped.
+- On the web the journal is in OPFS beside the bytes cache's store (in
+  memory where the page has none). An upload's sources are copied there at
+  its creation, up to 500 MiB per job (`sourceCopyLimit`), so it resumes
+  after a reload; a job over the limit, or on a page without OPFS, comes
+  back failed with `sourceLost`. Leaving the page asks first while a job
+  is queued or running.
 - Diagnostics through `MpxDiagnostics.current` (`JournalOp`,
   `SchedulerOp`, `EnvelopeOp`) and `debugSnapshot()` for a debug panel,
   with a journal section.
 - `testing.dart`: `FakeTransferEnvelope`, `ScriptedTransferRunner`,
   `FakeTransferResult`, `MemoryJournalStore`, the `JournalStoreContract`
-  every journal store meets, and `TransfersHarness`, which builds the
-  engine over them and restarts or kills it.
+  every journal store meets, `FakeUploadSourceCopies` with the
+  `UploadSourceCopiesContract`, `FakeUnloadWarning`, and
+  `TransfersHarness`, which builds the engine over them and restarts or
+  kills it.
 
 ## Docs
 
