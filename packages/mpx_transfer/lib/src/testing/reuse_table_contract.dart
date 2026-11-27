@@ -31,20 +31,12 @@ abstract final class ReuseTableContract {
       late JournalStore Function() openStore;
       late RecordingDiagnostics recorder;
       late DateTime time;
-      final tables = <ReuseTable>[];
 
       setUp(() async {
         openStore = await storage();
         recorder = RecordingDiagnostics.install();
         time = DateTime.utc(2026, 11, 27, 12);
       });
-      tearDown(() async {
-        for (final table in tables) {
-          await table.close();
-        }
-        tables.clear();
-      });
-
       Future<ReuseTable> start({
         ReusePolicy policy = const ReusePolicy(),
       }) async {
@@ -53,7 +45,9 @@ abstract final class ReuseTableContract {
           policy: policy,
           now: () => time,
         );
-        tables.add(table);
+        // Closed before the storage is cleaned up, which was registered
+        // first: a write still under way finishes before its files go.
+        addTearDown(table.close);
         return table;
       }
 
