@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mpx_transfer/src/journal/file_journal_store.dart';
+import 'package:mpx_transfer/src/journal/journal_store_file_vm.dart';
 import 'package:mpx_transfer/testing.dart';
 
 void main() {
@@ -16,6 +16,6 @@ void main() {
     // A new store over the same files at each start, as a new process
     // would open them.
     return () =>
-        FileJournalStore('${directory.path}/mpx_transfer', name: 'reuse');
+        JournalStore$File$VM('${directory.path}/mpx_transfer', name: 'reuse');
   });
 }

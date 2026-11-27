@@ -9,7 +9,7 @@ import 'package:mpx_transfer/src/journal/journal_store.dart';
 /// The log is held open in append mode, and every append is flushed before
 /// its future completes. The snapshot is written to a temporary file and
 /// renamed over the old one, so it is replaced whole or not at all.
-final class FileJournalStore implements JournalStore {
+final class JournalStore$File$VM implements JournalStore {
   /// A store in [directory], which is made when the store first writes.
   ///
   /// [directory] belongs to the journal alone: the bytes cache deletes the
@@ -18,7 +18,7 @@ final class FileJournalStore implements JournalStore {
   ///
   /// [name] tells apart two stores in one directory: the journal's and
   /// the reuse table's.
-  FileJournalStore(this.directory, {this.name = 'journal'});
+  JournalStore$File$VM(this.directory, {this.name = 'journal'});
 
   /// Where the two files are.
   final String directory;

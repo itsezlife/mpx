@@ -272,7 +272,10 @@ final class IosTransferEnvelope implements TransferEnvelope {
         'subtitle': _subtitleOf(config, progress),
       });
       if (reply?['submitted'] != true) {
-        refusal = reply?['code'] as String? ?? 'refused';
+        refusal = switch (reply?['code']) {
+          final String code => code,
+          _ => 'refused',
+        };
       }
     } on Object catch (_, trace) {
       // The error stays out of the event: a platform error may name app

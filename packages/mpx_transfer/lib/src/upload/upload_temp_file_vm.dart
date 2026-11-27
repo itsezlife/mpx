@@ -2,7 +2,10 @@ import 'dart:io';
 
 /// Writes [bytes] to a new file in [directory] (the system temp directory
 /// when omitted) and answers its path.
-Future<String> writeUploadTempFile(List<int> bytes, {String? directory}) async {
+Future<String> $writeUploadTempFile(
+  List<int> bytes, {
+  String? directory,
+}) async {
   final parent = directory == null
       ? Directory.systemTemp
       : await Directory(directory).create(recursive: true);

@@ -64,6 +64,8 @@ final class PublishJournal {
   /// How many changes the log takes by default before it is folded.
   static const int defaultCompactAfter = 200;
 
+  static const PublishRecordCodec _codec = PublishRecordCodec();
+
   /// How many changes the log takes before it is folded during a run.
   final int compactAfter;
 
@@ -89,13 +91,13 @@ final class PublishJournal {
   /// failed, which is reported).
   Future<void> put(PublishRecord record) {
     _records[record.id] = record;
-    return _write({'put': PublishRecordCodec.encode(record)});
+    return _write({_Change.put: _codec.encode(record)});
   }
 
   /// Forgets job [id] and writes that; completes once the write is done.
   Future<void> remove(PublishJobId id) {
     if (_records.remove(id) == null) return _tail;
-    return _write({'remove': id.value});
+    return _write({_Change.remove: id.value});
   }
 
   /// Completes when every write made so far has finished.
@@ -140,7 +142,7 @@ final class PublishJournal {
   Future<void> _compact() async {
     final snapshot = JournalFrames.encode([
       for (final record in _records.values)
-        {'put': PublishRecordCodec.encode(record)},
+        {_Change.put: _codec.encode(record)},
     ]);
     try {
       await _store.replace(snapshot: snapshot, log: Uint8List(0));
@@ -161,10 +163,10 @@ final class PublishJournal {
   ) {
     try {
       switch (payload) {
-        case {'put': final Map<String, Object?> put}:
-          final record = PublishRecordCodec.decode(put);
+        case {_Change.put: final Map<String, Object?> put}:
+          final record = _codec.decode(put);
           records[record.id] = record;
-        case {'remove': final String id}:
+        case {_Change.remove: final String id}:
           records.remove(PublishJobId.parse(id));
       }
     } on Object {
@@ -183,4 +185,11 @@ final class PublishJournal {
     fields: () => {'code': store.errorCode(error), 'table': 'publish'},
     stackTrace: stackTrace,
   );
+}
+
+/// The two changes a frame holds: `{"put": record}`, the record in
+/// [PublishRecordCodec]'s form, and `{"remove": id}`.
+abstract final class _Change {
+  static const String put = 'put';
+  static const String remove = 'remove';
 }

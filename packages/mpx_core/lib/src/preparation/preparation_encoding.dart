@@ -12,130 +12,167 @@ import 'package:mpx_core/src/preparation/prepared_media.dart';
 /// stored form: this is the one place it lives, so a store never builds or
 /// parses these maps by hand.
 ///
-/// Stable: a key or a name written by one version is read by every later
-/// one. Enums are stored by name (`CompressionPreset.name`,
-/// `PreparedKind.name`), durations in microseconds. A map of a [version]
-/// this code does not know, a missing key or an unknown name fails with a
-/// [FormatException], never with a guess.
+/// ## Fields
+///
+/// | Value | Keys |
+/// |---|---|
+/// | [PreparationInput] | `path`, `mimeType`, `byteSize` |
+/// | [PreparationIntent] | `as` (`photo`, `video`, `file`); `highQuality` for a photo, `preset` for a video |
+/// | [PreparedMedia] | `kind`, `path`, `isOriginal`, `byteSize`, `mimeType`, `width`, `height`, `durationUs`, `thumbnailPath`, `thumbnailWidth`, `thumbnailHeight`, `hasAudio`, `animated` |
+///
+/// ## Encoding
+///
+/// Every key is written, an absent value as null. Enums are stored by name
+/// (`CompressionPreset.name`, `PreparedKind.name`), durations in
+/// microseconds, a size as its width and height side by side.
 ///
 /// In-memory bytes are not stored: `PreparedMedia.thumbnail` and
 /// `PreparedMedia.bytes` decode as null. A prepared item that must survive
 /// a restart names its thumbnail by `PreparedMedia.thumbnailPath`.
+///
+/// ## Decoding
+///
+/// A missing key reads as null where the value is optional. A missing
+/// required key, a value of the wrong type, an unknown name, a size that is
+/// not positive and a map of a [version] this code does not know each fail
+/// with a [FormatException] naming the key, its source the map read; never
+/// with a guess.
+///
+/// ## Versioning
+///
+/// Stable: a key or a name written by one version is read by every later
+/// one. A change an older reader would misread takes a new [version].
 abstract final class PreparationEncoding {
   /// The version every map this code writes carries.
   static const int version = 1;
 
   /// [input] in its stored form.
   static Map<String, Object?> encodeInput(PreparationInput input) => {
-    _version: version,
-    'path': input.path,
-    'mimeType': input.mimeType,
-    'byteSize': input.byteSize,
+    _Key.version: version,
+    _Key.path: input.path,
+    _Key.mimeType: input.mimeType,
+    _Key.byteSize: input.byteSize,
   };
 
   /// The input [encoded] stores.
   static PreparationInput decodeInput(Map<String, Object?> encoded) {
     _checkVersion(encoded);
     return PreparationInput(
-      _required<String>(encoded, 'path'),
-      mimeType: _optional<String>(encoded, 'mimeType'),
-      byteSize: _optional<int>(encoded, 'byteSize'),
+      _required<String>(encoded, _Key.path),
+      mimeType: _optional<String>(encoded, _Key.mimeType),
+      byteSize: _optional<int>(encoded, _Key.byteSize),
     );
   }
 
   /// [intent] in its stored form.
   static Map<String, Object?> encodeIntent(PreparationIntent intent) => {
-    _version: version,
+    _Key.version: version,
     ...switch (intent) {
       PreparationIntent$Photo(:final highQuality) => {
-        'as': 'photo',
-        'highQuality': highQuality,
+        _Key.as: _As.photo,
+        _Key.highQuality: highQuality,
       },
       PreparationIntent$Video(:final preset) => {
-        'as': 'video',
-        'preset': preset?.name,
+        _Key.as: _As.video,
+        _Key.preset: preset?.name,
       },
-      PreparationIntent$File() => {'as': 'file'},
+      PreparationIntent$File() => {_Key.as: _As.file},
     },
   };
 
   /// The intent [encoded] stores.
   static PreparationIntent decodeIntent(Map<String, Object?> encoded) {
     _checkVersion(encoded);
-    return switch (_required<String>(encoded, 'as')) {
-      'photo' => PreparationIntent.photo(
-        highQuality: _required<bool>(encoded, 'highQuality'),
+    return switch (_required<String>(encoded, _Key.as)) {
+      _As.photo => PreparationIntent.photo(
+        highQuality: _required<bool>(encoded, _Key.highQuality),
       ),
-      'video' => PreparationIntent.video(
-        preset: switch (_optional<String>(encoded, 'preset')) {
+      _As.video => PreparationIntent.video(
+        preset: switch (_optional<String>(encoded, _Key.preset)) {
           null => null,
-          final name => _byName(CompressionPreset.values, name, 'preset'),
+          final name => _byName(
+            CompressionPreset.values,
+            name,
+            _Key.preset,
+            encoded,
+          ),
         },
       ),
-      'file' => const PreparationIntent.file(),
-      final other => throw FormatException('Unknown intent "$other".'),
+      _As.file => const PreparationIntent.file(),
+      final other => throw FormatException(
+        'Unknown intent "$other" under "${_Key.as}".',
+        encoded,
+      ),
     };
   }
 
   /// [media] in its stored form, without its in-memory bytes.
   static Map<String, Object?> encodePrepared(PreparedMedia media) => {
-    _version: version,
-    'kind': media.kind.name,
-    'path': media.path,
-    'isOriginal': media.isOriginal,
-    'byteSize': media.byteSize,
-    'mimeType': media.mimeType,
-    'width': media.dimensions?.width,
-    'height': media.dimensions?.height,
-    'durationUs': media.duration?.inMicroseconds,
-    'thumbnailPath': media.thumbnailPath,
-    'thumbnailWidth': media.thumbnailDimensions?.width,
-    'thumbnailHeight': media.thumbnailDimensions?.height,
-    'hasAudio': media.hasAudio,
-    'animated': media.animated,
+    _Key.version: version,
+    _Key.kind: media.kind.name,
+    _Key.path: media.path,
+    _Key.isOriginal: media.isOriginal,
+    _Key.byteSize: media.byteSize,
+    _Key.mimeType: media.mimeType,
+    _Key.width: media.dimensions?.width,
+    _Key.height: media.dimensions?.height,
+    _Key.durationUs: media.duration?.inMicroseconds,
+    _Key.thumbnailPath: media.thumbnailPath,
+    _Key.thumbnailWidth: media.thumbnailDimensions?.width,
+    _Key.thumbnailHeight: media.thumbnailDimensions?.height,
+    _Key.hasAudio: media.hasAudio,
+    _Key.animated: media.animated,
   };
 
   /// The prepared item [encoded] stores; its in-memory bytes are null.
   static PreparedMedia decodePrepared(Map<String, Object?> encoded) {
     _checkVersion(encoded);
-    final durationUs = _optional<int>(encoded, 'durationUs');
     return PreparedMedia(
       kind: _byName(
         PreparedKind.values,
-        _required<String>(encoded, 'kind'),
-        'kind',
+        _required<String>(encoded, _Key.kind),
+        _Key.kind,
+        encoded,
       ),
-      path: _required<String>(encoded, 'path'),
-      isOriginal: _required<bool>(encoded, 'isOriginal'),
-      byteSize: _required<int>(encoded, 'byteSize'),
-      mimeType: _optional<String>(encoded, 'mimeType'),
-      dimensions: _dimensions(encoded, 'width', 'height'),
-      duration: durationUs == null ? null : Duration(microseconds: durationUs),
-      thumbnailPath: _optional<String>(encoded, 'thumbnailPath'),
+      path: _required<String>(encoded, _Key.path),
+      isOriginal: _required<bool>(encoded, _Key.isOriginal),
+      byteSize: _required<int>(encoded, _Key.byteSize),
+      mimeType: _optional<String>(encoded, _Key.mimeType),
+      dimensions: _dimensions(encoded, _Key.width, _Key.height),
+      duration: switch (_optional<int>(encoded, _Key.durationUs)) {
+        final microseconds? => Duration(microseconds: microseconds),
+        null => null,
+      },
+      thumbnailPath: _optional<String>(encoded, _Key.thumbnailPath),
       thumbnailDimensions: _dimensions(
         encoded,
-        'thumbnailWidth',
-        'thumbnailHeight',
+        _Key.thumbnailWidth,
+        _Key.thumbnailHeight,
       ),
-      hasAudio: _required<bool>(encoded, 'hasAudio'),
-      animated: _required<bool>(encoded, 'animated'),
+      hasAudio: _required<bool>(encoded, _Key.hasAudio),
+      animated: _required<bool>(encoded, _Key.animated),
     );
   }
 
-  static const String _version = 'v';
+  // --- Read shapes -----------------------------------------------------------
 
   static void _checkVersion(Map<String, Object?> encoded) {
-    final found = encoded[_version];
+    final found = encoded[_Key.version];
     if (found != version) {
-      throw FormatException('Unknown preparation encoding version "$found".');
+      throw FormatException(
+        'Unknown preparation encoding version "$found".',
+        encoded,
+      );
     }
   }
 
   static T _required<T extends Object>(Map<String, Object?> map, String key) =>
       switch (map[key]) {
         final T value => value,
+        null => throw FormatException('Missing "$key".', map),
         final other => throw FormatException(
           'Expected $T under "$key", found ${other.runtimeType}.',
+          map,
         ),
       };
 
@@ -145,14 +182,20 @@ abstract final class PreparationEncoding {
         final T value => value,
         final other => throw FormatException(
           'Expected $T or null under "$key", found ${other.runtimeType}.',
+          map,
         ),
       };
 
-  static T _byName<T extends Enum>(List<T> values, String name, String key) {
+  static T _byName<T extends Enum>(
+    List<T> values,
+    String name,
+    String key,
+    Map<String, Object?> map,
+  ) {
     for (final value in values) {
       if (value.name == name) return value;
     }
-    throw FormatException('Unknown $key "$name".');
+    throw FormatException('Unknown $key "$name".', map);
   }
 
   static MediaDimensions? _dimensions(
@@ -164,8 +207,42 @@ abstract final class PreparationEncoding {
     final height = _optional<int>(map, heightKey);
     if (width == null || height == null) return null;
     if (width <= 0 || height <= 0) {
-      throw FormatException('Non-positive size under "$widthKey".');
+      throw FormatException('Non-positive size under "$widthKey".', map);
     }
     return MediaDimensions(width, height);
   }
+}
+
+/// Keys of the stored maps, shared by both directions.
+abstract final class _Key {
+  static const String version = 'v';
+
+  // An input, and a prepared file.
+  static const String path = 'path';
+  static const String mimeType = 'mimeType';
+  static const String byteSize = 'byteSize';
+
+  // An intent.
+  static const String as = 'as';
+  static const String highQuality = 'highQuality';
+  static const String preset = 'preset';
+
+  // A prepared file.
+  static const String kind = 'kind';
+  static const String isOriginal = 'isOriginal';
+  static const String width = 'width';
+  static const String height = 'height';
+  static const String durationUs = 'durationUs';
+  static const String thumbnailPath = 'thumbnailPath';
+  static const String thumbnailWidth = 'thumbnailWidth';
+  static const String thumbnailHeight = 'thumbnailHeight';
+  static const String hasAudio = 'hasAudio';
+  static const String animated = 'animated';
+}
+
+/// The `as` names of an intent.
+abstract final class _As {
+  static const String photo = 'photo';
+  static const String video = 'video';
+  static const String file = 'file';
 }

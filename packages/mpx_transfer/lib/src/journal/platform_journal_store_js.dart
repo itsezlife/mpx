@@ -4,10 +4,10 @@ import 'dart:js_interop_unsafe';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_transfer/src/diagnostics/journal_op.dart';
 import 'package:mpx_transfer/src/journal/journal_platform.dart';
+import 'package:mpx_transfer/src/journal/journal_storage_opfs_js.dart';
 import 'package:mpx_transfer/src/journal/journal_store.dart';
-import 'package:mpx_transfer/src/journal/opfs_journal_storage.dart';
+import 'package:mpx_transfer/src/journal/unload_warning_window_js.dart';
 import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
-import 'package:mpx_transfer/src/journal/window_unload_warning.dart';
 import 'package:web/web.dart' as web;
 
 /// The journal of a page: in OPFS beside the bytes cache's store, the
@@ -20,25 +20,25 @@ import 'package:web/web.dart' as web;
 /// (`journal` `writeFailed`) and falls back the same way. [directory] is
 /// ignored, as by the bytes cache's open. [root] gives the OPFS root, for
 /// tests; given, the page counts as having OPFS.
-Future<JournalPlatform> openJournalPlatform(
+Future<JournalPlatform> $openJournalPlatform(
   String? directory, {
   Future<web.FileSystemDirectoryHandle> Function()? root,
 }) async {
   if (root != null || _hasOpfs()) {
     try {
-      final (store, copies) = await OpfsJournalStorage.open(root: root);
+      final (store, copies) = await JournalStorage$Opfs$JS.open(root: root);
       return JournalPlatform(
         store: store,
-        reuseStore: OpfsJournalStore(store.directory, name: 'reuse'),
-        publishStore: OpfsJournalStore(store.directory, name: 'publish'),
+        reuseStore: JournalStore$Opfs$JS(store.directory, name: 'reuse'),
+        publishStore: JournalStore$Opfs$JS(store.directory, name: 'publish'),
         sourceCopies: copies,
-        unloadWarning: WindowUnloadWarning(),
+        unloadWarning: UnloadWarning$Window$JS(),
       );
     } on Object catch (error, stackTrace) {
       MpxDiagnostics.current.emit(
         MpxEventLevel.error,
         JournalOp.writeFailed,
-        fields: () => {'code': OpfsJournalStorage.errorCode(error)},
+        fields: () => {'code': JournalStorage$Opfs$JS.errorCode(error)},
         stackTrace: stackTrace,
       );
     }
@@ -46,7 +46,7 @@ Future<JournalPlatform> openJournalPlatform(
   return JournalPlatform(
     store: MemoryJournalStore(),
     sourceCopies: const NoUploadSourceCopies(),
-    unloadWarning: WindowUnloadWarning(),
+    unloadWarning: UnloadWarning$Window$JS(),
   );
 }
 

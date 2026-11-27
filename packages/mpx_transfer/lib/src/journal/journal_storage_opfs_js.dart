@@ -12,7 +12,7 @@ import 'package:web/web.dart' as web;
 /// beside the bytes cache's own directory.
 ///
 /// Web only.
-abstract final class OpfsJournalStorage {
+abstract final class JournalStorage$Opfs$JS {
   /// The directory's name at the OPFS root by default.
   static const String defaultName = 'mpx_transfer';
 
@@ -22,7 +22,7 @@ abstract final class OpfsJournalStorage {
   /// Throws when the page has no OPFS (an insecure context, a browser
   /// without it, a private window that refuses it); the caller falls back
   /// to memory. [root] gives the OPFS root, for tests.
-  static Future<(OpfsJournalStore, OpfsUploadSourceCopies)> open({
+  static Future<(JournalStore$Opfs$JS, UploadSourceCopies$Opfs$JS)> open({
     String name = defaultName,
     Future<web.FileSystemDirectoryHandle> Function()? root,
   }) async {
@@ -33,8 +33,8 @@ abstract final class OpfsJournalStorage {
           web.FileSystemGetDirectoryOptions(create: true),
         )
         .toDart;
-    final copies = await OpfsUploadSourceCopies.open(directory);
-    return (OpfsJournalStore(directory), copies);
+    final copies = await UploadSourceCopies$Opfs$JS.open(directory);
+    return (JournalStore$Opfs$JS(directory), copies);
   }
 
   /// A short code for [error], thrown while opening, for diagnostics.
@@ -52,9 +52,9 @@ abstract final class OpfsJournalStorage {
 /// every write goes through a writable stream. A stream's bytes become the
 /// file only when it closes, all at once: an append is kept whole or not
 /// at all, and a snapshot is replaced whole or not at all.
-final class OpfsJournalStore implements JournalStore {
+final class JournalStore$Opfs$JS implements JournalStore {
   /// A store in [directory].
-  OpfsJournalStore(this.directory, {this.name = 'journal'});
+  JournalStore$Opfs$JS(this.directory, {this.name = 'journal'});
 
   /// The directory the two files are in.
   final web.FileSystemDirectoryHandle directory;
@@ -109,9 +109,9 @@ final class OpfsJournalStore implements JournalStore {
 
 /// [SourceBytes] of a browser `Blob`: a file the user picked, or the copy
 /// of one in OPFS.
-final class BlobSourceBytes implements SourceBytes {
+final class SourceBytes$Blob$JS implements SourceBytes {
   /// A source of [blob].
-  BlobSourceBytes(this.blob);
+  SourceBytes$Blob$JS(this.blob);
 
   /// The blob the bytes are in.
   final web.Blob blob;
@@ -133,12 +133,12 @@ final class BlobSourceBytes implements SourceBytes {
 /// written once every source is, marks the job's copies as whole, and is
 /// deleted first. Files of a job without that mark were cut short by a
 /// reload and are deleted at [open].
-final class OpfsUploadSourceCopies implements UploadSourceCopies {
-  OpfsUploadSourceCopies._(this._directory, this._held);
+final class UploadSourceCopies$Opfs$JS implements UploadSourceCopies {
+  UploadSourceCopies$Opfs$JS._(this._directory, this._held);
 
   /// Opens directory `sources` of [journal] (made when missing), reads
   /// which jobs are kept and deletes what a reload cut short.
-  static Future<OpfsUploadSourceCopies> open(
+  static Future<UploadSourceCopies$Opfs$JS> open(
     web.FileSystemDirectoryHandle journal,
   ) async {
     final directory = await journal
@@ -157,7 +157,7 @@ final class OpfsUploadSourceCopies implements UploadSourceCopies {
       if (held.contains(TransferId.parse(_jobOf(name)))) continue;
       await _remove(directory, name);
     }
-    return OpfsUploadSourceCopies._(directory, held);
+    return UploadSourceCopies$Opfs$JS._(directory, held);
   }
 
   static const String _keptSuffix = '.kept';
@@ -191,7 +191,7 @@ final class OpfsUploadSourceCopies implements UploadSourceCopies {
     if (!_held.contains(id)) return null;
     try {
       final handle = await _directory.getFileHandle('$id.$index').toDart;
-      return BlobSourceBytes(await handle.getFile().toDart);
+      return SourceBytes$Blob$JS(await handle.getFile().toDart);
     } on Object catch (error) {
       if (_isMissing(error)) return null;
       rethrow;
@@ -221,7 +221,7 @@ final class OpfsUploadSourceCopies implements UploadSourceCopies {
       .toDart;
 
   static JSAny _dataOf(SourceBytes source) => switch (source) {
-    BlobSourceBytes(:final blob) => blob,
+    SourceBytes$Blob$JS(:final blob) => blob,
     MemorySourceBytes(:final bytes) => bytes.toJS,
     _ => throw ArgumentError.value(
       source.runtimeType,
