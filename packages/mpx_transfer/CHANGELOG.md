@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+- Publish jobs: `Transfers.publish(PublishRequest)` (tag, ordered
+  `PublishItem`s, an opaque payload, a publisher id, a transport, durability
+  `system` by default, failure policy, ordering group, hold, an optional
+  idempotency key), `registerPublisher(id, Publisher)`, `publishJob(id)` and
+  `upload(item)`, a one-item job with no publisher. Each item is remote,
+  reused from the reuse table, prepared through `Transfers.open(preparation:)`
+  or already prepared; it uploads as a transfer job of its own with the
+  job's tag (and its thumbnail separately when the transport says so). The
+  publisher is called once every item is uploaded, with one idempotency key
+  on every attempt; `PublishOutcome.published` completes the job. Jobs are
+  kept in `publish.*` beside the journal and survive any kill.
+  `PublishJob.watch()` / `watchItem(id)` give `PublishJobState` and
+  `PublishItemState` snapshots. A facade without preparation refuses an item
+  that needs it with `PreparationUnavailable`.
+- `Transfers.open` runs uploads: `transports` and `client` (the bytes
+  cache's HTTP client) are new parameters, and on the web the source copies
+  are read. `retry(id, source:)` gives a failed upload a new source file.
+- Diagnostics: `PublishOp` (`jobCreated`, `itemStage`, `remoteItem`,
+  `awaitingPublisher`, `publisherRegistered`, `attempt`, `outcome`),
+  `PublishPreparationOp.refusedNoSeam`, `TransportOp.thumbnailUpload`;
+  `debugSnapshot().publish`.
+- `testing.dart`: `FakePublisher`; `UploadsHarness` runs publish jobs
+  (`preparation`, `reuse`). `FakeUploadTransport` numbers each finish
+  before it waits, so finishes under way together answer distinct
+  references.
+- A `TransferJob.key` of an upload is the item a publish job sends.
+
 - `Transfers.systemActive`: a `ValueListenable<bool>`, true while a `system`
   job is queued or running, for a host's quit confirmation on desktop
   platforms, which have no OS envelope. The `scheduler` events of a job

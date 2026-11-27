@@ -126,6 +126,7 @@ final class UploadEngine implements TransferRunner {
     String? fileName,
     String? contentType,
     String? fingerprint,
+    JournalUploadOwner? owner,
   }) {
     final finished = switch (source) {
       final UploadSource$Finished finished => finished,
@@ -151,7 +152,30 @@ final class UploadEngine implements TransferRunner {
       partSize: _partSizeOf(carrier, finished.size),
       fileName: fileName,
       contentType: contentType,
+      owner: owner,
     );
+  }
+
+  /// The transport named [id], or null when the engine was not given one.
+  UploadTransport? transport(String id) => _transports[id];
+
+  /// The ids of the transports the engine sends through, in the order
+  /// they were given.
+  Iterable<String> get transportIds => _transports.keys;
+
+  /// What the file at [path] is now: its size and modification time; null
+  /// when there is no file there, or where the engine reads no file system
+  /// (the web). A file that cannot be read is reported as none.
+  Future<UploadSourceStat?> stat(String path) async {
+    final files = _files;
+    if (files == null) return null;
+    try {
+      return await files.stat(path);
+    } on Object {
+      // Unreadable is the same as absent for the caller, which reports the
+      // missing file through its own failure path.
+      return null;
+    }
   }
 
   /// Job [id] reads [bytes], the page's own source, on the web: a file the
@@ -424,6 +448,7 @@ final class _UploadRun {
         resumeExpiresAt: session.resumeExpiresAt,
         parts: _receipts(),
         highWaterMark: highWaterMark,
+        owner: upload.owner,
       ),
     );
     if (outcome != null) {

@@ -12,7 +12,8 @@
 /// (`TransferEnvelope`) where there is one. Every job is journaled, so
 /// after any kill `Transfers.open` reads the jobs back. Every path reports
 /// through `MpxDiagnostics.current` with this package's `JournalOp`,
-/// `SchedulerOp`, `TransportOp`, `EnvelopeOp` and `ReuseOp`; `debugSnapshot` gives a
+/// `SchedulerOp`, `TransportOp`, `EnvelopeOp`, `ReuseOp`, `PublishOp` and
+/// `PublishPreparationOp`; `debugSnapshot` gives a
 /// debug panel the engine's state.
 ///
 /// An upload reads an `UploadSource` and reaches its remote end through an
@@ -21,6 +22,13 @@
 /// journals the parts, and a completed upload holds a `RemoteRef`. The
 /// reuse table (`Transfers.reuse`) keeps those references by source, so
 /// the same media sent again is neither prepared nor uploaded again.
+///
+/// A publish job (`Transfers.publish`) takes an ordered list of items,
+/// prepares each through the core's `MediaPreparation`, uploads it and
+/// then calls the host's `Publisher`, registered by id, once with every
+/// item's references and one idempotency key. Its items and state are
+/// journaled too, and `PublishJob.watch` streams its snapshots;
+/// `Transfers.upload` is the same job with one item and no publisher.
 /// `TusUploadTransport` speaks the tus resumable upload protocol.
 ///
 /// Single-threaded on the UI isolate.
@@ -28,6 +36,7 @@ library;
 
 export 'src/diagnostics/envelope_op.dart';
 export 'src/diagnostics/journal_op.dart';
+export 'src/diagnostics/publish_op.dart';
 export 'src/diagnostics/reuse_op.dart';
 export 'src/diagnostics/scheduler_op.dart';
 export 'src/diagnostics/transfers_debug_snapshot.dart';
@@ -38,6 +47,10 @@ export 'src/envelope/transfer_envelope.dart';
 export 'src/job/transfer_id.dart';
 export 'src/job/transfer_job.dart';
 export 'src/job/transfer_state.dart';
+export 'src/publish/publish_job.dart';
+export 'src/publish/publish_request.dart';
+export 'src/publish/publish_state.dart';
+export 'src/publish/publisher.dart';
 export 'src/reuse/reuse_table.dart';
 export 'src/transfers.dart';
 export 'src/upload/multipart_upload_transport.dart';

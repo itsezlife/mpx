@@ -41,7 +41,12 @@ enum TransportOp implements DiagnosticOp {
   /// Every part was acknowledged and the remote end completed the upload
   /// (info; `finalSize`, `parts`, `ms` since the session began opening;
   /// job).
-  finished;
+  finished,
+
+  /// A publish job item's thumbnail goes as an upload of its own, because
+  /// the transport takes thumbnails separately (debug; `bytes`; the
+  /// thumbnail's upload as job, item).
+  thumbnailUpload;
 
   @override
   String get category => 'transport';

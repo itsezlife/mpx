@@ -12,9 +12,11 @@ final class JournalPlatform {
   JournalPlatform({
     required this.store,
     JournalStore? reuseStore,
+    JournalStore? publishStore,
     this.sourceCopies,
     this.unloadWarning,
-  }) : reuseStore = reuseStore ?? MemoryJournalStore();
+  }) : reuseStore = reuseStore ?? MemoryJournalStore(),
+       publishStore = publishStore ?? MemoryJournalStore();
 
   /// Where the journal's bytes are.
   final JournalStore store;
@@ -22,6 +24,10 @@ final class JournalPlatform {
   /// Where the reuse table's bytes are: beside the journal's, in the same
   /// kind of storage.
   final JournalStore reuseStore;
+
+  /// Where the publish jobs' bytes are: beside the journal's, in the same
+  /// kind of storage.
+  final JournalStore publishStore;
 
   /// Where upload sources are copied at job creation; null where a source
   /// is a file that survives by itself (the VM).

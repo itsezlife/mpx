@@ -207,6 +207,12 @@ final class JournalCodec {
           [index, ?receipt],
       ],
     if (upload.highWaterMark != 0) 'highWaterMark': upload.highWaterMark,
+    if (upload.owner case final owner?)
+      'owner': {
+        'job': owner.job,
+        'item': owner.itemId,
+        'role': owner.role.name,
+      },
   };
 
   JournalUpload _uploadFromJson(Map<String, Object?> json) {
@@ -238,6 +244,19 @@ final class JournalCodec {
             index: rest.isEmpty ? null : rest.first! as String,
       },
       highWaterMark: json['highWaterMark'] as int? ?? 0,
+      owner: switch (json['owner']) {
+        {
+          'job': final String job,
+          'item': final String item,
+          'role': final String role,
+        } =>
+          JournalUploadOwner(
+            job: job,
+            itemId: item,
+            role: UploadRole.values.byName(role),
+          ),
+        _ => null,
+      },
     );
   }
 

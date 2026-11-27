@@ -43,6 +43,47 @@ final transfers = await Transfers.open(
     resolver: resolver,
     store: bytesStore,
   ),
+  // What uploads and publish jobs go through (the first is the default),
+  // the bytes cache's client that sends their parts, and the preparation
+  // seam (mpx_capture's CaptureMediaPreparation) for items that need it.
+  transports: [presigned],
+  client: httpBytesClient,
+  preparation: preparation,
+);
+
+// At app start, before jobs from the last run can publish.
+transfers.registerPublisher('chat.send', ChatSendPublisher(api));
+
+// Prepare, upload, then publish once with one idempotency key.
+final job = transfers.publish(PublishRequest(
+  tag: 'chat:7:m-42',
+  items: [
+    PublishItem(
+      itemId: 'm-42/0',
+      key: localKey,
+      source: PublishSource.prepare(
+        PreparationInput(pickedPath),
+        const PreparationIntent.photo(),
+      ),
+      fingerprint: libraryFingerprint, // optional; path + size + time else
+    ),
+  ],
+  payload: utf8.encode(jsonEncode(message)),
+  publisher: 'chat.send',
+  idempotencyKey: clientMessageId, // optional; the engine makes one else
+));
+job.watch().listen((snapshot) {
+  // snapshot.state: preparing, uploading, publishing, completed ...
+});
+
+// One upload, no publisher: completes once the item is uploaded.
+final avatar = transfers.upload(
+  PublishItem(
+    itemId: 'avatar',
+    key: avatarKey,
+    source: PublishSource.prepared(prepared),
+  ),
+  tag: 'profile:avatar',
 );
 
 // The core's seam over the same jobs, for the asset cache scope.
@@ -153,6 +194,19 @@ transfers.systemActive.addListener(() {
 - `TusUploadTransport`: the tus resumable upload protocol; a restart
   sends only what the server lacks, an expired or forgotten upload starts
   again from zero.
+- Publish jobs (`publish(request)`, `registerPublisher(id, publisher)`,
+  `publishJob(id)`): an ordered list of items, each looked up in the reuse
+  table, sent as remote, prepared through `MediaPreparation` or taken as
+  already prepared, then uploaded (its thumbnail as an upload of its own
+  for a transport that takes thumbnails separately), then the registered
+  `Publisher` called once with every item's references, the payload and
+  one idempotency key. A job whose publisher is not registered waits, after
+  a restart too. Every step is journaled beside the journal; a finished
+  preparation is never redone, an interrupted one starts over.
+  `PublishJob.watch()` and `watchItem(id)` stream snapshots;
+  `upload(item)` is a one-item job with no publisher.
+- `retry(id, source:)`: an upload whose source was lost goes again from a
+  file the host gives, from zero.
 - `TransferDurability`: `inProcess`, or `system` inside the platform's OS
   envelope (`TransferEnvelope`) where there is one.
 - `Transfers.watch(filter)` by direction, state, tag and durability; a
@@ -171,16 +225,17 @@ transfers.systemActive.addListener(() {
   back failed with `sourceLost`. Leaving the page asks first while a job
   is queued or running.
 - Diagnostics through `MpxDiagnostics.current` (`JournalOp`,
-  `SchedulerOp`, `TransportOp`, `EnvelopeOp`, `ReuseOp`) and
-  `debugSnapshot()` for a debug panel, with journal, uploads, connections
-  and reuse sections.
+  `SchedulerOp`, `TransportOp`, `EnvelopeOp`, `ReuseOp`, `PublishOp`,
+  `PublishPreparationOp`) and `debugSnapshot()` for a debug panel, with
+  journal, uploads, connections, reuse and publish sections.
 - `testing.dart`: `FakeTransferEnvelope`, `ScriptedTransferRunner`,
   `FakeTransferResult`, `MemoryJournalStore`, the `JournalStoreContract`
   every journal store meets, `FakeUploadSourceCopies` with the
   `UploadSourceCopiesContract`, `FakeUnloadWarning`, `FakeUploadTransport`
   with the `UploadTransportContract` every transport meets, the
   `ReuseTableContract` the reuse table meets over every store,
-  `UploadsHarness`, and `TransfersHarness`, which builds the engine over
+  `FakePublisher`, answering each call on script, `UploadsHarness`, which
+  runs uploads and publish jobs through the real engine, and `TransfersHarness`, which builds the engine over
   them and restarts or kills it.
 
 ## Docs

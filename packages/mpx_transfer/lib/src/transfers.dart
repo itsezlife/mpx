@@ -3,7 +3,7 @@ import 'dart:ui' show AppLifecycleState;
 
 import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:http_bytes_cache/http_bytes_cache.dart'
-    show BytesCacheKey, RequestPriority;
+    show BytesCacheKey, HttpBytesClient, RequestPriority;
 import 'package:meta/meta.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_transfer/src/diagnostics/envelope_op.dart';
@@ -26,10 +26,17 @@ import 'package:mpx_transfer/src/journal/platform_journal_store.dart';
 import 'package:mpx_transfer/src/journal/transfer_journal.dart';
 import 'package:mpx_transfer/src/journal/unload_warning.dart';
 import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
+import 'package:mpx_transfer/src/publish/publish_job.dart';
+import 'package:mpx_transfer/src/publish/publish_jobs.dart';
+import 'package:mpx_transfer/src/publish/publish_journal.dart';
+import 'package:mpx_transfer/src/publish/publish_request.dart';
+import 'package:mpx_transfer/src/publish/publisher.dart';
 import 'package:mpx_transfer/src/reuse/reuse_table.dart';
 import 'package:mpx_transfer/src/upload/remote_ref.dart';
 import 'package:mpx_transfer/src/upload/resume_outcome.dart';
 import 'package:mpx_transfer/src/upload/upload_engine.dart';
+import 'package:mpx_transfer/src/upload/upload_source.dart';
+import 'package:mpx_transfer/src/upload/upload_transport.dart';
 
 /// The one facade of the transfer engine: every transfer job, its verbs and
 /// the query over them.
@@ -59,7 +66,9 @@ final class Transfers {
   /// The engine over an explicit [runner] and an opened [journal]: what the
   /// package's own runners and test support build on. With [downloads],
   /// download jobs move their bytes through them and [runner] moves the
-  /// rest; without, [runner] moves every job.
+  /// rest; without, [runner] moves every job. With [uploads] and
+  /// [publishJournal], the facade runs publish jobs, preparing items
+  /// through [preparation].
   @internal
   Transfers.engine({
     required String Function(MediaKey key) cacheKeyOf,
@@ -72,6 +81,8 @@ final class Transfers {
     UnloadWarning? unloadWarning,
     UploadEngine? uploads,
     ReuseTable? reuse,
+    PublishJournal? publishJournal,
+    MediaPreparation? preparation,
     this.retention = defaultRetention,
     this.sourceCopyLimit = defaultSourceCopyLimit,
     bool online = true,
@@ -90,9 +101,21 @@ final class Transfers {
        _now = now,
        _lastLifecycle = lifecycle.state {
     if (downloads != null) _tracked = TrackedDownloads(this, downloads);
+    if (uploads != null && publishJournal != null) {
+      _publish = PublishJobs(
+        journal: publishJournal,
+        uploads: uploads,
+        host: _PublishHost(this),
+        reuse: reuse,
+        preparation: preparation,
+        now: now,
+      );
+    }
     _lifecycle.addListener(_onLifecycle);
     _envelopeEvents = envelope?.events.listen(_onEnvelopeEvent);
     _restore();
+    // After the uploads they own are queued again, so each job finds them.
+    _publish?.restore();
   }
 
   /// Opens the engine of the composition root over the journal the last
@@ -115,6 +138,12 @@ final class Transfers {
   /// reuse table ([ReusePolicy], on with its default expiry unless given),
   /// which is kept beside the journal.
   ///
+  /// Uploads and publish jobs go through [transports] (their ids unique),
+  /// whose part bodies [client] sends: the bytes cache's client, whose
+  /// worker streams them from the file. [preparation] prepares the items
+  /// of publish jobs that need it; without one such a job is refused. Publish
+  /// jobs are kept beside the journal too.
+  ///
   /// A journal that cannot be read is reported (`journal` `writeFailed`)
   /// and the engine runs in memory for this run, with no jobs.
   static Future<Transfers> open({
@@ -127,6 +156,9 @@ final class Transfers {
     Duration progressInterval = defaultProgressInterval,
     int sourceCopyLimit = defaultSourceCopyLimit,
     ReusePolicy reuse = const ReusePolicy(),
+    List<UploadTransport> transports = const [],
+    HttpBytesClient? client,
+    MediaPreparation? preparation,
     bool online = true,
     DateTime Function() now = DateTime.now,
   }) async {
@@ -143,14 +175,29 @@ final class Transfers {
       policy: reuse,
       now: now,
     );
+    final publishJournal = await PublishJournal.open(
+      platform.publishStore,
+      retention: retention,
+      now: now,
+    );
+    final uploads = UploadEngine(
+      journal: journal,
+      transports: transports,
+      client: client,
+      sourceCopies: platform.sourceCopies,
+      now: now,
+    );
     return Transfers.engine(
       cacheKeyOf: cacheKeyOf,
       lifecycle: lifecycle,
-      runner: const _NoRunner(),
+      runner: uploads,
       journal: journal,
       downloads: downloads,
       envelope: envelope,
       reuse: table,
+      uploads: uploads,
+      publishJournal: publishJournal,
+      preparation: preparation,
       sourceCopies: platform.sourceCopies,
       unloadWarning: platform.unloadWarning,
       retention: retention,
@@ -225,6 +272,7 @@ final class Transfers {
   final Map<TransferId, _Run> _runs = {};
   final Map<TransferId, DateTime> _queuedAt = {};
   final List<_Watch> _watchers = [];
+  PublishJobs? _publish;
   StreamSubscription<TransferEnvelopeEvent>? _envelopeEvents;
   TransferEnvelopeProgress? _envelopeProgress;
   Timer? _pruneTimer;
@@ -287,6 +335,7 @@ final class Transfers {
     uploads: _uploads?.debugSnapshot(),
     connections: _uploads?.slots.debugSnapshot(),
     reuse: _reuse?.debugSnapshot(),
+    publish: _publish?.debugSnapshot(),
   );
 
   // --- Signals ---------------------------------------------------------------
@@ -351,12 +400,34 @@ final class Transfers {
 
   /// Puts failed job [id] back in the queue for another attempt.
   ///
+  /// For an upload, [source] replaces the file it reads: the host's way
+  /// back from a lost source (the user picked the file again). The upload
+  /// then starts from zero, since parts sent from one file say nothing
+  /// about another; the job and its id stay. A download ignores it.
+  ///
   /// Answers whether the job changed: false for an unknown id or a job that
   /// has not failed.
-  bool retry(TransferId id) {
+  bool retry(TransferId id, {UploadSource$Finished? source}) {
     final job = _job(id);
     if (job == null || job.state is! TransferState$Failed) return false;
-    _queue(job.copyWith(state: TransferState.queued(total: job.state.total)));
+    var total = job.state.total;
+    if (source != null && _journal.record(id)?.upload != null) {
+      total = source.size;
+      _journal.amendUpload(
+        id,
+        (upload) => upload.copyWith(
+          source: JournalSource(
+            path: source.path,
+            size: source.size,
+            fingerprint: upload.source.fingerprint,
+          ),
+          parts: const {},
+          highWaterMark: 0,
+          clearResumeToken: true,
+        ),
+      );
+    }
+    _queue(job.copyWith(state: TransferState.queued(total: total)));
     return true;
   }
 
@@ -368,9 +439,11 @@ final class Transfers {
   bool cancel(TransferId id) {
     final job = _job(id);
     if (job == null) return false;
+    final owner = _journal.record(id)?.upload?.owner;
     _stopRun(id);
     _queuedAt.remove(id);
     _journal.remove(id);
+    if (owner != null) _publish?.uploadChanged(job, owner);
     _deleteSources(id);
     MpxDiagnostics.current.emit(
       MpxEventLevel.info,
@@ -495,6 +568,59 @@ final class Transfers {
     return id;
   }
 
+  // --- Publish jobs ----------------------------------------------------------
+
+  /// Makes a publish job for [request]: its items are looked up in the
+  /// reuse table, prepared and uploaded, then the publisher registered as
+  /// `request.publisher` is called once with every item's remote
+  /// references, the payload and one idempotency key, the request's or one
+  /// the engine makes. The job is journaled, so it survives a restart, and
+  /// its uploads are transfer jobs [watch] sees, with the request's tag.
+  ///
+  /// Throws a [PreparationUnavailable] when an item needs preparation and
+  /// the facade was opened without a `MediaPreparation`, an [ArgumentError]
+  /// for an item id given twice or a transport the facade does not have,
+  /// and a [StateError] when the facade runs no uploads.
+  PublishJob publish(PublishRequest request) => _publishJobs.publish(request);
+
+  /// Uploads [item] on its own, with no publisher: a publish job of one
+  /// item that completes once the item is uploaded, its remote reference in
+  /// the item's state. [transport] is the transport's id (the facade's
+  /// first unless given); [tag] and [durability] are the job's.
+  ///
+  /// Throws as [publish] does.
+  PublishJob upload(
+    PublishItem item, {
+    String? transport,
+    String? tag,
+    TransferDurability durability = TransferDurability.system,
+  }) => _publishJobs.upload(
+    item,
+    transport: transport,
+    tag: tag,
+    durability: durability,
+  );
+
+  /// Registers [publisher] under [id] (the host's name for it), replacing
+  /// any registered before. Done at app start: a publish job whose
+  /// publisher is not registered waits for it, after a restart too, and
+  /// publishes once it is.
+  ///
+  /// Throws a [StateError] when the facade runs no uploads.
+  void registerPublisher(String id, Publisher publisher) =>
+      _publishJobs.registerPublisher(id, publisher);
+
+  /// The publish job [id], for an owner that kept its id across a restart;
+  /// null when there is no such job (a completed one leaves after
+  /// [retention]).
+  ///
+  /// Throws a [StateError] when the facade runs no uploads.
+  PublishJob? publishJob(PublishJobId id) => _publishJobs.job(id);
+
+  PublishJobs get _publishJobs =>
+      _publish ??
+      (throw StateError('Transfers was built without uploads to publish.'));
+
   // --- Entry for the package's own paths -------------------------------------
 
   /// The cache key of [key]'s content: the composition root's mapping.
@@ -521,6 +647,7 @@ final class Transfers {
     bool resumeOnStart = true,
     List<SourceBytes> sources = const [],
     JournalUpload? upload,
+    TransferId? id,
   }) {
     assert(
       direction == TransferDirection.upload || key != null,
@@ -530,14 +657,18 @@ final class Transfers {
       direction == TransferDirection.upload || sources.isEmpty,
       'Only an upload has sources.',
     );
-    final id = switch (direction) {
+    assert(
+      id == null || direction == TransferDirection.upload,
+      "A download's id is derived from its key.",
+    );
+    final jobId = switch (direction) {
       TransferDirection.download => TransferId.forDownload(_cacheKeyOf(key!)),
-      TransferDirection.upload => TransferId.issue(),
+      TransferDirection.upload => id ?? TransferId.issue(),
     };
-    if (_job(id) != null) return id;
+    if (_job(jobId) != null) return jobId;
     final now = _now();
     final job = TransferJob(
-      id: id,
+      id: jobId,
       direction: direction,
       durability: durability,
       state: TransferState.queued(total: total),
@@ -552,11 +683,11 @@ final class Transfers {
     // never holds the job without them.
     if (upload != null) _journal.stage(JournalRecord(job: job, upload: upload));
     if (sources.firstOrNull case final source?) {
-      _uploads?.keepPageSource(id, source);
+      _uploads?.keepPageSource(jobId, source);
     }
     _queue(job);
-    if (direction == TransferDirection.upload) _copySources(id, sources);
-    return id;
+    if (direction == TransferDirection.upload) _copySources(jobId, sources);
+    return jobId;
   }
 
   /// Completes once every source copy begun so far has ended.
@@ -573,7 +704,11 @@ final class Transfers {
   /// journal.
   Future<void> dispose() {
     _shutDown();
-    return Future.wait([_journal.close(), ?_reuse?.close()]);
+    return Future.wait([
+      _journal.close(),
+      ?_reuse?.close(),
+      ?_publish?.journal.close(),
+    ]);
   }
 
   /// Stops as a killed process would: everything [dispose] stops, but the
@@ -583,6 +718,7 @@ final class Transfers {
     _shutDown();
     _journal.abandon();
     _reuse?.abandon();
+    _publish?.journal.abandon();
   }
 
   void _shutDown() {
@@ -593,6 +729,7 @@ final class Transfers {
     unawaited(_envelopeEvents?.cancel());
     _pruneTimer?.cancel();
     _systemActive.dispose();
+    _publish?.shutDown();
     [..._runs.keys].forEach(_stopRun);
     for (final watch in [..._watchers]) {
       unawaited(watch.controller.close());
@@ -694,6 +831,7 @@ final class Transfers {
     if (job.state is TransferState$Running) {
       _journal.writeProgress(next);
       _changed();
+      _toOwner(next);
     } else {
       _put(next);
     }
@@ -869,6 +1007,13 @@ final class Transfers {
   void _put(TransferJob job) {
     _journal.writeState(job);
     _changed();
+    _toOwner(job);
+  }
+
+  /// Tells the publish job that owns upload [job] that it moved.
+  void _toOwner(TransferJob job) {
+    final owner = _journal.record(job.id)?.upload?.owner;
+    if (owner != null) _publish?.uploadChanged(job, owner);
   }
 
   void _changed() {
@@ -1139,20 +1284,29 @@ final class _Run implements TransferRunSink {
   }
 }
 
-/// The runner of a facade made by [Transfers.open], before the package's
-/// own entry points (downloads, uploads) bring theirs. Nothing can queue a
-/// job on such a facade yet, so its journal holds none to resume and the
-/// runner is never started.
-final class _NoRunner implements TransferRunner {
-  const _NoRunner();
+/// The facade as its publish jobs see it.
+final class _PublishHost implements PublishUploadHost {
+  _PublishHost(this._engine);
+
+  final Transfers _engine;
 
   @override
-  void start(TransferJob job, TransferRunSink sink) =>
-      throw StateError('No transfer runner is wired for ${job.direction}.');
+  JournalRecord? recordOf(TransferId id) => _engine._journal.record(id);
 
   @override
-  void stop(TransferId id) {}
-
-  @override
-  void reprioritize(TransferId id, RequestPriority priority) {}
+  void enqueueUpload(
+    TransferId id,
+    JournalUpload upload, {
+    required TransferDurability durability,
+    String? tag,
+    MediaKey? key,
+  }) => _engine.enqueue(
+    direction: TransferDirection.upload,
+    durability: durability,
+    key: key,
+    tag: tag,
+    total: upload.source.size,
+    upload: upload,
+    id: id,
+  );
 }

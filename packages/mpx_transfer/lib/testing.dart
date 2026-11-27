@@ -5,8 +5,9 @@
 /// copies' contract, the contract the reuse table meets over every store,
 /// a harness that builds the engine over them, an upload source file
 /// system with no files, and an upload transport with no remote end, the
-/// contract every transport meets
-/// and a harness that runs uploads through the real upload engine.
+/// contract every transport meets,
+/// a harness that runs uploads and publish jobs through the real engine,
+/// and a publisher that answers on script.
 ///
 /// Opt-in: production entry points never export these, and production code
 /// never imports them.
@@ -15,6 +16,7 @@ library;
 export 'src/journal/journal_store.dart';
 export 'src/journal/unload_warning.dart';
 export 'src/journal/upload_source_copies.dart';
+export 'src/testing/fake_publisher.dart';
 export 'src/testing/fake_transfer_envelope.dart';
 export 'src/testing/fake_transfer_result.dart';
 export 'src/testing/fake_unload_warning.dart';

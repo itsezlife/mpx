@@ -8,6 +8,8 @@ import 'package:mpx_transfer/src/job/transfer_job.dart';
 import 'package:mpx_transfer/src/journal/journal_record.dart';
 import 'package:mpx_transfer/src/journal/journal_store.dart';
 import 'package:mpx_transfer/src/journal/transfer_journal.dart';
+import 'package:mpx_transfer/src/publish/publish_journal.dart';
+import 'package:mpx_transfer/src/reuse/reuse_table.dart';
 import 'package:mpx_transfer/src/transfers.dart';
 import 'package:mpx_transfer/src/upload/upload_engine.dart';
 import 'package:mpx_transfer/src/upload/upload_lane.dart';
@@ -20,8 +22,10 @@ import 'package:mpx_transfer/src/upload/upload_transport.dart';
 /// journal in memory (or the store a test gives), for tests of uploads at
 /// the facade.
 ///
-/// Uploads have no public entry yet, so [upload] makes the job the way
-/// the package's own entry points do. [restart] closes the facade and
+/// Publish jobs (`transfers.publish`, `transfers.upload`) run over the
+/// same engine, preparing through [preparation], with their records and
+/// the reuse table in memory stores that outlive restarts too. [upload]
+/// makes a bare upload job the way the package's own entry points do. [restart] closes the facade and
 /// opens a new one, with a new engine, over the journal it left; [kill]
 /// drops it without closing, as a killed process would. The transports
 /// outlive both, as a remote end does.
@@ -38,6 +42,8 @@ final class UploadsHarness {
     required this.wait,
     required this.client,
     required this.files,
+    required this.preparation,
+    required this.reusePolicy,
   });
 
   /// Opens a harness over [transports]; the job's transport is the first
@@ -62,6 +68,8 @@ final class UploadsHarness {
     Future<void> Function(Duration delay)? wait,
     HttpBytesClient? client,
     UploadSourceFiles? files,
+    MediaPreparation? preparation,
+    ReusePolicy reuse = const ReusePolicy(),
   }) async {
     final memory = MemoryJournalStore();
     final harness = UploadsHarness._(
@@ -76,6 +84,8 @@ final class UploadsHarness {
       wait: wait,
       client: client,
       files: files,
+      preparation: preparation,
+      reusePolicy: reuse,
     );
     await harness._start();
     return harness;
@@ -114,10 +124,24 @@ final class UploadsHarness {
   /// Tells what each source file is; null for the platform's.
   final UploadSourceFiles? files;
 
+  /// Prepares publish job items; null for a facade without preparation.
+  final MediaPreparation? preparation;
+
+  /// The host's say over the reuse table.
+  final ReusePolicy reusePolicy;
+
+  /// Where the publish jobs' records are kept across restarts.
+  final MemoryJournalStore publishStore = MemoryJournalStore();
+
+  /// Where the reuse table is kept across restarts.
+  final MemoryJournalStore reuseStore = MemoryJournalStore();
+
   /// The facade under test; replaced by [restart] and [kill].
   late Transfers transfers;
 
   late TransferJournal _journal;
+  late PublishJournal _publish;
+  late ReuseTable _reuse;
   late UploadEngine _engine;
 
   /// The jobs the journal read back at the last start, before the engine
@@ -163,7 +187,8 @@ final class UploadsHarness {
 
   /// Completes when every journal write made so far is flushed; progress
   /// still waiting for its window is not.
-  Future<void> settle() => _journal.idle;
+  Future<void> settle() =>
+      Future.wait([_journal.idle, _publish.idle, _reuse.idle]);
 
   /// Closes the facade and opens a new one, with a new engine, over the
   /// journal it left.
@@ -188,6 +213,12 @@ final class UploadsHarness {
       resultCodecs: Transfers.resultCodecs,
     );
     _replayed = _journal.jobs.toList();
+    _publish = await PublishJournal.open(
+      publishStore,
+      retention: Transfers.defaultRetention,
+      now: now,
+    );
+    _reuse = await ReuseTable.open(reuseStore, policy: reusePolicy, now: now);
     _engine = UploadEngine(
       journal: _journal,
       transports: transports,
@@ -206,6 +237,9 @@ final class UploadsHarness {
       runner: _engine,
       journal: _journal,
       uploads: _engine,
+      reuse: _reuse,
+      publishJournal: _publish,
+      preparation: preparation,
       now: now,
     );
   }

@@ -1,6 +1,8 @@
 import 'package:meta/meta.dart';
 import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
+import 'package:mpx_transfer/src/publish/publish_request.dart';
+import 'package:mpx_transfer/src/publish/publish_state.dart';
 import 'package:mpx_transfer/src/upload/upload_lane.dart';
 
 /// The transfer engine's state at one moment, for a debug panel: read on
@@ -19,6 +21,7 @@ final class TransfersDebugSnapshot {
     this.uploads,
     this.connections,
     this.reuse,
+    this.publish,
   }) : jobs = List.unmodifiable(jobs);
 
   /// Every job not yet completed, oldest first, with its id, tag,
@@ -43,12 +46,104 @@ final class TransfersDebugSnapshot {
   /// without one.
   final ReuseDebugSnapshot? reuse;
 
+  /// Publish jobs not yet completed, the registered publishers and the
+  /// jobs waiting for a publisher or their owner; null for an engine that
+  /// runs no publish jobs.
+  final PublishDebugSnapshot? publish;
+
   @override
   String toString() =>
       'TransfersDebugSnapshot(${jobs.length} jobs, online: $online, '
       '$journal${uploads == null ? '' : ', $uploads'}'
       '${connections == null ? '' : ', $connections'}'
-      '${reuse == null ? '' : ', $reuse'})';
+      '${reuse == null ? '' : ', $reuse'}'
+      '${publish == null ? '' : ', $publish'})';
+}
+
+/// The publish section of a [TransfersDebugSnapshot].
+@immutable
+final class PublishDebugSnapshot {
+  /// A snapshot of the publish jobs.
+  PublishDebugSnapshot({
+    required List<PublishJobDebugSnapshot> jobs,
+    required Iterable<String> publishers,
+  }) : jobs = List.unmodifiable(jobs),
+       publishers = List.unmodifiable(publishers);
+
+  /// Every publish job not yet completed, oldest first.
+  final List<PublishJobDebugSnapshot> jobs;
+
+  /// The ids publishers are registered under.
+  final List<String> publishers;
+
+  /// The jobs waiting for their publisher to be registered.
+  List<PublishJobId> get awaitingPublisher => [
+    for (final job in jobs)
+      if (job.state is PublishJobState$AwaitingPublisher) job.id,
+  ];
+
+  /// The jobs waiting for their owner to decide.
+  List<PublishJobId> get awaitingOwner => [
+    for (final job in jobs)
+      if (job.state is PublishJobState$AwaitingOwner) job.id,
+  ];
+
+  @override
+  String toString() =>
+      'PublishDebugSnapshot(${jobs.length} jobs, '
+      '${publishers.length} publishers)';
+}
+
+/// One publish job in a [PublishDebugSnapshot].
+@immutable
+final class PublishJobDebugSnapshot {
+  /// A job's debug view.
+  PublishJobDebugSnapshot({
+    required this.id,
+    required this.state,
+    required this.attempts,
+    required List<PublishItemDebugSnapshot> items,
+    this.tag,
+    this.publisher,
+  }) : items = List.unmodifiable(items);
+
+  /// The job's id.
+  final PublishJobId id;
+
+  /// The host's tag, as given.
+  final String? tag;
+
+  /// The id of its publisher; null for an upload with none.
+  final String? publisher;
+
+  /// Where the job is.
+  final PublishJobState state;
+
+  /// The publish attempts begun so far.
+  final int attempts;
+
+  /// Its items, in order.
+  final List<PublishItemDebugSnapshot> items;
+
+  @override
+  String toString() =>
+      'PublishJobDebugSnapshot($id, $state, ${items.length} items)';
+}
+
+/// One item in a [PublishJobDebugSnapshot].
+@immutable
+final class PublishItemDebugSnapshot {
+  /// An item's debug view.
+  const PublishItemDebugSnapshot({required this.item, required this.reuseHit});
+
+  /// The item's id, key and state.
+  final PublishItemSnapshot item;
+
+  /// Whether the reuse table answered it, with no preparation or upload.
+  final bool reuseHit;
+
+  @override
+  String toString() => 'PublishItemDebugSnapshot($item, reuseHit: $reuseHit)';
 }
 
 /// The reuse table's section of a [TransfersDebugSnapshot].

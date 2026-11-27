@@ -78,6 +78,7 @@ final class JournalUpload {
     this.resumeExpiresAt,
     Map<int, String?> parts = const {},
     this.highWaterMark = 0,
+    this.owner,
   }) : parts = Map.unmodifiable(parts);
 
   /// The file the upload reads.
@@ -115,6 +116,10 @@ final class JournalUpload {
   /// part that ends at or before it is acknowledged.
   final int highWaterMark;
 
+  /// The publish job item this upload sends, when a publish job made it;
+  /// null for an upload made on its own.
+  final JournalUploadOwner? owner;
+
   /// This upload with the given parts replaced; [clearResumeToken] drops
   /// the token and its expiry.
   JournalUpload copyWith({
@@ -134,6 +139,7 @@ final class JournalUpload {
     resumeExpiresAt: clearResumeToken ? null : resumeExpiresAt,
     parts: parts ?? this.parts,
     highWaterMark: highWaterMark ?? this.highWaterMark,
+    owner: owner,
   );
 
   @override
@@ -148,7 +154,8 @@ final class JournalUpload {
       other.resumeToken == resumeToken &&
       other.resumeExpiresAt == resumeExpiresAt &&
       _sameParts(other.parts, parts) &&
-      other.highWaterMark == highWaterMark;
+      other.highWaterMark == highWaterMark &&
+      other.owner == owner;
 
   @override
   int get hashCode => Object.hash(
@@ -164,12 +171,54 @@ final class JournalUpload {
       parts.entries.map((part) => Object.hash(part.key, part.value)),
     ),
     highWaterMark,
+    owner,
   );
 
   @override
   String toString() =>
       'JournalUpload($transportId, ${lane.name}, ${parts.length} parts, '
       '$highWaterMark)';
+}
+
+/// Which part of which publish job item an upload sends: what lets a
+/// restart match an upload to its item when the two were written to their
+/// stores in another order than they were made.
+@immutable
+final class JournalUploadOwner {
+  /// The upload of [role] for item [itemId] of publish job [job].
+  const JournalUploadOwner({
+    required this.job,
+    required this.itemId,
+    required this.role,
+  });
+
+  /// The publish job's id.
+  final String job;
+
+  /// The item's id, as the host gave it.
+  final String itemId;
+
+  /// What of the item the upload sends.
+  final UploadRole role;
+
+  @override
+  bool operator ==(Object other) =>
+      other is JournalUploadOwner &&
+      other.job == job &&
+      other.itemId == itemId &&
+      other.role == role;
+
+  @override
+  int get hashCode => Object.hash(job, itemId, role);
+}
+
+/// What of a publish job item an upload sends.
+enum UploadRole {
+  /// The item's file.
+  file,
+
+  /// The item's thumbnail, for a transport that takes it separately.
+  thumbnail,
 }
 
 bool _sameParts(Map<int, String?> a, Map<int, String?> b) {

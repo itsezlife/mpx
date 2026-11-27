@@ -192,9 +192,11 @@ final class FakeUploadTransport implements UploadTransport {
 
   Future<RemoteRef> _finish(int finalSize, List<UploadPartAck> parts) async {
     _finishes.add(FakeUploadFinish(finalSize, parts));
+    // Numbered before the wait: finishes under way together get their own.
+    final number = _finishes.length;
     await null;
     if (_finishFailures.isNotEmpty) throw _finishFailures.removeFirst();
-    return RemoteRef('fake-${_finishes.length}');
+    return RemoteRef('fake-$number');
   }
 }
 

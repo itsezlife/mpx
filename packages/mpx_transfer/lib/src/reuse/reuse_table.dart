@@ -49,6 +49,14 @@ final class ReuseKey {
 
   const ReuseKey._(this._value);
 
+  /// The key [encoded] holds, as a publish job's record keeps it.
+  @internal
+  const ReuseKey.decode(String encoded) : this._(encoded);
+
+  /// The canonical form, for a publish job's record.
+  @internal
+  String get encoded => _value;
+
   /// The canonical form, as the table stores it.
   final String _value;
 

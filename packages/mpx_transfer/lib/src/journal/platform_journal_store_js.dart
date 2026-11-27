@@ -30,6 +30,7 @@ Future<JournalPlatform> openJournalPlatform(
       return JournalPlatform(
         store: store,
         reuseStore: OpfsJournalStore(store.directory, name: 'reuse'),
+        publishStore: OpfsJournalStore(store.directory, name: 'publish'),
         sourceCopies: copies,
         unloadWarning: WindowUnloadWarning(),
       );

@@ -63,7 +63,8 @@ final class TransferJob {
   /// the host gave none.
   final String? tag;
 
-  /// The content a download fetches; null for an upload.
+  /// The content a download fetches, or the item an upload of a publish
+  /// job sends; null for an upload made on its own.
   final MediaKey? key;
 
   /// How urgently the job's bytes are needed.
