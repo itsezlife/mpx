@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 import 'package:mpx_transfer/src/job/transfer_state.dart';
 import 'package:mpx_transfer/src/journal/journal_codec.dart';
+import 'package:mpx_transfer/src/journal/json_fields.dart';
 
 /// Where an uploaded file now lives on the remote end, as its transport
 /// answered at the end of the upload: what a completed upload job holds,
@@ -50,8 +51,14 @@ final class RemoteRef implements TransferResult {
   String toString() => 'RemoteRef(${attributes.length} attributes)';
 }
 
+/// `{"id": id, "attributes"?: {name: value}}`, the attributes left out
+/// when empty. A missing `id`, or an attribute that is not a string, throws
+/// a [FormatException] naming the field.
 final class _RemoteRefCodec implements TransferResultCodec {
   const _RemoteRefCodec();
+
+  static const String _id = 'id';
+  static const String _attributes = 'attributes';
 
   @override
   String get kind => 'remoteRef';
@@ -59,17 +66,19 @@ final class _RemoteRefCodec implements TransferResultCodec {
   @override
   Map<String, Object?>? encode(TransferResult result) => switch (result) {
     RemoteRef(:final id, :final attributes) => {
-      'id': id,
-      if (attributes.isNotEmpty) 'attributes': attributes,
+      _id: id,
+      if (attributes.isNotEmpty) _attributes: attributes,
     },
     _ => null,
   };
 
+  // Covariant: a caller holding this codec reads a [RemoteRef] back.
   @override
-  TransferResult decode(Map<String, Object?> json) => RemoteRef(
-    json['id']! as String,
-    attributes: {
-      ...?(json['attributes'] as Map<String, Object?>?)?.cast<String, String>(),
-    },
-  );
+  RemoteRef decode(Map<String, Object?> json) {
+    final fields = JsonFields(json);
+    return RemoteRef(
+      fields.string(_id),
+      attributes: fields.optionalStringMap(_attributes),
+    );
+  }
 }

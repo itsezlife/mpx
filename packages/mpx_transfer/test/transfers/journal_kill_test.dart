@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
 import 'package:mpx_transfer/mpx_transfer.dart';
-import 'package:mpx_transfer/src/journal/file_journal_store.dart';
+import 'package:mpx_transfer/src/journal/journal_store_file_vm.dart';
 import 'package:mpx_transfer/testing.dart';
 
 import '../support.dart';
@@ -150,7 +150,7 @@ void main() {
       addTearDown(() => directory.delete(recursive: true));
       final h = await harness(
         now: () => now,
-        store: () => FileJournalStore(directory.path),
+        store: () => JournalStore$File$VM(directory.path),
       );
       final queued = h.addUpload(tag: 'a');
       final completed = h.addUpload(tag: 'b');

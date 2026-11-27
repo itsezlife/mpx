@@ -77,7 +77,7 @@ final class UploadEngine implements TransferRunner {
        slots = slots ?? ConnectionSlots(),
        _client = client,
        _sourceCopies = sourceCopies,
-       _files = files ?? platformUploadSourceFiles(),
+       _files = files ?? $platformUploadSourceFiles(),
        _random = random ?? math.Random(),
        _wait = wait ?? Future<void>.delayed,
        _now = now;
@@ -275,7 +275,7 @@ final class UploadEngine implements TransferRunner {
     // and reported once.
     return client.upload(
       url,
-      body: uploadPartBody(
+      body: $uploadPartBody(
         source,
         bytes,
         offset: offset,

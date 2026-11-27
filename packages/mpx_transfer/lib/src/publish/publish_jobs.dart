@@ -1735,7 +1735,7 @@ final class PublishJobs {
       progress: _progressOf(record.id).job.fold(
         state is PublishJobState$Completed
             ? 1
-            : (1 - _weights.publish) * itemsFraction(measures),
+            : (1 - _weights.publish) * measures.fraction,
       ),
       aliasesApplied:
           record.end is PublishJobState$Completed && record.aliases.isEmpty,

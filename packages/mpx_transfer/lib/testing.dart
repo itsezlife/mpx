@@ -30,4 +30,4 @@ export 'src/testing/transfers_harness.dart';
 export 'src/testing/upload_source_copies_contract.dart';
 export 'src/testing/upload_transport_contract.dart';
 export 'src/testing/uploads_harness.dart';
-export 'src/upload/upload_source_files.dart' hide platformUploadSourceFiles;
+export 'src/upload/upload_source_files.dart' hide $platformUploadSourceFiles;

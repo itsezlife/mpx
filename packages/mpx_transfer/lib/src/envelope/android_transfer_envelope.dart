@@ -182,14 +182,18 @@ final class AndroidTransferEnvelope implements TransferEnvelope {
     } on MissingPluginException {
       return const {};
     }
+    // The native part's answer is read leniently, as the iOS side reads
+    // its own: a value of another shape is left out, never thrown on.
     final records = [
-      for (final record in answer?['records'] as List<Object?>? ?? const [])
-        if (record is Map<Object?, Object?>) record,
+      if (answer?['records'] case final List<Object?> records)
+        for (final record in records)
+          if (record case final Map<Object?, Object?> record) record,
     ];
     _merge(records);
     return {
-      for (final handle in answer?['live'] as List<Object?>? ?? const [])
-        if (handle is String) handle,
+      if (answer?['live'] case final List<Object?> live)
+        for (final handle in live)
+          if (handle case final String handle) handle,
     };
   }
 
@@ -219,17 +223,20 @@ final class AndroidTransferEnvelope implements TransferEnvelope {
       time: DateTime.fromMillisecondsSinceEpoch(time),
       level: level,
       op: op,
-      jobId: record['jobId'] as String?,
+      jobId: switch (record['jobId']) {
+        final String jobId => jobId,
+        _ => null,
+      },
       fields: {
-        for (final MapEntry(:key, :value)
-            in (record['fields'] as Map<Object?, Object?>? ?? const {}).entries)
-          if (key is String)
-            if (value case final num number)
-              key: number
-            else if (value case final bool flag)
-              key: flag
-            else if (value case final String text)
-              key: MpxEvent.clip(text),
+        if (record['fields'] case final Map<Object?, Object?> fields)
+          for (final MapEntry(:key, :value) in fields.entries)
+            if (key is String)
+              if (value case final num number)
+                key: number
+              else if (value case final bool flag)
+                key: flag
+              else if (value case final String text)
+                key: MpxEvent.clip(text),
         if (native) 'native': true,
       },
     );

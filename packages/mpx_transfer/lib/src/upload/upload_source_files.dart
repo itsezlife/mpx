@@ -6,7 +6,7 @@ export 'upload_source_files_vm.dart'
 /// Where the upload engine reads what an upload's source file is now, so a
 /// restart tells an unchanged file from a changed or a missing one.
 ///
-/// On the VM the engine reads the file system (`platformUploadSourceFiles`);
+/// On the VM the engine reads the file system (`$platformUploadSourceFiles`);
 /// on the web it reads none, because an upload there reads the page's own
 /// source or the engine's copy in OPFS, which nothing else rewrites. Tests
 /// give a fake.

@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 import 'package:mpx_transfer/src/job/transfer_state.dart';
 import 'package:mpx_transfer/src/journal/journal_codec.dart';
+import 'package:mpx_transfer/src/journal/json_fields.dart';
 
 /// What a completed tracked download produced: its content, whole in the
 /// bytes cache under the job's key.
@@ -32,19 +33,23 @@ final class DownloadedContent implements TransferResult {
   String toString() => 'DownloadedContent($bytes)';
 }
 
+/// `{"bytes"?: count}`, the count left out when unknown; a count that is
+/// not an integer throws a [FormatException] naming the field.
 final class _DownloadedContentCodec implements TransferResultCodec {
   const _DownloadedContentCodec();
+
+  static const String _bytes = 'bytes';
 
   @override
   String get kind => 'download';
 
   @override
   Map<String, Object?>? encode(TransferResult result) => switch (result) {
-    DownloadedContent(:final bytes) => {'bytes': ?bytes},
+    DownloadedContent(:final bytes) => {_bytes: ?bytes},
     _ => null,
   };
 
   @override
-  TransferResult decode(Map<String, Object?> json) =>
-      DownloadedContent(bytes: json['bytes'] as int?);
+  DownloadedContent decode(Map<String, Object?> json) =>
+      DownloadedContent(bytes: JsonFields(json).optionalInteger(_bytes));
 }

@@ -195,7 +195,7 @@ final class Transfers {
     bool online = true,
     DateTime Function() now = DateTime.now,
   }) async {
-    final platform = await openJournalPlatform(directory);
+    final platform = await $openJournalPlatform(directory);
     final journal = await TransferJournal.open(
       platform.store,
       retention: retention,

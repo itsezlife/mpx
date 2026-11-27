@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:http_bytes_cache/http_bytes_cache.dart' show HttpBytesResponse;
 import 'package:meta/meta.dart';
 import 'package:mpx_transfer/src/job/transfer_state.dart';
+import 'package:mpx_transfer/src/journal/json_fields.dart';
 import 'package:mpx_transfer/src/upload/remote_ref.dart';
 import 'package:mpx_transfer/src/upload/upload_transport.dart';
 
@@ -186,8 +187,8 @@ final class _MultipartSession implements UploadSession {
         message: 'finish needs the one part acknowledged with its answer.',
       );
     }
-    return RemoteRef.codec.decode(jsonDecode(receipt) as Map<String, Object?>)
-        as RemoteRef;
+    final json = JsonFields.of(jsonDecode(receipt), what: 'the receipt');
+    return RemoteRef.codec.decode(json.json) as RemoteRef;
   }
 
   List<int> _prefix(String boundary) {

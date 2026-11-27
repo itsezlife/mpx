@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 import 'package:mpx_transfer/src/job/transfer_state.dart';
 import 'package:mpx_transfer/src/journal/journal_codec.dart';
+import 'package:mpx_transfer/src/journal/json_fields.dart';
 
 /// What a scripted run completes with in a test: a stand-in for an
 /// upload's remote reference or a download's cached file, named by [name].
@@ -44,5 +45,5 @@ final class _FakeTransferResultCodec implements TransferResultCodec {
 
   @override
   TransferResult decode(Map<String, Object?> json) =>
-      FakeTransferResult(json['name']! as String);
+      FakeTransferResult(JsonFields(json).string('name'));
 }

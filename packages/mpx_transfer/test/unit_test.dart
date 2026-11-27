@@ -23,6 +23,7 @@ import 'publish/publish_order_hold_cancel_test.dart'
     as publish_order_hold_cancel_test;
 import 'publish/publish_outcome_test.dart' as publish_outcome_test;
 import 'publish/publish_progress_test.dart' as publish_progress_test;
+import 'publish/publish_record_codec_test.dart' as publish_record_codec_test;
 import 'publish/publish_tracked_test.dart' as publish_tracked_test;
 import 'publish/publish_tracked_view_test.dart' as publish_tracked_view_test;
 import 'publish/publish_watch_jobs_test.dart' as publish_watch_jobs_test;
@@ -77,6 +78,7 @@ void main() {
   group('publish_tracked_view_test', publish_tracked_view_test.main);
   group('publish_outcome_test', publish_outcome_test.main);
   group('publish_progress_test', publish_progress_test.main);
+  group('publish_record_codec_test', publish_record_codec_test.main);
   group('publish_watch_jobs_test', publish_watch_jobs_test.main);
   group('reuse_facade_test', reuse_facade_test.main);
   group('reuse_table_contract_test', reuse_table_contract_test.main);

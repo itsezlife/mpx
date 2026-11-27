@@ -16,9 +16,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
 import 'package:mpx_transfer/mpx_transfer.dart';
-import 'package:mpx_transfer/src/journal/opfs_journal_storage.dart';
+import 'package:mpx_transfer/src/journal/journal_storage_opfs_js.dart';
 import 'package:mpx_transfer/src/journal/platform_journal_store_js.dart';
-import 'package:mpx_transfer/src/journal/window_unload_warning.dart';
+import 'package:mpx_transfer/src/journal/unload_warning_window_js.dart';
 import 'package:mpx_transfer/testing.dart';
 import 'package:web/web.dart' as web;
 
@@ -70,12 +70,12 @@ void main() {
     final directory = await _freshDirectory();
     // A new store over the same directory at each start, as a reload
     // reopens it.
-    return () => OpfsJournalStore(directory);
+    return () => JournalStore$Opfs$JS(directory);
   });
 
   ReuseTableContract.run('opfs', () async {
     final directory = await _freshDirectory();
-    return () => OpfsJournalStore(directory, name: 'reuse');
+    return () => JournalStore$Opfs$JS(directory, name: 'reuse');
   });
 
   JournalStoreContract.run('memory, where the page has no OPFS', () {
@@ -85,26 +85,26 @@ void main() {
 
   UploadSourceCopiesContract.run('opfs', () {
     final directory = _freshDirectory();
-    return () async => OpfsUploadSourceCopies.open(await directory);
+    return () async => UploadSourceCopies$Opfs$JS.open(await directory);
   });
 
   group('OPFS source copies', () {
     test('copy a Blob byte for byte', () async {
       final directory = await _freshDirectory();
-      final copies = await OpfsUploadSourceCopies.open(directory);
+      final copies = await UploadSourceCopies$Opfs$JS.open(directory);
       const id = TransferId.parse('u-a');
       await copies.copy(id, [
-        BlobSourceBytes(_blob([1, 2, 3, 4])),
+        SourceBytes$Blob$JS(_blob([1, 2, 3, 4])),
       ]);
 
       final copy = (await copies.read(id, 0))!;
-      expect(copy, isA<BlobSourceBytes>());
+      expect(copy, isA<SourceBytes$Blob$JS>());
       expect(await copy.read(), [1, 2, 3, 4]);
     });
 
     test('delete what a reload cut short at the next open', () async {
       final directory = await _freshDirectory();
-      final copies = await OpfsUploadSourceCopies.open(directory);
+      final copies = await UploadSourceCopies$Opfs$JS.open(directory);
       await copies.copy(const TransferId.parse('u-b'), [
         MemorySourceBytes(Uint8List(2)),
       ]);
@@ -118,7 +118,7 @@ void main() {
       await writable.write(Uint8List(3).toJS).toDart;
       await writable.close().toDart;
 
-      final again = await OpfsUploadSourceCopies.open(directory);
+      final again = await UploadSourceCopies$Opfs$JS.open(directory);
       expect(again.held, [const TransferId.parse('u-b')]);
       expect(await _namesIn(sources), ['u-b.0', 'u-b.kept']);
     });
@@ -138,8 +138,8 @@ void main() {
         ),
         // A new store and new copies over the same directory at each
         // start, as after a reload.
-        store: () => OpfsJournalStore(directory),
-        sourceCopies: () => OpfsUploadSourceCopies.open(directory),
+        store: () => JournalStore$Opfs$JS(directory),
+        sourceCopies: () => UploadSourceCopies$Opfs$JS.open(directory),
         sourceCopyLimit: limit,
       );
       addTearDown(() => h.transfers.dispose());
@@ -152,12 +152,12 @@ void main() {
       final h = await open(directory, limit: 8);
       final under = h.addUpload(
         sources: [
-          BlobSourceBytes(_blob([1, 2, 3])),
+          SourceBytes$Blob$JS(_blob([1, 2, 3])),
         ],
         total: 3,
       );
       final over = h.addUpload(
-        sources: [BlobSourceBytes(_blob(List.filled(9, 7)))],
+        sources: [SourceBytes$Blob$JS(_blob(List.filled(9, 7)))],
       );
       h.runner.progress(under, 1, total: 3);
       await h.settle();
@@ -182,7 +182,7 @@ void main() {
       expect(recorder.whereOp(JournalOp.opened).last.fields['store'], 'opfs');
 
       // The copy the resumed job reads is the source.
-      final copies = await OpfsUploadSourceCopies.open(directory);
+      final copies = await UploadSourceCopies$Opfs$JS.open(directory);
       expect(await (await copies.read(under, 0))!.read(), [1, 2, 3]);
     });
 
@@ -191,14 +191,17 @@ void main() {
       final h = await open(directory, limit: 8);
       final id = h.addUpload(
         sources: [
-          BlobSourceBytes(_blob([1])),
+          SourceBytes$Blob$JS(_blob([1])),
         ],
       );
       await h.settle();
       h.runner.complete(id, const FakeTransferResult('r'));
       await h.settle();
       await h.restart();
-      expect((await OpfsUploadSourceCopies.open(directory)).holds(id), isFalse);
+      expect(
+        (await UploadSourceCopies$Opfs$JS.open(directory)).holds(id),
+        isFalse,
+      );
     });
   });
 
@@ -208,18 +211,18 @@ void main() {
 
     test('opens the journal in OPFS', () async {
       final directory = await _freshDirectory();
-      final platform = await openJournalPlatform(
+      final platform = await $openJournalPlatform(
         null,
         root: () async => directory,
       );
       expect(platform.store.kind, JournalStoreKind.opfs);
-      expect(platform.sourceCopies, isA<OpfsUploadSourceCopies>());
-      expect(platform.unloadWarning, isA<WindowUnloadWarning>());
+      expect(platform.sourceCopies, isA<UploadSourceCopies$Opfs$JS>());
+      expect(platform.unloadWarning, isA<UnloadWarning$Window$JS>());
     });
 
     test('falls back to memory and reports an OPFS that refuses to '
         'open', () async {
-      final platform = await openJournalPlatform(
+      final platform = await $openJournalPlatform(
         null,
         root: () => Future.error(web.DOMException('refused', 'SecurityError')),
       );
@@ -245,7 +248,7 @@ void main() {
 
     test('asks before it is left while a job runs, and not once none '
         'does', () async {
-      final warning = WindowUnloadWarning();
+      final warning = UnloadWarning$Window$JS();
       final h = await TransfersHarness.open(
         lifecycle: ManualPlaybackLifecycleSource(
           initial: AppLifecycleState.resumed,

@@ -3,7 +3,7 @@ import 'dart:js_interop';
 import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:mpx_transfer/src/job/transfer_state.dart';
 import 'package:mpx_transfer/src/journal/journal_record.dart';
-import 'package:mpx_transfer/src/journal/opfs_journal_storage.dart';
+import 'package:mpx_transfer/src/journal/journal_storage_opfs_js.dart';
 import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
 import 'package:mpx_transfer/src/upload/upload_transport.dart';
 import 'package:web/web.dart' as web;
@@ -12,7 +12,7 @@ import 'package:web/web.dart' as web;
 /// of [bytes], the page's source or its copy in OPFS, handed to `fetch`.
 /// [prefix] and [suffix] go around the slice. Without either the source is
 /// lost, which no try again mends.
-HttpBytesUploadBody uploadPartBody(
+HttpBytesUploadBody $uploadPartBody(
   JournalSource source,
   SourceBytes? bytes, {
   required int offset,
@@ -20,7 +20,7 @@ HttpBytesUploadBody uploadPartBody(
   List<int> prefix = const [],
   List<int> suffix = const [],
 }) => switch (bytes) {
-  BlobSourceBytes(:final blob) => HttpBytesUploadBody.blob(
+  SourceBytes$Blob$JS(:final blob) => HttpBytesUploadBody.blob(
     blob,
     offset: offset,
     length: length,

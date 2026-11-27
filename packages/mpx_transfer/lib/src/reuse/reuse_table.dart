@@ -9,6 +9,7 @@ import 'package:mpx_transfer/src/diagnostics/reuse_op.dart';
 import 'package:mpx_transfer/src/diagnostics/transfers_debug_snapshot.dart';
 import 'package:mpx_transfer/src/journal/journal_frames.dart';
 import 'package:mpx_transfer/src/journal/journal_store.dart';
+import 'package:mpx_transfer/src/journal/json_fields.dart';
 import 'package:mpx_transfer/src/upload/remote_ref.dart';
 import 'package:mpx_transfer/src/upload/upload_transport.dart';
 
@@ -472,7 +473,7 @@ final class ReuseTable {
 
   void _remove(_Slot slot) {
     if (_entries.remove(slot) == null || _closed) return;
-    _write({'remove': _slotJson(slot)});
+    _write({_Key.remove: _slotJson(slot)});
   }
 
   /// Appends [change] after the writes before it; encoded here, so a change
@@ -513,49 +514,60 @@ final class ReuseTable {
     _rewrite = false;
   }
 
+  // --- Stored form ----------------------------------------------------------
+  //
+  // A change is a frame of `{"put": {transport, key, file, thumbnail?,
+  // storedAt}}` or `{"remove": {transport, key}}`: `key` is the reuse key's
+  // canonical form, `file` and `thumbnail` remote references as the journal
+  // writes them, `storedAt` ISO 8601. The expiry is not stored; the run that
+  // reads an entry applies its own.
+
   static Map<String, Object?> _slotJson(_Slot slot) => {
-    'transport': slot.transport,
-    'key': slot.key._value,
+    _Key.transport: slot.transport,
+    _Key.key: slot.key._value,
   };
 
   static Map<String, Object?> _putJson(_Slot slot, ReuseEntry entry) => {
-    'put': {
+    _Key.put: {
       ..._slotJson(slot),
-      'file': RemoteRef.codec.encode(entry.file),
+      _Key.file: RemoteRef.codec.encode(entry.file),
       if (entry.thumbnail case final thumbnail?)
-        'thumbnail': RemoteRef.codec.encode(thumbnail),
-      'storedAt': entry.storedAt.toIso8601String(),
+        _Key.thumbnail: RemoteRef.codec.encode(thumbnail),
+      _Key.storedAt: entry.storedAt.toIso8601String(),
     },
   };
 
   /// Applies one change read back to [entries]; a change this build cannot
-  /// read is skipped.
+  /// read (a newer version's, one cut short) throws a [FormatException]
+  /// naming the field and is skipped.
   static void _apply(Map<_Slot, _Stored> entries, Object? payload) {
     try {
       switch (payload) {
-        case {'put': final Map<String, Object?> put}:
+        case {_Key.put: final Map<String, Object?> json}:
+          final put = JsonFields(json);
           entries[_slotOf(put)] = (
-            file: _refOf(put['file']),
-            thumbnail: put['thumbnail'] == null
-                ? null
-                : _refOf(put['thumbnail']),
-            storedAt: DateTime.parse(put['storedAt']! as String),
+            file: _refOf(put.object(_Key.file)),
+            thumbnail: switch (put.optionalObject(_Key.thumbnail)) {
+              final thumbnail? => _refOf(thumbnail),
+              null => null,
+            },
+            storedAt: put.time(_Key.storedAt),
           );
-        case {'remove': final Map<String, Object?> remove}:
-          entries.remove(_slotOf(remove));
+        case {_Key.remove: final Map<String, Object?> remove}:
+          entries.remove(_slotOf(JsonFields(remove)));
       }
     } on Object {
       // A change of a newer version: skipped, as the journal skips one.
     }
   }
 
-  static _Slot _slotOf(Map<String, Object?> json) => (
-    transport: json['transport']! as String,
-    key: ReuseKey._(json['key']! as String),
+  static _Slot _slotOf(JsonFields json) => (
+    transport: json.string(_Key.transport),
+    key: ReuseKey._(json.string(_Key.key)),
   );
 
-  static RemoteRef _refOf(Object? json) =>
-      RemoteRef.codec.decode(json! as Map<String, Object?>) as RemoteRef;
+  static RemoteRef _refOf(JsonFields json) =>
+      RemoteRef.codec.decode(json.json) as RemoteRef;
 
   static void _emitWriteFailed(
     JournalStore store,
@@ -568,6 +580,17 @@ final class ReuseTable {
     fields: () => {'code': store.errorCode(error), 'table': 'reuse'},
     stackTrace: stackTrace,
   );
+}
+
+/// Field names of the table's stored form.
+abstract final class _Key {
+  static const String put = 'put';
+  static const String remove = 'remove';
+  static const String transport = 'transport';
+  static const String key = 'key';
+  static const String file = 'file';
+  static const String thumbnail = 'thumbnail';
+  static const String storedAt = 'storedAt';
 }
 
 /// Where an entry sits: the transport that carried the source, and the

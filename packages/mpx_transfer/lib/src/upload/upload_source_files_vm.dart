@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:mpx_transfer/src/upload/upload_source_files.dart';
 
 /// The file system's answer for an upload's source.
-UploadSourceFiles? platformUploadSourceFiles() => const _FileSystemSources();
+UploadSourceFiles? $platformUploadSourceFiles() => const _FileSystemSources();
 
 final class _FileSystemSources implements UploadSourceFiles {
   const _FileSystemSources();
