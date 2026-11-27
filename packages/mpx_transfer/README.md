@@ -6,9 +6,8 @@ a durability, and every job is found through one observable query on one
 facade, `Transfers`.
 
 Early: this release holds the state model, the verbs, the query, the
-journal that brings every job back after a kill, and tracked downloads.
-Uploads, publish jobs and the native OS envelopes arrive in the releases
-after it.
+journal that brings every job back after a kill, tracked downloads,
+uploads, publish jobs and the Android OS envelope.
 
 ## Install
 
@@ -157,7 +156,8 @@ transfers.cancel(id); // removes it
 
 // The OS envelope's text and icon, already localised by the host. Without
 // a config `system` jobs run in process.
-//   Transfers.open(..., envelope: platformEnvelope,
+//   Transfers.open(...,
+//       envelope: Platform.isAndroid ? AndroidTransferEnvelope() : null,
 //       envelopeConfig: TransferEnvelopeConfig(
 //         title: l10n.sendingMedia,
 //         cancelAllLabel: l10n.cancelAll,
@@ -177,6 +177,51 @@ transfers.systemActive.addListener(() {
   // e.g. show or hide a "transfers running" hint
 });
 ```
+
+## Android
+
+`AndroidTransferEnvelope` keeps `system` jobs running with the app in the
+background and the screen off: a user-initiated data transfer job on
+Android 14 and later, a `dataSync` foreground service before, with one
+notification for every job inside it (the engine's progress, "cancel all",
+a tap that opens the app and arrives on `notificationTaps`). It starts when
+a long job is created while the app is visible (a video, or more than
+`longJobBytes`, 10 MiB), and ends when its jobs drain.
+
+The plugin's manifest declares the job service, the foreground service and
+the cancel receiver, and no permissions. A host that wants `system`
+transfers adds them to its own `AndroidManifest.xml`:
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Android 14 and later: the user-initiated data transfer job. -->
+    <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
+    <!-- Before Android 14: the dataSync foreground service. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Android 13 and later: the notification in the drawer (without it
+         the job shows in the Task Manager only). Ask for it at run time. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+</manifest>
+```
+
+Without them the platform refuses the envelope; the plugin catches the
+refusal (`envelope` `refused`, then `degraded`) and the jobs run in
+process. An app published on Google Play that targets Android 14 or later
+also declares the `dataSync` foreground service type in Play Console
+(App content, Foreground service permissions): a short description of the
+user-started upload, the impact of deferring it, and a video of a user
+starting a transfer and the notification that follows.
+
+The notification's title, text, "cancel all" label, progress line and
+small icon (a drawable or mipmap name) come from `TransferEnvelopeConfig`;
+the title also names the notification channel. The system ends the
+envelope after a time limit, a quota or a lost network, which pauses its
+jobs `systemInterrupted`; a low-memory kill is reported at the next start.
+The native side logs every envelope event to logcat (tag `mpx_transfer`)
+and, while Dart is not running, to a ring file of at most 2 MiB
+(`nativeLogBytes`), merged into diagnostics at the next start.
 
 ## Features
 

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Android OS envelope: `AndroidTransferEnvelope`, a user-initiated data
+  transfer job on Android 14 and later and a `dataSync` foreground service
+  before, started for a long job while the app is visible, with one
+  notification for every job inside (mirrored progress, "cancel all", a tap
+  to `notificationTaps`). The plugin's manifest declares the components
+  only; without the host's permissions (README, "Android") the refusal is
+  caught and the jobs run in process. System ends (a time limit, a stop, a
+  low-memory kill seen at the next start) are reported; native events go
+  to logcat (`mpx_transfer`) and, while Dart is not running, to a 2 MiB
+  ring merged at the next start. `EnvelopeOp` gains `progressPushed` and
+  `nativeMerged`.
 - OS envelope: `TransferEnvelopeConfig` (title, text, cancel-all label,
   progress text, icon, `startRule`, `longJobBytes` 10 MiB, `submitAt`
   `afterDelay(10 s)` or `onResignActive`) through

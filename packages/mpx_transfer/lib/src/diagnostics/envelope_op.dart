@@ -35,7 +35,16 @@ enum EnvelopeOp implements DiagnosticOp {
 
   /// The user tapped the envelope's notification (info; the job it
   /// showed).
-  notificationTap;
+  notificationTap,
+
+  /// The native part showed new progress in the platform's UI (trace;
+  /// `jobs`, `fraction` when the size is known; the job shown).
+  progressPushed,
+
+  /// The records the native part kept while Dart was not running were
+  /// reported, each with its own time and `native: true` (info; `records`,
+  /// `oldestAgeS`).
+  nativeMerged;
 
   @override
   String get category => 'envelope';
