@@ -33,7 +33,7 @@ The app opens dark and stays dark.
   selection over the list). It ends when the list leaves the screen.
 - **Covered posts**: a content warning or sensitive media are not fetched until
   the reader asks.
-- **Logs**: the bug-report icon opens the journal of what the app logged.
+- **Logs**: the bug-report icon opens the shared journal (`lib/journal/`): the app's log and the media stack's events, filtered by level, category and id, exported as a file.
 
 ## Layout
 
@@ -43,7 +43,7 @@ The app opens dark and stays dark.
 | `src/feature/initialization/` | `Dependencies`, filled by the ordered steps of `$initializeDependencies`; one `ControllerObserver` |
 | `src/feature/timeline/` | Posts: `data/` (client, DTOs, adapter, repository), `model/`, `controller/`, `widget/` |
 | `src/feature/reels/` | The pager of videos |
-| `src/feature/logs/` | The log journal over `LogBuffer` |
+| `../journal/` | The log journal every example app shares (see below) |
 | `src/feature/app/` | The routes (one list, `squid`) and the home |
 | `src/common/` | The theme, media keys' origins, formatting, small widgets |
 
@@ -84,3 +84,15 @@ In `flutter_md` (not this repository):
 - Its selection toolbar, left in the overlay when the list went off screen,
   painted with NaN anchors on every frame. `PostSelectionScope` ends the
   selection when the list stops being what the reader sees.
+
+## The journal
+
+`lib/journal/` is shared by every example app: `JournalHost.start` opens a
+ring of files in the cache folder (20 MiB, written in batches, at once on a
+warning or an error, read back at the next start), routes
+`MpxDiagnostics.current` into it and the app's `l` log beside it. The Logs
+screen filters by level, category and id (`jobId`, `itemId`, `mediaKey`,
+`tag`); `JournalFilter.ofItem` opens it for one item. The export is a JSON
+lines file through the share sheet; its header names the platform, the OS,
+the build and the mpx commit (`--dart-define=MPX_COMMIT=$(git rev-parse
+--short HEAD)`).

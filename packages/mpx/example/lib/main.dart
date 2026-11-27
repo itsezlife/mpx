@@ -12,6 +12,9 @@ import 'package:mpx_core/frame_pool.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_example/feed_page.dart';
 import 'package:mpx_example/gallery.dart';
+import 'package:mpx_example/journal/data/diagnostics_journal.dart';
+import 'package:mpx_example/journal/data/journal_host.dart';
+import 'package:mpx_example/journal/view/journal_page.dart';
 import 'package:mpx_example/lab/corpus.dart';
 import 'package:mpx_example/lab/lab.dart';
 import 'package:mpx_example/lab/lab_coverage.dart';
@@ -69,6 +72,8 @@ String _mimeOf(String file) => switch (file.split('.').last.toLowerCase()) {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // First, so the previous run's tail and everything below are in it.
+  final journal = await JournalHost.start(name: 'mpx_example_journal');
   final cacheDirectory = '${Directory.systemTemp.path}/mpx_example';
   final framesDirectory = '${Directory.systemTemp.path}/mpx_example_frames';
   if (kMpxLab) {
@@ -164,7 +169,7 @@ Future<void> main() async {
   SvgDemo.descriptors.forEach(stack.pipeline.know);
   final players = await _players(readers, stack.scope);
   if (kMpxLab) Lab.attach(stack, players);
-  runApp(MediaApp(stack: stack, players: players));
+  runApp(MediaApp(stack: stack, players: players, journal: journal));
 }
 
 /// The device's media library, one for the app: the picker shows it and
@@ -388,9 +393,17 @@ final class _BundleOrigin extends http.BaseClient {
 /// fullscreen viewer with save and share; a feed list gated by the device
 /// signals; and the signals themselves.
 class MediaApp extends StatefulWidget {
-  const MediaApp({required this.stack, this.players, super.key});
+  const MediaApp({
+    required this.stack,
+    required this.journal,
+    this.players,
+    super.key,
+  });
 
   final MpxStack stack;
+
+  /// The journal the Logs screen shows.
+  final DiagnosticsJournal journal;
 
   /// The players the viewer plays videos with sound on.
   final PlayerPool? players;
@@ -455,13 +468,22 @@ class _MediaAppState extends State<MediaApp> {
             title: const Text('mpx'),
             // The lab's stress feed, in the bar so the page below keeps
             // its layout.
-            actions: const [
+            actions: [
               if (kMpxLab)
-                IconButton(
+                const IconButton(
                   tooltip: 'Stress feed (lab)',
                   icon: Icon(Icons.speed),
                   onPressed: Lab.openStress,
                 ),
+              Builder(
+                builder: (context) => IconButton(
+                  tooltip: 'Logs',
+                  icon: const Icon(Icons.article_outlined),
+                  onPressed: () => Navigator.of(
+                    context,
+                  ).push(JournalPage.route(journal: widget.journal)),
+                ),
+              ),
             ],
           ),
           body: Builder(

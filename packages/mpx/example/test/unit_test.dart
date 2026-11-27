@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'journal/diagnostics_journal_test.dart' as diagnostics_journal;
+import 'journal/journal_page_test.dart' as journal_page;
 import 'lab/corpus_test.dart' as corpus;
 import 'lab/lab_coverage_test.dart' as lab_coverage;
 import 'lab/lab_download_test.dart' as lab_download;
@@ -21,6 +23,8 @@ import 'social/volume_rise_test.dart' as volume_rise;
 import 'video_through_stack_test.dart' as video_through_stack;
 
 void main() {
+  group('diagnostics journal', diagnostics_journal.main);
+  group('journal page', journal_page.main);
   group('corpus', corpus.main);
   group('lab coverage', lab_coverage.main);
   group('lab download', lab_download.main);

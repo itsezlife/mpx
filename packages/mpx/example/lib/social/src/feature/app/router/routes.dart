@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
+import 'package:mpx_example/journal/data/journal_host.dart';
+import 'package:mpx_example/journal/view/journal_page.dart';
 import 'package:mpx_example/social/src/feature/app/view/home_page.dart';
-import 'package:mpx_example/social/src/feature/logs/view/log_journal_page.dart';
 import 'package:mpx_example/social/src/feature/timeline/model/topic.dart';
 import 'package:mpx_example/social/src/feature/timeline/widget/tag_page.dart';
 import 'package:squid/squid.dart';
@@ -29,7 +30,8 @@ final class LogsRoute extends AppRoute {
   String get name => 'logs';
 
   @override
-  Widget build(BuildContext context) => const LogJournalPage();
+  Widget build(BuildContext context) =>
+      JournalPage(journal: JournalHost.journal!);
 }
 
 /// The posts under one hashtag of one server, opened from a post's text.
