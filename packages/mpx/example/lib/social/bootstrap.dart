@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:l/l.dart';
-import 'package:mpx_example/social/src/common/util/log_buffer.dart';
+import 'package:mpx_example/journal/data/journal_host.dart';
 import 'package:mpx_example/social/src/common/util/log_level_label.dart';
 import 'package:mpx_example/social/src/feature/initialization/app_error.dart';
 import 'package:mpx_example/social/src/feature/initialization/initialization.dart';
@@ -10,8 +10,11 @@ import 'package:mpx_example/social/src/feature/initialization/initialization.dar
 /// Starts the social feed: initializes it step by step and runs it, or
 /// shows why it could not start.
 Future<void> bootstrap() async {
-  // Buffered in every build mode, for the log journal.
-  l.listen(_bufferLog);
+  // The journal first, in every build mode: the app's log, the media
+  // stack's events and the previous run's tail are all in it by the time
+  // anything can fail.
+  final journal = await JournalHost.start(name: 'mpx_social_journal');
+  l.listen(journal.addLog);
 
   await l.capture(
     () => runZonedGuarded(() async {
@@ -34,9 +37,6 @@ Future<void> bootstrap() async {
     ),
   );
 }
-
-/// Adds the log to the buffer the journal shows.
-void _bufferLog(LogMessage log) => LogBuffer.instance.add(log);
 
 /// Formats the log message: level glyph, time, message, stack trace.
 String? _messageFormatting(LogMessage log) {
