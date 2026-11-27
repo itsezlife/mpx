@@ -86,6 +86,17 @@ transfers.pause(id);
 transfers.resume(id);
 transfers.retry(id);
 transfers.cancel(id); // removes it
+
+// On macOS, Windows and Linux there is no OS envelope: quitting ends every
+// job. `systemActive` is true while a `system` job is queued or running, so
+// the host can ask before it quits. (Defined on every platform.)
+if (transfers.systemActive.value) {
+  final quit = await confirmQuit(); // the host's own dialog
+  if (!quit) return;
+}
+transfers.systemActive.addListener(() {
+  // e.g. show or hide a "transfers running" hint
+});
 ```
 
 ## Features

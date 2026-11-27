@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `Transfers.systemActive`: a `ValueListenable<bool>`, true while a `system`
+  job is queued or running, for a host's quit confirmation on desktop
+  platforms, which have no OS envelope. The `scheduler` events of a job
+  carry its `durability`.
 - The package: a single plugin for Android, iOS, macOS, Windows, Linux and
   the web, its native parts empty for now.
 - `Transfers`: the facade, opened with `Transfers.open`, with
