@@ -361,7 +361,7 @@ void main() {
       );
       final ref = (state! as TransferState$Completed).result as RemoteRef;
       expect(server.files[ref.id], bytes);
-    }, skip: 'Until the engine applies the resume window at a restart.');
+    });
   });
 }
 
