@@ -11,6 +11,7 @@ import 'package:mpx_transfer/src/journal/journal_record.dart';
 import 'package:mpx_transfer/src/journal/journal_store.dart';
 import 'package:mpx_transfer/src/journal/transfer_journal.dart';
 import 'package:mpx_transfer/src/publish/publish_journal.dart';
+import 'package:mpx_transfer/src/publish/publish_progress.dart';
 import 'package:mpx_transfer/src/reuse/reuse_table.dart';
 import 'package:mpx_transfer/src/transfers.dart';
 import 'package:mpx_transfer/src/upload/upload_engine.dart';
@@ -48,6 +49,7 @@ final class UploadsHarness {
     required this.reusePolicy,
     required this.envelope,
     required this.envelopeConfig,
+    required this.progressWeights,
   });
 
   /// Opens a harness over [transports]; the job's transport is the first
@@ -77,6 +79,7 @@ final class UploadsHarness {
     ReusePolicy reuse = const ReusePolicy(),
     TransferEnvelope? envelope,
     TransferEnvelopeConfig? envelopeConfig,
+    PublishProgressWeights progressWeights = PublishProgressWeights.standard,
   }) async {
     final memory = MemoryJournalStore();
     final harness = UploadsHarness._(
@@ -95,6 +98,7 @@ final class UploadsHarness {
       reusePolicy: reuse,
       envelope: envelope,
       envelopeConfig: envelopeConfig,
+      progressWeights: progressWeights,
     );
     await harness._start();
     return harness;
@@ -144,6 +148,9 @@ final class UploadsHarness {
 
   /// What [envelope] shows; null for none.
   final TransferEnvelopeConfig? envelopeConfig;
+
+  /// How publish jobs weigh their progress.
+  final PublishProgressWeights progressWeights;
 
   /// Where the publish jobs' records are kept across restarts.
   final MemoryJournalStore publishStore = MemoryJournalStore();
@@ -259,6 +266,7 @@ final class UploadsHarness {
       reuse: _reuse,
       publishJournal: _publish,
       preparation: preparation,
+      progressWeights: progressWeights,
       now: now,
     );
   }

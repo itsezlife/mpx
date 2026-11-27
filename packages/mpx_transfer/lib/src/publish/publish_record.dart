@@ -37,6 +37,7 @@ final class PublishRecord {
     this.hold = false,
     this.attempts = 0,
     this.end,
+    this.progress = 0,
   }) : items = List.unmodifiable(items);
 
   /// The job's id.
@@ -87,12 +88,17 @@ final class PublishRecord {
   /// How the job ended: completed or failed; null while it goes on.
   final PublishJobState? end;
 
+  /// The job's progress as last shown when the record was written: what a
+  /// restart's progress starts from, so the ring does not go back.
+  final double progress;
+
   /// This record with the given parts replaced.
   PublishRecord copyWith({
     List<PublishItemRecord>? items,
     int? attempts,
     PublishJobState? end,
     DateTime? updatedAt,
+    double? progress,
   }) => PublishRecord(
     id: id,
     tag: tag,
@@ -110,6 +116,7 @@ final class PublishRecord {
     items: items ?? this.items,
     attempts: attempts ?? this.attempts,
     end: end ?? this.end,
+    progress: progress ?? this.progress,
   );
 
   /// This record with item [itemId]'s progress replaced.
@@ -247,6 +254,7 @@ abstract final class PublishRecordCodec {
     'attempts': record.attempts,
     'items': [for (final item in record.items) _itemToJson(item)],
     if (record.end case final end?) 'end': _endToJson(end),
+    if (record.progress > 0) 'progress': record.progress,
   };
 
   /// The record [json] holds.
@@ -281,6 +289,7 @@ abstract final class PublishRecordCodec {
         final Map<String, Object?> end => _endFromJson(end),
         _ => null,
       },
+      progress: (json['progress'] as num?)?.toDouble() ?? 0,
     );
   }
 

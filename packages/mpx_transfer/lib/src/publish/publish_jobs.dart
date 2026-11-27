@@ -12,6 +12,7 @@ import 'package:mpx_transfer/src/job/transfer_state.dart';
 import 'package:mpx_transfer/src/journal/journal_record.dart';
 import 'package:mpx_transfer/src/publish/publish_job.dart';
 import 'package:mpx_transfer/src/publish/publish_journal.dart';
+import 'package:mpx_transfer/src/publish/publish_progress.dart';
 import 'package:mpx_transfer/src/publish/publish_record.dart';
 import 'package:mpx_transfer/src/publish/publish_request.dart';
 import 'package:mpx_transfer/src/publish/publish_state.dart';
@@ -71,12 +72,14 @@ final class PublishJobs {
     required PublishUploadHost host,
     ReuseTable? reuse,
     MediaPreparation? preparation,
+    PublishProgressWeights progressWeights = PublishProgressWeights.standard,
     DateTime Function() now = DateTime.now,
   }) : _journal = journal,
        _uploads = uploads,
        _host = host,
        _reuse = reuse,
        _preparation = preparation,
+       _weights = progressWeights,
        _now = now;
 
   final PublishJournal _journal;
@@ -84,10 +87,16 @@ final class PublishJobs {
   final PublishUploadHost _host;
   final ReuseTable? _reuse;
   final MediaPreparation? _preparation;
+  final PublishProgressWeights _weights;
   final DateTime Function() _now;
 
   final Map<String, Publisher> _publishers = {};
   final Map<PublishJobId, _Live> _live = {};
+
+  /// Each job's progress shown so far; kept apart from [_live], which
+  /// holds only the jobs running in this run, as a query reads any job.
+  final Map<PublishJobId, _Progress> _progress = {};
+  final List<_JobsWatch> _jobsWatches = [];
   bool _disposed = false;
 
   /// While set, an upload's change is the engine's own queueing of it,
@@ -178,6 +187,24 @@ final class PublishJobs {
     sink.onCancel = () => live.watches.remove(watch);
   });
 
+  /// Snapshots of every job [filter] passes, oldest first: the current
+  /// list on listen, then the list again whenever one of them changes. See
+  /// `Transfers.watchJobs`.
+  Stream<List<PublishJobSnapshot>> watchJobs(PublishJobFilter filter) =>
+      Stream.multi((sink) {
+        final watch = _JobsWatch(filter, sink, [
+          for (final record in _journal.records)
+            if (_snapshot(record) case final job when filter.matches(job)) job,
+        ]);
+        sink.add(watch.last);
+        if (_disposed) {
+          unawaited(sink.close());
+          return;
+        }
+        _jobsWatches.add(watch);
+        sink.onCancel = () => _jobsWatches.remove(watch);
+      });
+
   /// See [PublishJob.watchItem].
   Stream<PublishItemSnapshot> watchItem(PublishJobId id, String itemId) =>
       watch(id)
@@ -240,8 +267,9 @@ final class PublishJobs {
   }
 
   /// Removes job [id] and answers the uploads it made, for the facade to
-  /// cancel: its preparations stop, its record is forgotten and its
-  /// watchers end, as an owner sees a cancelled job leave. Answers null
+  /// cancel: its preparations stop, its record is forgotten, its watchers
+  /// end and `watchJobs` lists it no more, as an owner sees a cancelled job
+  /// leave. Answers null
   /// for an unknown job.
   List<TransferId>? cancel(PublishJobId id) {
     final record = _journal.record(id);
@@ -256,6 +284,14 @@ final class PublishJobs {
       }
     }
     unawaited(_journal.remove(id));
+    for (final watch in [..._jobsWatches]) {
+      if (!watch.last.any((job) => job.id == id)) continue;
+      watch.last = [
+        for (final job in watch.last)
+          if (job.id != id) job,
+      ];
+      watch.sink.add(watch.last);
+    }
     return [
       for (final item in record.items)
         if (item.progress case ItemProgress$Uploading(
@@ -280,6 +316,10 @@ final class PublishJobs {
       }
       live.watches.clear();
     }
+    for (final watch in [..._jobsWatches]) {
+      unawaited(watch.sink.close());
+    }
+    _jobsWatches.clear();
   }
 
   // --- Creation --------------------------------------------------------------
@@ -408,6 +448,14 @@ final class PublishJobs {
       );
       _setItem(id, item, const ItemProgress$Uploaded());
       return;
+    }
+    if (item.source case PublishSource$Prepare(
+      :final input,
+    ) when input.byteSize == null) {
+      // The source's size weighs the item until its preparation ends.
+      final stat = await _uploads.stat(input.path);
+      if (!_running(id)) return;
+      if (stat != null) _progressOf(id).sources[item.itemId] = stat.size;
     }
     final record = _journal.record(id)!;
     final transport = _uploads.transport(record.transport!);
@@ -1013,23 +1061,95 @@ final class PublishJobs {
 
   // --- State -----------------------------------------------------------------
 
-  PublishJobSnapshot _snapshot(PublishRecord record) => PublishJobSnapshot(
-    id: record.id,
-    state: _stateOf(record),
-    items: [for (final item in record.items) _itemSnapshot(record, item)],
-    tag: record.tag,
-    publisher: record.publisher,
-    createdAt: record.createdAt,
-  );
+  PublishJobSnapshot _snapshot(PublishRecord record) {
+    final measures = [for (final item in record.items) _measure(record, item)];
+    final state = _stateOf(record);
+    return PublishJobSnapshot(
+      id: record.id,
+      state: state,
+      items: [
+        for (final (i, item) in record.items.indexed)
+          _itemSnapshot(record, item, measures[i].fraction),
+      ],
+      tag: record.tag,
+      publisher: record.publisher,
+      createdAt: record.createdAt,
+      progress: _progressOf(record.id).job.fold(
+        state is PublishJobState$Completed
+            ? 1
+            : (1 - _weights.publish) * itemsFraction(measures),
+      ),
+    );
+  }
 
   PublishItemSnapshot _itemSnapshot(
     PublishRecord record,
-    PublishItemRecord item,
-  ) => PublishItemSnapshot(
+    PublishItemRecord item, [
+    double? progress,
+  ]) => PublishItemSnapshot(
     itemId: item.item.itemId,
     key: item.item.key,
     state: _itemState(record.id, item),
+    progress: progress ?? _measure(record, item).fraction,
   );
+
+  // --- Progress --------------------------------------------------------------
+
+  _Progress _progressOf(PublishJobId id) => _progress.putIfAbsent(
+    id,
+    () => _Progress(_journal.record(id)?.progress ?? 0),
+  );
+
+  /// Item [item] of [record] as the job's progress counts it: its bytes and
+  /// its share done, folded so the share never goes back.
+  ItemMeasure _measure(PublishRecord record, PublishItemRecord item) {
+    final itemId = item.item.itemId;
+    final progress = _progressOf(record.id);
+    final fold = progress.items.putIfAbsent(itemId, ProgressFold.new);
+    final source = item.item.source;
+    if (source is PublishSource$Remote) return (weight: 0, fraction: 1);
+    final share = switch (source) {
+      PublishSource$Prepare(:final intent) => _weights.preparationOf(intent),
+      _ => 0.0,
+    };
+    final sourceSize = switch (source) {
+      PublishSource$Prepare(:final input) =>
+        input.byteSize ?? progress.sources[itemId],
+      PublishSource$Prepared(:final media) => media.byteSize,
+      PublishSource$Remote() => 0,
+    };
+    final (int? weight, double? done) = switch (item.progress) {
+      ItemProgress$Waiting() => (
+        sourceSize,
+        switch (_live[record.id]?.preparations[itemId]) {
+          final handle? => share * handle.progress.value,
+          null => 0.0,
+        },
+      ),
+      ItemProgress$Prepared(:final media) => (media.byteSize, share),
+      ItemProgress$Uploading(:final media, :final file, :final thumbnail) =>
+        switch (_uploading([file, ?thumbnail])) {
+          final PublishItemState$Uploading uploading => (
+            uploading.total ?? media.byteSize,
+            share +
+                (1 - share) *
+                    _share(uploading.sent, uploading.total ?? media.byteSize),
+          ),
+          _ => (media.byteSize, share),
+        },
+      ItemProgress$Uploaded() => (progress.weights[itemId] ?? sourceSize, 1.0),
+      // A failed item holds the share it reached.
+      ItemProgress$Failed() => (progress.weights[itemId] ?? sourceSize, null),
+    };
+    if (weight != null) progress.weights[itemId] = weight;
+    return (
+      weight: weight,
+      fraction: done == null ? fold.value : fold.fold(done),
+    );
+  }
+
+  static double _share(int sent, int total) =>
+      total <= 0 ? 0 : (sent / total).clamp(0.0, 1.0);
 
   PublishItemState _itemStateOf(PublishJobId id, PublishItem item) {
     final record = _itemRecord(id, item.itemId);
@@ -1142,21 +1262,68 @@ final class PublishJobs {
     return null;
   }
 
-  Future<void> _put(PublishRecord record) => _journal.put(record);
+  /// Writes [record] with the progress its job shows now, which a restart
+  /// starts from.
+  Future<void> _put(PublishRecord record) {
+    final shown = _progress[record.id]?.job.value ?? 0;
+    return _journal.put(
+      shown > record.progress ? record.copyWith(progress: shown) : record,
+    );
+  }
 
-  /// Tells job [id]'s watchers what changed.
+  /// Tells job [id]'s watchers, and the lists that hold it, what changed.
+  /// The snapshot is made even with no one watching, so the job's progress
+  /// folds in every step it took.
   void _changed(PublishJobId id) {
     if (_disposed) return;
-    final live = _live[id];
     final record = _journal.record(id);
-    if (live == null || record == null || live.watches.isEmpty) return;
+    if (record == null) return;
     final next = _snapshot(record);
-    for (final watch in [...live.watches]) {
+    for (final watch in [...?_live[id]?.watches]) {
       if (watch.last == next) continue;
       watch.last = next;
       watch.sink.add(next);
     }
+    for (final watch in [..._jobsWatches]) {
+      final passes = watch.filter.matches(next);
+      final before = {for (final job in watch.last) job.id: job};
+      if (!passes && !before.containsKey(id)) continue;
+      if (passes && before[id] == next) continue;
+      // Only job [id] changed: the others keep the snapshots given last.
+      watch.last = [
+        for (final other in _journal.records)
+          if (other.id == id) ...[if (passes) next] else ?before[other.id],
+      ];
+      watch.sink.add(watch.last);
+    }
   }
+}
+
+/// A job's progress shown so far in this run, and what it was weighed by.
+final class _Progress {
+  _Progress(double floor) : job = ProgressFold(floor);
+
+  /// The job's value, starting from what its record kept.
+  final ProgressFold job;
+
+  /// Each item's value, by item id.
+  final Map<String, ProgressFold> items = {};
+
+  /// Each item's weight last known, by item id: what an uploaded or failed
+  /// item keeps weighing.
+  final Map<String, int> weights = {};
+
+  /// The sizes of sources the host gave no size for, read from the file.
+  final Map<String, int> sources = {};
+}
+
+/// One `watchJobs` listener: its filter and the list it saw last.
+final class _JobsWatch {
+  _JobsWatch(this.filter, this.sink, this.last);
+
+  final PublishJobFilter filter;
+  final MultiStreamController<List<PublishJobSnapshot>> sink;
+  List<PublishJobSnapshot> last;
 }
 
 /// What a job holds in this run only.
