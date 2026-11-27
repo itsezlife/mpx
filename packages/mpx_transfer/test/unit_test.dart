@@ -30,6 +30,7 @@ import 'upload/upload_diagnostics_test.dart' as upload_diagnostics_test;
 import 'upload/upload_engine_test.dart' as upload_engine_test;
 import 'upload/upload_kill_test.dart' as upload_kill_test;
 import 'upload/upload_lanes_test.dart' as upload_lanes_test;
+import 'upload/upload_resume_test.dart' as upload_resume_test;
 import 'upload/upload_transport_contract_test.dart'
     as upload_transport_contract_test;
 
@@ -59,6 +60,7 @@ void main() {
   group('upload_engine_test', upload_engine_test.main);
   group('upload_kill_test', upload_kill_test.main);
   group('upload_lanes_test', upload_lanes_test.main);
+  group('upload_resume_test', upload_resume_test.main);
   group('upload_transport_contract_test', upload_transport_contract_test.main);
   group('upload_source_copies_test', upload_source_copies_test.main);
 }

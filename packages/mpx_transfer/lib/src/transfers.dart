@@ -10,6 +10,7 @@ import 'package:mpx_transfer/src/diagnostics/envelope_op.dart';
 import 'package:mpx_transfer/src/diagnostics/journal_op.dart';
 import 'package:mpx_transfer/src/diagnostics/scheduler_op.dart';
 import 'package:mpx_transfer/src/diagnostics/transfers_debug_snapshot.dart';
+import 'package:mpx_transfer/src/diagnostics/transport_op.dart';
 import 'package:mpx_transfer/src/download/download_runner.dart';
 import 'package:mpx_transfer/src/download/downloaded_content.dart';
 import 'package:mpx_transfer/src/download/tracked_downloads.dart';
@@ -26,6 +27,7 @@ import 'package:mpx_transfer/src/journal/transfer_journal.dart';
 import 'package:mpx_transfer/src/journal/unload_warning.dart';
 import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
 import 'package:mpx_transfer/src/upload/remote_ref.dart';
+import 'package:mpx_transfer/src/upload/resume_outcome.dart';
 import 'package:mpx_transfer/src/upload/upload_engine.dart';
 
 /// The one facade of the transfer engine: every transfer job, its verbs and
@@ -1025,6 +1027,12 @@ final class Transfers {
         MpxEventLevel.error,
         JournalOp.sourceLost,
         jobId: job.id,
+      );
+      MpxDiagnostics.current.emit(
+        MpxEventLevel.error,
+        TransportOp.resumeDecision,
+        jobId: job.id,
+        fields: () => {'outcome': ResumeOutcome.sourceLost.name, 'offset': 0},
       );
     }
     for (final id in [...copies.held]) {

@@ -116,7 +116,9 @@ transfers.systemActive.addListener(() {
 - Uploads through any `UploadTransport`: the engine splits the file by the
   transport's part size, keeps its bytes-in-flight budget, retries a part
   five tries in all, journals every acknowledged part and resumes with the
-  transport's token after a restart, sending only what is missing. Two
+  transport's token after a restart, sending only what is missing, while
+  the file is unchanged and the transport's window open; otherwise the
+  upload starts again from zero, never failing for it. Two
   lanes (small up to 10 MiB, big), one job each, under 8 shared
   connections. A completed upload holds a `RemoteRef`.
 - `MultipartUploadTransport`: the file in one `multipart/form-data`
