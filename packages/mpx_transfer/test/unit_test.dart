@@ -19,6 +19,7 @@ import 'transfers/journal_kill_test.dart' as journal_kill_test;
 import 'transfers/pause_reasons_test.dart' as pause_reasons_test;
 import 'transfers/scheduler_diagnostics_test.dart'
     as scheduler_diagnostics_test;
+import 'transfers/system_active_test.dart' as system_active_test;
 import 'transfers/transfer_envelope_test.dart' as transfer_envelope_test;
 import 'transfers/transfer_verbs_test.dart' as transfer_verbs_test;
 import 'transfers/transfer_watch_test.dart' as transfer_watch_test;
@@ -44,6 +45,7 @@ void main() {
   group('journal_kill_test', journal_kill_test.main);
   group('pause_reasons_test', pause_reasons_test.main);
   group('scheduler_diagnostics_test', scheduler_diagnostics_test.main);
+  group('system_active_test', system_active_test.main);
   group('transfer_envelope_test', transfer_envelope_test.main);
   group('transfer_verbs_test', transfer_verbs_test.main);
   group('transfer_watch_test', transfer_watch_test.main);

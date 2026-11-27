@@ -82,7 +82,7 @@ void main() {
         isMpxEvent(
           jobId: second,
           tag: 't',
-          fields: {'lane': 'small', 'waitedMs': 3000},
+          fields: {'lane': 'small', 'durability': 'system', 'waitedMs': 3000},
         ),
       );
     });
