@@ -27,7 +27,9 @@
 /// prepares each through the core's `MediaPreparation`, uploads it and
 /// then calls the host's `Publisher`, registered by id, once with every
 /// item's references and one idempotency key. Its items and state are
-/// journaled too, and `PublishJob.watch` streams its snapshots;
+/// journaled too, and `PublishJob.watch` streams its snapshots, each with
+/// a byte-weighted progress that never goes back (`PublishProgressWeights`);
+/// `Transfers.watchJobs` lists jobs by tag, tag prefix, publisher or state.
 /// `Transfers.upload` is the same job with one item and no publisher.
 /// `TusUploadTransport` speaks the tus resumable upload protocol.
 ///
@@ -48,6 +50,7 @@ export 'src/job/transfer_id.dart';
 export 'src/job/transfer_job.dart';
 export 'src/job/transfer_state.dart';
 export 'src/publish/publish_job.dart';
+export 'src/publish/publish_progress.dart' show PublishProgressWeights;
 export 'src/publish/publish_request.dart';
 export 'src/publish/publish_state.dart';
 export 'src/publish/publisher.dart';

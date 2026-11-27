@@ -91,6 +91,7 @@ Future<UploadsHarness> publishing(
   DateTime Function()? now,
   Duration? progressInterval,
   JournalStore Function()? store,
+  PublishProgressWeights progressWeights = PublishProgressWeights.standard,
 }) async {
   final built = await UploadsHarness.open(
     store: store,
@@ -103,6 +104,7 @@ Future<UploadsHarness> publishing(
     wait: (_) async {},
     files: sourceFiles,
     preparation: preparation,
+    progressWeights: progressWeights,
   );
   addTearDown(() => built.transfers.dispose());
   return built;

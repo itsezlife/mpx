@@ -411,6 +411,7 @@ final class PublishItemSnapshot {
     required this.itemId,
     required this.key,
     required this.state,
+    this.progress = 0,
   });
 
   /// The host's id for the item.
@@ -422,18 +423,24 @@ final class PublishItemSnapshot {
   /// Where the item is.
   final PublishItemState state;
 
+  /// How much of the item is done, 0..1, its preparation and upload
+  /// weighted as `PublishProgressWeights` says; never lower than in an
+  /// earlier snapshot of this run.
+  final double progress;
+
   @override
   bool operator ==(Object other) =>
       other is PublishItemSnapshot &&
       other.itemId == itemId &&
       other.key == key &&
-      other.state == state;
+      other.state == state &&
+      other.progress == progress;
 
   @override
-  int get hashCode => Object.hash(itemId, key, state);
+  int get hashCode => Object.hash(itemId, key, state, progress);
 
   @override
-  String toString() => 'PublishItemSnapshot($itemId, $state)';
+  String toString() => 'PublishItemSnapshot($itemId, $state, $progress)';
 }
 
 /// One publish job as a query sees it: a snapshot, never updated in place.
@@ -447,6 +454,7 @@ final class PublishJobSnapshot {
     required this.createdAt,
     this.tag,
     this.publisher,
+    this.progress = 0,
   }) : items = List.unmodifiable(items);
 
   /// The job's identity.
@@ -467,6 +475,11 @@ final class PublishJobSnapshot {
   /// When the job was made.
   final DateTime createdAt;
 
+  /// How much of the job is done, 0..1: its items by their bytes, then the
+  /// publisher's call (`PublishProgressWeights`). Never lower than in an
+  /// earlier snapshot, a restart included; 1 once [state] is completed.
+  final double progress;
+
   /// The item [itemId], or null when the job has none of that id.
   PublishItemSnapshot? item(String itemId) {
     for (final item in items) {
@@ -483,12 +496,55 @@ final class PublishJobSnapshot {
       listEquals(other.items, items) &&
       other.tag == tag &&
       other.publisher == publisher &&
-      other.createdAt == createdAt;
+      other.createdAt == createdAt &&
+      other.progress == progress;
 
   @override
-  int get hashCode =>
-      Object.hash(id, state, Object.hashAll(items), tag, publisher, createdAt);
+  int get hashCode => Object.hash(
+    id,
+    state,
+    Object.hashAll(items),
+    tag,
+    publisher,
+    createdAt,
+    progress,
+  );
 
   @override
-  String toString() => 'PublishJobSnapshot($id, $state, ${items.length} items)';
+  String toString() =>
+      'PublishJobSnapshot($id, $state, ${items.length} items, $progress)';
+}
+
+/// Which publish jobs `Transfers.watchJobs` gives: those that pass every
+/// part given.
+@immutable
+final class PublishJobFilter {
+  /// A filter; with nothing given, every job.
+  const PublishJobFilter({
+    this.tag,
+    this.tagPrefix,
+    this.publisher,
+    this.state,
+  });
+
+  /// Only jobs carrying exactly this tag.
+  final String? tag;
+
+  /// Only jobs whose tag starts with this, such as every job of one
+  /// conversation when the host's tags start with its id.
+  final String? tagPrefix;
+
+  /// Only jobs of this publisher id.
+  final String? publisher;
+
+  /// Only jobs whose state passes this test, such as
+  /// `(state) => state is PublishJobState$Failed`.
+  final bool Function(PublishJobState state)? state;
+
+  /// Whether [job] passes every part given.
+  bool matches(PublishJobSnapshot job) =>
+      (tag == null || job.tag == tag) &&
+      (tagPrefix == null || (job.tag?.startsWith(tagPrefix!) ?? false)) &&
+      (publisher == null || job.publisher == publisher) &&
+      (state?.call(job.state) ?? true);
 }
