@@ -24,6 +24,7 @@ import 'package:mpx_transfer/src/journal/platform_journal_store.dart';
 import 'package:mpx_transfer/src/journal/transfer_journal.dart';
 import 'package:mpx_transfer/src/journal/unload_warning.dart';
 import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
+import 'package:mpx_transfer/src/reuse/reuse_table.dart';
 import 'package:mpx_transfer/src/upload/remote_ref.dart';
 import 'package:mpx_transfer/src/upload/upload_engine.dart';
 
@@ -67,6 +68,7 @@ final class Transfers {
     UploadSourceCopies? sourceCopies,
     UnloadWarning? unloadWarning,
     UploadEngine? uploads,
+    ReuseTable? reuse,
     this.retention = defaultRetention,
     this.sourceCopyLimit = defaultSourceCopyLimit,
     bool online = true,
@@ -80,6 +82,7 @@ final class Transfers {
        _sourceCopies = sourceCopies,
        _unloadWarning = unloadWarning,
        _uploads = uploads,
+       _reuse = reuse,
        _online = online,
        _now = now,
        _lastLifecycle = lifecycle.state {
@@ -105,7 +108,9 @@ final class Transfers {
   /// OS envelope; without one, `system` jobs run in process. [online] is
   /// the connectivity at start; [now] reads the time. [downloads] is what
   /// tracked downloads fetch through ([download], [tracked]); without it the
-  /// facade makes no download jobs.
+  /// facade makes no download jobs. [reuse] is the host's say over the
+  /// reuse table ([ReusePolicy], on with its default expiry unless given),
+  /// which is kept beside the journal.
   ///
   /// A journal that cannot be read is reported (`journal` `writeFailed`)
   /// and the engine runs in memory for this run, with no jobs.
@@ -118,6 +123,7 @@ final class Transfers {
     Duration retention = defaultRetention,
     Duration progressInterval = defaultProgressInterval,
     int sourceCopyLimit = defaultSourceCopyLimit,
+    ReusePolicy reuse = const ReusePolicy(),
     bool online = true,
     DateTime Function() now = DateTime.now,
   }) async {
@@ -129,6 +135,11 @@ final class Transfers {
       now: now,
       resultCodecs: resultCodecs,
     );
+    final table = await ReuseTable.open(
+      platform.reuseStore,
+      policy: reuse,
+      now: now,
+    );
     return Transfers.engine(
       cacheKeyOf: cacheKeyOf,
       lifecycle: lifecycle,
@@ -136,6 +147,7 @@ final class Transfers {
       journal: journal,
       downloads: downloads,
       envelope: envelope,
+      reuse: table,
       sourceCopies: platform.sourceCopies,
       unloadWarning: platform.unloadWarning,
       retention: retention,
@@ -186,6 +198,7 @@ final class Transfers {
   final UploadSourceCopies? _sourceCopies;
   final UnloadWarning? _unloadWarning;
   final UploadEngine? _uploads;
+  final ReuseTable? _reuse;
   final DateTime Function() _now;
 
   /// The source copies under way; see [debugSourcesCopied].
@@ -240,6 +253,15 @@ final class Transfers {
   TrackedTransfers get tracked =>
       _tracked ?? (throw StateError('Transfers was opened without downloads.'));
 
+  /// The reuse table: sending the same media again without preparing or
+  /// uploading it again. A publish job looks each item up in it before
+  /// preparing and stores what the item's upload answered.
+  ///
+  /// Throws a [StateError] when the facade was built without one.
+  ReuseTable get reuse =>
+      _reuse ??
+      (throw StateError('Transfers was built without a reuse table.'));
+
   /// The engine's state now, for a debug panel.
   TransfersDebugSnapshot debugSnapshot() => TransfersDebugSnapshot(
     jobs: [
@@ -250,6 +272,7 @@ final class Transfers {
     journal: _journal.debugSnapshot(),
     uploads: _uploads?.debugSnapshot(),
     connections: _uploads?.slots.debugSnapshot(),
+    reuse: _reuse?.debugSnapshot(),
   );
 
   // --- Signals ---------------------------------------------------------------
@@ -531,11 +554,12 @@ final class Transfers {
   }
 
   /// Stops listening to the lifecycle and the envelope, ends every query
-  /// and stops every run; completes once the journal has written what it
-  /// still held and closed. The jobs stay in the journal.
+  /// and stops every run; completes once the journal and the reuse table
+  /// have written what they still held and closed. The jobs stay in the
+  /// journal.
   Future<void> dispose() {
     _shutDown();
-    return _journal.close();
+    return Future.wait([_journal.close(), ?_reuse?.close()]);
   }
 
   /// Stops as a killed process would: everything [dispose] stops, but the
@@ -544,6 +568,7 @@ final class Transfers {
   void debugKill() {
     _shutDown();
     _journal.abandon();
+    _reuse?.abandon();
   }
 
   void _shutDown() {

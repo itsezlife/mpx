@@ -10,8 +10,9 @@ import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
 import 'package:mpx_transfer/src/journal/window_unload_warning.dart';
 import 'package:web/web.dart' as web;
 
-/// The journal of a page: in OPFS beside the bytes cache's store, upload
-/// sources copied there, and the page's warning before it is left.
+/// The journal of a page: in OPFS beside the bytes cache's store, the
+/// reuse table beside it, upload sources copied there, and the page's
+/// warning before it is left.
 ///
 /// Where the page has no OPFS the journal is in memory and no source is
 /// copied, so nothing survives the tab; the journal's `opened` event names
@@ -28,6 +29,7 @@ Future<JournalPlatform> openJournalPlatform(
       final (store, copies) = await OpfsJournalStorage.open(root: root);
       return JournalPlatform(
         store: store,
+        reuseStore: OpfsJournalStore(store.directory, name: 'reuse'),
         sourceCopies: copies,
         unloadWarning: WindowUnloadWarning(),
       );

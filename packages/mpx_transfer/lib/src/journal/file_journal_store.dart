@@ -3,8 +3,8 @@ import 'dart:typed_data';
 
 import 'package:mpx_transfer/src/journal/journal_store.dart';
 
-/// A [JournalStore] in two files of [directory]: `journal.snapshot` and
-/// `journal.log`.
+/// A [JournalStore] in two files of [directory]: `<name>.snapshot` and
+/// `<name>.log`, `journal` unless another [name] is given.
 ///
 /// The log is held open in append mode, and every append is flushed before
 /// its future completes. The snapshot is written to a temporary file and
@@ -15,10 +15,16 @@ final class FileJournalStore implements JournalStore {
   /// [directory] belongs to the journal alone: the bytes cache deletes the
   /// files it does not know at the top of its own directory, so the
   /// journal sits in a directory of its own below it.
-  FileJournalStore(this.directory);
+  ///
+  /// [name] tells apart two stores in one directory: the journal's and
+  /// the reuse table's.
+  FileJournalStore(this.directory, {this.name = 'journal'});
 
   /// Where the two files are.
   final String directory;
+
+  /// What the two files are named before their extension.
+  final String name;
 
   RandomAccessFile? _log;
 
@@ -26,7 +32,7 @@ final class FileJournalStore implements JournalStore {
   JournalStoreKind get kind => JournalStoreKind.file;
 
   String _pathOf(JournalBlob blob) =>
-      '$directory${Platform.pathSeparator}journal.${blob.name}';
+      '$directory${Platform.pathSeparator}$name.${blob.name}';
 
   @override
   Future<Uint8List> read(JournalBlob blob) async {

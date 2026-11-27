@@ -10,6 +10,7 @@ import 'package:mpx_transfer/src/journal/journal_store.dart';
 import 'package:mpx_transfer/src/journal/transfer_journal.dart';
 import 'package:mpx_transfer/src/journal/unload_warning.dart';
 import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
+import 'package:mpx_transfer/src/reuse/reuse_table.dart';
 import 'package:mpx_transfer/src/testing/fake_transfer_result.dart';
 import 'package:mpx_transfer/src/testing/scripted_transfer_runner.dart';
 import 'package:mpx_transfer/src/transfers.dart';
@@ -36,6 +37,8 @@ final class TransfersHarness {
     required this.openSourceCopies,
     required this.unloadWarning,
     required this.sourceCopyLimit,
+    required this.openReuseStore,
+    required this.reusePolicy,
   });
 
   /// Opens a harness reading the app's lifecycle from [lifecycle].
@@ -47,7 +50,9 @@ final class TransfersHarness {
   /// jobs move their bytes through them, as [Transfers.open]'s do, and only
   /// uploads go through [runner]. [sourceCopies] gives the upload source
   /// copies at each start, as on the web (none by default, as on the VM);
-  /// [unloadWarning] is the page's warning (none by default). The other
+  /// [unloadWarning] is the page's warning (none by default). [reuseStore]
+  /// gives the reuse table's store at each start, as [store] does the
+  /// journal's; [reuse] is the host's say over the table. The other
   /// parts are those of [Transfers.open].
   static Future<TransfersHarness> open({
     required PlaybackLifecycleSource lifecycle,
@@ -62,8 +67,11 @@ final class TransfersHarness {
     FutureOr<UploadSourceCopies> Function()? sourceCopies,
     UnloadWarning? unloadWarning,
     int sourceCopyLimit = Transfers.defaultSourceCopyLimit,
+    JournalStore Function()? reuseStore,
+    ReusePolicy reuse = const ReusePolicy(),
   }) async {
     final memory = MemoryJournalStore();
+    final reuseMemory = MemoryJournalStore();
     final harness = TransfersHarness._(
       lifecycle: lifecycle,
       cacheKeyOf: cacheKeyOf ?? ((key) => key.encoded),
@@ -76,6 +84,8 @@ final class TransfersHarness {
       openSourceCopies: sourceCopies,
       unloadWarning: unloadWarning,
       sourceCopyLimit: sourceCopyLimit,
+      openReuseStore: reuseStore ?? () => reuseMemory,
+      reusePolicy: reuse,
     );
     await harness._start(online);
     return harness;
@@ -113,6 +123,12 @@ final class TransfersHarness {
 
   /// How many bytes of a job's sources are copied at most.
   final int sourceCopyLimit;
+
+  /// Gives the reuse table's store at each start.
+  final JournalStore Function() openReuseStore;
+
+  /// The host's say over the reuse table.
+  final ReusePolicy reusePolicy;
 
   /// The runner every job's bytes go through; it outlives [restart] and
   /// [kill], as the test that scripts it does.
@@ -170,6 +186,7 @@ final class TransfersHarness {
   Future<void> settle() async {
     await transfers.debugSourcesCopied;
     await _journal.idle;
+    await transfers.reuse.idle;
   }
 
   /// Closes the facade, as the app shutting down would, and opens a new one
@@ -199,6 +216,11 @@ final class TransfersHarness {
     );
     _replayed = _journal.jobs.toList();
     final copies = await openSourceCopies?.call();
+    final reuse = await ReuseTable.open(
+      openReuseStore(),
+      policy: reusePolicy,
+      now: now,
+    );
     return transfers = Transfers.engine(
       cacheKeyOf: cacheKeyOf,
       lifecycle: lifecycle,
@@ -208,6 +230,7 @@ final class TransfersHarness {
       envelope: envelope,
       sourceCopies: copies,
       unloadWarning: unloadWarning,
+      reuse: reuse,
       retention: retention,
       sourceCopyLimit: sourceCopyLimit,
       online: online,

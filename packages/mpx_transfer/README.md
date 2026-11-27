@@ -98,6 +98,10 @@ transfers.cancel(id); // removes it
   transport's token after a restart, sending only what is missing. Two
   lanes (small up to 10 MiB, big), one job each, under 8 shared
   connections. A completed upload holds a `RemoteRef`.
+- A reuse table (`reuse`): an upload's references kept by source and
+  transport, so the same media sent again skips preparation and upload
+  while the transport judges them good; on by default for 7 days
+  (`ReusePolicy`), kept beside the journal.
 - `TransferDurability`: `inProcess`, or `system` inside the platform's OS
   envelope (`TransferEnvelope`) where there is one.
 - `Transfers.watch(filter)` by direction, state, tag and durability; a
@@ -116,13 +120,15 @@ transfers.cancel(id); // removes it
   back failed with `sourceLost`. Leaving the page asks first while a job
   is queued or running.
 - Diagnostics through `MpxDiagnostics.current` (`JournalOp`,
-  `SchedulerOp`, `TransportOp`, `EnvelopeOp`) and `debugSnapshot()` for a
-  debug panel, with journal, uploads and connections sections.
+  `SchedulerOp`, `TransportOp`, `EnvelopeOp`, `ReuseOp`) and
+  `debugSnapshot()` for a debug panel, with journal, uploads, connections
+  and reuse sections.
 - `testing.dart`: `FakeTransferEnvelope`, `ScriptedTransferRunner`,
   `FakeTransferResult`, `MemoryJournalStore`, the `JournalStoreContract`
   every journal store meets, `FakeUploadSourceCopies` with the
   `UploadSourceCopiesContract`, `FakeUnloadWarning`, `FakeUploadTransport`
-  with the `UploadTransportContract` every transport meets,
+  with the `UploadTransportContract` every transport meets, the
+  `ReuseTableContract` the reuse table meets over every store,
   `UploadsHarness`, and `TransfersHarness`, which builds the engine over
   them and restarts or kills it.
 

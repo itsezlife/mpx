@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:http_bytes_cache/http_bytes_cache.dart' show RequestPriority;
@@ -6,6 +5,7 @@ import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
 import 'package:mpx_transfer/src/job/transfer_state.dart';
+import 'package:mpx_transfer/src/journal/journal_frames.dart';
 import 'package:mpx_transfer/src/journal/journal_record.dart';
 import 'package:mpx_transfer/src/upload/upload_lane.dart';
 
@@ -72,15 +72,9 @@ typedef JournalRead = ({
   int tornBytes,
 });
 
-/// The journal's byte format: a sequence of frames, each a little-endian
-/// 32-bit payload length, a 32-bit FNV-1a checksum of the payload, then the
-/// payload, UTF-8 JSON. Times are ISO 8601, which keeps whether a time was
-/// UTC, so a record reads back equal to the one written.
-///
-/// The checksum, not only the length, decides where the log ends: a kill
-/// mid-write can leave a header whose length runs past the end, but also,
-/// on some file systems, a frame whose bytes are zeros. Everything from the
-/// first frame that fails either check is the torn tail.
+/// The journal's entries in [JournalFrames], one entry a frame. Times are
+/// ISO 8601, which keeps whether a time was UTC, so a record reads back
+/// equal to the one written.
 final class JournalCodec {
   /// A codec that writes and reads results through [resultCodecs].
   JournalCodec(Iterable<TransferResultCodec> resultCodecs)
@@ -88,59 +82,26 @@ final class JournalCodec {
 
   final Map<String, TransferResultCodec> _results;
 
-  static const int _frameHeader = 8;
-
   // --- Frames ----------------------------------------------------------------
 
   /// [entries] as frames, one after another.
-  Uint8List encode(Iterable<JournalEntry> entries) {
-    final out = BytesBuilder(copy: false);
-    for (final entry in entries) {
-      final payload = utf8.encode(jsonEncode(_entryToJson(entry)));
-      final header = ByteData(_frameHeader)
-        ..setUint32(0, payload.length, Endian.little)
-        ..setUint32(4, _fnv1a(payload), Endian.little);
-      out
-        ..add(header.buffer.asUint8List())
-        ..add(payload);
-    }
-    return out.takeBytes();
-  }
+  Uint8List encode(Iterable<JournalEntry> entries) =>
+      JournalFrames.encode(entries.map(_entryToJson));
 
   /// The entries in [bytes], up to the first frame that is not whole.
   JournalRead decode(Uint8List bytes) {
+    final read = JournalFrames.decode(bytes);
     final entries = <JournalEntry>[];
-    final view = ByteData.sublistView(bytes);
-    var offset = 0;
     var skipped = 0;
-    while (offset + _frameHeader <= bytes.length) {
-      final length = view.getUint32(offset, Endian.little);
-      final checksum = view.getUint32(offset + 4, Endian.little);
-      final start = offset + _frameHeader;
-      if (length > bytes.length - start) break;
-      final payload = Uint8List.sublistView(bytes, start, start + length);
-      if (_fnv1a(payload) != checksum) break;
-      offset = start + length;
-      final entry = _tryEntry(payload);
-      if (entry == null) {
-        skipped++;
-      } else {
-        entries.add(entry);
+    for (final payload in read.payloads) {
+      switch (_tryEntry(payload)) {
+        case final entry?:
+          entries.add(entry);
+        case null:
+          skipped++;
       }
     }
-    return (
-      entries: entries,
-      skipped: skipped,
-      tornBytes: bytes.length - offset,
-    );
-  }
-
-  static int _fnv1a(List<int> bytes) {
-    var hash = 0x811c9dc5;
-    for (final byte in bytes) {
-      hash = ((hash ^ byte) * 0x01000193) & 0xffffffff;
-    }
-    return hash;
+    return (entries: entries, skipped: skipped, tornBytes: read.tornBytes);
   }
 
   // --- Entries ---------------------------------------------------------------
@@ -152,9 +113,9 @@ final class JournalCodec {
   };
 
   /// The entry [payload] holds, or null when it cannot be read back.
-  JournalEntry? _tryEntry(Uint8List payload) {
+  JournalEntry? _tryEntry(Object? payload) {
     try {
-      return switch (jsonDecode(utf8.decode(payload))) {
+      return switch (payload) {
         {'header': final int generation} => JournalEntry$Header(generation),
         {'put': final Map<String, Object?> record} => JournalEntry$Put(
           _recordFromJson(record),

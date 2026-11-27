@@ -42,7 +42,8 @@ enum JournalOp implements DiagnosticOp {
   /// error code; job, when the write was one job's). The jobs stay in
   /// memory, and the next write rewrites the whole journal. On the web
   /// also a copy of an upload source that the storage refused, or an OPFS
-  /// that refused to open.
+  /// that refused to open. The reuse table's storage reports here too, with
+  /// `table: reuse`.
   writeFailed,
 
   /// On the web, an upload job's sources were copied into OPFS at its

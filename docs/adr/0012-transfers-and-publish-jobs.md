@@ -522,6 +522,7 @@ engine's state (ADR 0013).
 | Part bodies | A transport never reads the file: it receives an `UploadPartBody` whose `send(url, method, headers)` runs the engine's request (VM: a file range on the transfer worker; web: a `Blob` slice of the page's source or its OPFS copy). The engine retries; the body sends once. |
 | Retries beyond parts | Opening and finishing a session are retried like a part, and report `partRetry` / `partGaveUp` with `step: open \| finish`. |
 | Connections | 8 in all, downloads at most 6 and uploads at most 6 (the bytes cache's own upload cap), so neither direction holds every connection. A request holds one while on the wire and none while it waits to retry. |
+| Reuse table | Kept in its own store beside the journal's (`reuse.snapshot` / `reuse.log` next to `journal.*`, the same frame format), keyed by fingerprint, preparation intent and transport id: a reference means nothing to another transport. The host's expiry defaults to 7 days and is judged against the policy of the run that reads an entry, so a shorter expiry applies at once; the transport's `reuse` capability judges within it. A validity call that throws is a miss that keeps the entry. With the table off nothing is read, stored or dropped. A storage failure reports `journal` `writeFailed` with `table: reuse`. |
 | Job retryable after a give-up | `retryable: true` when the tries ran out on a failure that may pass; `false` for a refusal that cannot (a 4xx other than 408, 425 and 429, or a transport's non-transient error). |
 
 ## Open in implementation
@@ -532,8 +533,7 @@ engine's state (ADR 0013).
   swipe from Recents. No decision here depends on them; the journal resumes
   after any kill.
 - Which `submitAt` default holds on iOS 26 devices.
-- The `reuse` capability's default per adapter, and the reuse table's
-  default expiry.
+- The `reuse` capability's default per adapter.
 
 ## Provenance
 
