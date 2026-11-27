@@ -20,6 +20,7 @@ dart format --line-length 80 lib test
 
 # Web smoke (Chrome) — CI merge gate; run locally when touching web blob / open:
 dart test -p chrome test/open/open_web_test.dart
+dart test -p chrome test/upload/upload_web_test.dart   # uploads through fetch
 
 # Store + ladder microbenches (not a CI gate) — baseline deltas:
 dart test benchmark/compare_test.dart --dart-define=SAVE_BASELINE=true
@@ -39,7 +40,8 @@ More: [`docs/development.md`](docs/development.md).
 | `cache/middlewares/` | Opt-in Skip-cache + Cache `Logger$Developer` | [resolve-ladder](docs/resolve-ladder.md) |
 | `bytes_resolver.dart` | Ladder: freshness → conditional/unconditional GET → write-through | [resolve-ladder](docs/resolve-ladder.md) |
 | `http_cache_freshness.dart` | Freshness policy + response-meta helpers | [resolve-ladder](docs/resolve-ladder.md) |
-| `http/http_bytes_client.dart` | HTTP GET types, middleware chain, client, priority slot queue, progress fan-out | [resolve-ladder](docs/resolve-ladder.md) |
+| `http/http_bytes_client.dart` | HTTP GET types, middleware chain, client, slot caps (8 in all, 6 per direction; GETs by priority), progress fan-out, `upload` with its retry loop | [resolve-ladder](docs/resolve-ladder.md) |
+| `http/http_bytes_upload.dart` | `HttpBytesUploadBody` (file range, web `Blob` slice) | [ADR 0002](../../docs/adr/0002-bytes-cache.md) |
 | `http/byte_range.dart` | `ByteRange` (half-open request range), `ContentRange` parse | [resolve-ladder](docs/resolve-ladder.md) |
 | `http/request_priority.dart` | `RequestPriority`, `PriorityToken` | [resolve-ladder](docs/resolve-ladder.md) |
 | `ranged/` | `ByteRangeSet`, `RangedBytes` / `RangedResource` (chunked range fetch, range-landed events) | [storage](docs/storage.md) |
