@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `MpxStack.create(tracked:)` builds the host's `TrackedTransfers` over the
+  stack's store, client, fetcher and resolver (`MpxTrackedContext`, with
+  teardowns that run before the store closes) and hands it to the scope,
+  so surfaces with a status control download as tracked jobs.
+  `MpxStack.cacheKeyOf` is the fetcher's content key mapping, ready for a
+  transfer engine's `cacheKeyOf`.
 - `CacheDiagnosticsBridge` carries a bytes event's own fields beside
   `bytesOp` (an upload retry's attempt and delay), and names the upload
   operations: `CacheOp.uploadStarted`, `uploadRetry`, `uploadGaveUp`.
