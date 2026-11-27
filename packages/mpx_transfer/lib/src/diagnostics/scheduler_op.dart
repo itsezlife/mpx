@@ -8,12 +8,23 @@ import 'package:mpx_core/mpx_core.dart';
 /// correlation ids, sizes are byte counts.
 enum SchedulerOp implements DiagnosticOp {
   /// A job was accepted, or went back to queued on a retry (debug;
-  /// `direction`, `durability`, `priority`; job, key, tag).
+  /// `direction`, `lane` for an upload, `durability`, `priority`; job,
+  /// key, tag).
   jobQueued,
 
-  /// A job moved its first bytes of an attempt (debug; `waitedMs` since it
-  /// was queued; job, tag).
+  /// A job moved its first bytes of an attempt (debug; `lane` for an
+  /// upload; `waitedMs` since it was queued, its lane's wait included;
+  /// job, tag).
   jobStarted,
+
+  /// A request took one of the shared connections (trace; `direction`;
+  /// `inUse`, the direction's connections in use with it; `cap`, the
+  /// direction's cap; job).
+  slotAcquired,
+
+  /// A request gave its connection back (trace; `direction`, `inUse`,
+  /// `cap`; job).
+  slotReleased,
 
   /// A job paused (info; `reason`; job, key, tag).
   paused,

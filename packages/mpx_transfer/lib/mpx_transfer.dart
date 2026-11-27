@@ -10,8 +10,13 @@
 /// (`TransferEnvelope`) where there is one. Every job is journaled, so
 /// after any kill `Transfers.open` reads the jobs back. Every path reports
 /// through `MpxDiagnostics.current` with this package's `JournalOp`,
-/// `SchedulerOp` and `EnvelopeOp`; `debugSnapshot` gives a debug panel the
-/// engine's state.
+/// `SchedulerOp`, `TransportOp` and `EnvelopeOp`; `debugSnapshot` gives a
+/// debug panel the engine's state.
+///
+/// An upload reads an `UploadSource` and reaches its remote end through an
+/// `UploadTransport`, which declares what it supports
+/// (`UploadCapabilities`); the engine splits, budgets, retries and
+/// journals the parts, and a completed upload holds a `RemoteRef`.
 ///
 /// Single-threaded on the UI isolate.
 library;
@@ -20,8 +25,13 @@ export 'src/diagnostics/envelope_op.dart';
 export 'src/diagnostics/journal_op.dart';
 export 'src/diagnostics/scheduler_op.dart';
 export 'src/diagnostics/transfers_debug_snapshot.dart';
+export 'src/diagnostics/transport_op.dart';
 export 'src/envelope/transfer_envelope.dart';
 export 'src/job/transfer_id.dart';
 export 'src/job/transfer_job.dart';
 export 'src/job/transfer_state.dart';
 export 'src/transfers.dart';
+export 'src/upload/remote_ref.dart';
+export 'src/upload/upload_lane.dart';
+export 'src/upload/upload_source.dart';
+export 'src/upload/upload_transport.dart' hide UploadPartSend;

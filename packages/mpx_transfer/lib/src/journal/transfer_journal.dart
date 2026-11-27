@@ -247,6 +247,33 @@ final class TransferJournal {
     _progressTimer ??= Timer(progressInterval, _flushProgress);
   }
 
+  /// Keeps [record], a job not yet written, in memory only: the job's
+  /// first [writeState] writes it whole. A new upload's facts ride in with
+  /// its first state this way, so no write holds the job without them.
+  void stage(JournalRecord record) {
+    if (_closed) return;
+    assert(
+      !_records.containsKey(record.job.id),
+      'Only a job not yet kept is staged.',
+    );
+    _records[record.job.id] = record;
+  }
+
+  /// Changes job [id]'s upload facts in memory with [change]. They reach
+  /// storage with the job's next write: the progress or the state the
+  /// caller reports right after, so an acknowledged part is written with
+  /// its progress window and a kill loses at most that window.
+  void amendUpload(
+    TransferId id,
+    JournalUpload Function(JournalUpload) change,
+  ) {
+    if (_closed) return;
+    final record = _records[id];
+    final upload = record?.upload;
+    if (record == null || upload == null) return;
+    _records[id] = record.copyWith(upload: change(upload));
+  }
+
   /// Forgets job [id] and writes that at once.
   void remove(TransferId id) {
     if (_closed || _records.remove(id) == null) return;

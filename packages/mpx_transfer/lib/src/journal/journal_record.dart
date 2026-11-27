@@ -1,44 +1,30 @@
 import 'package:meta/meta.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
+import 'package:mpx_transfer/src/upload/upload_lane.dart';
 
 /// What the journal keeps of one transfer job: the job as queries see it,
 /// and what a restart needs to go on with it.
 ///
-/// The upload parts (source, transport, acknowledged parts, envelope
-/// handle) are filled by the upload engine and the OS envelope; a download
-/// leaves them empty.
+/// An upload's facts ([upload]: source, transport, resume token,
+/// acknowledged parts) are filled by the upload engine, the envelope handle
+/// by the OS envelope; a download leaves them empty.
 @immutable
 final class JournalRecord {
   /// A record of [job].
-  JournalRecord({
+  const JournalRecord({
     required this.job,
-    this.source,
-    this.transportId,
-    this.resumeToken,
-    List<int> acknowledgedParts = const [],
-    this.highWaterMark = 0,
+    this.upload,
     this.envelopeHandle,
     this.lastProgressAt,
-  }) : acknowledgedParts = List.unmodifiable(acknowledgedParts);
+  });
 
   /// The job: id, direction, tag, durability, priority, created time,
   /// state and result.
   final TransferJob job;
 
-  /// The file an upload reads; null for a download.
-  final JournalSource? source;
-
-  /// The upload transport that carries the job.
-  final String? transportId;
-
-  /// The transport's token for reopening an interrupted upload.
-  final String? resumeToken;
-
-  /// The indexes of the parts the remote end acknowledged.
-  final List<int> acknowledgedParts;
-
-  /// The bytes from the start of the source that are known sent.
-  final int highWaterMark;
+  /// What an upload reads, through which transport, and how far it got;
+  /// null for a download.
+  final JournalUpload? upload;
 
   /// The OS envelope's handle for the job, matched against what the native
   /// part left at a restart.
@@ -48,50 +34,139 @@ final class JournalRecord {
   final DateTime? lastProgressAt;
 
   /// This record with the given parts replaced.
-  JournalRecord copyWith({TransferJob? job, DateTime? lastProgressAt}) =>
-      JournalRecord(
-        job: job ?? this.job,
-        source: source,
-        transportId: transportId,
-        resumeToken: resumeToken,
-        acknowledgedParts: acknowledgedParts,
-        highWaterMark: highWaterMark,
-        envelopeHandle: envelopeHandle,
-        lastProgressAt: lastProgressAt ?? this.lastProgressAt,
-      );
+  JournalRecord copyWith({
+    TransferJob? job,
+    JournalUpload? upload,
+    DateTime? lastProgressAt,
+  }) => JournalRecord(
+    job: job ?? this.job,
+    upload: upload ?? this.upload,
+    envelopeHandle: envelopeHandle,
+    lastProgressAt: lastProgressAt ?? this.lastProgressAt,
+  );
 
   @override
   bool operator ==(Object other) =>
       other is JournalRecord &&
       other.job == job &&
-      other.source == source &&
-      other.transportId == transportId &&
-      other.resumeToken == resumeToken &&
-      _sameParts(other.acknowledgedParts, acknowledgedParts) &&
-      other.highWaterMark == highWaterMark &&
+      other.upload == upload &&
       other.envelopeHandle == envelopeHandle &&
       other.lastProgressAt == lastProgressAt;
 
   @override
-  int get hashCode => Object.hash(
-    job,
-    source,
-    transportId,
-    resumeToken,
-    Object.hashAll(acknowledgedParts),
-    highWaterMark,
-    envelopeHandle,
-    lastProgressAt,
-  );
+  int get hashCode => Object.hash(job, upload, envelopeHandle, lastProgressAt);
 
   @override
   String toString() => 'JournalRecord($job)';
 }
 
-bool _sameParts(List<int> a, List<int> b) {
+/// An upload's facts in the journal: the file, the transport that carries
+/// it and the parts the remote end acknowledged, so a restart sends only
+/// what is missing.
+@immutable
+final class JournalUpload {
+  /// An upload of [source] through transport [transportId], split into
+  /// parts of [partSize] bytes.
+  JournalUpload({
+    required this.source,
+    required this.transportId,
+    required this.lane,
+    required this.partSize,
+    this.fileName,
+    this.contentType,
+    this.resumeToken,
+    Map<int, String?> parts = const {},
+    this.highWaterMark = 0,
+  }) : parts = Map.unmodifiable(parts);
+
+  /// The file the upload reads.
+  final JournalSource source;
+
+  /// The id of the upload transport that carries the job.
+  final String transportId;
+
+  /// The lane the job waits in.
+  final UploadLane lane;
+
+  /// The size of every part but the last, as the transport declared it
+  /// when the job was made. Parts acknowledged under one size say nothing
+  /// about a split by another.
+  final int partSize;
+
+  /// The file's name for the remote end, when the host gave one.
+  final String? fileName;
+
+  /// The file's media type for the remote end, when the host gave one.
+  final String? contentType;
+
+  /// The transport's token for reopening an interrupted upload.
+  final String? resumeToken;
+
+  /// The parts the remote end acknowledged, by index, each with the
+  /// receipt it answered (an ETag, a part id), or null when it gave none.
+  final Map<int, String?> parts;
+
+  /// The bytes from the start of the source that are known sent: every
+  /// part that ends at or before it is acknowledged.
+  final int highWaterMark;
+
+  /// This upload with the given parts replaced; [clearResumeToken] drops
+  /// the token.
+  JournalUpload copyWith({
+    String? resumeToken,
+    bool clearResumeToken = false,
+    Map<int, String?>? parts,
+    int? highWaterMark,
+  }) => JournalUpload(
+    source: source,
+    transportId: transportId,
+    lane: lane,
+    partSize: partSize,
+    fileName: fileName,
+    contentType: contentType,
+    resumeToken: clearResumeToken ? null : resumeToken ?? this.resumeToken,
+    parts: parts ?? this.parts,
+    highWaterMark: highWaterMark ?? this.highWaterMark,
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is JournalUpload &&
+      other.source == source &&
+      other.transportId == transportId &&
+      other.lane == lane &&
+      other.partSize == partSize &&
+      other.fileName == fileName &&
+      other.contentType == contentType &&
+      other.resumeToken == resumeToken &&
+      _sameParts(other.parts, parts) &&
+      other.highWaterMark == highWaterMark;
+
+  @override
+  int get hashCode => Object.hash(
+    source,
+    transportId,
+    lane,
+    partSize,
+    fileName,
+    contentType,
+    resumeToken,
+    Object.hashAllUnordered(
+      parts.entries.map((part) => Object.hash(part.key, part.value)),
+    ),
+    highWaterMark,
+  );
+
+  @override
+  String toString() =>
+      'JournalUpload($transportId, ${lane.name}, ${parts.length} parts, '
+      '$highWaterMark)';
+}
+
+bool _sameParts(Map<int, String?> a, Map<int, String?> b) {
   if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i++) {
-    if (a[i] != b[i]) return false;
+  for (final MapEntry(:key, :value) in a.entries) {
+    if (!b.containsKey(key) || b[key] != value) return false;
   }
   return true;
 }

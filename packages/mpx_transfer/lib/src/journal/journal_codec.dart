@@ -7,6 +7,7 @@ import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
 import 'package:mpx_transfer/src/job/transfer_state.dart';
 import 'package:mpx_transfer/src/journal/journal_record.dart';
+import 'package:mpx_transfer/src/upload/upload_lane.dart';
 
 /// How one kind of [TransferResult] is written into the journal and read
 /// back.
@@ -185,18 +186,7 @@ final class JournalCodec {
       'createdAt': job.createdAt.toIso8601String(),
       'updatedAt': job.updatedAt.toIso8601String(),
       'state': _stateToJson(job.state),
-      if (record.source case final source?)
-        'source': {
-          'path': source.path,
-          'size': source.size,
-          'growing': source.growing,
-          'fingerprint': source.fingerprint,
-        },
-      'transportId': ?record.transportId,
-      'resumeToken': ?record.resumeToken,
-      if (record.acknowledgedParts.isNotEmpty)
-        'acknowledgedParts': record.acknowledgedParts,
-      if (record.highWaterMark != 0) 'highWaterMark': record.highWaterMark,
+      if (record.upload case final upload?) 'upload': _uploadToJson(upload),
       'envelopeHandle': ?record.envelopeHandle,
       'lastProgressAt': ?record.lastProgressAt?.toIso8601String(),
     };
@@ -220,33 +210,65 @@ final class JournalCodec {
       updatedAt: DateTime.parse(json['updatedAt']! as String),
       state: _stateFromJson(json['state']! as Map<String, Object?>),
     ),
-    source: switch (json['source']) {
-      {
-        'path': final String path,
-        'size': final int size,
-        'growing': final bool growing,
-        'fingerprint': final String fingerprint,
-      } =>
-        JournalSource(
-          path: path,
-          size: size,
-          growing: growing,
-          fingerprint: fingerprint,
-        ),
+    upload: switch (json['upload']) {
+      final Map<String, Object?> upload => _uploadFromJson(upload),
       _ => null,
     },
-    transportId: json['transportId'] as String?,
-    resumeToken: json['resumeToken'] as String?,
-    acknowledgedParts: [
-      ...?(json['acknowledgedParts'] as List<Object?>?)?.cast<int>(),
-    ],
-    highWaterMark: json['highWaterMark'] as int? ?? 0,
     envelopeHandle: json['envelopeHandle'] as String?,
     lastProgressAt: switch (json['lastProgressAt']) {
       final String time => DateTime.parse(time),
       _ => null,
     },
   );
+
+  // --- Uploads ---------------------------------------------------------------
+
+  /// A part is `[index]`, or `[index, receipt]` when the remote end gave
+  /// one: the list stays short for a transport that gives none.
+  Map<String, Object?> _uploadToJson(JournalUpload upload) => {
+    'source': {
+      'path': upload.source.path,
+      'size': upload.source.size,
+      'growing': upload.source.growing,
+      'fingerprint': upload.source.fingerprint,
+    },
+    'transportId': upload.transportId,
+    'lane': upload.lane.name,
+    'partSize': upload.partSize,
+    'fileName': ?upload.fileName,
+    'contentType': ?upload.contentType,
+    'resumeToken': ?upload.resumeToken,
+    if (upload.parts.isNotEmpty)
+      'parts': [
+        for (final MapEntry(key: index, value: receipt) in upload.parts.entries)
+          [index, ?receipt],
+      ],
+    if (upload.highWaterMark != 0) 'highWaterMark': upload.highWaterMark,
+  };
+
+  JournalUpload _uploadFromJson(Map<String, Object?> json) {
+    final source = json['source']! as Map<String, Object?>;
+    return JournalUpload(
+      source: JournalSource(
+        path: source['path']! as String,
+        size: source['size']! as int,
+        growing: source['growing']! as bool,
+        fingerprint: source['fingerprint']! as String,
+      ),
+      transportId: json['transportId']! as String,
+      lane: UploadLane.values.byName(json['lane']! as String),
+      partSize: json['partSize']! as int,
+      fileName: json['fileName'] as String?,
+      contentType: json['contentType'] as String?,
+      resumeToken: json['resumeToken'] as String?,
+      parts: {
+        for (final part in (json['parts'] as List<Object?>?) ?? const [])
+          if (part case [final int index, ...final rest])
+            index: rest.isEmpty ? null : rest.first! as String,
+      },
+      highWaterMark: json['highWaterMark'] as int? ?? 0,
+    );
+  }
 
   // --- States ----------------------------------------------------------------
 

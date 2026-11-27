@@ -1,0 +1,277 @@
+import 'dart:async';
+import 'dart:collection';
+
+import 'package:meta/meta.dart';
+import 'package:mpx_transfer/src/upload/remote_ref.dart';
+import 'package:mpx_transfer/src/upload/upload_transport.dart';
+
+int _fakePartSize(int size) => FakeUploadTransport.defaultPartSize;
+
+/// An [UploadTransport] with no remote end: a test scripts what each call
+/// answers (acknowledgements, failures, resume) and reads what the engine
+/// sent.
+///
+/// It keeps its state across sessions, as a server would: a session opened
+/// with a token it issued continues ([UploadSession.resumed]) while
+/// [acceptsResume] holds. With [holdParts], each part waits until the test
+/// [ack]s or [reject]s it, so a test can hold parts in flight and answer
+/// them in any order; otherwise each part is acknowledged at once.
+final class FakeUploadTransport implements UploadTransport {
+  /// A fake named [id] declaring [capabilities] ([defaultCapabilities]
+  /// unless given).
+  FakeUploadTransport({
+    this.id = 'fake',
+    UploadCapabilities? capabilities,
+    this.acceptsResume = true,
+    this.holdParts = false,
+  }) : capabilities = capabilities ?? defaultCapabilities;
+
+  /// The part size of [defaultCapabilities]: 64 KiB.
+  static const int defaultPartSize = 64 * 1024;
+
+  /// Parts of [defaultPartSize], four of them in flight, resume without a
+  /// window, references good for a day.
+  static const UploadCapabilities defaultCapabilities = UploadCapabilities(
+    partSize: _fakePartSize,
+    bytesInFlight: 4 * defaultPartSize,
+    resume: UploadResume.unlimited(),
+    reuse: UploadReuse.lifetime(Duration(hours: 24)),
+  );
+
+  @override
+  final String id;
+
+  @override
+  final UploadCapabilities capabilities;
+
+  /// Whether a session opened with a token this fake issued continues.
+  bool acceptsResume;
+
+  /// Whether parts wait for [ack] or [reject].
+  bool holdParts;
+
+  final List<FakeUploadOpen> _opens = [];
+  final List<FakeUploadPart> _sent = [];
+  final List<int> _acknowledged = [];
+  final List<FakeUploadFinish> _finishes = [];
+  final Set<String> _tokens = {};
+  final Map<int, Queue<Exception>> _partFailures = {};
+  final Queue<Exception> _openFailures = Queue();
+  final Queue<Exception> _finishFailures = Queue();
+  final Map<int, Completer<UploadPartAck>> _held = {};
+  int _bytesInFlight = 0;
+  int _maxBytesInFlight = 0;
+
+  /// Every open, oldest first.
+  List<FakeUploadOpen> get opens => List.unmodifiable(_opens);
+
+  /// Every part try, oldest first.
+  List<FakeUploadPart> get sent => List.unmodifiable(_sent);
+
+  /// The index of every acknowledged part, in the order acknowledged.
+  List<int> get acknowledged => List.unmodifiable(_acknowledged);
+
+  /// Every finish, oldest first.
+  List<FakeUploadFinish> get finishes => List.unmodifiable(_finishes);
+
+  /// The most bytes that were in flight at once.
+  int get maxBytesInFlight => _maxBytesInFlight;
+
+  /// The bytes in flight now.
+  int get bytesInFlight => _bytesInFlight;
+
+  /// The indexes of the held parts, waiting for [ack] or [reject].
+  List<int> get held => List.unmodifiable(_held.keys);
+
+  /// The next [times] tries of part [index] fail with [error] (by default
+  /// a transient [UploadTransportException]).
+  void failPart(int index, {int times = 1, Exception? error}) {
+    final failures = _partFailures.putIfAbsent(index, Queue.new);
+    for (var i = 0; i < times; i++) {
+      failures.add(error ?? _transient);
+    }
+  }
+
+  /// The next [times] opens fail with [error].
+  void failOpen({int times = 1, Exception? error}) {
+    for (var i = 0; i < times; i++) {
+      _openFailures.add(error ?? _transient);
+    }
+  }
+
+  /// The next [times] finishes fail with [error].
+  void failFinish({int times = 1, Exception? error}) {
+    for (var i = 0; i < times; i++) {
+      _finishFailures.add(error ?? _transient);
+    }
+  }
+
+  /// Acknowledges held part [index] with [receipt] (`receipt-<index>` by
+  /// default).
+  void ack(int index, {String? receipt}) => _takeHeld(
+    index,
+  ).complete(UploadPartAck(receipt: receipt ?? _receipt(index)));
+
+  /// Fails held part [index]'s try with [error].
+  void reject(int index, [Exception? error]) =>
+      _takeHeld(index).completeError(error ?? _transient);
+
+  @override
+  Future<UploadSession> open(UploadInfo info, {String? resumeToken}) async {
+    _opens.add(FakeUploadOpen(info, resumeToken));
+    await null;
+    if (_openFailures.isNotEmpty) throw _openFailures.removeFirst();
+    final resumed =
+        resumeToken != null && acceptsResume && _tokens.contains(resumeToken);
+    final token = resumed ? resumeToken : 'fake-token-${_opens.length}';
+    _tokens.add(token);
+    return _FakeSession(this, token, resumed: resumed);
+  }
+
+  static const _transient = UploadTransportException(
+    'fake_failure',
+    transient: true,
+  );
+
+  static String _receipt(int index) => 'receipt-$index';
+
+  Completer<UploadPartAck> _takeHeld(int index) =>
+      _held.remove(index) ?? (throw StateError('Part $index is not held.'));
+
+  Future<UploadPartAck> _sendPart(
+    int index,
+    int offset,
+    UploadPartBody bytes, {
+    required bool last,
+  }) async {
+    _sent.add(
+      FakeUploadPart(
+        index: index,
+        offset: offset,
+        length: bytes.length,
+        last: last,
+      ),
+    );
+    _bytesInFlight += bytes.length;
+    if (_bytesInFlight > _maxBytesInFlight) _maxBytesInFlight = _bytesInFlight;
+    try {
+      await null;
+      final failures = _partFailures[index];
+      if (failures != null && failures.isNotEmpty) throw failures.removeFirst();
+      final UploadPartAck ack;
+      if (holdParts) {
+        final completer = _held[index] = Completer<UploadPartAck>();
+        ack = await completer.future;
+      } else {
+        ack = UploadPartAck(receipt: _receipt(index));
+      }
+      _acknowledged.add(index);
+      return ack;
+    } finally {
+      _bytesInFlight -= bytes.length;
+    }
+  }
+
+  Future<RemoteRef> _finish(int finalSize, List<UploadPartAck> parts) async {
+    _finishes.add(FakeUploadFinish(finalSize, parts));
+    await null;
+    if (_finishFailures.isNotEmpty) throw _finishFailures.removeFirst();
+    return RemoteRef('fake-${_finishes.length}');
+  }
+}
+
+final class _FakeSession implements UploadSession {
+  _FakeSession(this._transport, this.resumeToken, {required this.resumed});
+
+  final FakeUploadTransport _transport;
+
+  @override
+  final String resumeToken;
+
+  @override
+  final bool resumed;
+
+  @override
+  DateTime? get resumeExpiresAt => null;
+
+  @override
+  Future<UploadPartAck> sendPart(
+    int index,
+    int offset,
+    UploadPartBody bytes, {
+    required bool last,
+  }) => _transport._sendPart(index, offset, bytes, last: last);
+
+  @override
+  Future<RemoteRef> finish(int finalSize, List<UploadPartAck> parts) =>
+      _transport._finish(finalSize, parts);
+}
+
+/// One [FakeUploadTransport.open]: what it was told.
+@immutable
+final class FakeUploadOpen {
+  /// An open of [info] with [resumeToken].
+  const FakeUploadOpen(this.info, this.resumeToken);
+
+  /// The upload described.
+  final UploadInfo info;
+
+  /// The token it was opened with; null for a new upload.
+  final String? resumeToken;
+
+  @override
+  String toString() => 'FakeUploadOpen($info, $resumeToken)';
+}
+
+/// One try of a part through a [FakeUploadTransport].
+@immutable
+final class FakeUploadPart {
+  /// Part [index], [length] bytes from [offset].
+  const FakeUploadPart({
+    required this.index,
+    required this.offset,
+    required this.length,
+    required this.last,
+  });
+
+  /// The part's index.
+  final int index;
+
+  /// Where it starts in the file.
+  final int offset;
+
+  /// Its size.
+  final int length;
+
+  /// Whether it is the final part.
+  final bool last;
+
+  @override
+  bool operator ==(Object other) =>
+      other is FakeUploadPart &&
+      other.index == index &&
+      other.offset == offset &&
+      other.length == length &&
+      other.last == last;
+
+  @override
+  int get hashCode => Object.hash(index, offset, length, last);
+
+  @override
+  String toString() =>
+      'FakeUploadPart($index, $offset, $length${last ? ', last' : ''})';
+}
+
+/// One [UploadSession.finish] through a [FakeUploadTransport].
+@immutable
+final class FakeUploadFinish {
+  /// A finish of [finalSize] bytes with [parts].
+  FakeUploadFinish(this.finalSize, List<UploadPartAck> parts)
+    : parts = List.unmodifiable(parts);
+
+  /// The size finished.
+  final int finalSize;
+
+  /// The acknowledgements, in index order.
+  final List<UploadPartAck> parts;
+}

@@ -13,10 +13,13 @@ import 'package:mpx_transfer/src/envelope/transfer_envelope.dart';
 import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
 import 'package:mpx_transfer/src/job/transfer_state.dart';
+import 'package:mpx_transfer/src/journal/journal_record.dart';
 import 'package:mpx_transfer/src/journal/platform_journal_store.dart';
 import 'package:mpx_transfer/src/journal/transfer_journal.dart';
 import 'package:mpx_transfer/src/journal/unload_warning.dart';
 import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
+import 'package:mpx_transfer/src/upload/remote_ref.dart';
+import 'package:mpx_transfer/src/upload/upload_engine.dart';
 
 /// The one facade of the transfer engine: every transfer job, its verbs and
 /// the query over them.
@@ -54,6 +57,7 @@ final class Transfers {
     TransferEnvelope? envelope,
     UploadSourceCopies? sourceCopies,
     UnloadWarning? unloadWarning,
+    UploadEngine? uploads,
     this.retention = defaultRetention,
     this.sourceCopyLimit = defaultSourceCopyLimit,
     bool online = true,
@@ -65,6 +69,7 @@ final class Transfers {
        _envelope = envelope,
        _sourceCopies = sourceCopies,
        _unloadWarning = unloadWarning,
+       _uploads = uploads,
        _online = online,
        _now = now,
        _lastLifecycle = lifecycle.state {
@@ -108,6 +113,7 @@ final class Transfers {
       retention: retention,
       progressInterval: progressInterval,
       now: now,
+      resultCodecs: const [RemoteRef.codec],
     );
     return Transfers.engine(
       cacheKeyOf: cacheKeyOf,
@@ -155,6 +161,7 @@ final class Transfers {
   final TransferEnvelope? _envelope;
   final UploadSourceCopies? _sourceCopies;
   final UnloadWarning? _unloadWarning;
+  final UploadEngine? _uploads;
   final DateTime Function() _now;
 
   /// The source copies under way; see [debugSourcesCopied].
@@ -199,6 +206,8 @@ final class Transfers {
     ],
     online: _online,
     journal: _journal.debugSnapshot(),
+    uploads: _uploads?.debugSnapshot(),
+    connections: _uploads?.slots.debugSnapshot(),
   );
 
   // --- Signals ---------------------------------------------------------------
@@ -336,6 +345,7 @@ final class Transfers {
     int? total,
     bool resumeOnStart = true,
     List<SourceBytes> sources = const [],
+    JournalUpload? upload,
   }) {
     assert(
       direction == TransferDirection.upload || key != null,
@@ -351,20 +361,25 @@ final class Transfers {
     };
     if (_job(id) != null) return id;
     final now = _now();
-    _queue(
-      TransferJob(
-        id: id,
-        direction: direction,
-        durability: durability,
-        state: TransferState.queued(total: total),
-        createdAt: now,
-        updatedAt: now,
-        tag: tag,
-        key: key,
-        priority: priority,
-        resumeOnStart: resumeOnStart,
-      ),
+    final job = TransferJob(
+      id: id,
+      direction: direction,
+      durability: durability,
+      state: TransferState.queued(total: total),
+      createdAt: now,
+      updatedAt: now,
+      tag: tag,
+      key: key,
+      priority: priority,
+      resumeOnStart: resumeOnStart,
     );
+    // An upload's facts ride in with its first state write, so the journal
+    // never holds the job without them.
+    if (upload != null) _journal.stage(JournalRecord(job: job, upload: upload));
+    if (sources.firstOrNull case final source?) {
+      _uploads?.keepPageSource(id, source);
+    }
+    _queue(job);
     if (direction == TransferDirection.upload) _copySources(id, sources);
     return id;
   }
@@ -423,6 +438,7 @@ final class Transfers {
       tag: queued.tag,
       fields: () => {
         'direction': queued.direction.name,
+        'lane': ?_laneOf(queued.id),
         'durability': queued.durability.name,
         'priority': queued.priority.name,
       },
@@ -480,7 +496,10 @@ final class Transfers {
         SchedulerOp.jobStarted,
         jobId: job.id,
         tag: job.tag,
-        fields: () => {'waitedMs': _now().difference(queuedAt).inMilliseconds},
+        fields: () => {
+          'lane': ?_laneOf(job.id),
+          'waitedMs': _now().difference(queuedAt).inMilliseconds,
+        },
       );
     }
     final next = job.copyWith(
@@ -648,6 +667,9 @@ final class Transfers {
   }
 
   TransferJob? _job(TransferId id) => _journal.job(id);
+
+  /// An upload's lane, for its scheduler events; null for a download.
+  String? _laneOf(TransferId id) => _journal.record(id)?.upload?.lane.name;
 
   List<TransferJob> _jobsPaused(PauseReason reason) => [
     for (final job in _journal.jobs)
