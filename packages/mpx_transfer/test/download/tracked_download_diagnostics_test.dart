@@ -56,7 +56,7 @@ void main() {
         level: MpxEventLevel.info,
         jobId: id,
         mediaKey: photo,
-        fields: {'reason': 'awaitingResume'},
+        fields: {'reason': 'awaitingResume', 'durability': 'inProcess'},
       ),
     ]);
   });
@@ -73,7 +73,7 @@ void main() {
         level: MpxEventLevel.info,
         jobId: id,
         mediaKey: photo,
-        fields: {'reason': 'awaitingResume'},
+        fields: {'reason': 'awaitingResume', 'durability': 'inProcess'},
       ),
     ]);
   });

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' show AppLifecycleState;
 
+import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:http_bytes_cache/http_bytes_cache.dart'
     show BytesCacheKey, RequestPriority;
 import 'package:meta/meta.dart';
@@ -197,6 +198,17 @@ final class Transfers {
   AppLifecycleState? _lastLifecycle;
   bool _disposed = false;
 
+  final ValueNotifier<bool> _systemActive = ValueNotifier(false);
+
+  /// Whether any `system` job is queued or running: false while they are
+  /// paused, failed or completed, and always false for `inProcess` jobs.
+  ///
+  /// For a host that confirms quitting while a transfer would be lost: on
+  /// macOS, Windows and Linux there is no OS envelope, so a quit ends every
+  /// job, and the host asks first while this is true. Defined on every
+  /// platform, and read the same way on all.
+  ValueListenable<bool> get systemActive => _systemActive;
+
   final Map<TransferId, _Run> _runs = {};
   final Map<TransferId, DateTime> _queuedAt = {};
   final List<_Watch> _watchers = [];
@@ -343,7 +355,7 @@ final class Transfers {
       jobId: id,
       mediaKey: job.key,
       tag: job.tag,
-      fields: () => {'by': 'user'},
+      fields: () => {'by': 'user', 'durability': job.durability.name},
     );
     _changed();
     return true;
@@ -555,6 +567,7 @@ final class Transfers {
     _lifecycle.removeListener(_onLifecycle);
     unawaited(_envelopeEvents?.cancel());
     _pruneTimer?.cancel();
+    _systemActive.dispose();
     [..._runs.keys].forEach(_stopRun);
     for (final watch in [..._watchers]) {
       unawaited(watch.controller.close());
@@ -603,7 +616,7 @@ final class Transfers {
       jobId: job.id,
       mediaKey: job.key,
       tag: job.tag,
-      fields: () => {'reason': reason.name},
+      fields: () => {'reason': reason.name, 'durability': job.durability.name},
     );
   }
 
@@ -616,7 +629,7 @@ final class Transfers {
       jobId: job.id,
       mediaKey: job.key,
       tag: job.tag,
-      fields: () => {'reason': left.name},
+      fields: () => {'reason': left.name, 'durability': job.durability.name},
     );
     _queue(job.copyWith(state: TransferState.queued(total: job.state.total)));
   }
@@ -638,6 +651,7 @@ final class Transfers {
         tag: job.tag,
         fields: () => {
           'lane': ?_laneOf(job.id),
+          'durability': job.durability.name,
           'waitedMs': _now().difference(queuedAt).inMilliseconds,
         },
       );
@@ -674,6 +688,7 @@ final class Transfers {
       mediaKey: job.key,
       tag: job.tag,
       fields: () => {
+        'durability': job.durability.name,
         'bytes': job.state.total ?? job.state.done,
         'ms': now.difference(job.createdAt).inMilliseconds,
       },
@@ -709,6 +724,7 @@ final class Transfers {
       tag: job.tag,
       fields: () => {
         'kind': kind.name,
+        'durability': job.durability.name,
         'retryable': retryable,
         'done': done,
         'total': ?total,
@@ -841,7 +857,16 @@ final class Transfers {
     }
     _syncEnvelope();
     _syncUnloadWarning();
+    _syncSystemActive();
     _schedulePrune();
+  }
+
+  /// Keeps [systemActive] true while a `system` job is queued or running.
+  void _syncSystemActive() {
+    _systemActive.value = _journal.jobs.any(
+      (job) =>
+          job.durability == TransferDurability.system && job.state.isActive,
+    );
   }
 
   /// Arms the page's warning while any job is queued or running.
