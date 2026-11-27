@@ -2,6 +2,7 @@
 /// bytes cache, and reads the device signals playback policies weigh.
 library;
 
+export 'src/diagnostics/cache_diagnostics_bridge.dart';
 export 'src/download/network_auto_download_policy.dart';
 export 'src/fetch/bytes_cache_fetcher.dart';
 export 'src/fetch/ranged_content_publisher.dart';

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:http_bytes_cache/http_bytes_cache.dart';
+import 'package:mpx/src/diagnostics/cache_diagnostics_bridge.dart';
 import 'package:mpx/src/download/network_auto_download_policy.dart';
 import 'package:mpx/src/fetch/bytes_cache_fetcher.dart';
 import 'package:mpx/src/fetch/ranged_content_publisher.dart';
@@ -133,6 +134,10 @@ final class MpxStack {
   ///   presets of `defaultTargetPlatform`
   ///   ([AutoDownloadPresets.forPlatform]), which the stack disposes; a
   ///   host policy stays the host's.
+  ///
+  /// The stack sets `BytesDiagnostics.current` to
+  /// [CacheDiagnosticsBridge.policy], so the bytes cache reports through
+  /// `MpxDiagnostics.current`, the one policy the host sets at start.
   static Future<MpxStack> create({
     required MediaLocator locate,
     String? cacheDirectory,
@@ -149,7 +154,6 @@ final class MpxStack {
     PlaybackPolicy playbackPolicy = const PlaybackPolicy(),
     bool platformTextures = true,
     ValueListenable<bool>? scrolling,
-    BytesDiagnostics diagnostics = const BytesDiagnostics.silent(),
     AutoDownloadPolicy? autoDownload,
     PreviewStore? previews,
     PreviewBlur? previewBlur,
@@ -158,11 +162,14 @@ final class MpxStack {
     final teardowns = <FutureOr<void> Function()>[];
     void own(FutureOr<void> Function() teardown) => teardowns.add(teardown);
 
+    // Before the store opens, so a wipe or a degrade on open is reported
+    // too; the memory store's resolves report under it as well.
+    BytesDiagnostics.current = CacheDiagnosticsBridge.policy;
     final store = cacheDirectory == null && !kIsWeb
         ? MemoryBytesCache()
         : await BytesCache.open(
             directory: cacheDirectory,
-            diagnostics: diagnostics,
+            diagnostics: CacheDiagnosticsBridge.policy,
           );
     own(store.close);
     final http = client ?? _defaultClient();

@@ -6,6 +6,8 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'diagnostics/cache_diagnostics_bridge_test.dart'
+    as cache_diagnostics_bridge_test;
 import 'download/network_auto_download_policy_test.dart'
     as network_auto_download_policy_test;
 import 'fetch/bytes_cache_fetcher_files_test.dart'
@@ -18,6 +20,7 @@ import 'signals/fake_device_signals_test.dart' as fake_device_signals_test;
 import 'stack/mpx_stack_test.dart' as mpx_stack_test;
 
 void main() {
+  group('cache_diagnostics_bridge_test', cache_diagnostics_bridge_test.main);
   group('bytes_cache_fetcher_files_test', bytes_cache_fetcher_files_test.main);
   group('bytes_cache_fetcher_test', bytes_cache_fetcher_test.main);
   group(

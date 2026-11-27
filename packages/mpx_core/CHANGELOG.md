@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Diagnostics events: `MpxDiagnostics.current`, one process-wide policy the
+  host sets at start (`silent` by default, `developer` logging under `mpx`,
+  or `onEvent` with a `minLevel`), and `MpxEvent` (level, an operation from
+  the reporting package's own `DiagnosticOp` enum and its category, the
+  `jobId` / `itemId` / `mediaKey` / `tag` ids, a few numeric, boolean or
+  short string fields, error and stack trace). `emit` builds its fields
+  only when the level is enabled; a sink that throws is ignored. The core's
+  own operations are `BindingOp`. `MpxTrace` adds `Timeline` sections named
+  `mpx.<category>.<op>` behind the `mpx.trace` define, compiled out by
+  default. `testing.dart` has `RecordingDiagnostics` (`install` restores
+  the previous policy after the test), `isMpxEvent` and the
+  `MpxDiagnosticsContract` suite.
 - `AssetLoadState.standsStill`: a binding that asked for motion and settled on
   a picture that does not move (a video its decoder could not play, shown by
   its first frame).

@@ -27,6 +27,9 @@ import 'benchmark/asset_cache_churn_bench_test.dart'
     as asset_cache_churn_bench_test;
 import 'benchmark/asset_cache_ratio_bench_test.dart'
     as asset_cache_ratio_bench_test;
+import 'diagnostics/mpx_diagnostics_test.dart' as mpx_diagnostics_test;
+import 'diagnostics/recording_diagnostics_test.dart'
+    as recording_diagnostics_test;
 import 'feed/device_inputs_test.dart' as device_inputs_test;
 import 'feed/staged_preload_test.dart' as staged_preload_test;
 import 'feed/visible_fraction_test.dart' as visible_fraction_test;
@@ -112,6 +115,8 @@ void main() {
   group('asset_cache_ratio_bench_test', asset_cache_ratio_bench_test.main);
   group('asset_view_round_test', asset_view_round_test.main);
   group('asset_view_status_test', asset_view_status_test.main);
+  group('mpx_diagnostics_test', mpx_diagnostics_test.main);
+  group('recording_diagnostics_test', recording_diagnostics_test.main);
   group('device_inputs_test', device_inputs_test.main);
   group('media_badge_test', media_badge_test.main);
   group('media_status_control_test', media_status_control_test.main);

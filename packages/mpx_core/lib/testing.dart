@@ -8,6 +8,8 @@ export 'src/asset/testing/asset_playback_contract.dart';
 export 'src/asset/testing/fake_asset_paintable.dart';
 export 'src/asset/testing/fake_asset_producer.dart';
 export 'src/asset/testing/manual_memory_pressure.dart';
+export 'src/diagnostics/testing/mpx_diagnostics_contract.dart';
+export 'src/diagnostics/testing/recording_diagnostics.dart';
 export 'src/pipeline/testing/asset_fetcher_contract.dart';
 export 'src/pipeline/testing/decoder_contract.dart';
 export 'src/pipeline/testing/fake_auto_download_policy.dart';
