@@ -17,6 +17,27 @@
   publish; without downloads, `download` of a key with no upload and
   `leaseFile` do nothing.
 - `UploadsHarness.open(downloads:)`: tracked downloads beside the uploads.
+- iOS envelope: `IosTransferEnvelope`. A background task begins when the
+  app enters the background; on iOS 26 and later a continued-processing
+  task with the system's Live Activity is asked for by `submitAt` (10 s
+  after backgrounding by default, or at resign-active), its progress
+  pushed every second, and let go in the foreground. A refused submission
+  keeps the background task until its time ends. Native events go to
+  `os_log` and, while Dart is not attached, to a 2 MiB ring file emitted
+  at the next start. `EnvelopeOp.progressPushed` and `nativeMerged`. The
+  host adds the task identifier and the `processing` background mode
+  (README).
+- Android OS envelope: `AndroidTransferEnvelope`, a user-initiated data
+  transfer job on Android 14 and later and a `dataSync` foreground service
+  before, started for a long job while the app is visible, with one
+  notification for every job inside (mirrored progress, "cancel all", a tap
+  to `notificationTaps`). The plugin's manifest declares the components
+  only; without the host's permissions (README, "Android") the refusal is
+  caught and the jobs run in process. System ends (a time limit, a stop, a
+  low-memory kill seen at the next start) are reported; native events go
+  to logcat (`mpx_transfer`) and, while Dart is not running, to a 2 MiB
+  ring merged at the next start. `EnvelopeOp` gains `progressPushed` and
+  `nativeMerged`.
 
 - Ordering groups: jobs sharing an `orderingGroup` publish in creation
   order; a failed job lets later ones go on and, retried, publishes after

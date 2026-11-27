@@ -45,6 +45,8 @@ export 'src/diagnostics/transfers_debug_snapshot.dart';
 export 'src/diagnostics/transport_op.dart';
 export 'src/download/downloaded_content.dart';
 export 'src/download/transfer_downloads.dart';
+export 'src/envelope/android_transfer_envelope.dart';
+export 'src/envelope/ios_transfer_envelope.dart';
 export 'src/envelope/transfer_envelope.dart';
 export 'src/envelope/transfer_envelope_config.dart';
 export 'src/job/transfer_id.dart';

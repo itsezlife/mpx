@@ -6,9 +6,8 @@ a durability, and every job is found through one observable query on one
 facade, `Transfers`.
 
 Early: this release holds the state model, the verbs, the query, the
-journal that brings every job back after a kill, and tracked downloads.
-Uploads, publish jobs and the native OS envelopes arrive in the releases
-after it.
+journal that brings every job back after a kill, tracked downloads,
+uploads, publish jobs and the Android and iOS OS envelopes.
 
 ## Install
 
@@ -156,8 +155,14 @@ transfers.retry(id);
 transfers.cancel(id); // removes it
 
 // The OS envelope's text and icon, already localised by the host. Without
-// a config `system` jobs run in process.
-//   Transfers.open(..., envelope: platformEnvelope,
+// a config `system` jobs run in process. Host setup: "Android" and
+// "iOS" below.
+//   Transfers.open(...,
+//       envelope: Platform.isAndroid
+//           ? AndroidTransferEnvelope()
+//           : Platform.isIOS
+//           ? IosTransferEnvelope()
+//           : null,
 //       envelopeConfig: TransferEnvelopeConfig(
 //         title: l10n.sendingMedia,
 //         cancelAllLabel: l10n.cancelAll,
@@ -177,6 +182,78 @@ transfers.systemActive.addListener(() {
   // e.g. show or hide a "transfers running" hint
 });
 ```
+
+## Android
+
+`AndroidTransferEnvelope` keeps `system` jobs running with the app in the
+background and the screen off: a user-initiated data transfer job on
+Android 14 and later, a `dataSync` foreground service before, with one
+notification for every job inside it (the engine's progress, "cancel all",
+a tap that opens the app and arrives on `notificationTaps`). It starts when
+a long job is created while the app is visible (a video, or more than
+`longJobBytes`, 10 MiB), and ends when its jobs drain.
+
+The plugin's manifest declares the job service, the foreground service and
+the cancel receiver, and no permissions. A host that wants `system`
+transfers adds them to its own `AndroidManifest.xml`:
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Android 14 and later: the user-initiated data transfer job. -->
+    <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
+    <!-- Before Android 14: the dataSync foreground service. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Android 13 and later: the notification in the drawer (without it
+         the job shows in the Task Manager only). Ask for it at run time. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+</manifest>
+```
+
+Without them the platform refuses the envelope; the plugin catches the
+refusal (`envelope` `refused`, then `degraded`) and the jobs run in
+process. An app published on Google Play that targets Android 14 or later
+also declares the `dataSync` foreground service type in Play Console
+(App content, Foreground service permissions): a short description of the
+user-started upload, the impact of deferring it, and a video of a user
+starting a transfer and the notification that follows.
+
+The notification's title, text, "cancel all" label, progress line and
+small icon (a drawable or mipmap name) come from `TransferEnvelopeConfig`;
+the title also names the notification channel. The system ends the
+envelope after a time limit, a quota or a lost network, which pauses its
+jobs `systemInterrupted`; a low-memory kill is reported at the next start.
+The native side logs every envelope event to logcat (tag `mpx_transfer`)
+and, while Dart is not running, to a ring file of at most 2 MiB
+(`nativeLogBytes`), merged into diagnostics at the next start.
+
+## iOS
+
+`IosTransferEnvelope` holds the process for `system` jobs once the app
+leaves the foreground: a background task (about 30 s), and on iOS 26 and
+later a continued-processing task whose title, text and progress the
+system shows in a Live Activity (no widget extension). Features below.
+
+For `system` transfers in the background on iOS 26 and later, the app's
+`Info.plist` names the task identifier and the background mode. Without
+the identifier the background task (about 30 s) still holds the process,
+and each submission is reported refused (`noIdentifier`).
+
+```xml
+<key>BGTaskSchedulerPermittedIdentifiers</key>
+<array>
+  <string>$(PRODUCT_BUNDLE_IDENTIFIER).mpx.transfer.*</string>
+</array>
+<key>UIBackgroundModes</key>
+<array>
+  <string>processing</string>
+</array>
+```
+
+The plugin registers each task under that prefix itself. iOS 15 is the
+floor; an app built with an SDK older than iOS 26's has the background
+task only.
 
 ## Features
 
@@ -281,6 +358,20 @@ transfers.systemActive.addListener(() {
   publish job one of them belongs to. `notificationTaps` streams the job a
   tapped notification showed. `debugSimulateSystemInterruption()` (debug
   builds) acts out a system end for a debug panel.
+- iOS (`IosTransferEnvelope`): a background task begun the moment the app
+  enters the background (about 30 s, every version); on iOS 26 and later a
+  continued-processing task, whose progress the system shows in a Live
+  Activity with the config's title and text (no widget extension), asked
+  for 10 s after backgrounding while `system` jobs remain
+  (`submitAt: afterDelay`), or at resign-active (`onResignActive`).
+  Progress is pushed every second while it changes. Everything is let go
+  when the app returns to the foreground. A refused submission keeps the
+  background task; when that time ends, or the system ends the
+  continued-processing task, the jobs pause `systemInterrupted`. A cancel
+  in the Live Activity looks the same to the app as a system stop, so it
+  pauses the jobs too. Native events also go to `os_log` (subsystem
+  `dev.mpx.transfer`, category `envelope`) and, while no Dart side is
+  attached, to a ring file of at most 2 MiB, emitted at the next start.
 - `Transfers.watch(filter)` by direction, state, tag and durability; a
   completed job stays queryable for 24 hours (`retention`).
 - `pause`, `resume`, `cancel`, `retry`, `setPriority`, and

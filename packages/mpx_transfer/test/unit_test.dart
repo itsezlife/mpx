@@ -28,8 +28,12 @@ import 'publish/publish_tracked_view_test.dart' as publish_tracked_view_test;
 import 'publish/publish_watch_jobs_test.dart' as publish_watch_jobs_test;
 import 'reuse/reuse_facade_test.dart' as reuse_facade_test;
 import 'reuse/reuse_table_contract_test.dart' as reuse_table_contract_test;
+import 'transfers/android_transfer_envelope_test.dart'
+    as android_transfer_envelope_test;
 import 'transfers/envelope_interruptions_test.dart'
     as envelope_interruptions_test;
+import 'transfers/ios_transfer_envelope_test.dart'
+    as ios_transfer_envelope_test;
 import 'transfers/journal_diagnostics_test.dart' as journal_diagnostics_test;
 import 'transfers/journal_kill_test.dart' as journal_kill_test;
 import 'transfers/pause_reasons_test.dart' as pause_reasons_test;
@@ -76,7 +80,9 @@ void main() {
   group('publish_watch_jobs_test', publish_watch_jobs_test.main);
   group('reuse_facade_test', reuse_facade_test.main);
   group('reuse_table_contract_test', reuse_table_contract_test.main);
+  group('android_transfer_envelope_test', android_transfer_envelope_test.main);
   group('envelope_interruptions_test', envelope_interruptions_test.main);
+  group('ios_transfer_envelope_test', ios_transfer_envelope_test.main);
   group('journal_diagnostics_test', journal_diagnostics_test.main);
   group('journal_kill_test', journal_kill_test.main);
   group('pause_reasons_test', pause_reasons_test.main);
