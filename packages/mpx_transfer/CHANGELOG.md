@@ -58,6 +58,16 @@
   not kept, and runs upload jobs in two lanes (`UploadLane`, split at
   10 MiB), one job each, under 8 shared connections (6 at most per
   direction).
+- `MultipartUploadTransport`: an upload in one `multipart/form-data`
+  request. The host's `request(info)` gives the URL, method, headers, form
+  fields and the file's field, name and type per upload; `remoteRef` reads
+  the answer into the `RemoteRef`. One part of the whole file, no resume (a
+  restart sends it again from byte 0), `thumbnail: none`, and a stored
+  reference good for 24 hours by default (`defaultReuse`).
+  `UploadPartBody.send` takes a transport's `prefix` and `suffix` framing.
+- `UploadTransportContract` checks the `thumbnail` capability (a separate
+  thumbnail uploads beside its item) and the `reuse` one (a reference just
+  answered is good).
 - `TransportOp` diagnostics operations; `SchedulerOp` gains `slotAcquired`
   and `slotReleased`, and `jobQueued` and `jobStarted` carry an upload's
   `lane`. `debugSnapshot()` gains `uploads` (lanes, parts in flight, part

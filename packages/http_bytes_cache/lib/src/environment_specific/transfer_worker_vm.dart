@@ -107,7 +107,17 @@ final class _IsolateTransferWorker implements TransferWorker {
     final id = _nextId++;
     final pending = _uploads[id] = _PendingUpload(onSent);
     worker.add(
-      _Upload(id, method, url, headers, path, body.offset, body.length),
+      _Upload(
+        id,
+        method,
+        url,
+        headers,
+        path,
+        body.offset,
+        body.length,
+        body.prefix,
+        body.suffix,
+      ),
     );
     unawaited(
       abort.then((_) {
@@ -327,6 +337,8 @@ final class _Upload extends _In {
     this.path,
     this.offset,
     this.length,
+    this.prefix,
+    this.suffix,
   );
   final String method;
   final Uri url;
@@ -334,6 +346,8 @@ final class _Upload extends _In {
   final String path;
   final int offset;
   final int length;
+  final List<int> prefix;
+  final List<int> suffix;
 }
 
 final class _Abort extends _In {
@@ -609,14 +623,20 @@ Future<void> _transferHandler(
 
     var sent = 0;
     var reported = 0;
-    final body = File(message.path).openRead(message.offset, end).map((
-      chunk,
-    ) {
+    final total =
+        message.prefix.length + message.length + message.suffix.length;
+    Stream<List<int>> framed() async* {
+      if (message.prefix.isNotEmpty) yield message.prefix;
+      yield* File(message.path).openRead(message.offset, end);
+      if (message.suffix.isNotEmpty) yield message.suffix;
+    }
+
+    final body = framed().map((chunk) {
       armIdle();
       sent += chunk.length;
       // Reported in steps of landBytes, the cadence transfers land at, and
       // once at the end.
-      if (sent - reported >= config.landBytes || sent == message.length) {
+      if (sent - reported >= config.landBytes || sent == total) {
         reported = sent;
         send(_Sent(id, sent));
       }
@@ -630,7 +650,7 @@ Future<void> _transferHandler(
             sending.abort.future,
           )
           ..headers.addAll(message.headers)
-          ..contentLength = message.length
+          ..contentLength = total
           // A redirect would have to send the body again, which a stream
           // cannot.
           ..followRedirects = false;

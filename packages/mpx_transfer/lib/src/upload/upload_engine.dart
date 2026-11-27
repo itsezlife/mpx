@@ -223,6 +223,8 @@ final class UploadEngine implements TransferRunner {
     Uri url, {
     required int offset,
     required int length,
+    required List<int> prefix,
+    required List<int> suffix,
     required String method,
     required CancelToken cancelToken,
     required BytesProgressCallback onBytesSent,
@@ -238,7 +240,14 @@ final class UploadEngine implements TransferRunner {
     // and reported once.
     return client.upload(
       url,
-      body: uploadPartBody(source, bytes, offset: offset, length: length),
+      body: uploadPartBody(
+        source,
+        bytes,
+        offset: offset,
+        length: length,
+        prefix: prefix,
+        suffix: suffix,
+      ),
       method: method,
       headers: headers,
       cancelToken: cancelToken,
@@ -584,19 +593,29 @@ final class _UploadRun {
 
   UploadPartBody _body(int index, int offset, int length) => UploadPartBody(
     length,
-    (url, {required method, headers, context}) => _engine._send(
+    (
+      url, {
+      required method,
+      required prefix,
+      required suffix,
+      headers,
+      context,
+    }) => _engine._send(
       id,
       _source,
       url,
       offset: offset,
       length: length,
+      prefix: prefix,
+      suffix: suffix,
       method: method,
       headers: headers,
       context: context,
       cancelToken: _cancel,
       onBytesSent: (sent, _) {
         if (_ended || !_inFlight.containsKey(index)) return;
-        _inFlight[index] = sent;
+        // The transport's framing is not the file's bytes.
+        _inFlight[index] = (sent - prefix.length).clamp(0, length);
         _reportProgress();
       },
     ),

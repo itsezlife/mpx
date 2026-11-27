@@ -223,6 +223,15 @@ with a slice of the OPFS file or a `Blob`.
 A changed source or an expired window restarts the upload from zero; it does
 not fail it. Download freshness stays with the bytes cache.
 
+The multipart adapter's `reuse` default is a lifetime of 24 hours, the
+journal's retention: the adapter knows nothing of how long the remote end
+keeps a file, so the default covers sending the same media again soon and
+bounds the risk of a stale reference; a host whose server keeps files longer,
+or can be asked, passes its own `UploadReuse`. It sends the whole file as one
+part, its form framing as the part body's prefix and suffix, and carries the
+`RemoteRef` in that part's receipt, so `finish` needs nothing the journal does
+not keep.
+
 **Reuse table.** Re-sending the same media does not upload it again. Beside
 the journal, `mpx_transfer` keeps a table from source fingerprint plus
 preparation parameters to a `RemoteRef`, with the time it was stored and an
@@ -532,8 +541,8 @@ engine's state (ADR 0013).
   swipe from Recents. No decision here depends on them; the journal resumes
   after any kill.
 - Which `submitAt` default holds on iOS 26 devices.
-- The `reuse` capability's default per adapter, and the reuse table's
-  default expiry.
+- The `reuse` capability's default for the tus and numbered-parts adapters,
+  and the reuse table's default expiry (multipart: 24 hours, above).
 
 ## Provenance
 

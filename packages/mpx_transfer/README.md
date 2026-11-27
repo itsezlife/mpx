@@ -70,6 +70,16 @@ transfers
       }
     });
 
+// A transport for a server that takes the file in one multipart POST.
+final multipart = MultipartUploadTransport(
+  request: (info) => MultipartUploadRequest(
+    uploadUrl,
+    headers: {'authorization': 'Bearer $token'},
+    fields: {'album': '7'},
+  ),
+  remoteRef: (response) => RemoteRef(parseFileId(response.body!)),
+);
+
 // Verbs on one job (`id`, a `TransferId` from a snapshot) answer whether
 // it changed.
 transfers.pause(id);
@@ -98,6 +108,8 @@ transfers.cancel(id); // removes it
   transport's token after a restart, sending only what is missing. Two
   lanes (small up to 10 MiB, big), one job each, under 8 shared
   connections. A completed upload holds a `RemoteRef`.
+- `MultipartUploadTransport`: the file in one `multipart/form-data`
+  request, with the host's URL, headers and form fields per upload.
 - `TransferDurability`: `inProcess`, or `system` inside the platform's OS
   envelope (`TransferEnvelope`) where there is one.
 - `Transfers.watch(filter)` by direction, state, tag and durability; a

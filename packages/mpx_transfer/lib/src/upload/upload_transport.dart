@@ -137,12 +137,26 @@ final class UploadPartBody {
   /// a status that is not a success throws the bytes cache's exception,
   /// with the answer's body in its data. [context] reaches the request's
   /// middlewares, as for any request of the bytes cache.
+  ///
+  /// [prefix] and [suffix] are the transport's own framing, sent before and
+  /// after the part's bytes (a multipart form's boundary and headers): small
+  /// and held in memory. The request's `Content-Length` counts them; the
+  /// part's progress counts only its [length].
   Future<HttpBytesResponse> send(
     Uri url, {
     String method = 'PUT',
     Map<String, String>? headers,
     Map<String, Object?>? context,
-  }) => _send(url, method: method, headers: headers, context: context);
+    List<int> prefix = const [],
+    List<int> suffix = const [],
+  }) => _send(
+    url,
+    method: method,
+    headers: headers,
+    context: context,
+    prefix: prefix,
+    suffix: suffix,
+  );
 }
 
 /// How an [UploadPartBody] sends: the engine's request, which the
@@ -152,6 +166,8 @@ typedef UploadPartSend =
     Future<HttpBytesResponse> Function(
       Uri url, {
       required String method,
+      required List<int> prefix,
+      required List<int> suffix,
       Map<String, String>? headers,
       Map<String, Object?>? context,
     });
