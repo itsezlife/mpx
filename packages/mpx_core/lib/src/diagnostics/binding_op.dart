@@ -7,7 +7,9 @@ enum BindingOp implements DiagnosticOp {
   trackedDownload,
 
   /// A transfer's state mapped onto the binding's (trace; `state`,
-  /// `transfer`; the job and the key).
+  /// `transfer`; the job and the key). Reported by the `TrackedTransfers`
+  /// implementation, which knows the job, once per change of a watched
+  /// key's value.
   mapped,
 
   /// A cancel on the binding forwarded to its transfer (info; `direction`;

@@ -1,17 +1,23 @@
 import 'dart:async';
 import 'dart:ui' show AppLifecycleState;
 
-import 'package:http_bytes_cache/http_bytes_cache.dart' show RequestPriority;
+import 'package:http_bytes_cache/http_bytes_cache.dart'
+    show BytesCacheKey, RequestPriority;
 import 'package:meta/meta.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_transfer/src/diagnostics/envelope_op.dart';
 import 'package:mpx_transfer/src/diagnostics/scheduler_op.dart';
 import 'package:mpx_transfer/src/diagnostics/transfers_debug_snapshot.dart';
+import 'package:mpx_transfer/src/download/download_runner.dart';
+import 'package:mpx_transfer/src/download/downloaded_content.dart';
+import 'package:mpx_transfer/src/download/tracked_downloads.dart';
+import 'package:mpx_transfer/src/download/transfer_downloads.dart';
 import 'package:mpx_transfer/src/engine/transfer_runner.dart';
 import 'package:mpx_transfer/src/envelope/transfer_envelope.dart';
 import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
 import 'package:mpx_transfer/src/job/transfer_state.dart';
+import 'package:mpx_transfer/src/journal/journal_codec.dart';
 import 'package:mpx_transfer/src/journal/platform_journal_store.dart';
 import 'package:mpx_transfer/src/journal/transfer_journal.dart';
 
@@ -38,13 +44,16 @@ import 'package:mpx_transfer/src/journal/transfer_journal.dart';
 /// down.
 final class Transfers {
   /// The engine over an explicit [runner] and an opened [journal]: what the
-  /// package's own runners and test support build on.
+  /// package's own runners and test support build on. With [downloads],
+  /// download jobs move their bytes through them and [runner] moves the
+  /// rest; without, [runner] moves every job.
   @internal
   Transfers.engine({
     required String Function(MediaKey key) cacheKeyOf,
     required PlaybackLifecycleSource lifecycle,
     required TransferRunner runner,
     required TransferJournal journal,
+    TransferDownloads? downloads,
     TransferEnvelope? envelope,
     this.retention = defaultRetention,
     bool online = true,
@@ -52,11 +61,13 @@ final class Transfers {
   }) : _cacheKeyOf = cacheKeyOf,
        _lifecycle = lifecycle,
        _runner = runner,
+       _downloadRunner = downloads == null ? null : DownloadRunner(downloads),
        _journal = journal,
        _envelope = envelope,
        _online = online,
        _now = now,
        _lastLifecycle = lifecycle.state {
+    if (downloads != null) _tracked = TrackedDownloads(this, downloads);
     _lifecycle.addListener(_onLifecycle);
     _envelopeEvents = envelope?.events.listen(_onEnvelopeEvent);
     _restore();
@@ -72,7 +83,9 @@ final class Transfers {
   /// [progressInterval] is the shortest time between two progress writes
   /// ([defaultProgressInterval] unless given). [envelope] is the platform's
   /// OS envelope; without one, `system` jobs run in process. [online] is
-  /// the connectivity at start; [now] reads the time.
+  /// the connectivity at start; [now] reads the time. [downloads] is what
+  /// tracked downloads fetch through ([download], [tracked]); without it the
+  /// facade makes no download jobs.
   ///
   /// A journal that cannot be read is reported (`journal` `writeFailed`)
   /// and the engine runs in memory for this run, with no jobs.
@@ -80,6 +93,7 @@ final class Transfers {
     required String Function(MediaKey key) cacheKeyOf,
     required PlaybackLifecycleSource lifecycle,
     String? directory,
+    TransferDownloads? downloads,
     TransferEnvelope? envelope,
     Duration retention = defaultRetention,
     Duration progressInterval = defaultProgressInterval,
@@ -91,18 +105,27 @@ final class Transfers {
       retention: retention,
       progressInterval: progressInterval,
       now: now,
+      resultCodecs: resultCodecs,
     );
     return Transfers.engine(
       cacheKeyOf: cacheKeyOf,
       lifecycle: lifecycle,
       runner: const _NoRunner(),
       journal: journal,
+      downloads: downloads,
       envelope: envelope,
       retention: retention,
       online: online,
       now: now,
     );
   }
+
+  /// How every kind of result the package's own jobs complete with is
+  /// written into the journal.
+  @internal
+  static const List<TransferResultCodec> resultCodecs = [
+    DownloadedContent.codec,
+  ];
 
   /// How long a completed job stays queryable by default: 24 hours.
   static const Duration defaultRetention = Duration(hours: 24);
@@ -121,6 +144,7 @@ final class Transfers {
   final String Function(MediaKey key) _cacheKeyOf;
   final PlaybackLifecycleSource _lifecycle;
   final TransferRunner _runner;
+  final DownloadRunner? _downloadRunner;
   final TransferJournal _journal;
   final TransferEnvelope? _envelope;
   final DateTime Function() _now;
@@ -135,6 +159,7 @@ final class Transfers {
   StreamSubscription<TransferEnvelopeEvent>? _envelopeEvents;
   TransferEnvelopeProgress? _envelopeProgress;
   Timer? _pruneTimer;
+  TrackedDownloads? _tracked;
 
   // --- Queries ---------------------------------------------------------------
 
@@ -155,6 +180,23 @@ final class Transfers {
     _watchers.add(watch);
     controller.onCancel = () => _watchers.remove(watch);
   });
+
+  /// The jobs seen by content, as the core's [TrackedTransfers] seam: the
+  /// composition root hands it to the asset cache scope
+  /// (`AssetCacheScope(tracked:)`) and to savers.
+  ///
+  /// Its `watch(key)` maps a download job's state onto the value a surface
+  /// shows: queued is waiting, running is receiving, paused by the user or
+  /// waiting to resume after a restart is awaitingUser, paused by the
+  /// system or for the network is the last receiving value held, failed is
+  /// failed and completed is none. Watching a key whose download came back
+  /// [PauseReason.awaitingResume] resumes it. `cancel(key)` pauses a
+  /// download for the user. `leaseFile(key)` lends the cached file once the
+  /// content is whole.
+  ///
+  /// Throws a [StateError] when the facade was opened without downloads.
+  TrackedTransfers get tracked =>
+      _tracked ?? (throw StateError('Transfers was opened without downloads.'));
 
   /// The engine's state now, for a debug panel.
   TransfersDebugSnapshot debugSnapshot() => TransfersDebugSnapshot(
@@ -272,7 +314,7 @@ final class Transfers {
       return false;
     }
     _put(job.copyWith(priority: priority));
-    _runner.reprioritize(id, priority);
+    _runnerOf(job).reprioritize(id, priority);
     MpxDiagnostics.current.emit(
       MpxEventLevel.debug,
       SchedulerOp.priorityChanged,
@@ -283,7 +325,103 @@ final class Transfers {
     return true;
   }
 
+  /// Starts, or joins, the tracked download of [key]'s content, and answers
+  /// its job's id.
+  ///
+  /// One job per key, its id derived from the key's cache key: a second
+  /// call while the job is queued or running returns it; a call for a job
+  /// paused by the user or waiting to resume resumes it, for a failed one
+  /// retries it, and for a completed one whose content the cache no longer
+  /// holds whole downloads it again. The bytes stay in the bytes cache.
+  ///
+  /// [origin] sets whether the job resumes by itself after the process
+  /// ended: a [TransferOrigin.user] download does, a [TransferOrigin.auto]
+  /// one comes back paused [PauseReason.awaitingResume] until a surface
+  /// watches its key. [resumeOnStart] overrides that for this job; a user
+  /// call for a job an auto origin started makes it resume. [priority] places
+  /// a new job in the cache's queue (later, [setPriority] moves it);
+  /// [durability] and [tag] are those of a new job.
+  ///
+  /// Throws a [StateError] when the facade was opened without downloads.
+  TransferId download(
+    MediaKey key, {
+    TransferOrigin origin = TransferOrigin.user,
+    bool? resumeOnStart,
+    RequestPriority priority = RequestPriority.visible,
+    TransferDurability durability = TransferDurability.inProcess,
+    String? tag,
+  }) {
+    final store = _downloadRunner?.downloads.store;
+    if (store == null) {
+      throw StateError('Transfers was opened without downloads.');
+    }
+    final cacheKey = _cacheKeyOf(key);
+    final id = TransferId.forDownload(cacheKey);
+    var job = _job(id);
+    if (job case TransferJob(
+      state: TransferState$Completed(),
+    ) when !store.contains(BytesCacheKey(cacheKey))) {
+      // The cache let the content go since: a new download.
+      _journal.remove(id);
+      job = null;
+    }
+    // A new job takes the origin's default; an existing one changes only for
+    // an explicit flag or a user's call.
+    final resumes = switch ((resumeOnStart, job)) {
+      (final bool flag, _) => flag,
+      (null, null) => origin == TransferOrigin.user,
+      (null, final TransferJob existing) =>
+        origin == TransferOrigin.user || existing.resumeOnStart,
+    };
+    MpxDiagnostics.current.emit(
+      MpxEventLevel.debug,
+      SchedulerOp.downloadRequested,
+      jobId: id,
+      mediaKey: key,
+      fields: () => {
+        'origin': origin.name,
+        'resumeOnStart': resumes,
+        'existing': job != null,
+      },
+    );
+    if (job == null) {
+      return enqueue(
+        direction: TransferDirection.download,
+        durability: durability,
+        key: key,
+        tag: tag,
+        priority: priority,
+        resumeOnStart: resumes,
+      );
+    }
+    if (job.resumeOnStart != resumes) {
+      _put(job = job.copyWith(resumeOnStart: resumes));
+    }
+    switch (job.state) {
+      case TransferState$Paused(
+        reason: PauseReason.user || PauseReason.awaitingResume,
+      ):
+        resume(id);
+      case TransferState$Failed():
+        retry(id);
+      case TransferState$Queued() ||
+          TransferState$Running() ||
+          TransferState$Paused() ||
+          TransferState$Completed():
+        break;
+    }
+    return id;
+  }
+
   // --- Entry for the package's own paths -------------------------------------
+
+  /// The cache key of [key]'s content: the composition root's mapping.
+  @internal
+  String cacheKeyOf(MediaKey key) => _cacheKeyOf(key);
+
+  /// Job [id] now, or null when there is none.
+  @internal
+  TransferJob? jobOf(TransferId id) => _job(id);
 
   /// Makes a job and queues it, or for a download whose key already has a
   /// job, answers that job's id and changes nothing.
@@ -549,18 +687,23 @@ final class Transfers {
 
   // --- Runs ------------------------------------------------------------------
 
+  TransferRunner _runnerOf(TransferJob job) => switch (job.direction) {
+    TransferDirection.download => _downloadRunner ?? _runner,
+    TransferDirection.upload => _runner,
+  };
+
   void _startRun(TransferJob job) {
     _stopRun(job.id);
-    final run = _Run(this, job.id);
+    final run = _Run(this, job.id, _runnerOf(job));
     _runs[job.id] = run;
-    _runner.start(job, run);
+    run.runner.start(job, run);
   }
 
   void _stopRun(TransferId id) {
     final run = _runs.remove(id);
     if (run == null) return;
     run.ended = true;
-    _runner.stop(id);
+    run.runner.stop(id);
   }
 
   void _endRun(_Run run) {
@@ -612,6 +755,7 @@ final class Transfers {
 
   void _changed() {
     if (_disposed) return;
+    _tracked?.refresh();
     for (final watch in [..._watchers]) {
       final next = _select(watch.filter);
       if (_sameJobs(next, watch.last)) continue;
@@ -710,10 +854,13 @@ final class _Watch {
 /// The sink of one run of a job; ignores reports once the run ended, so a
 /// runner that reports after a pause or a cancel changes nothing.
 final class _Run implements TransferRunSink {
-  _Run(this._engine, this.id);
+  _Run(this._engine, this.id, this.runner);
 
   final Transfers _engine;
   final TransferId id;
+
+  /// What moves this run's bytes.
+  final TransferRunner runner;
   bool ended = false;
 
   @override

@@ -37,7 +37,11 @@ enum SchedulerOp implements DiagnosticOp {
 
   /// The composition root reported connectivity (info; `online`,
   /// `jobsAffected`, the jobs it resumed).
-  connectivityChanged;
+  connectivityChanged,
+
+  /// A tracked download was asked for (debug; `origin`, `resumeOnStart`,
+  /// `existing` when the key already had a job; job, key).
+  downloadRequested;
 
   @override
   String get category => 'scheduler';
