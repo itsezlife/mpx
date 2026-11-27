@@ -8,17 +8,18 @@ import 'package:mpx_transfer/src/diagnostics/envelope_op.dart';
 import 'package:mpx_transfer/src/diagnostics/scheduler_op.dart';
 import 'package:mpx_transfer/src/diagnostics/transfers_debug_snapshot.dart';
 import 'package:mpx_transfer/src/engine/transfer_runner.dart';
-import 'package:mpx_transfer/src/engine/transfer_store.dart';
 import 'package:mpx_transfer/src/envelope/transfer_envelope.dart';
 import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
 import 'package:mpx_transfer/src/job/transfer_state.dart';
+import 'package:mpx_transfer/src/journal/platform_journal_store.dart';
+import 'package:mpx_transfer/src/journal/transfer_journal.dart';
 
 /// The one facade of the transfer engine: every transfer job, its verbs and
 /// the query over them.
 ///
-/// The composition root makes one and keeps it for the app's life. It
-/// passes [cacheKeyOf], the same `MediaKey` to cache key mapping its bytes
+/// The composition root opens one ([open]) and keeps it for the app's life.
+/// It passes [cacheKeyOf], the same `MediaKey` to cache key mapping its bytes
 /// cache fetcher uses, so a download's [TransferId] is derived from the key
 /// the bytes live under; the app lifecycle, whose return to the foreground
 /// resumes jobs the system interrupted; and connectivity through
@@ -26,44 +27,24 @@ import 'package:mpx_transfer/src/job/transfer_state.dart';
 /// reads too.
 ///
 /// A job is queued, running, paused, failed or completed
-/// ([TransferState]); a cancel removes it. Every change is reported through
-/// `MpxDiagnostics.current` (categories `scheduler` and `envelope`).
+/// ([TransferState]); a cancel removes it. Every job is journaled: a state
+/// change is written at once and progress at most every
+/// [defaultProgressInterval], so after any kill the next [open] reads the
+/// jobs back, and the queries answer from the journal at every durability
+/// level. Every change is reported through `MpxDiagnostics.current`
+/// (categories `journal`, `scheduler` and `envelope`).
 ///
 /// Single-threaded on the UI isolate. Call [dispose] when the app shuts
 /// down.
 final class Transfers {
-  /// The engine of the composition root.
-  ///
-  /// [retention] is how long a completed job stays queryable
-  /// ([defaultRetention] unless given). [envelope] is the platform's OS
-  /// envelope; without one, `system` jobs run in process. [online] is the
-  /// connectivity at start; [now] reads the time.
-  Transfers({
-    required String Function(MediaKey key) cacheKeyOf,
-    required PlaybackLifecycleSource lifecycle,
-    TransferEnvelope? envelope,
-    Duration retention = defaultRetention,
-    bool online = true,
-    DateTime Function() now = DateTime.now,
-  }) : this.engine(
-         cacheKeyOf: cacheKeyOf,
-         lifecycle: lifecycle,
-         runner: const _NoRunner(),
-         store: MemoryTransferStore(),
-         envelope: envelope,
-         retention: retention,
-         online: online,
-         now: now,
-       );
-
-  /// The engine over an explicit [runner] and [store]: what the package's
-  /// own runners and test support build on.
+  /// The engine over an explicit [runner] and an opened [journal]: what the
+  /// package's own runners and test support build on.
   @internal
   Transfers.engine({
     required String Function(MediaKey key) cacheKeyOf,
     required PlaybackLifecycleSource lifecycle,
     required TransferRunner runner,
-    required TransferStore store,
+    required TransferJournal journal,
     TransferEnvelope? envelope,
     this.retention = defaultRetention,
     bool online = true,
@@ -71,7 +52,7 @@ final class Transfers {
   }) : _cacheKeyOf = cacheKeyOf,
        _lifecycle = lifecycle,
        _runner = runner,
-       _store = store,
+       _journal = journal,
        _envelope = envelope,
        _online = online,
        _now = now,
@@ -81,16 +62,66 @@ final class Transfers {
     _restore();
   }
 
+  /// Opens the engine of the composition root over the journal the last
+  /// run left, and resumes its jobs.
+  ///
+  /// [directory] is the bytes cache's directory: on the VM the journal is
+  /// kept in `mpx_transfer` below it, and a missing [directory] throws an
+  /// [ArgumentError]; on the web it is ignored. [retention] is how long a
+  /// completed job stays queryable ([defaultRetention] unless given).
+  /// [progressInterval] is the shortest time between two progress writes
+  /// ([defaultProgressInterval] unless given). [envelope] is the platform's
+  /// OS envelope; without one, `system` jobs run in process. [online] is
+  /// the connectivity at start; [now] reads the time.
+  ///
+  /// A journal that cannot be read is reported (`journal` `writeFailed`)
+  /// and the engine runs in memory for this run, with no jobs.
+  static Future<Transfers> open({
+    required String Function(MediaKey key) cacheKeyOf,
+    required PlaybackLifecycleSource lifecycle,
+    String? directory,
+    TransferEnvelope? envelope,
+    Duration retention = defaultRetention,
+    Duration progressInterval = defaultProgressInterval,
+    bool online = true,
+    DateTime Function() now = DateTime.now,
+  }) async {
+    final journal = await TransferJournal.open(
+      platformJournalStore(directory),
+      retention: retention,
+      progressInterval: progressInterval,
+      now: now,
+    );
+    return Transfers.engine(
+      cacheKeyOf: cacheKeyOf,
+      lifecycle: lifecycle,
+      runner: const _NoRunner(),
+      journal: journal,
+      envelope: envelope,
+      retention: retention,
+      online: online,
+      now: now,
+    );
+  }
+
   /// How long a completed job stays queryable by default: 24 hours.
   static const Duration defaultRetention = Duration(hours: 24);
+
+  /// The shortest time between two progress writes to the journal by
+  /// default: 250 ms. A kill loses at most this much progress.
+  static const Duration defaultProgressInterval =
+      TransferJournal.defaultProgressInterval;
 
   /// How long a completed job stays queryable after it completed.
   final Duration retention;
 
+  /// The shortest time between two progress writes to the journal.
+  Duration get progressInterval => _journal.progressInterval;
+
   final String Function(MediaKey key) _cacheKeyOf;
   final PlaybackLifecycleSource _lifecycle;
   final TransferRunner _runner;
-  final TransferStore _store;
+  final TransferJournal _journal;
   final TransferEnvelope? _envelope;
   final DateTime Function() _now;
 
@@ -128,10 +159,11 @@ final class Transfers {
   /// The engine's state now, for a debug panel.
   TransfersDebugSnapshot debugSnapshot() => TransfersDebugSnapshot(
     jobs: [
-      for (final job in _store.jobs)
+      for (final job in _journal.jobs)
         if (job.state is! TransferState$Completed) job,
     ],
     online: _online,
+    journal: _journal.debugSnapshot(),
   );
 
   // --- Signals ---------------------------------------------------------------
@@ -215,7 +247,7 @@ final class Transfers {
     if (job == null) return false;
     _stopRun(id);
     _queuedAt.remove(id);
-    _store.delete(id);
+    _journal.remove(id);
     MpxDiagnostics.current.emit(
       MpxEventLevel.info,
       SchedulerOp.cancelled,
@@ -296,8 +328,22 @@ final class Transfers {
   }
 
   /// Stops listening to the lifecycle and the envelope, ends every query
-  /// and stops every run. The jobs stay in the store.
-  void dispose() {
+  /// and stops every run; completes once the journal has written what it
+  /// still held and closed. The jobs stay in the journal.
+  Future<void> dispose() {
+    _shutDown();
+    return _journal.close();
+  }
+
+  /// Stops as a killed process would: everything [dispose] stops, but the
+  /// journal writes nothing more, losing the progress it still batched.
+  @internal
+  void debugKill() {
+    _shutDown();
+    _journal.abandon();
+  }
+
+  void _shutDown() {
     if (_disposed) return;
     _disposed = true;
     _lifecycle.removeListener(_onLifecycle);
@@ -386,16 +432,22 @@ final class Transfers {
         fields: () => {'waitedMs': _now().difference(queuedAt).inMilliseconds},
       );
     }
-    _put(
-      job.copyWith(
-        state: TransferState.running(
-          done: done,
-          total: total,
-          estimated: estimated,
-        ),
-        updatedAt: _now(),
+    final next = job.copyWith(
+      state: TransferState.running(
+        done: done,
+        total: total,
+        estimated: estimated,
       ),
+      updatedAt: _now(),
     );
+    // Entering running is a state change, written at once; moving on while
+    // running is progress, batched.
+    if (job.state is TransferState$Running) {
+      _journal.writeProgress(next);
+      _changed();
+    } else {
+      _put(next);
+    }
   }
 
   void _onComplete(_Run run, TransferResult result) {
@@ -518,13 +570,13 @@ final class Transfers {
 
   // --- Store, watchers, envelope, retention -----------------------------------
 
-  /// What a previous engine over the same store left: a job that was moving
+  /// What a previous engine over the same journal left: a job that was moving
   /// starts again, except a download nobody asked to resume, which waits
   /// paused for its content to be shown again. A job the system interrupted
   /// starts again when the app is already in the foreground.
   void _restore() {
     _prune();
-    for (final job in [..._store.jobs]) {
+    for (final job in [..._journal.jobs]) {
       if (job.state case TransferState$Paused(
         reason: PauseReason.systemInterrupted,
       ) when _lifecycle.state == AppLifecycleState.resumed) {
@@ -542,19 +594,19 @@ final class Transfers {
     }
   }
 
-  TransferJob? _job(TransferId id) => _store.job(id);
+  TransferJob? _job(TransferId id) => _journal.job(id);
 
   List<TransferJob> _jobsPaused(PauseReason reason) => [
-    for (final job in _store.jobs)
+    for (final job in _journal.jobs)
       if (job.state case TransferState$Paused(reason: final r) when r == reason)
         job,
   ];
 
   List<TransferJob> _select(TransferFilter filter) =>
-      _store.jobs.where(filter.matches).toList(growable: false);
+      _journal.jobs.where(filter.matches).toList(growable: false);
 
   void _put(TransferJob job) {
-    _store.write(job);
+    _journal.writeState(job);
     _changed();
   }
 
@@ -577,7 +629,7 @@ final class Transfers {
     final envelope = _envelope;
     if (envelope == null) return;
     final inside = [
-      for (final job in _store.jobs)
+      for (final job in _journal.jobs)
         if (job.durability == TransferDurability.system && job.state.isActive)
           job,
     ];
@@ -621,7 +673,7 @@ final class Transfers {
     _pruneTimer?.cancel();
     _pruneTimer = null;
     DateTime? first;
-    for (final job in _store.jobs) {
+    for (final job in _journal.jobs) {
       if (job.state is! TransferState$Completed) continue;
       final expiry = job.updatedAt.add(retention);
       if (first == null || expiry.isBefore(first)) first = expiry;
@@ -635,17 +687,7 @@ final class Transfers {
   }
 
   /// Forgets the completed jobs past [retention]; answers whether any were.
-  bool _prune() {
-    final now = _now();
-    final expired = [
-      for (final job in _store.jobs)
-        if (job.state is TransferState$Completed &&
-            !now.isBefore(job.updatedAt.add(retention)))
-          job.id,
-    ];
-    expired.forEach(_store.delete);
-    return expired.isNotEmpty;
-  }
+  bool _prune() => _journal.prune(retention).isNotEmpty;
 }
 
 bool _sameJobs(List<TransferJob> a, List<TransferJob> b) {
@@ -693,9 +735,10 @@ final class _Run implements TransferRunSink {
   }
 }
 
-/// The runner of a facade made by the public constructor, before the
-/// package's own entry points (downloads, uploads) bring theirs. Nothing
-/// can queue a job on such a facade yet, so it is never started.
+/// The runner of a facade made by [Transfers.open], before the package's
+/// own entry points (downloads, uploads) bring theirs. Nothing can queue a
+/// job on such a facade yet, so its journal holds none to resume and the
+/// runner is never started.
 final class _NoRunner implements TransferRunner {
   const _NoRunner();
 

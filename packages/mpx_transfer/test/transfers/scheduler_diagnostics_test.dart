@@ -14,10 +14,10 @@ void main() {
   late TransfersHarness h;
   late DateTime now;
 
-  setUp(() {
+  setUp(() async {
     recorder = RecordingDiagnostics.install();
     now = DateTime.utc(2026, 11, 27);
-    h = harness(now: () => now);
+    h = await harness(now: () => now);
   });
 
   test('jobQueued: direction, durability, priority and every id', () {
@@ -54,7 +54,7 @@ void main() {
     ]);
   });
 
-  test('paused and resumed: the reason entered and the reason left', () {
+  test('paused and resumed: the reason entered and the reason left', () async {
     final id = h.addUpload(tag: 't');
     h.transfers
       ..pause(id)
@@ -77,13 +77,13 @@ void main() {
     ]);
   });
 
-  test('paused for each reason', () {
+  test('paused for each reason', () async {
     final lifecycle = ManualPlaybackLifecycleSource(
       initial: AppLifecycleState.hidden,
     );
     final envelope = FakeTransferEnvelope();
     addTearDown(envelope.close);
-    final h = harness(lifecycle: lifecycle, envelope: envelope);
+    final h = await harness(lifecycle: lifecycle, envelope: envelope);
 
     final network = h.addUpload();
     h.transfers.connectivityChanged(online: false);
@@ -93,7 +93,7 @@ void main() {
     final download = h.addDownload(photo, resumeOnStart: false);
     final user = h.addUpload();
     h.transfers.pause(user);
-    final restarted = h.restart(online: false);
+    final restarted = await h.restart(online: false);
     addTearDown(restarted.dispose);
 
     expect(
@@ -170,7 +170,7 @@ void main() {
     final id = h.addUpload(tag: 't');
     h.runner.progress(id, 100, total: 100);
     now = now.add(const Duration(seconds: 2));
-    h.runner.complete(id, const TestResult('ref'));
+    h.runner.complete(id, const FakeTransferResult('ref'));
     expect(recorder.whereOp(SchedulerOp.completed), [
       isMpxEvent(
         level: MpxEventLevel.info,
@@ -200,14 +200,14 @@ void main() {
     ]);
   });
 
-  test('envelope: requested, ended by the system, withdrawn', () {
+  test('envelope: requested, ended by the system, withdrawn', () async {
     final envelope = FakeTransferEnvelope();
     addTearDown(envelope.close);
-    final h = harness(envelope: envelope);
+    final h = await harness(envelope: envelope);
     final first = h.addUpload();
     envelope.emit(const TransferEnvelopeEvent.systemEnded());
     h.transfers.resume(first);
-    h.runner.complete(first, const TestResult('ref'));
+    h.runner.complete(first, const FakeTransferResult('ref'));
 
     expect(recorder.whereCategory('envelope'), [
       isMpxEvent(

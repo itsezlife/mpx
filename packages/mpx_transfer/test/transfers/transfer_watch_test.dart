@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_transfer/mpx_transfer.dart';
+import 'package:mpx_transfer/testing.dart';
 
 import '../support.dart';
 
@@ -13,8 +14,8 @@ void main() {
 
     // upload system 'a' queued, upload inProcess 'b' running,
     // download inProcess 'a' paused, download system 'b' failed.
-    setUp(() {
-      final h = harness();
+    setUp(() async {
+      final h = await harness();
       transfers = h.transfers;
       ids = [
         h.addUpload(tag: 'a'),
@@ -103,7 +104,7 @@ void main() {
 
   group('watch stream', () {
     test('sends the list again when a matching job changes', () async {
-      final h = harness();
+      final h = await harness();
       final seen = <List<TransferState>>[];
       final sub = h.transfers
           .watch(const TransferFilter(tag: 'mine'))
@@ -126,10 +127,10 @@ void main() {
     });
 
     test('ends at dispose', () async {
-      final h = harness();
+      final h = await harness();
       final done = Completer<void>();
       h.transfers.watch().listen(null, onDone: done.complete);
-      h.transfers.dispose();
+      unawaited(h.transfers.dispose());
       await done.future;
     });
   });
@@ -142,14 +143,15 @@ void main() {
     void completedFor(Duration retention, Duration kept) {
       fakeAsync((async) {
         final start = DateTime.utc(2026, 11, 27);
-        final h = harness(
+        final h = harnessIn(
+          async,
           retention: retention,
           now: () => start.add(async.elapsed),
         );
         final seen = <int>[];
         final sub = h.transfers.watch().listen((jobs) => seen.add(jobs.length));
         final id = h.addUpload();
-        h.runner.complete(id, const TestResult('ref'));
+        h.runner.complete(id, const FakeTransferResult('ref'));
         async.flushMicrotasks();
         expect(seen.last, 1);
 
@@ -163,7 +165,7 @@ void main() {
           ..flushMicrotasks();
         expect(seen.last, 0, reason: 'retention ended');
         unawaited(sub.cancel());
-        h.transfers.dispose();
+        unawaited(h.transfers.dispose());
       });
     }
 
@@ -171,14 +173,14 @@ void main() {
       completedFor(Transfers.defaultRetention, const Duration(hours: 24));
     });
 
-    test('takes the retention given', () {
+    test('takes the retention given', () async {
       completedFor(const Duration(hours: 2), const Duration(hours: 2));
     });
 
-    test('keeps a failed job past it', () {
+    test('keeps a failed job past it', () async {
       fakeAsync((async) {
         final start = DateTime.utc(2026, 11, 27);
-        final h = harness(now: () => start.add(async.elapsed));
+        final h = harnessIn(async, now: () => start.add(async.elapsed));
         final id = h.addUpload();
         h.runner.fail(id, TransferFailureKind.server);
         async.elapse(const Duration(hours: 48));
@@ -186,30 +188,30 @@ void main() {
         h.transfers.watch().first.then((value) => jobs = value);
         async.flushMicrotasks();
         expect(jobs, hasLength(1));
-        h.transfers.dispose();
+        unawaited(h.transfers.dispose());
       });
     });
 
-    test('drops a completed job past it at the next start', () {
+    test('drops a completed job past it at the next start', () async {
       var now = DateTime.utc(2026, 11, 27);
-      final h = harness(now: () => now);
+      final h = await harness(now: () => now);
       final id = h.addUpload();
-      h.runner.complete(id, const TestResult('ref'));
-      h.transfers.dispose();
+      h.runner.complete(id, const FakeTransferResult('ref'));
+      await h.transfers.dispose();
       now = now.add(const Duration(hours: 25));
 
-      final restarted = h.restart();
+      final restarted = await h.restart();
       expect(restarted.debugSnapshot().jobs, isEmpty);
       return expectLater(jobsOf(restarted), completion(isEmpty));
     });
   });
 
   group('debugSnapshot', () {
-    test('holds the jobs not completed and connectivity', () {
-      final h = harness();
+    test('holds the jobs not completed and connectivity', () async {
+      final h = await harness();
       final open = h.addUpload(tag: 't');
       final done = h.addUpload();
-      h.runner.complete(done, const TestResult('ref'));
+      h.runner.complete(done, const FakeTransferResult('ref'));
       h.transfers.connectivityChanged(online: false);
 
       final snapshot = h.transfers.debugSnapshot();

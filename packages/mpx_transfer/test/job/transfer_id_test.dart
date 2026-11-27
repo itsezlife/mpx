@@ -35,7 +35,7 @@ void main() {
 
   group('Transfers', () {
     test('a second download of a key returns the job it already has', () async {
-      final h = harness();
+      final h = await harness();
       final first = h.addDownload(photo, tag: 'first');
       final second = h.addDownload(photo, tag: 'second');
 
@@ -47,14 +47,14 @@ void main() {
     });
 
     test('derives a download id from the cache key cacheKeyOf gives', () async {
-      final h = harness();
+      final h = await harness();
       final id = h.addDownload(photo);
       expect(id, TransferId.forDownload(h.cacheKeyOf(photo)));
     });
 
-    test('keys with one cache key share a download job', () {
-      final h = TransfersHarness(
-        lifecycle: harness().lifecycle,
+    test('keys with one cache key share a download job', () async {
+      final h = await TransfersHarness.open(
+        lifecycle: (await harness()).lifecycle,
         cacheKeyOf: (_) => 'one',
       );
       addTearDown(h.transfers.dispose);
@@ -62,7 +62,7 @@ void main() {
     });
 
     test('gives every upload a new id, also for the same tag', () async {
-      final h = harness();
+      final h = await harness();
       final a = h.addUpload(tag: 'same');
       final b = h.addUpload(tag: 'same');
 
@@ -71,13 +71,13 @@ void main() {
     });
 
     test('carries the host tag as given', () async {
-      final h = harness();
+      final h = await harness();
       h.addUpload(tag: 'chat:1:abc');
       expect((await jobsOf(h.transfers)).single.tag, 'chat:1:abc');
     });
 
     test('carries the durability of every job', () async {
-      final h = harness();
+      final h = await harness();
       h
         ..addUpload()
         ..addDownload(photo)
@@ -93,7 +93,7 @@ void main() {
     });
 
     test('a download keeps its key; an upload has none', () async {
-      final h = harness();
+      final h = await harness();
       h
         ..addDownload(photo)
         ..addUpload();

@@ -5,8 +5,8 @@ must keep. Each job has one state, a `TransferId`, the host's opaque tag and
 a durability, and every job is found through one observable query on one
 facade, `Transfers`.
 
-Early: this release holds the state model, the verbs and the query over an
-in-memory engine. Downloads, uploads, the journal that survives a restart,
+Early: this release holds the state model, the verbs, the query and the
+journal that brings every job back after a kill. Downloads, uploads,
 publish jobs and the native OS envelopes arrive in the releases after it.
 
 ## Install
@@ -27,11 +27,15 @@ dependencies:
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_transfer/mpx_transfer.dart';
 
-// In the composition root, once the app runs.
-final transfers = Transfers(
+// In the composition root, once the app runs. Reads back the jobs the
+// last run left, whether it closed or was killed.
+final transfers = await Transfers.open(
   // The same MediaKey to cache key mapping the bytes cache fetcher uses.
   cacheKeyOf: (key) => key.encoded,
   lifecycle: WidgetsPlaybackLifecycleSource(),
+  // The bytes cache's directory; the journal sits in `mpx_transfer` below
+  // it. Ignored on the web.
+  directory: cacheDirectory,
 );
 
 // Fed from the device signal the asset cache scope reads.
@@ -72,10 +76,18 @@ transfers.cancel(id); // removes it
   completed job stays queryable for 24 hours (`retention`).
 - `pause`, `resume`, `cancel`, `retry`, `setPriority`, and
   `connectivityChanged(online:)`.
-- Diagnostics through `MpxDiagnostics.current` (`SchedulerOp`,
-  `EnvelopeOp`) and `debugSnapshot()` for a debug panel.
-- `testing.dart`: `FakeTransferEnvelope`, `ScriptedTransferRunner` and
-  `TransfersHarness`, which builds the engine over both.
+- A journal on the device: an append-only log beside the bytes cache,
+  folded into a snapshot at each start. A state change is written and
+  flushed at once, progress at most every 250 ms (`progressInterval`), so
+  a kill loses at most one window of progress; a record cut short by a
+  kill is dropped. On the web it is in memory until the OPFS store lands.
+- Diagnostics through `MpxDiagnostics.current` (`JournalOp`,
+  `SchedulerOp`, `EnvelopeOp`) and `debugSnapshot()` for a debug panel,
+  with a journal section.
+- `testing.dart`: `FakeTransferEnvelope`, `ScriptedTransferRunner`,
+  `FakeTransferResult`, `MemoryJournalStore`, the `JournalStoreContract`
+  every journal store meets, and `TransfersHarness`, which builds the
+  engine over them and restarts or kills it.
 
 ## Docs
 

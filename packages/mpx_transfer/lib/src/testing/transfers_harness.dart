@@ -1,33 +1,63 @@
 import 'package:http_bytes_cache/http_bytes_cache.dart' show RequestPriority;
 import 'package:mpx_core/mpx_core.dart';
-import 'package:mpx_transfer/src/engine/transfer_store.dart';
 import 'package:mpx_transfer/src/envelope/transfer_envelope.dart';
 import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
+import 'package:mpx_transfer/src/journal/journal_store.dart';
+import 'package:mpx_transfer/src/journal/transfer_journal.dart';
+import 'package:mpx_transfer/src/testing/fake_transfer_result.dart';
 import 'package:mpx_transfer/src/testing/scripted_transfer_runner.dart';
 import 'package:mpx_transfer/src/transfers.dart';
 
-/// A [Transfers] over the in-memory engine, its bytes moved by a
-/// [ScriptedTransferRunner], for tests of the state model at the facade.
+/// A [Transfers] over a journal in memory (or the store a test gives), its
+/// bytes moved by a [ScriptedTransferRunner], for tests of the state model
+/// and the journal at the facade.
 ///
 /// [addUpload] and [addDownload] make jobs the way the package's own entry
-/// points do, and [restart] builds a new facade over the jobs the last one
-/// left, as the next process start would.
+/// points do. [restart] closes the facade and opens a new one over the
+/// journal it left, as the next process start would; [kill] drops it
+/// without closing, as a killed process would, and opens a new one over
+/// what was flushed by then.
 final class TransfersHarness {
-  /// A harness reading the app's lifecycle from [lifecycle].
+  TransfersHarness._({
+    required this.lifecycle,
+    required this.cacheKeyOf,
+    required this.envelope,
+    required this.retention,
+    required this.progressInterval,
+    required this.now,
+    required this.openStore,
+  });
+
+  /// Opens a harness reading the app's lifecycle from [lifecycle].
   ///
   /// [cacheKeyOf] maps a key to its cache key (the key's `encoded` form by
-  /// default); the other parts are those of the [Transfers] constructor.
-  TransfersHarness({
-    required this.lifecycle,
+  /// default); [store] gives the journal's store at each start (one
+  /// [MemoryJournalStore] for every start by default; for a store on disk,
+  /// a new store over the same files each call). The other parts are those
+  /// of [Transfers.open].
+  static Future<TransfersHarness> open({
+    required PlaybackLifecycleSource lifecycle,
     String Function(MediaKey key)? cacheKeyOf,
-    this.envelope,
-    this.retention = Transfers.defaultRetention,
+    TransferEnvelope? envelope,
+    Duration retention = Transfers.defaultRetention,
+    Duration progressInterval = Transfers.defaultProgressInterval,
     bool online = true,
     DateTime Function()? now,
-  }) : cacheKeyOf = cacheKeyOf ?? ((key) => key.encoded),
-       now = now ?? DateTime.now {
-    transfers = _build(online);
+    JournalStore Function()? store,
+  }) async {
+    final memory = MemoryJournalStore();
+    final harness = TransfersHarness._(
+      lifecycle: lifecycle,
+      cacheKeyOf: cacheKeyOf ?? ((key) => key.encoded),
+      envelope: envelope,
+      retention: retention,
+      progressInterval: progressInterval,
+      now: now ?? DateTime.now,
+      openStore: store ?? () => memory,
+    );
+    await harness._start(online);
+    return harness;
   }
 
   /// The app lifecycle the facade reads.
@@ -42,17 +72,28 @@ final class TransfersHarness {
   /// How long completed jobs stay queryable.
   final Duration retention;
 
+  /// The shortest time between two progress writes.
+  final Duration progressInterval;
+
   /// The clock.
   final DateTime Function() now;
 
-  /// The runner every job's bytes go through; it outlives [restart], as the
-  /// test that scripts it does.
+  /// Gives the journal's store at each start.
+  final JournalStore Function() openStore;
+
+  /// The runner every job's bytes go through; it outlives [restart] and
+  /// [kill], as the test that scripts it does.
   final ScriptedTransferRunner runner = ScriptedTransferRunner();
 
-  final MemoryTransferStore _store = MemoryTransferStore();
-
-  /// The facade under test; replaced by [restart].
+  /// The facade under test; replaced by [restart] and [kill].
   late Transfers transfers;
+
+  late TransferJournal _journal;
+
+  /// The jobs the journal read back at the last start, before the engine
+  /// resumed any: what was flushed when the last facade ended.
+  List<TransferJob> get replayed => List.unmodifiable(_replayed);
+  List<TransferJob> _replayed = const [];
 
   /// Queues an upload: a new job with a new id each call.
   TransferId addUpload({
@@ -87,21 +128,45 @@ final class TransfersHarness {
     resumeOnStart: resumeOnStart,
   );
 
-  /// Ends the facade, as the process ending would, and builds a new one over
-  /// the jobs it left; [online] is the connectivity at the new start.
-  Transfers restart({bool online = true}) {
-    transfers.dispose();
-    return transfers = _build(online);
+  /// Completes when every journal write made so far is flushed; progress
+  /// still waiting for its window is not.
+  Future<void> settle() => _journal.idle;
+
+  /// Closes the facade, as the app shutting down would, and opens a new one
+  /// over the journal it left; [online] is the connectivity at the new
+  /// start.
+  Future<Transfers> restart({bool online = true}) async {
+    await transfers.dispose();
+    return _start(online);
   }
 
-  Transfers _build(bool online) => Transfers.engine(
-    cacheKeyOf: cacheKeyOf,
-    lifecycle: lifecycle,
-    runner: runner,
-    store: _store,
-    envelope: envelope,
-    retention: retention,
-    online: online,
-    now: now,
-  );
+  /// Drops the facade at this point, as a killed process would: progress
+  /// still batched is lost and no write not yet begun is made. Then opens a
+  /// new facade over what was flushed; [online] is the connectivity at the
+  /// new start.
+  Future<Transfers> kill({bool online = true}) {
+    transfers.debugKill();
+    return _start(online);
+  }
+
+  Future<Transfers> _start(bool online) async {
+    _journal = await TransferJournal.open(
+      openStore(),
+      retention: retention,
+      progressInterval: progressInterval,
+      now: now,
+      resultCodecs: const [FakeTransferResult.codec],
+    );
+    _replayed = _journal.jobs.toList();
+    return transfers = Transfers.engine(
+      cacheKeyOf: cacheKeyOf,
+      lifecycle: lifecycle,
+      runner: runner,
+      journal: _journal,
+      envelope: envelope,
+      retention: retention,
+      online: online,
+      now: now,
+    );
+  }
 }

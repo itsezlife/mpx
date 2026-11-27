@@ -34,7 +34,7 @@ TransferId _failed(TransfersHarness h) {
 
 TransferId _completed(TransfersHarness h) {
   final id = _running(h);
-  h.runner.complete(id, const TestResult('ref'));
+  h.runner.complete(id, const FakeTransferResult('ref'));
   return id;
 }
 
@@ -51,7 +51,7 @@ const Map<String, TransferId Function(TransfersHarness h)> _states = {
 void main() {
   group('state model', () {
     test('a new job is queued with its total', () async {
-      final h = harness();
+      final h = await harness();
       final id = h.addUpload(total: 100);
       expect(
         await stateOf(h.transfers, id),
@@ -61,7 +61,7 @@ void main() {
     });
 
     test('the first progress runs it, later ones move it on', () async {
-      final h = harness();
+      final h = await harness();
       final id = h.addUpload();
       h.runner.progress(id, 10, total: 100, estimated: true);
       expect(
@@ -76,16 +76,16 @@ void main() {
     });
 
     test('a completion holds the result', () async {
-      final h = harness();
+      final h = await harness();
       final id = _completed(h);
       expect(
         await stateOf(h.transfers, id),
-        const TransferState.completed(TestResult('ref')),
+        const TransferState.completed(FakeTransferResult('ref')),
       );
     });
 
     test('a failure keeps the bytes moved and whether to retry', () async {
-      final h = harness();
+      final h = await harness();
       final id = _running(h);
       h.runner.fail(id, TransferFailureKind.sourceLost, retryable: false);
       expect(
@@ -100,7 +100,7 @@ void main() {
     });
 
     test('a network failure while online fails the job', () async {
-      final h = harness();
+      final h = await harness();
       final id = _running(h);
       h.runner.fail(id, TransferFailureKind.network);
       expect(
@@ -119,7 +119,7 @@ void main() {
         _ => false,
       };
       test('${applies ? 'pauses' : 'leaves'} a $name job', () async {
-        final h = harness();
+        final h = await harness();
         final id = setup(h);
         final before = await stateOf(h.transfers, id);
 
@@ -143,7 +143,7 @@ void main() {
     }
 
     test('stops the run, and a late report changes nothing', () async {
-      final h = harness();
+      final h = await harness();
       final id = _running(h);
       h.transfers.pause(id);
       expect(h.runner.stops, [id]);
@@ -163,7 +163,7 @@ void main() {
     for (final MapEntry(key: name, value: setup) in _states.entries) {
       final applies = name.startsWith('paused');
       test('${applies ? 'queues' : 'leaves'} a $name job', () async {
-        final h = harness();
+        final h = await harness();
         final id = setup(h);
         final before = await stateOf(h.transfers, id);
         final starts = h.runner.starts.length;
@@ -187,7 +187,7 @@ void main() {
     for (final MapEntry(key: name, value: setup) in _states.entries) {
       final applies = name == 'failed';
       test('${applies ? 'queues' : 'leaves'} a $name job', () async {
-        final h = harness();
+        final h = await harness();
         final id = setup(h);
         final before = await stateOf(h.transfers, id);
 
@@ -207,7 +207,7 @@ void main() {
   group('cancel', () {
     for (final MapEntry(key: name, value: setup) in _states.entries) {
       test('removes a $name job', () async {
-        final h = harness();
+        final h = await harness();
         final id = setup(h);
 
         expect(h.transfers.cancel(id), isTrue);
@@ -218,15 +218,15 @@ void main() {
       });
     }
 
-    test('stops a running job', () {
-      final h = harness();
+    test('stops a running job', () async {
+      final h = await harness();
       final id = _running(h);
       h.transfers.cancel(id);
       expect(h.runner.stops, [id]);
     });
 
     test('lets a cancelled download key make a new job', () async {
-      final h = harness();
+      final h = await harness();
       final id = h.addDownload(photo);
       h.transfers.cancel(id);
       expect(h.addDownload(photo), id);
@@ -238,7 +238,7 @@ void main() {
     for (final MapEntry(key: name, value: setup) in _states.entries) {
       final applies = name != 'completed';
       test('${applies ? 'moves' : 'leaves'} a $name job', () async {
-        final h = harness();
+        final h = await harness();
         final id = setup(h);
 
         expect(
@@ -257,15 +257,15 @@ void main() {
       });
     }
 
-    test('changes nothing at the priority the job has', () {
-      final h = harness();
+    test('changes nothing at the priority the job has', () async {
+      final h = await harness();
       final id = h.addUpload();
       expect(h.transfers.setPriority(id, RequestPriority.visible), isFalse);
     });
   });
 
-  test('every verb answers false for an unknown id', () {
-    final h = harness();
+  test('every verb answers false for an unknown id', () async {
+    final h = await harness();
     final id = TransferId.issue();
     expect(h.transfers.pause(id), isFalse);
     expect(h.transfers.resume(id), isFalse);

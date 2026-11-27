@@ -21,6 +21,11 @@ dependencies:
   crypto: ^3.0.6
   flutter:
     sdk: flutter
+  # testing.dart's journal store contract is a test group: it needs the
+  # test framework, and a library cannot import a dev dependency. Production
+  # entry points never import it.
+  flutter_test:
+    sdk: flutter
   # The web entry of the plugin registers through it.
   flutter_web_plugins:
     sdk: flutter
@@ -32,8 +37,6 @@ dependencies:
 
 dev_dependencies:
   fake_async: ^1.3.3
-  flutter_test:
-    sdk: flutter
 
 flutter:
   plugin:

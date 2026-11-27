@@ -12,13 +12,13 @@ void main() {
   late ManualPlaybackLifecycleSource lifecycle;
   late TransfersHarness h;
 
-  setUp(() {
+  setUp(() async {
     envelope = FakeTransferEnvelope();
     addTearDown(envelope.close);
     lifecycle = ManualPlaybackLifecycleSource(
       initial: AppLifecycleState.resumed,
     );
-    h = harness(envelope: envelope, lifecycle: lifecycle);
+    h = await harness(envelope: envelope, lifecycle: lifecycle);
   });
 
   test('starts over the first system job', () {
@@ -32,7 +32,7 @@ void main() {
     final id = h.addDownload(photo);
     h.runner
       ..progress(id, 5)
-      ..complete(id, const TestResult('file'));
+      ..complete(id, const FakeTransferResult('file'));
     expect(envelope.starts, isEmpty);
     expect(envelope.stops, 0);
   });
@@ -61,7 +61,7 @@ void main() {
   test('stops when its jobs drain', () {
     final a = h.addUpload();
     final b = h.addUpload();
-    h.runner.complete(a, const TestResult('a'));
+    h.runner.complete(a, const FakeTransferResult('a'));
     expect(envelope.stops, 0);
     expect(envelope.current!.jobs, {b});
 

@@ -10,7 +10,7 @@ import '../support.dart';
 void main() {
   group('user', () {
     test('entered by pause, left by resume', () async {
-      final h = harness();
+      final h = await harness();
       final id = h.addUpload(total: 10);
       h.runner.progress(id, 4, total: 10);
 
@@ -35,7 +35,7 @@ void main() {
       final lifecycle = ManualPlaybackLifecycleSource(
         initial: AppLifecycleState.paused,
       );
-      final h = harness(lifecycle: lifecycle);
+      final h = await harness(lifecycle: lifecycle);
       final id = h.addUpload();
       h.transfers.pause(id);
 
@@ -56,13 +56,13 @@ void main() {
     late FakeTransferEnvelope envelope;
     late TransfersHarness h;
 
-    setUp(() {
+    setUp(() async {
       lifecycle = ManualPlaybackLifecycleSource(
         initial: AppLifecycleState.resumed,
       );
       envelope = FakeTransferEnvelope();
       addTearDown(envelope.close);
-      h = harness(lifecycle: lifecycle, envelope: envelope);
+      h = await harness(lifecycle: lifecycle, envelope: envelope);
     });
 
     test('entered when the system ends the envelope', () async {
@@ -117,10 +117,13 @@ void main() {
       lifecycle.emit(AppLifecycleState.hidden);
       envelope.emit(const TransferEnvelopeEvent.systemEnded());
       // The process ends in the background; the next one starts in front.
-      h.transfers.dispose();
+      await h.transfers.dispose();
       lifecycle.emit(AppLifecycleState.resumed);
 
-      expect(await stateOf(h.restart(), id), const TransferState.queued());
+      expect(
+        await stateOf(await h.restart(), id),
+        const TransferState.queued(),
+      );
     });
 
     test('kept at a start in the background', () async {
@@ -129,7 +132,7 @@ void main() {
       envelope.emit(const TransferEnvelopeEvent.systemEnded());
 
       expect(
-        await stateOf(h.restart(), id),
+        await stateOf(await h.restart(), id),
         const TransferState.paused(reason: PauseReason.systemInterrupted),
       );
     });
@@ -137,7 +140,7 @@ void main() {
 
   group('awaitingNetwork', () {
     test('entered by a network failure while offline', () async {
-      final h = harness();
+      final h = await harness();
       final id = h.addUpload(total: 10);
       h.runner.progress(id, 5, total: 10);
       h.transfers.connectivityChanged(online: false);
@@ -160,14 +163,14 @@ void main() {
     });
 
     test('not entered by another failure while offline', () async {
-      final h = harness(online: false);
+      final h = await harness(online: false);
       final id = h.addUpload();
       h.runner.fail(id, TransferFailureKind.server);
       expect(await stateOf(h.transfers, id), isA<TransferState$Failed>());
     });
 
     test('left when connectivity comes back', () async {
-      final h = harness(online: false);
+      final h = await harness(online: false);
       final id = h.addUpload(total: 10);
       h.runner.fail(id, TransferFailureKind.network);
 
@@ -185,12 +188,12 @@ void main() {
     test(
       'entered at start by a download that does not resume by itself',
       () async {
-        final h = harness();
+        final h = await harness();
         final auto = h.addDownload(photo, total: 10, resumeOnStart: false);
         final user = h.addDownload(video);
         h.runner.progress(auto, 6, total: 10);
 
-        final restarted = h.restart();
+        final restarted = await h.restart();
 
         expect(
           await stateOf(restarted, auto),
@@ -207,15 +210,18 @@ void main() {
     );
 
     test('not entered by an upload, which always resumes', () async {
-      final h = harness();
+      final h = await harness();
       final id = h.addUpload();
-      expect(await stateOf(h.restart(), id), const TransferState.queued());
+      expect(
+        await stateOf(await h.restart(), id),
+        const TransferState.queued(),
+      );
     });
 
     test('left by resume', () async {
-      final h = harness();
+      final h = await harness();
       final id = h.addDownload(photo, resumeOnStart: false);
-      final restarted = h.restart();
+      final restarted = await h.restart();
 
       expect(restarted.resume(id), isTrue);
 
