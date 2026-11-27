@@ -10,6 +10,7 @@ import 'download/tracked_download_diagnostics_test.dart'
     as tracked_download_diagnostics_test;
 import 'download/tracked_download_view_test.dart' as tracked_download_view_test;
 import 'download/tracked_downloads_test.dart' as tracked_downloads_test;
+import 'envelope/ios_transfer_envelope_test.dart' as ios_transfer_envelope_test;
 import 'job/transfer_id_test.dart' as transfer_id_test;
 import 'journal/journal_store_contract_test.dart'
     as journal_store_contract_test;
@@ -56,6 +57,7 @@ void main() {
   );
   group('tracked_download_view_test', tracked_download_view_test.main);
   group('tracked_downloads_test', tracked_downloads_test.main);
+  group('ios_transfer_envelope_test', ios_transfer_envelope_test.main);
   group('transfer_id_test', transfer_id_test.main);
   group('journal_store_contract_test', journal_store_contract_test.main);
   group('transfer_journal_test', transfer_journal_test.main);

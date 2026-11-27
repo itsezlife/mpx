@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- iOS envelope: `IosTransferEnvelope`. A background task begins when the
+  app enters the background; on iOS 26 and later a continued-processing
+  task with the system's Live Activity is asked for by `submitAt` (10 s
+  after backgrounding by default, or at resign-active), its progress
+  pushed every second, and let go in the foreground. A refused submission
+  keeps the background task until its time ends. Native events go to
+  `os_log` and, while Dart is not attached, to a 2 MiB ring file emitted
+  at the next start. `EnvelopeOp.progressPushed` and `nativeMerged`. The
+  host adds the task identifier and the `processing` background mode
+  (README).
+
 - OS envelope: `TransferEnvelopeConfig` (title, text, cancel-all label,
   progress text, icon, `startRule`, `longJobBytes` 10 MiB, `submitAt`
   `afterDelay(10 s)` or `onResignActive`) through

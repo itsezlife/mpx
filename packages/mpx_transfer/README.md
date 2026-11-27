@@ -157,6 +157,7 @@ transfers.cancel(id); // removes it
 
 // The OS envelope's text and icon, already localised by the host. Without
 // a config `system` jobs run in process.
+// On iOS the envelope is `IosTransferEnvelope()` (host setup below).
 //   Transfers.open(..., envelope: platformEnvelope,
 //       envelopeConfig: TransferEnvelopeConfig(
 //         title: l10n.sendingMedia,
@@ -264,6 +265,20 @@ transfers.systemActive.addListener(() {
   publish job one of them belongs to. `notificationTaps` streams the job a
   tapped notification showed. `debugSimulateSystemInterruption()` (debug
   builds) acts out a system end for a debug panel.
+- iOS (`IosTransferEnvelope`): a background task begun the moment the app
+  enters the background (about 30 s, every version); on iOS 26 and later a
+  continued-processing task, whose progress the system shows in a Live
+  Activity with the config's title and text (no widget extension), asked
+  for 10 s after backgrounding while `system` jobs remain
+  (`submitAt: afterDelay`), or at resign-active (`onResignActive`).
+  Progress is pushed every second while it changes. Everything is let go
+  when the app returns to the foreground. A refused submission keeps the
+  background task; when that time ends, or the system ends the
+  continued-processing task, the jobs pause `systemInterrupted`. A cancel
+  in the Live Activity looks the same to the app as a system stop, so it
+  pauses the jobs too. Native events also go to `os_log` (subsystem
+  `dev.mpx.transfer`, category `envelope`) and, while no Dart side is
+  attached, to a ring file of at most 2 MiB, emitted at the next start.
 - `Transfers.watch(filter)` by direction, state, tag and durability; a
   completed job stays queryable for 24 hours (`retention`).
 - `pause`, `resume`, `cancel`, `retry`, `setPriority`, and
@@ -292,6 +307,28 @@ transfers.systemActive.addListener(() {
   `FakePublisher`, answering each call on script, `UploadsHarness`, which
   runs uploads and publish jobs through the real engine, and `TransfersHarness`, which builds the engine over
   them and restarts or kills it.
+
+## iOS host setup
+
+For `system` transfers in the background on iOS 26 and later, the app's
+`Info.plist` names the task identifier and the background mode. Without
+the identifier the background task (about 30 s) still holds the process,
+and each submission is reported refused (`noIdentifier`).
+
+```xml
+<key>BGTaskSchedulerPermittedIdentifiers</key>
+<array>
+  <string>$(PRODUCT_BUNDLE_IDENTIFIER).mpx.transfer.*</string>
+</array>
+<key>UIBackgroundModes</key>
+<array>
+  <string>processing</string>
+</array>
+```
+
+The plugin registers each task under that prefix itself. iOS 15 is the
+floor; an app built with an SDK older than iOS 26's has the background
+task only.
 
 ## Docs
 

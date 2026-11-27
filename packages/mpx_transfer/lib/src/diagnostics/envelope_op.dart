@@ -8,19 +8,27 @@ enum EnvelopeOp implements DiagnosticOp {
   startRequested,
 
   /// The envelope started, or was taken over from an earlier run (info;
-  /// `handle`, `kind` when known, `adopted`).
+  /// `handle`, `kind` when known, `adopted`); on iOS also each time a
+  /// background task or a continued-processing task begins to hold the
+  /// process (`kind`, `handle`).
   started,
 
   /// A job queued without an envelope (debug; `why`: `short`, `never`,
   /// `inProcess`, `platform`; the job).
   notStarted,
 
-  /// The platform refused the envelope (warning; `code`).
+  /// The platform refused the envelope (warning; `code`, and `kind` for a
+  /// refused background or continued-processing task).
   refused,
 
-  /// `system` jobs run in process instead (warning; `from`, `to`, `why`:
-  /// `unconfigured`, `refused`).
+  /// `system` jobs run in process instead, or under a lesser envelope
+  /// (warning; `from`, `to`, `why`: `unconfigured`, `refused`,
+  /// `submitFailed`).
   degraded,
+
+  /// The engine's progress was pushed to the platform's progress UI
+  /// (trace; `fraction` when the total is known, `jobs`).
+  progressPushed,
 
   /// The system ended the envelope; its jobs paused (warning; `jobs`,
   /// `cause`; the first job).
@@ -30,12 +38,19 @@ enum EnvelopeOp implements DiagnosticOp {
   /// job).
   userCancelledAll,
 
-  /// The engine stopped the envelope (info; `why`: `drained`).
+  /// The engine stopped the envelope, or the app returned to the
+  /// foreground and what held the process let go (info; `why`: `drained`,
+  /// `foreground`; `kind` for the latter).
   withdrawn,
 
   /// The user tapped the envelope's notification (info; the job it
   /// showed).
-  notificationTap;
+  notificationTap,
+
+  /// The records the native part kept while no Dart side was attached were
+  /// emitted, each with its original time and `native: true` (info;
+  /// `records`, `oldestAgeS`).
+  nativeMerged;
 
   @override
   String get category => 'envelope';
