@@ -6,7 +6,7 @@ import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
 /// the range of the file at its path, streamed by the transfer worker.
 /// [bytes] is the web's; the VM reads the file. [prefix] and [suffix] go
 /// around the range.
-HttpBytesUploadBody uploadPartBody(
+HttpBytesUploadBody $uploadPartBody(
   JournalSource source,
   SourceBytes? bytes, {
   required int offset,

@@ -37,7 +37,7 @@ sealed class UploadSource {
     List<int> bytes, {
     String? directory,
   }) async => UploadSource$Finished(
-    await writeUploadTempFile(bytes, directory: directory),
+    await $writeUploadTempFile(bytes, directory: directory),
     size: bytes.length,
   );
 

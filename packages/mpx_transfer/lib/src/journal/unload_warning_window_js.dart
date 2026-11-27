@@ -8,9 +8,9 @@ import 'package:web/web.dart' as web;
 /// confirm leaving.
 ///
 /// Web only.
-final class WindowUnloadWarning implements UnloadWarning {
+final class UnloadWarning$Window$JS implements UnloadWarning {
   /// A warning on [target], the page's window unless given.
-  WindowUnloadWarning([web.EventTarget? target])
+  UnloadWarning$Window$JS([web.EventTarget? target])
     : _target = target ?? web.window;
 
   final web.EventTarget _target;

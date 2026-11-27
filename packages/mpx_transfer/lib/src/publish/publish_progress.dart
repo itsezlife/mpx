@@ -138,32 +138,36 @@ final class ProgressFold {
 /// while unknown) and its [fraction] done, 0..1.
 typedef ItemMeasure = ({int? weight, double fraction});
 
-/// A job's items together, before the publish share: each [items] fraction
-/// by its weight. An item whose weight is not known yet weighs as much as
-/// the known ones on average (one byte when none is known); a job with no
-/// items, or only weightless ones, counts its items alike.
+/// A job's items as its progress counts them together.
 ///
 /// Internal to the package.
 @internal
-double itemsFraction(List<ItemMeasure> items) {
-  if (items.isEmpty) return 1;
-  final known = [for (final item in items) ?item.weight];
-  final fallback = known.isEmpty
-      ? 1.0
-      : known.fold(0, (sum, weight) => sum + weight) / known.length;
-  var total = 0.0;
-  var done = 0.0;
-  for (final item in items) {
-    final weight = item.weight?.toDouble() ?? fallback;
-    total += weight;
-    done += weight * item.fraction;
-  }
-  if (total <= 0) {
-    var sum = 0.0;
+extension ItemMeasures on List<ItemMeasure> {
+  /// The items together, before the publish share: each item's fraction by
+  /// its weight. An item whose weight is not known yet weighs as much as the
+  /// known ones on average (one byte when none is known); a job with no
+  /// items, or only weightless ones, counts its items alike.
+  double get fraction {
+    final items = this;
+    if (items.isEmpty) return 1;
+    final known = [for (final item in items) ?item.weight];
+    final fallback = known.isEmpty
+        ? 1.0
+        : known.fold(0, (sum, weight) => sum + weight) / known.length;
+    var total = 0.0;
+    var done = 0.0;
     for (final item in items) {
-      sum += item.fraction;
+      final weight = item.weight?.toDouble() ?? fallback;
+      total += weight;
+      done += weight * item.fraction;
     }
-    return sum / items.length;
+    if (total <= 0) {
+      var sum = 0.0;
+      for (final item in items) {
+        sum += item.fraction;
+      }
+      return sum / items.length;
+    }
+    return done / total;
   }
-  return done / total;
 }
