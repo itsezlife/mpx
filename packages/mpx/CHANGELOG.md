@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `CacheDiagnosticsBridge` carries a bytes event's own fields beside
+  `bytesOp` (an upload retry's attempt and delay), and names the upload
+  operations: `CacheOp.uploadStarted`, `uploadRetry`, `uploadGaveUp`.
 - The bytes cache reports through `MpxDiagnostics.current`:
   `CacheDiagnosticsBridge.policy`, which `MpxStack.create` installs as
   `BytesDiagnostics.current`, turns each bytes event into an `MpxEvent` of
