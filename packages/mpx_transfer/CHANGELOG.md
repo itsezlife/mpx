@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Uploads through `Transfers.tracked`: `watch(key)` of a publish job
+  item's local key reads its uploads (file and thumbnail together):
+  `waiting` while queued, `sending(sent, total)` while running and held
+  while paused by the system or for the network, `awaitingUser` paused by
+  the user, `failed`, then `sent` until its job published and aliased its
+  server keys, and `none` after, the local picture kept. A one-item
+  `upload` reads `none` once uploaded. `cancel(key)` removes the item from
+  its job (`itemRemoved`, by: cell; the last one leaves the job
+  `awaitingOwner`); `download(key)` resumes an upload the user paused and
+  retries a failed item instead of starting a download. `binding.mapped`
+  carries the file upload's id, the item id, its state and the value.
+  `tracked` is there on a facade with downloads or with uploads to
+  publish; without downloads, `download` of a key with no upload and
+  `leaseFile` do nothing.
+- `UploadsHarness.open(downloads:)`: tracked downloads beside the uploads.
+
 - Ordering groups: jobs sharing an `orderingGroup` publish in creation
   order; a failed job lets later ones go on and, retried, publishes after
   them. The order is journaled.

@@ -13,7 +13,6 @@ import 'package:mpx_transfer/src/diagnostics/transfers_debug_snapshot.dart';
 import 'package:mpx_transfer/src/diagnostics/transport_op.dart';
 import 'package:mpx_transfer/src/download/download_runner.dart';
 import 'package:mpx_transfer/src/download/downloaded_content.dart';
-import 'package:mpx_transfer/src/download/tracked_downloads.dart';
 import 'package:mpx_transfer/src/download/transfer_downloads.dart';
 import 'package:mpx_transfer/src/engine/transfer_runner.dart';
 import 'package:mpx_transfer/src/envelope/transfer_envelope.dart';
@@ -35,6 +34,7 @@ import 'package:mpx_transfer/src/publish/publish_request.dart';
 import 'package:mpx_transfer/src/publish/publish_state.dart';
 import 'package:mpx_transfer/src/publish/publisher.dart';
 import 'package:mpx_transfer/src/reuse/reuse_table.dart';
+import 'package:mpx_transfer/src/tracked/tracked_content.dart';
 import 'package:mpx_transfer/src/upload/remote_ref.dart';
 import 'package:mpx_transfer/src/upload/resume_outcome.dart';
 import 'package:mpx_transfer/src/upload/upload_engine.dart';
@@ -112,7 +112,6 @@ final class Transfers {
        _online = online,
        _now = now,
        _lastLifecycle = lifecycle.state {
-    if (downloads != null) _tracked = TrackedDownloads(this, downloads);
     if (uploads != null && publishJournal != null) {
       _publish = PublishJobs(
         journal: publishJournal,
@@ -122,6 +121,14 @@ final class Transfers {
         preparation: preparation,
         progressWeights: progressWeights,
         now: now,
+      );
+    }
+    if (downloads != null || _publish != null) {
+      _tracked = TrackedContent(
+        engine: this,
+        journal: journal,
+        downloads: downloads,
+        publish: _publish,
       );
     }
     _lifecycle.addListener(_onLifecycle);
@@ -344,7 +351,7 @@ final class Transfers {
   int _envelopesStarted = 0;
   int _envelopesEndedBySystem = 0;
   Timer? _pruneTimer;
-  TrackedDownloads? _tracked;
+  TrackedContent? _tracked;
 
   // --- Queries ---------------------------------------------------------------
 
@@ -370,18 +377,28 @@ final class Transfers {
   /// composition root hands it to the asset cache scope
   /// (`AssetCacheScope(tracked:)`) and to savers.
   ///
-  /// Its `watch(key)` maps a download job's state onto the value a surface
-  /// shows: queued is waiting, running is receiving, paused by the user or
-  /// waiting to resume after a restart is awaitingUser, paused by the
-  /// system or for the network is the last receiving value held, failed is
-  /// failed and completed is none. Watching a key whose download came back
-  /// [PauseReason.awaitingResume] resumes it. `cancel(key)` pauses a
-  /// download for the user. `leaseFile(key)` lends the cached file once the
-  /// content is whole.
+  /// Its `watch(key)` maps a job's state onto the value a surface shows, in
+  /// both directions: queued is waiting, running is receiving (a download)
+  /// or sending (an upload of a publish job item whose local key is the
+  /// key), paused by the user or waiting to resume after a restart is
+  /// awaitingUser, paused by the system or for the network is the last
+  /// receiving or sending value held, failed is failed, and completed is
+  /// none for a download. An item whose uploads completed reads sent until
+  /// its job published and aliased its server keys, then none. Watching a
+  /// key whose download came back [PauseReason.awaitingResume] resumes it.
+  /// `cancel(key)` pauses a download for the user, and removes an upload's
+  /// item from its publish job (as a cell's, `itemRemoved` by: cell).
+  /// `download(key)` resumes or retries a key's upload the user paused or
+  /// that failed. `leaseFile(key)` lends the cached file once the content
+  /// is whole.
   ///
-  /// Throws a [StateError] when the facade was opened without downloads.
+  /// Throws a [StateError] when the facade was opened with neither
+  /// downloads nor uploads to publish.
   TrackedTransfers get tracked =>
-      _tracked ?? (throw StateError('Transfers was opened without downloads.'));
+      _tracked ??
+      (throw StateError(
+        'Transfers was opened without downloads or uploads to publish.',
+      ));
 
   /// The reuse table: sending the same media again without preparing or
   /// uploading it again. A publish job looks each item up in it before
@@ -1761,6 +1778,9 @@ final class _PublishHost implements PublishUploadHost {
 
   @override
   void cancelUpload(TransferId id) => _engine._cancel(id, by: 'owner');
+
+  @override
+  void publishChanged() => _engine._tracked?.refresh();
 
   @override
   Future<bool>? alias(MediaKey local, MediaKey server) => _engine._cache?.alias(

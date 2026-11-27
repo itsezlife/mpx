@@ -49,6 +49,10 @@ abstract interface class PublishUploadHost {
   /// Cancels upload [id] for the job that owns it.
   void cancelUpload(TransferId id);
 
+  /// A job changed, was cancelled or lost an item: what the facade's view
+  /// by content key reads may have moved.
+  void publishChanged();
+
   /// Makes [server] resolve to the bytes [local] holds in the bytes cache;
   /// completes with whether [local] held any. Null when the facade has no
   /// bytes cache.
@@ -191,6 +195,16 @@ final class PublishJobs {
   PublishJobSnapshot? snapshotOf(PublishJobId id) {
     final record = _journal.record(id);
     return record == null ? null : _snapshot(record);
+  }
+
+  /// Whether item [itemId] of job [id] is published, its server keys
+  /// aliased in the bytes cache: what turns its cells' sent into none. Null
+  /// when the job or the item is gone (removed, the job cancelled or
+  /// dropped after its retention).
+  bool? itemAliased(PublishJobId id, String itemId) {
+    final record = _journal.record(id);
+    if (record == null || _itemRecord(id, itemId) == null) return null;
+    return record.end is PublishJobState$Completed && record.aliases.isEmpty;
   }
 
   /// See [PublishJob.watch].
@@ -339,6 +353,7 @@ final class PublishJobs {
     }
     unawaited(_journal.remove(id));
     _progress.remove(id);
+    _host.publishChanged();
     for (final watch in [..._jobsWatches]) {
       if (!watch.last.any((job) => job.id == id)) continue;
       watch.last = [
@@ -1927,6 +1942,7 @@ final class PublishJobs {
   /// folds in every step it took.
   void _changed(PublishJobId id) {
     if (_disposed) return;
+    _host.publishChanged();
     final record = _journal.record(id);
     if (record == null) return;
     final next = _snapshot(record);

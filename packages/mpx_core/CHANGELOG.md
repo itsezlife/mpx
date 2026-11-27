@@ -15,9 +15,13 @@
   `binding.mapped` is the seam implementation's to report, with the job.
 - `AssetTransfer.sending(sent, total)` and `AssetTransfer.sent`: an upload
   whose source is the content, and its end before the content is
-  published. Only a tracked transfer reports them; a status control shows
-  them as it shows none for now. Code that switches exhaustively over
-  `AssetTransfer` needs the two cases.
+  published. Only a tracked transfer reports them. Code that switches
+  exhaustively over `AssetTransfer` needs the two cases.
+- The status control shows an upload: `sending` is a ring of the bytes sent
+  with a cancel (`MediaStatus.upload`, read as "Cancel upload",
+  `MediaStatusStrings.cancelUpload`) that goes to the seam's `cancel(key)`,
+  and the badge reads "sent / total"; `sent` shows no ring and keeps the
+  picture. Code that compares `MediaStatus` values sees the new field.
 - Media preparation: the `MediaPreparation` seam (`prepare(input, intent)`
   returning a `PreparationHandle` with progress, the `PreparedMedia` and
   cancel; failures `PreparationCancelled` and `PreparationFailed(code)`).

@@ -158,18 +158,5 @@ void main() {
       expect(const AssetTransfer.sending(1, 2).isActive, isFalse);
       expect(AssetTransfer.sent.isActive, isFalse);
     });
-
-    test('a status control shows them as it shows none', () {
-      for (final stage in AssetStage.values) {
-        expect(
-          MediaStatus.forTransfer(const AssetTransfer.sending(1, 2), stage),
-          MediaStatus.forTransfer(AssetTransfer.none, stage),
-        );
-        expect(
-          MediaStatus.forTransfer(AssetTransfer.sent, stage, playAction: true),
-          MediaStatus.forTransfer(AssetTransfer.none, stage, playAction: true),
-        );
-      }
-    });
   });
 }

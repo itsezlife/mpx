@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_transfer/src/download/transfer_downloads.dart';
 import 'package:mpx_transfer/src/engine/connection_slots.dart';
 import 'package:mpx_transfer/src/envelope/transfer_envelope.dart';
 import 'package:mpx_transfer/src/envelope/transfer_envelope_config.dart';
@@ -51,6 +52,7 @@ final class UploadsHarness {
     required this.envelopeConfig,
     required this.cache,
     required this.progressWeights,
+    required this.downloads,
   });
 
   /// Opens a harness over [transports]; the job's transport is the first
@@ -64,7 +66,8 @@ final class UploadsHarness {
   /// `FakeUploadSourceFiles` for sources that are not real files).
   /// [envelope] is the OS envelope, showing [envelopeConfig]. The other
   /// parts are those of [Transfers.open]; [cache] is the bytes cache
-  /// publish jobs alias their server keys in.
+  /// publish jobs alias their server keys in (`downloads.store` unless
+  /// given); [downloads], tracked downloads beside the uploads.
   static Future<UploadsHarness> open({
     required PlaybackLifecycleSource lifecycle,
     required List<UploadTransport> transports,
@@ -83,6 +86,7 @@ final class UploadsHarness {
     TransferEnvelopeConfig? envelopeConfig,
     IBytesStore? cache,
     PublishProgressWeights progressWeights = PublishProgressWeights.standard,
+    TransferDownloads? downloads,
   }) async {
     final memory = MemoryJournalStore();
     final harness = UploadsHarness._(
@@ -103,6 +107,7 @@ final class UploadsHarness {
       envelopeConfig: envelopeConfig,
       cache: cache,
       progressWeights: progressWeights,
+      downloads: downloads,
     );
     await harness._start();
     return harness;
@@ -158,6 +163,9 @@ final class UploadsHarness {
 
   /// How publish jobs weigh their progress.
   final PublishProgressWeights progressWeights;
+
+  /// What tracked downloads fetch through; null for a facade without them.
+  final TransferDownloads? downloads;
 
   /// Where the publish jobs' records are kept across restarts.
   final MemoryJournalStore publishStore = MemoryJournalStore();
@@ -275,6 +283,7 @@ final class UploadsHarness {
       preparation: preparation,
       cache: cache,
       progressWeights: progressWeights,
+      downloads: downloads,
       now: now,
     );
   }

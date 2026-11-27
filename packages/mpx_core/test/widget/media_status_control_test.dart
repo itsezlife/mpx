@@ -60,6 +60,55 @@ void main() {
       );
     });
 
+    test('sending is an upload\'s cancel over the bytes sent, turning '
+        'without a total, at every stage', () {
+      for (final stage in AssetStage.values) {
+        expect(
+          MediaStatus.forTransfer(const AssetTransfer.sending(1, 4), stage),
+          const MediaStatus.progress(0.25, upload: true),
+        );
+      }
+      expect(
+        MediaStatus.forTransfer(const AssetTransfer.sending(1), shown),
+        const MediaStatus.progress(null, upload: true),
+      );
+      expect(
+        const MediaStatus.progress(0.25, upload: true),
+        isNot(const MediaStatus.progress(0.25)),
+      );
+    });
+
+    test('sent shows no ring: as none does', () {
+      for (final stage in AssetStage.values) {
+        expect(
+          MediaStatus.forTransfer(AssetTransfer.sent, stage),
+          MediaStatus.forTransfer(AssetTransfer.none, stage),
+        );
+        expect(
+          MediaStatus.forTransfer(AssetTransfer.sent, stage, playAction: true),
+          MediaStatus.forTransfer(AssetTransfer.none, stage, playAction: true),
+        );
+      }
+    });
+
+    test('an upload\'s cancel says so to a screen reader', () {
+      const strings = MediaStatusStrings();
+      expect(
+        strings.labelOf(const MediaStatus.progress(0.5, upload: true)),
+        'Cancel upload',
+      );
+      expect(
+        strings.labelOf(const MediaStatus.progress(0.5)),
+        'Cancel download',
+      );
+      expect(
+        const MediaStatusStrings(
+          cancelUpload: 'Stop sending',
+        ).labelOf(const MediaStatus.progress(null, upload: true)),
+        'Stop sending',
+      );
+    });
+
     test('a failure is download, the retry', () {
       expect(
         MediaStatus.forTransfer(

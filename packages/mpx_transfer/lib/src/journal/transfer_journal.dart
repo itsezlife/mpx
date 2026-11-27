@@ -197,6 +197,9 @@ final class TransferJournal {
   /// Job [id]'s whole record, or null when none is kept.
   JournalRecord? record(TransferId id) => _records[id];
 
+  /// Every record kept, in the order their jobs were first written.
+  Iterable<JournalRecord> get records => _records.values;
+
   /// What the storage is.
   JournalStoreKind get kind => _store.kind;
 

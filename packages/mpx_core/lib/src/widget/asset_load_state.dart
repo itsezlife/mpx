@@ -99,7 +99,12 @@ final class AssetLoadState {
             transfer.isActive &&
             status.arc &&
             status.progress == null
-        ? MediaStatus(icon: status.icon, arc: true, progress: 0)
+        ? MediaStatus(
+            icon: status.icon,
+            arc: true,
+            progress: 0,
+            upload: status.upload,
+          )
         : status;
   }
 

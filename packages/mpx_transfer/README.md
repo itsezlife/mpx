@@ -192,6 +192,12 @@ transfers.systemActive.addListener(() {
   served by its priority queue; a user download resumes after a restart,
   an auto download waits (`awaitingResume`) until a surface watches it;
   `leaseFile` lends the cached file.
+- Uploads seen by content key through the same `tracked`: a publish job
+  item's local key reads `waiting`, `sending` (held while the system or
+  the network paused it), `sent` until its job published and aliased its
+  server keys, then `none`, the local picture kept. `cancel(key)` removes
+  the item from its job (`by: cell`); `download(key)` resumes or retries
+  it.
 - Uploads through any `UploadTransport`: the engine splits the file by the
   transport's part size, keeps its bytes-in-flight budget, retries a part
   five tries in all, journals every acknowledged part and resumes with the
