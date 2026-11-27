@@ -24,7 +24,8 @@ import 'package:mpx_transfer/src/upload/upload_source.dart';
 import 'package:mpx_transfer/src/upload/upload_transport.dart';
 
 /// What the publish jobs need of the facade: the transfer jobs their
-/// uploads are, and a way to queue one.
+/// uploads are, the verbs on them, and the bytes cache the server keys are
+/// aliased in.
 ///
 /// Internal to the package.
 abstract interface class PublishUploadHost {
@@ -39,6 +40,18 @@ abstract interface class PublishUploadHost {
     String? tag,
     MediaKey? key,
   });
+
+  /// Queues failed upload [id] again, keeping what it sent; answers whether
+  /// it changed.
+  bool retryUpload(TransferId id);
+
+  /// Cancels upload [id] for the job that owns it.
+  void cancelUpload(TransferId id);
+
+  /// Makes [server] resolve to the bytes [local] holds in the bytes cache;
+  /// completes with whether [local] held any. Null when the facade has no
+  /// bytes cache.
+  Future<bool>? alias(MediaKey local, MediaKey server);
 }
 
 /// The publish jobs of one facade: each one's items looked up in the reuse
@@ -54,7 +67,15 @@ abstract interface class PublishUploadHost {
 ///   go into the reuse table.
 /// - **Publish.** Once every item is uploaded, the job's publisher is
 ///   called; a job whose publisher is not registered waits for it. A job
-///   with no publisher (an upload on its own) completes there.
+///   with no publisher (an upload on its own) completes there. A
+///   `published` answer completes the job and then aliases its server keys
+///   in the bytes cache; `reuploadItems` sends those items again (once per
+///   job); `rejected` fails the job at the publish stage.
+/// - **Failure and retry.** With the whole-job policy a failed item fails
+///   the job; with the per-item policy the item fails and publish waits
+///   until it is retried or removed. A retry takes each failed item back to
+///   where it failed (a finished preparation and every journaled upload
+///   kept) and, for a job failed at the publish stage, publishes again.
 /// - **Journal.** Every step is kept in [journal]. An item's upload ids
 ///   are written before its uploads are queued, so a restart finds every
 ///   upload its item names, or queues it again under the same id. A
@@ -222,6 +243,11 @@ final class PublishJobs {
   /// uploads it read back.
   void restore() {
     for (final record in [..._journal.records]) {
+      if (record.end is PublishJobState$Completed &&
+          record.aliases.isNotEmpty) {
+        // Published before a kill, its aliases not all applied.
+        unawaited(_applyAliases(record.id));
+      }
       if (record.end != null) continue;
       _liveOf(record.id);
       for (final item in record.items) {
@@ -351,10 +377,15 @@ final class PublishJobs {
   // --- Items -----------------------------------------------------------------
 
   /// Moves item [itemId] on from where its record says it is.
+  ///
+  /// [restored] after a restart, [reopened] after a retry: an uploading
+  /// item then queues again the uploads the journal lost, and after a
+  /// retry its failed uploads too.
   Future<void> _runItem(
     PublishJobId id,
     String itemId, {
     bool restored = false,
+    bool reopened = false,
   }) async {
     final item = _itemRecord(id, itemId);
     if (item == null) return;
@@ -364,7 +395,8 @@ final class PublishJobs {
       case ItemProgress$Prepared(:final media, :final reuseKey):
         await _upload(id, item.item, media, reuseKey);
       case ItemProgress$Uploading():
-        if (restored) _queueMissingUploads(id, item);
+        if (reopened) _retryFailedUploads(item);
+        if (restored || reopened) _queueMissingUploads(id, item);
         _checkUploads(id, itemId);
       case ItemProgress$Uploaded() || ItemProgress$Failed():
         break;
@@ -405,6 +437,7 @@ final class PublishJobs {
             file: hit.file,
             thumbnail: hit.thumbnail,
             reused: true,
+            reuseKey: reuseKey,
           ),
         );
         return;
@@ -727,6 +760,24 @@ final class PublishJobs {
     );
   }
 
+  /// Queues again each failed upload of uploading [item], keeping its
+  /// journaled parts.
+  void _retryFailedUploads(PublishItemRecord item) {
+    final progress = item.progress as ItemProgress$Uploading;
+    // Each retry is news the item would read with its other upload still
+    // failed, failing it again.
+    _$enqueuing = true;
+    try {
+      for (final upload in [progress.file, ?progress.thumbnail]) {
+        if (_host.recordOf(upload)?.job.state is TransferState$Failed) {
+          _host.retryUpload(upload);
+        }
+      }
+    } finally {
+      _$enqueuing = false;
+    }
+  }
+
   /// Reads item [itemId]'s uploads: all completed makes it uploaded, one
   /// failed or gone fails it, else its progress moved.
   void _checkUploads(PublishJobId id, String itemId) {
@@ -783,7 +834,12 @@ final class PublishJobs {
     _setItem(
       id,
       item.item,
-      ItemProgress$Uploaded(file: fileRef, thumbnail: thumbnailRef),
+      ItemProgress$Uploaded(
+        file: fileRef,
+        thumbnail: thumbnailRef,
+        media: progress.media,
+        reuseKey: progress.reuseKey,
+      ),
     );
   }
 
@@ -797,7 +853,18 @@ final class PublishJobs {
   }) => _setItem(
     id,
     item,
-    ItemProgress$Failed(stage: stage, reason: reason, retryable: retryable),
+    ItemProgress$Failed(
+      stage: stage,
+      reason: reason,
+      retryable: retryable,
+      // Where a retry resumes: a finished preparation and the journaled
+      // uploads are kept rather than made again.
+      before: switch (_itemRecord(id, item.itemId)?.progress) {
+        final ItemProgress$Prepared prepared => prepared,
+        final ItemProgress$Uploading uploading => uploading,
+        _ => null,
+      },
+    ),
     stackTrace: stackTrace,
   );
 
@@ -963,21 +1030,346 @@ final class PublishJobs {
     // with the same key, and the remote end applies it once.
     if (!_running(id)) return;
     live.attempting = false;
+    void emitOutcome(
+      MpxEventLevel level, {
+      bool retryable = false,
+      int serverKeys = 0,
+      int? items,
+    }) => MpxDiagnostics.current.emit(
+      level,
+      PublishOp.outcome,
+      jobId: id,
+      tag: record.tag,
+      fields: () => {
+        'outcome': outcome.name,
+        'retryable': retryable,
+        'serverKeys': serverKeys,
+        'items': ?items,
+      },
+    );
+    final current = _journal.record(id)!;
     switch (outcome) {
       case PublishOutcome$Published(:final result, :final serverKeys):
-        MpxDiagnostics.current.emit(
-          MpxEventLevel.info,
-          PublishOp.outcome,
-          jobId: id,
-          tag: record.tag,
-          fields: () => {
-            'outcome': outcome.name,
-            'retryable': false,
-            'serverKeys': serverKeys.length,
-          },
+        emitOutcome(MpxEventLevel.info, serverKeys: serverKeys.length);
+        // The completion and its server keys are written before any alias
+        // applies: a kill in between applies the aliases at the next start
+        // and never publishes again.
+        final done = current.copyWith(
+          end: PublishJobState.completed(result),
+          aliases: serverKeys,
+          updatedAt: _now(),
         );
-        _end(_journal.record(id)!, PublishJobState.completed(result));
+        final written = _put(done);
+        _changed(id);
+        await written;
+        await _applyAliases(id);
+      case PublishOutcome$Rejected(:final reason, :final retryable):
+        emitOutcome(MpxEventLevel.warning, retryable: retryable);
+        _end(
+          current,
+          PublishJobState.failed(
+            stage: PublishStage.publish,
+            reason: reason,
+            retryable: retryable,
+          ),
+        );
+      case PublishOutcome$ReuploadItems(:final itemIds):
+        await _reupload(current, itemIds, emitOutcome);
     }
+  }
+
+  /// Sends items [itemIds] of [record] again after a `reuploadItems`
+  /// answer, or fails the job when it already honoured one.
+  Future<void> _reupload(
+    PublishRecord record,
+    Set<String> itemIds,
+    void Function(MpxEventLevel level, {int? items}) emitOutcome,
+  ) async {
+    final id = record.id;
+    if (record.reuploads > 0) {
+      emitOutcome(MpxEventLevel.error, items: 0);
+      MpxDiagnostics.current.emit(
+        MpxEventLevel.error,
+        PublishOp.reuploadRefused,
+        jobId: id,
+        tag: record.tag,
+      );
+      _end(
+        record,
+        const PublishJobState.failed(
+          stage: PublishStage.publish,
+          reason: 'reuploadRefused',
+          retryable: false,
+        ),
+      );
+      return;
+    }
+    final transport = switch (record.transport) {
+      final carrier? => _uploads.transport(carrier),
+      null => null,
+    };
+    final again = <PublishItem>[];
+    final items = <PublishItemRecord>[];
+    for (final item in record.items) {
+      final progress = item.progress;
+      if (progress is! ItemProgress$Uploaded ||
+          progress.file == null ||
+          !itemIds.contains(item.item.itemId)) {
+        items.add(item);
+        continue;
+      }
+      again.add(item.item);
+      if ((progress.reuseKey, transport) case (final key?, final carrier?)) {
+        _reuse?.invalidate(
+          key,
+          carrier,
+          jobId: id,
+          itemId: item.item.itemId,
+          mediaKey: item.item.key,
+        );
+      }
+      // The file that was sent goes again; a reuse hit sent none and starts
+      // over, and with its entry gone the table does not answer it again.
+      items.add(
+        PublishItemRecord(item.item, switch (progress.media) {
+          final media? => ItemProgress$Prepared(
+            media,
+            reuseKey: progress.reuseKey,
+          ),
+          null => const ItemProgress$Waiting(),
+        }),
+      );
+    }
+    emitOutcome(MpxEventLevel.info, items: again.length);
+    // The count is kept before anything is sent again, so a kill never
+    // lets a second answer be honoured.
+    await _put(
+      record.copyWith(
+        items: items,
+        reuploads: record.reuploads + 1,
+        updatedAt: _now(),
+      ),
+    );
+    if (!_running(id)) return;
+    for (final item in again) {
+      _emitStage(
+        id,
+        item,
+        const PublishItemState.uploaded(),
+        _itemStateOf(id, item),
+      );
+    }
+    _changed(id);
+    if (again.isEmpty) {
+      _advance(id);
+      return;
+    }
+    for (final item in again) {
+      unawaited(_runItem(id, item.itemId));
+    }
+  }
+
+  /// Aliases each server key job [id] kept to its item's local key, then
+  /// drops the keys from the record. Each alias is reported; one that fails
+  /// is a warning and the others still apply.
+  Future<void> _applyAliases(PublishJobId id) async {
+    final record = _journal.record(id);
+    if (record == null || record.aliases.isEmpty || _disposed) return;
+    final keys = {
+      for (final item in record.items) item.item.itemId: item.item.key,
+    };
+    for (final MapEntry(key: itemId, value: server) in record.aliases.entries) {
+      final local = keys[itemId];
+      var level = MpxEventLevel.debug;
+      String result;
+      StackTrace? trace;
+      if (local == null) {
+        result = 'unknownItem';
+      } else {
+        try {
+          result = switch (_host.alias(local, server)) {
+            null => 'noCache',
+            final aliasing => await aliasing ? 'aliased' : 'nothingHeld',
+          };
+        } on Object catch (_, stackTrace) {
+          level = MpxEventLevel.warning;
+          result = 'failed';
+          trace = stackTrace;
+        }
+      }
+      // A kill during the alias: the next start applies them all again,
+      // and aliasing twice changes nothing.
+      if (_disposed) return;
+      MpxDiagnostics.current.emit(
+        level,
+        PublishOp.aliasApplied,
+        jobId: id,
+        itemId: itemId,
+        mediaKey: local,
+        fields: () => {'result': result},
+        stackTrace: trace,
+      );
+    }
+    final now = _journal.record(id);
+    if (now == null) return;
+    final written = _put(now.copyWith(aliases: const {}, updatedAt: _now()));
+    _changed(id);
+    await written;
+  }
+
+  // --- Host verbs ------------------------------------------------------------
+
+  /// See [PublishJob.retry].
+  bool retry(PublishJobId id) {
+    final record = _journal.record(id);
+    if (_disposed || record == null) return false;
+    final PublishJobState$Failed? failed;
+    switch (record.end) {
+      case null:
+        failed = null;
+      case final PublishJobState$Failed end:
+        failed = end;
+      case _:
+        return false;
+    }
+    final reset = [
+      for (final item in record.items)
+        if (item.progress is ItemProgress$Failed) item.item.itemId,
+    ];
+    if (failed == null && reset.isEmpty) return false;
+    _reopen(record, reset, stage: failed?.stage ?? _failedStage(record));
+    return true;
+  }
+
+  /// See [PublishJob.retryItem].
+  bool retryItem(PublishJobId id, String itemId) {
+    final record = _journal.record(id);
+    if (_disposed || record == null) return false;
+    if (record.end case final end? when end is! PublishJobState$Failed) {
+      return false;
+    }
+    final item = _itemRecord(id, itemId);
+    if (item?.progress case ItemProgress$Failed(:final stage)) {
+      _reopen(record, [itemId], stage: stage, itemId: itemId);
+      return true;
+    }
+    return false;
+  }
+
+  /// See [PublishJob.removeItem].
+  bool removeItem(PublishJobId id, String itemId) {
+    final record = _journal.record(id);
+    if (_disposed || record == null || record.end != null) return false;
+    final item = _itemRecord(id, itemId);
+    // An empty job waits for its owner; until that state exists, the last
+    // item stays.
+    if (item == null || record.items.length == 1) return false;
+    final live = _liveOf(id);
+    if (live.preparations.remove(itemId) case final handle?) {
+      unawaited(handle.cancel());
+    }
+    // The item leaves the record first, so its cancelled uploads are not
+    // read as its failure.
+    unawaited(
+      _put(
+        record.copyWith(
+          items: [
+            for (final other in record.items)
+              if (other.item.itemId != itemId) other,
+          ],
+          updatedAt: _now(),
+        ),
+      ),
+    );
+    final uploads = switch (item.progress) {
+      ItemProgress$Uploading(:final file, :final thumbnail) => [
+        file,
+        ?thumbnail,
+      ],
+      ItemProgress$Failed(
+        before: ItemProgress$Uploading(:final file, :final thumbnail),
+      ) =>
+        [file, ?thumbnail],
+      _ => const <TransferId>[],
+    };
+    for (final upload in uploads) {
+      if (_host.recordOf(upload) != null) _host.cancelUpload(upload);
+    }
+    MpxDiagnostics.current.emit(
+      MpxEventLevel.info,
+      PublishOp.itemRemoved,
+      jobId: id,
+      itemId: itemId,
+      mediaKey: item.item.key,
+      tag: record.tag,
+      fields: () => {'by': 'host'},
+    );
+    _advance(id);
+    return true;
+  }
+
+  /// The stage of the first failed item of [record].
+  static PublishStage _failedStage(PublishRecord record) {
+    for (final item in record.items) {
+      if (item.progress case ItemProgress$Failed(:final stage)) return stage;
+    }
+    return PublishStage.publish;
+  }
+
+  /// Takes items [reset] of [record] back to where they failed, reopens the
+  /// job when it ended, and moves every unfinished item on.
+  void _reopen(
+    PublishRecord record,
+    List<String> reset, {
+    required PublishStage stage,
+    String? itemId,
+  }) {
+    final id = record.id;
+    final reopened = record.copyWith(
+      items: [
+        for (final item in record.items)
+          switch (item.progress) {
+            ItemProgress$Failed(:final before)
+                when reset.contains(item.item.itemId) =>
+              PublishItemRecord(
+                item.item,
+                before ?? const ItemProgress$Waiting(),
+              ),
+            _ => item,
+          },
+      ],
+      clearEnd: true,
+      updatedAt: _now(),
+    );
+    unawaited(_put(reopened));
+    MpxDiagnostics.current.emit(
+      MpxEventLevel.info,
+      PublishOp.retry,
+      jobId: id,
+      itemId: itemId,
+      tag: record.tag,
+      fields: () => {'stage': stage.name, 'items': reset.length},
+    );
+    final live = _liveOf(id)..reportedAwaiting = false;
+    for (final (index, item) in reopened.items.indexed) {
+      if (!reset.contains(item.item.itemId)) continue;
+      _emitStage(
+        id,
+        item.item,
+        _itemState(id, record.items[index]),
+        _itemState(id, item),
+      );
+    }
+    for (final item in reopened.items) {
+      final itemId = item.item.itemId;
+      // A preparation still under way from before the failure goes on.
+      if (live.preparations.containsKey(itemId)) continue;
+      // An ended job read none of its items' news: every unfinished item
+      // is read again.
+      if (record.end == null && !reset.contains(itemId)) continue;
+      unawaited(_runItem(id, itemId, reopened: true));
+    }
+    _advance(id);
   }
 
   void _end(PublishRecord record, PublishJobState end) {
@@ -994,6 +1386,8 @@ final class PublishJobs {
     tag: record.tag,
     publisher: record.publisher,
     createdAt: record.createdAt,
+    aliasesApplied:
+        record.end is PublishJobState$Completed && record.aliases.isEmpty,
   );
 
   PublishItemSnapshot _itemSnapshot(

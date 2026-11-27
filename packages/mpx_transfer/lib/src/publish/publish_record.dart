@@ -36,8 +36,11 @@ final class PublishRecord {
     this.orderingGroup,
     this.hold = false,
     this.attempts = 0,
+    this.reuploads = 0,
+    Map<String, MediaKey> aliases = const {},
     this.end,
-  }) : items = List.unmodifiable(items);
+  }) : items = List.unmodifiable(items),
+       aliases = Map.unmodifiable(aliases);
 
   /// The job's id.
   final PublishJobId id;
@@ -84,14 +87,26 @@ final class PublishRecord {
   /// The publish attempts begun so far.
   final int attempts;
 
+  /// The `reuploadItems` answers honoured so far: at most one.
+  final int reuploads;
+
+  /// The server keys of a completed job whose aliases are not all applied
+  /// yet, item id to server key; empty otherwise. Kept with the completion,
+  /// so a kill before the aliases applied applies them at the next start.
+  final Map<String, MediaKey> aliases;
+
   /// How the job ended: completed or failed; null while it goes on.
   final PublishJobState? end;
 
-  /// This record with the given parts replaced.
+  /// This record with the given parts replaced; [clearEnd] reopens an
+  /// ended job.
   PublishRecord copyWith({
     List<PublishItemRecord>? items,
     int? attempts,
+    int? reuploads,
+    Map<String, MediaKey>? aliases,
     PublishJobState? end,
+    bool clearEnd = false,
     DateTime? updatedAt,
   }) => PublishRecord(
     id: id,
@@ -109,7 +124,9 @@ final class PublishRecord {
     updatedAt: updatedAt ?? this.updatedAt,
     items: items ?? this.items,
     attempts: attempts ?? this.attempts,
-    end: end ?? this.end,
+    reuploads: reuploads ?? this.reuploads,
+    aliases: aliases ?? this.aliases,
+    end: clearEnd ? null : end ?? this.end,
   );
 
   /// This record with item [itemId]'s progress replaced.
@@ -187,10 +204,25 @@ final class ItemProgress$Uploading extends ItemProgress {
   final ReuseKey? reuseKey;
 }
 
-/// On the remote end; [reused] when the reuse table answered it.
+/// On the remote end; [reused] when the reuse table answered it. [media]
+/// and [reuseKey] are kept for a `reuploadItems` answer: the file to send
+/// again, and the reuse entry to drop.
 final class ItemProgress$Uploaded extends ItemProgress {
   /// Uploaded to [file] and [thumbnail].
-  const ItemProgress$Uploaded({this.file, this.thumbnail, this.reused = false});
+  const ItemProgress$Uploaded({
+    this.file,
+    this.thumbnail,
+    this.reused = false,
+    this.media,
+    this.reuseKey,
+  });
+
+  /// The prepared file that was sent; null for a remote item or a reuse
+  /// hit, which sent nothing.
+  final PreparedMedia? media;
+
+  /// The reuse table's key for the item's source, when it has one.
+  final ReuseKey? reuseKey;
 
   /// Where the file lives; null for a remote item.
   final RemoteRef? file;
@@ -202,14 +234,20 @@ final class ItemProgress$Uploaded extends ItemProgress {
   final bool reused;
 }
 
-/// Failed at [stage].
+/// Failed at [stage]; [before] is where a retry takes the item back to.
 final class ItemProgress$Failed extends ItemProgress {
   /// Failed at [stage] for [reason].
   const ItemProgress$Failed({
     required this.stage,
     required this.reason,
     required this.retryable,
+    this.before,
   });
+
+  /// The progress the item had when it failed, prepared or uploading, so a
+  /// retry keeps the finished preparation and the journaled uploads; null
+  /// to start the item over.
+  final ItemProgress? before;
 
   /// The step that failed.
   final PublishStage stage;
@@ -245,6 +283,12 @@ abstract final class PublishRecordCodec {
     'createdAt': record.createdAt.toIso8601String(),
     'updatedAt': record.updatedAt.toIso8601String(),
     'attempts': record.attempts,
+    if (record.reuploads > 0) 'reuploads': record.reuploads,
+    if (record.aliases.isNotEmpty)
+      'aliases': {
+        for (final MapEntry(:key, :value) in record.aliases.entries)
+          key: value.encoded,
+      },
     'items': [for (final item in record.items) _itemToJson(item)],
     if (record.end case final end?) 'end': _endToJson(end),
   };
@@ -273,6 +317,12 @@ abstract final class PublishRecordCodec {
       createdAt: DateTime.parse(json['createdAt']! as String),
       updatedAt: DateTime.parse(json['updatedAt']! as String),
       attempts: json['attempts']! as int,
+      reuploads: json['reuploads'] as int? ?? 0,
+      aliases: {
+        for (final MapEntry(:key, :value)
+            in (json['aliases'] as Map<String, Object?>? ?? const {}).entries)
+          key: MediaKey.parse(value! as String),
+      },
       items: [
         for (final item in json['items']! as List<Object?>)
           _itemFromJson(item! as Map<String, Object?>),
@@ -305,7 +355,12 @@ abstract final class PublishRecordCodec {
         },
         PublishSource$Remote() => {'is': 'remote'},
       },
-      'progress': switch (record.progress) {
+      'progress': _progressToJson(record.progress),
+    };
+  }
+
+  static Map<String, Object?> _progressToJson(ItemProgress progress) =>
+      switch (progress) {
         ItemProgress$Waiting() => {'is': 'waiting'},
         ItemProgress$Prepared(:final media, :final reuseKey) => {
           'is': 'prepared',
@@ -325,32 +380,39 @@ abstract final class PublishRecordCodec {
             'thumbnail': ?thumbnail?.value,
             'reuseKey': ?reuseKey?.encoded,
           },
-        ItemProgress$Uploaded(:final file, :final thumbnail, :final reused) => {
-          'is': 'uploaded',
-          'file': ?_refToJson(file),
-          'thumbnail': ?_refToJson(thumbnail),
-          if (reused) 'reused': true,
-        },
-        ItemProgress$Failed(:final stage, :final reason, :final retryable) => {
-          'is': 'failed',
-          'stage': stage.name,
-          'reason': reason,
-          'retryable': retryable,
-        },
-      },
-    };
-  }
+        ItemProgress$Uploaded(
+          :final file,
+          :final thumbnail,
+          :final reused,
+          :final media,
+          :final reuseKey,
+        ) =>
+          {
+            'is': 'uploaded',
+            'file': ?_refToJson(file),
+            'thumbnail': ?_refToJson(thumbnail),
+            if (reused) 'reused': true,
+            if (media != null)
+              'media': PreparationEncoding.encodePrepared(media),
+            'reuseKey': ?reuseKey?.encoded,
+          },
+        ItemProgress$Failed(
+          :final stage,
+          :final reason,
+          :final retryable,
+          :final before,
+        ) =>
+          {
+            'is': 'failed',
+            'stage': stage.name,
+            'reason': reason,
+            'retryable': retryable,
+            if (before != null) 'before': _progressToJson(before),
+          },
+      };
 
   static PublishItemRecord _itemFromJson(Map<String, Object?> json) {
     final source = json['source']! as Map<String, Object?>;
-    final progress = json['progress']! as Map<String, Object?>;
-    ReuseKey? reuseKey() => switch (progress['reuseKey']) {
-      final String encoded => ReuseKey.decode(encoded),
-      _ => null,
-    };
-    PreparedMedia media() => PreparationEncoding.decodePrepared(
-      progress['media']! as Map<String, Object?>,
-    );
     return PublishItemRecord(
       PublishItem(
         itemId: json['itemId']! as String,
@@ -375,31 +437,51 @@ abstract final class PublishRecordCodec {
           final other => throw FormatException('Unknown source "$other".'),
         },
       ),
-      switch (progress['is']) {
-        'waiting' => const ItemProgress$Waiting(),
-        'prepared' => ItemProgress$Prepared(media(), reuseKey: reuseKey()),
-        'uploading' => ItemProgress$Uploading(
-          media(),
-          file: TransferId.parse(progress['file']! as String),
-          thumbnail: switch (progress['thumbnail']) {
-            final String id => TransferId.parse(id),
-            _ => null,
-          },
-          reuseKey: reuseKey(),
-        ),
-        'uploaded' => ItemProgress$Uploaded(
-          file: _refFromJson(progress['file']),
-          thumbnail: _refFromJson(progress['thumbnail']),
-          reused: progress['reused'] as bool? ?? false,
-        ),
-        'failed' => ItemProgress$Failed(
-          stage: PublishStage.values.byName(progress['stage']! as String),
-          reason: progress['reason']! as String,
-          retryable: progress['retryable']! as bool,
-        ),
-        final other => throw FormatException('Unknown progress "$other".'),
-      },
+      _progressFromJson(json['progress']! as Map<String, Object?>),
     );
+  }
+
+  static ItemProgress _progressFromJson(Map<String, Object?> progress) {
+    ReuseKey? reuseKey() => switch (progress['reuseKey']) {
+      final String encoded => ReuseKey.decode(encoded),
+      _ => null,
+    };
+    PreparedMedia? media() => switch (progress['media']) {
+      final Map<String, Object?> media => PreparationEncoding.decodePrepared(
+        media,
+      ),
+      _ => null,
+    };
+    return switch (progress['is']) {
+      'waiting' => const ItemProgress$Waiting(),
+      'prepared' => ItemProgress$Prepared(media()!, reuseKey: reuseKey()),
+      'uploading' => ItemProgress$Uploading(
+        media()!,
+        file: TransferId.parse(progress['file']! as String),
+        thumbnail: switch (progress['thumbnail']) {
+          final String id => TransferId.parse(id),
+          _ => null,
+        },
+        reuseKey: reuseKey(),
+      ),
+      'uploaded' => ItemProgress$Uploaded(
+        file: _refFromJson(progress['file']),
+        thumbnail: _refFromJson(progress['thumbnail']),
+        reused: progress['reused'] as bool? ?? false,
+        media: media(),
+        reuseKey: reuseKey(),
+      ),
+      'failed' => ItemProgress$Failed(
+        stage: PublishStage.values.byName(progress['stage']! as String),
+        reason: progress['reason']! as String,
+        retryable: progress['retryable']! as bool,
+        before: switch (progress['before']) {
+          final Map<String, Object?> before => _progressFromJson(before),
+          _ => null,
+        },
+      ),
+      final other => throw FormatException('Unknown progress "$other".'),
+    };
   }
 
   // --- Ends and references ---------------------------------------------------

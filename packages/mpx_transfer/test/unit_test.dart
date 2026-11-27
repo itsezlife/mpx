@@ -18,6 +18,7 @@ import 'publish/publish_diagnostics_test.dart' as publish_diagnostics_test;
 import 'publish/publish_job_test.dart' as publish_job_test;
 import 'publish/publish_kill_test.dart' as publish_kill_test;
 import 'publish/publish_open_test.dart' as publish_open_test;
+import 'publish/publish_outcome_test.dart' as publish_outcome_test;
 import 'reuse/reuse_facade_test.dart' as reuse_facade_test;
 import 'reuse/reuse_table_contract_test.dart' as reuse_table_contract_test;
 import 'transfers/journal_diagnostics_test.dart' as journal_diagnostics_test;
@@ -57,6 +58,7 @@ void main() {
   group('publish_job_test', publish_job_test.main);
   group('publish_kill_test', publish_kill_test.main);
   group('publish_open_test', publish_open_test.main);
+  group('publish_outcome_test', publish_outcome_test.main);
   group('reuse_facade_test', reuse_facade_test.main);
   group('reuse_table_contract_test', reuse_table_contract_test.main);
   group('journal_diagnostics_test', journal_diagnostics_test.main);

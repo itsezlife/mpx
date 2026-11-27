@@ -49,6 +49,9 @@ final transfers = await Transfers.open(
   transports: [presigned],
   client: httpBytesClient,
   preparation: preparation,
+  // Where server keys are aliased after a publish (downloads.store when
+  // omitted).
+  cache: bytesStore,
 );
 
 // At app start, before jobs from the last run can publish.
@@ -205,6 +208,17 @@ transfers.systemActive.addListener(() {
   preparation is never redone, an interrupted one starts over.
   `PublishJob.watch()` and `watchItem(id)` stream snapshots;
   `upload(item)` is a one-item job with no publisher.
+- Publisher answers (`PublishOutcome`): `published(result, serverKeys)`
+  completes the job, then aliases each server key to its item's local key
+  in the bytes cache (`snapshot.aliasesApplied`); `reuploadItems(ids)`
+  drops those items' reuse entries and sends them again, once per job;
+  `rejected(reason, retryable)` fails the job at the publish stage.
+- Failure policies and retry: `wholeJob` (default) fails the job with an
+  item, `perItem` lets the rest upload and holds the publish.
+  `PublishJob.retry()` / `retryItem(id)` repeat only what failed, keeping a
+  finished preparation and the parts already sent; a job rejected at the
+  publish stage publishes again and uploads nothing. `removeItem(id)` drops
+  an item before the publish.
 - `retry(id, source:)`: an upload whose source was lost goes again from a
   file the host gives, from zero.
 - `TransferDurability`: `inProcess`, or `system` inside the platform's OS

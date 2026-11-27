@@ -447,6 +447,7 @@ final class PublishJobSnapshot {
     required this.createdAt,
     this.tag,
     this.publisher,
+    this.aliasesApplied = false,
   }) : items = List.unmodifiable(items);
 
   /// The job's identity.
@@ -467,6 +468,13 @@ final class PublishJobSnapshot {
   /// When the job was made.
   final DateTime createdAt;
 
+  /// Whether the job completed and every server key its publisher gave is
+  /// aliased to its item's local key in the bytes cache: from then on the
+  /// content answers by its server key, and an item's upload has nothing
+  /// left to show. False while the job runs, and between its completion
+  /// and the last alias.
+  final bool aliasesApplied;
+
   /// The item [itemId], or null when the job has none of that id.
   PublishItemSnapshot? item(String itemId) {
     for (final item in items) {
@@ -483,11 +491,19 @@ final class PublishJobSnapshot {
       listEquals(other.items, items) &&
       other.tag == tag &&
       other.publisher == publisher &&
-      other.createdAt == createdAt;
+      other.createdAt == createdAt &&
+      other.aliasesApplied == aliasesApplied;
 
   @override
-  int get hashCode =>
-      Object.hash(id, state, Object.hashAll(items), tag, publisher, createdAt);
+  int get hashCode => Object.hash(
+    id,
+    state,
+    Object.hashAll(items),
+    tag,
+    publisher,
+    createdAt,
+    aliasesApplied,
+  );
 
   @override
   String toString() => 'PublishJobSnapshot($id, $state, ${items.length} items)';

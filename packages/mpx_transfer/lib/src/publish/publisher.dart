@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show listEquals, mapEquals;
+import 'package:flutter/foundation.dart' show listEquals, mapEquals, setEquals;
 import 'package:meta/meta.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_transfer/src/upload/remote_ref.dart';
@@ -66,10 +66,31 @@ sealed class PublishOutcome {
 
   /// Published: the job completes with [result], the host's bytes; the
   /// remote end's key for each item is in [serverKeys], item id to key.
+  ///
+  /// Once the completion is journaled, each server key is aliased in the
+  /// bytes cache to the bytes its item's local key holds, so content asked
+  /// for by the server key is served from what was sent. Never earlier: the
+  /// server key exists only once the publisher answers.
   factory PublishOutcome.published({
     Uint8List? result,
     Map<String, MediaKey> serverKeys,
   }) = PublishOutcome$Published;
+
+  /// The remote end wants items [itemIds] again (it lost them, or refused
+  /// what the reuse table answered): their reuse entries are dropped, they
+  /// upload again and the job publishes again with the same idempotency
+  /// key. Honoured once per job; a second one fails the job at the publish
+  /// stage. Ids the job has no uploaded file for are ignored.
+  factory PublishOutcome.reuploadItems(Iterable<String> itemIds) =
+      PublishOutcome$ReuploadItems;
+
+  /// The remote end refused the publish: the job fails at the publish
+  /// stage with [reason], a short code of the host's, and [retryable].
+  /// A retry of the job calls the publisher again and uploads nothing.
+  const factory PublishOutcome.rejected({
+    required String reason,
+    bool retryable,
+  }) = PublishOutcome$Rejected;
 
   /// The outcome's name, for diagnostics.
   String get name;
@@ -110,4 +131,55 @@ final class PublishOutcome$Published extends PublishOutcome {
   @override
   String toString() =>
       'PublishOutcome.published(${serverKeys.length} server keys)';
+}
+
+/// [PublishOutcome.reuploadItems].
+final class PublishOutcome$ReuploadItems extends PublishOutcome {
+  /// See [PublishOutcome.reuploadItems].
+  PublishOutcome$ReuploadItems(Iterable<String> itemIds)
+    : itemIds = Set.unmodifiable(itemIds);
+
+  /// The items to upload again.
+  final Set<String> itemIds;
+
+  @override
+  String get name => 'reuploadItems';
+
+  @override
+  bool operator ==(Object other) =>
+      other is PublishOutcome$ReuploadItems &&
+      setEquals(other.itemIds, itemIds);
+
+  @override
+  int get hashCode => Object.hashAllUnordered(itemIds);
+
+  @override
+  String toString() => 'PublishOutcome.reuploadItems(${itemIds.length} items)';
+}
+
+/// [PublishOutcome.rejected].
+final class PublishOutcome$Rejected extends PublishOutcome {
+  /// See [PublishOutcome.rejected].
+  const PublishOutcome$Rejected({required this.reason, this.retryable = false});
+
+  /// A short code for why, the host's.
+  final String reason;
+
+  /// Whether publishing again may succeed.
+  final bool retryable;
+
+  @override
+  String get name => 'rejected';
+
+  @override
+  bool operator ==(Object other) =>
+      other is PublishOutcome$Rejected &&
+      other.reason == reason &&
+      other.retryable == retryable;
+
+  @override
+  int get hashCode => Object.hash(PublishOutcome$Rejected, reason, retryable);
+
+  @override
+  String toString() => 'PublishOutcome.rejected($reason, $retryable)';
 }

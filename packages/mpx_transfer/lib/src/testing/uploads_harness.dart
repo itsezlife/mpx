@@ -44,6 +44,7 @@ final class UploadsHarness {
     required this.files,
     required this.preparation,
     required this.reusePolicy,
+    required this.cache,
   });
 
   /// Opens a harness over [transports]; the job's transport is the first
@@ -55,7 +56,8 @@ final class UploadsHarness {
   /// transport that sends them. [files] tells what each source file is at
   /// the start of a run (the platform's file system by default; a
   /// `FakeUploadSourceFiles` for sources that are not real files). The
-  /// other parts are those of [Transfers.open].
+  /// other parts are those of [Transfers.open]; [cache] is the bytes cache
+  /// publish jobs alias their server keys in.
   static Future<UploadsHarness> open({
     required PlaybackLifecycleSource lifecycle,
     required List<UploadTransport> transports,
@@ -70,6 +72,7 @@ final class UploadsHarness {
     UploadSourceFiles? files,
     MediaPreparation? preparation,
     ReusePolicy reuse = const ReusePolicy(),
+    IBytesStore? cache,
   }) async {
     final memory = MemoryJournalStore();
     final harness = UploadsHarness._(
@@ -86,6 +89,7 @@ final class UploadsHarness {
       files: files,
       preparation: preparation,
       reusePolicy: reuse,
+      cache: cache,
     );
     await harness._start();
     return harness;
@@ -129,6 +133,9 @@ final class UploadsHarness {
 
   /// The host's say over the reuse table.
   final ReusePolicy reusePolicy;
+
+  /// The bytes cache server keys are aliased in; null for none.
+  final IBytesStore? cache;
 
   /// Where the publish jobs' records are kept across restarts.
   final MemoryJournalStore publishStore = MemoryJournalStore();
@@ -240,6 +247,7 @@ final class UploadsHarness {
       reuse: _reuse,
       publishJournal: _publish,
       preparation: preparation,
+      cache: cache,
       now: now,
     );
   }
