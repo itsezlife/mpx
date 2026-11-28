@@ -77,7 +77,13 @@ enum SaveOp implements DiagnosticOp {
 
   /// A cancel stopped the downloads of a `saveContent` batch (debug; `own`
   /// cancelled, `shared` left running).
-  downloadsCancelled;
+  downloadsCancelled,
+
+  /// A save to `ask` went as a download instead (debug; `why`:
+  /// `noSavePicker` when the browser has no save picker, with no `index`,
+  /// once per batch; `noActivation` when the page could not open it for
+  /// item `index`).
+  fallbackToAsk;
 
   @override
   String get category => 'save';

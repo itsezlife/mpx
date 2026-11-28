@@ -98,7 +98,7 @@ final job = saver.saveContent([
   saver knows no rights: the caller decides before it calls. It asks for
   its own `SaveAccess` (`access`, `requestAccess`; a batch asks once by
   itself), apart from the library's read access. `PlatformMediaSaver` saves
-  on Windows and Linux; a platform whose adapter has not landed answers
+  on Windows, Linux and the web; a platform whose adapter has not landed answers
   `unavailable` past the access check.
 - `MediaSaver.saveContent`: `SaveRequest`s (key, name, MIME type, kind) as
   one `SaveJob` over `mpx_core`'s `TrackedTransfers`: a content not local
@@ -142,6 +142,17 @@ the file's modification time. Nothing to declare: no access is asked.
 On the web a pick that answers nothing within a second of the window
 getting its focus back ends empty (browsers say nothing when the dialog is
 dismissed), and files are blob handles (`IntakeSource.blob`).
+
+On the web every save is a download: `gallery` and `downloads` hand each
+item to the browser (`<a download>`; the browser decides whether to ask
+where, and an album or a sub-folder has no meaning there). `ask` opens the
+browser's save picker for each item where it has one (Chromium) and writes
+the item into the picked file; a dismissed picker is `cancelled`. Without
+a picker, or for an item the page has no user gesture left to open one
+for, `ask` is a download too. A saved item is `saved(null)`: the browser
+confirms nothing. Items are `SaveItem.bytes`, or a file in the origin's
+private file system at the item's path. The web needs no access and the
+host declares nothing.
 
 Native drag and drop and paste go through `super_drag_and_drop` and
 `super_clipboard` 0.9: a dropped or pasted file URI comes back as its file,
