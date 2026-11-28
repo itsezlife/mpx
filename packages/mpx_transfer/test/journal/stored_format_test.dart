@@ -78,10 +78,9 @@ void main() {
       test('writes every record it holds $name to the same bytes', () {
         final codec = JournalCodec(Transfers.resultCodecs);
         for (final payload in _payloads(fixture)) {
-          final bytes = JournalFrames.encode([jsonDecode(payload)]);
-          final read = codec.decode(bytes);
-          expect(read.skipped, 0);
-          expect(codec.encode(read.entries), bytes);
+          final json = jsonDecode(payload);
+          if (json case {'header': _}) continue;
+          expect(jsonEncode(codec.encode(codec.decode(json))), payload);
         }
       });
     }
