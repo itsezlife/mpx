@@ -25,7 +25,8 @@ final class PublishJournal {
   PublishJournal._(this._store, this._records, this.compactAfter);
 
   /// Reads [store] back, drops the completed jobs older than [retention]
-  /// and folds the rest into a fresh snapshot. A store that cannot be read
+  /// (a job whose aliases are pending stays until they apply) and folds
+  /// the rest into a fresh snapshot. A store that cannot be read
   /// is reported (`journal` `writeFailed`, `table: publish`) and replaced by
   /// memory for this run.
   static Future<PublishJournal> open(
@@ -54,6 +55,7 @@ final class PublishJournal {
     records.removeWhere(
       (_, record) =>
           record.end is PublishJobState$Completed &&
+          !record.isAliasPending &&
           !time.isBefore(record.updatedAt.add(retention)),
     );
     final journal = PublishJournal._(source, records, compactAfter);

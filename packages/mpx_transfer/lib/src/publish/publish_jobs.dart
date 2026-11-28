@@ -211,7 +211,7 @@ final class PublishJobs {
   bool? itemAliased(PublishJobId id, String itemId) {
     final record = _journal.record(id);
     if (record == null || _itemRecord(id, itemId) == null) return null;
-    return record.end is PublishJobState$Completed && record.aliases.isEmpty;
+    return record.isAliased;
   }
 
   /// See [PublishJob.watch].
@@ -329,8 +329,7 @@ final class PublishJobs {
       ),
     );
     for (final record in [..._journal.records]) {
-      if (record.end is PublishJobState$Completed &&
-          record.aliases.isNotEmpty) {
+      if (record.isAliasPending) {
         // Published before a kill, its aliases not all applied.
         unawaited(_applyAliases(record.id));
       }
@@ -1525,14 +1524,18 @@ final class PublishJobs {
   }
 
   /// Aliases each server key job [id] kept to its item's local key, then
-  /// drops the keys from the record. Each alias is reported; one that fails
-  /// is a warning and the others still apply.
+  /// drops from the record the keys that are done. Each alias is reported.
+  /// One that throws is a warning and stays in the record, so the job does
+  /// not read as aliased and the next start tries it again; the others
+  /// still apply. An item that is gone, or a facade without a cache, has
+  /// nothing to try again.
   Future<void> _applyAliases(PublishJobId id) async {
     final record = _journal.record(id);
     if (record == null || record.aliases.isEmpty || _disposed) return;
     final keys = {
       for (final item in record.items) item.item.itemId: item.item.key,
     };
+    final failed = <String, MediaKey>{};
     for (final MapEntry(key: itemId, value: server) in record.aliases.entries) {
       final local = keys[itemId];
       var level = MpxEventLevel.debug;
@@ -1550,6 +1553,7 @@ final class PublishJobs {
           level = MpxEventLevel.warning;
           result = 'failed';
           trace = stackTrace;
+          failed[itemId] = server;
         }
       }
       // A kill during the alias: the next start applies them all again,
@@ -1567,7 +1571,7 @@ final class PublishJobs {
     }
     final now = _journal.record(id);
     if (now == null) return;
-    final written = _put(now.copyWith(aliases: const {}, updatedAt: _now()));
+    final written = _put(now.copyWith(aliases: failed, updatedAt: _now()));
     _changed(id);
     await written;
   }
@@ -1914,8 +1918,7 @@ final class PublishJobs {
             ? 1
             : (1 - _weights.publish) * measures.fraction,
       ),
-      aliasesApplied:
-          record.end is PublishJobState$Completed && record.aliases.isEmpty,
+      aliasesApplied: record.isAliased,
       held: record.hold && !record.committed,
     );
   }

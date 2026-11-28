@@ -124,6 +124,15 @@ final class PublishRecord {
   /// Whether the job goes on: it has not ended.
   bool get isRunning => end == null;
 
+  /// Whether the job published and some of its server keys are not yet
+  /// aliased: the record is kept, past its retention too, until they are.
+  bool get isAliasPending =>
+      end is PublishJobState$Completed && aliases.isNotEmpty;
+
+  /// Whether the job published and every server key it answered is
+  /// aliased: what turns its cells' sent into none.
+  bool get isAliased => end is PublishJobState$Completed && aliases.isEmpty;
+
   /// This record with the given parts replaced; [clearEnd] reopens an
   /// ended job.
   PublishRecord copyWith({
