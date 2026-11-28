@@ -27,6 +27,11 @@ final class PublishJob {
       _jobs.snapshotOf(id) ??
       (throw StateError('The publish job is no longer known.'));
 
+  /// The job's payload now, as `snapshot.payload` gives it: after a
+  /// restart too, byte for byte. Throws a [StateError] once the engine no
+  /// longer has the job.
+  Uint8List get payload => snapshot.payload;
+
   /// Snapshots of the job: the current one on listen, then the job again
   /// whenever it changes. Ends when the engine shuts down.
   Stream<PublishJobSnapshot> watch() => _jobs.watch(id);

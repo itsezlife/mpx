@@ -514,7 +514,9 @@ final class PublishJobSnapshot {
     this.aliasesApplied = false,
     this.progress = 0,
     this.held = false,
-  }) : items = List.unmodifiable(items);
+    Uint8List? payload,
+  }) : items = List.unmodifiable(items),
+       payload = Uint8List.sublistView(payload ?? Uint8List(0));
 
   /// The job's identity.
   final PublishJobId id;
@@ -552,6 +554,12 @@ final class PublishJobSnapshot {
   /// item is uploaded).
   final bool held;
 
+  /// The bytes the job hands its publisher: the request's, or the last
+  /// `setPayload` or `commit(payload:)`. Read from the job's record, so an
+  /// owner finds them again after a restart. Empty for an upload with no
+  /// publisher. Never part of [toString] or of a diagnostics event.
+  final Uint8List payload;
+
   /// The item [itemId], or null when the job has none of that id.
   PublishItemSnapshot? item(String itemId) {
     for (final item in items) {
@@ -571,7 +579,8 @@ final class PublishJobSnapshot {
       other.createdAt == createdAt &&
       other.aliasesApplied == aliasesApplied &&
       other.progress == progress &&
-      other.held == held;
+      other.held == held &&
+      listEquals(other.payload, payload);
 
   @override
   int get hashCode => Object.hash(
@@ -584,6 +593,7 @@ final class PublishJobSnapshot {
     aliasesApplied,
     progress,
     held,
+    Object.hashAll(payload),
   );
 
   @override
