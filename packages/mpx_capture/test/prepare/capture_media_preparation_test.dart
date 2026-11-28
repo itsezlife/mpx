@@ -117,6 +117,26 @@ final class _Gate implements PreparationCodec, Transcoder {
   }
 }
 
+/// A codec whose every read fails as a file system does, naming the path.
+final class _Throwing implements PreparationCodec {
+  @override
+  Future<StillSource> probeStill(String path) async =>
+      throw FileSystemException('Cannot open file', path);
+
+  @override
+  Future<EncodedStill> encodeStill(
+    String path, {
+    required int maxSide,
+    required int quality,
+    bool progressive = false,
+    String? outputPath,
+  }) async => throw FileSystemException('Cannot open file', path);
+
+  @override
+  Future<EncodedStill> videoThumbnail(String path, ThumbnailSpec spec) async =>
+      throw FileSystemException('Cannot open file', path);
+}
+
 void main() {
   late Directory directory;
 
@@ -351,8 +371,40 @@ void main() {
       expect(failed.level, MpxEventLevel.error);
       expect(failed.fields['code'], 'unreadable');
       expect('${failed.fields}', isNot(contains('secret')));
+      expect('${failed.error}', isNot(contains('secret')));
       expect(recording.errors, hasLength(1));
     });
+
+    test(
+      'an error of any other kind reports its code, never its text',
+      () async {
+        final recording = RecordingDiagnostics.install();
+        final handle = CaptureMediaPreparation(
+          preparer: MediaPreparer(
+            codec: _Throwing(),
+            transcoder: FakeTranscoder(),
+            outputDirectory: directory.path,
+          ),
+          policy: PreparationPolicy.$IOS,
+        ).prepare(const PreparationInput('/secret/name.jpg'), photo);
+
+        final failure = await handle.result.then<Object?>(
+          (_) => null,
+          onError: (Object error) => error,
+        );
+
+        expect(failure, isA<PreparationFailed>());
+        expect('$failure', isNot(contains('secret')));
+        expect(
+          '${(failure! as PreparationFailed).cause}',
+          isNot(contains('secret')),
+        );
+        final failed = recording.whereOp(PreparationOp.failed).single;
+        expect(failed.fields['code'], 'unreadable');
+        expect('${failed.fields}', isNot(contains('secret')));
+        expect('${failed.error}', isNot(contains('secret')));
+      },
+    );
 
     test('a cancel reports cancelled, not failed', () async {
       final recording = RecordingDiagnostics.install();
