@@ -235,12 +235,11 @@ final class TrackedContent implements TrackedTransfers {
     };
   }
 
+  /// The state as a binding's `mapped` event names it: a pause with its
+  /// reason, as `paused.user`.
   static String _stateName(TransferState state) => switch (state) {
-    TransferState$Queued() => 'queued',
-    TransferState$Running() => 'running',
-    TransferState$Paused(:final reason) => 'paused.${reason.name}',
-    TransferState$Failed() => 'failed',
-    TransferState$Completed() => 'completed',
+    TransferState$Paused(:final reason) => '${state.name}.${reason.name}',
+    _ => state.name,
   };
 
   static String _transferName(AssetTransfer transfer) => switch (transfer) {

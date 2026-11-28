@@ -179,7 +179,7 @@ final class TransferJournal {
           MpxEventLevel.trace,
           JournalOp.stateWritten,
           jobId: job.id,
-          fields: () => {'state': _stateName(job.state)},
+          fields: () => {'state': job.state.name},
         );
       },
     );
@@ -348,12 +348,4 @@ final class TransferJournal {
       },
     );
   }
-
-  static String _stateName(TransferState state) => switch (state) {
-    TransferState$Queued() => 'queued',
-    TransferState$Running() => 'running',
-    TransferState$Paused() => 'paused',
-    TransferState$Failed() => 'failed',
-    TransferState$Completed() => 'completed',
-  };
 }
