@@ -22,8 +22,8 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 /**
- * Native side of mpx_library on Android: the MediaStore library and the
- * save access on one method channel, the library's events (access,
+ * Native side of mpx_library on Android: the MediaStore library, the save
+ * access and the saver ([NativeSaver]) on one method channel, the library's events (access,
  * changes) on one event channel.
  * Queries run on a small pool; answers go back on the main thread.
  *
@@ -39,6 +39,7 @@ class MpxLibraryPlugin :
     private lateinit var context: Context
     private lateinit var library: MediaStoreLibrary
     private lateinit var save: SaveAccess
+    private lateinit var saver: NativeSaver
     private lateinit var methods: MethodChannel
     private lateinit var events: EventChannel
     private var sink: EventChannel.EventSink? = null
@@ -62,6 +63,7 @@ class MpxLibraryPlugin :
         context = binding.applicationContext
         library = MediaStoreLibrary(context)
         save = SaveAccess(context)
+        saver = NativeSaver(context)
         methods = MethodChannel(binding.binaryMessenger, "dev.mpx.library/methods")
         methods.setMethodCallHandler(this)
         events = EventChannel(binding.binaryMessenger, "dev.mpx.library/events")
@@ -73,6 +75,7 @@ class MpxLibraryPlugin :
         events.setStreamHandler(null)
         onCancel(null)
         pool.shutdown()
+        saver.dispose()
     }
 
     // --- Activity and permissions ---
@@ -80,6 +83,7 @@ class MpxLibraryPlugin :
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activity = binding
         binding.addRequestPermissionsResultListener(this)
+        saver.attach(binding)
         intake = SystemCameraIntake(binding).also { binding.addActivityResultListener(it) }
     }
 
@@ -92,6 +96,7 @@ class MpxLibraryPlugin :
         activity?.removeRequestPermissionsResultListener(this)
         intake?.let { activity?.removeActivityResultListener(it); it.abandon() }
         intake = null
+        saver.detach()
         activity = null
         answerAccess()
         answerSaveAccess()
@@ -180,6 +185,9 @@ class MpxLibraryPlugin :
             "saveAccess" -> result.success(save.answer(call.argument<String>("destination") ?: ""))
             "requestSaveAccess" ->
                 requestSaveAccess(call.argument<String>("destination") ?: "", result)
+            "saveBegin" -> saver.begin(call.arguments as? Map<*, *> ?: emptyMap<Any, Any>(), result)
+            "saveStep" -> saver.step(call.argument<Int>("write") ?: 0, result)
+            "saveAbort" -> saver.abort(call.argument<Int>("write") ?: 0, result)
             "openSettings" -> {
                 openSettings()
                 result.success(null)

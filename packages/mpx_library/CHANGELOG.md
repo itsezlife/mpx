@@ -52,6 +52,19 @@
 - `testing.dart`: `MediaSaverContract` checks `saveContent` when the
   harness passes its `FakeTrackedTransfers` (`transfers`,
   `withoutTransfers`); `FakeMediaSaver.contentBatches`.
+- `PlatformMediaSaver` saves on Android: from API 29 into the MediaStore,
+  a row inserted pending and published once every byte is in
+  (`gallery(album:)` as images under `Pictures/<album>` or video under
+  `Movies/<album>`, an animation by its MIME type, `createdAt` as
+  `DATE_TAKEN`; `downloads(subfolder:)` under `Download/<subfolder>`), the
+  store's own rename of a taken name reported as `renamed`; on API 28 and
+  below a file in the public directory renamed into place (`name(1)` to
+  `name(10)`) and scanned; `ask` through the create-document dialog, one
+  per item, a dismissed one cancelling the rest of the batch. The copy
+  runs off the main thread in steps, with progress and cancel; a cancel or
+  a failure removes the pending row or file. Platform errors map to
+  `noSpace` (`ENOSPC`), `unsupportedFormat` (`mimeRejected`),
+  `accessDenied` (`security`) or `unavailable`, with the code kept.
 - `PlatformMediaSaver` saves on Windows and Linux: `gallery(album:)` into
   the Pictures or Videos folder (by kind, an animation by its MIME type),
   `downloads(subfolder:)` into Downloads, both through the Windows known
