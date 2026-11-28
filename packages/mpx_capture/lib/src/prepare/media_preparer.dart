@@ -207,7 +207,12 @@ final class MediaPreparer {
     }
   }
 
-  Future<void> _run(_Pending item) async {
+  // One preparation, from its start to its settling, as one trace section
+  // (`mpx.preparation.started`), named by the op that opens it.
+  Future<void> _run(_Pending item) =>
+      MpxTrace.async(PreparationOp.started, () => _prepare(item));
+
+  Future<void> _prepare(_Pending item) async {
     final job = item.job;
     if (job.isDone) return;
     final written = <String>[];
