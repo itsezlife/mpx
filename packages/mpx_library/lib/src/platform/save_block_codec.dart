@@ -35,7 +35,8 @@
 /// ## Decoding
 ///
 /// Strict: a missing or unknown required value throws a [FormatException]
-/// whose message names the field. Unknown keys are ignored.
+/// whose message names the field, with no source: the map holds paths,
+/// names and refs. Unknown keys are ignored.
 library;
 
 import 'dart:convert';
@@ -190,7 +191,7 @@ final class _RequestDecoder
         subfolder: _Read.optionalString(input, _Key.subfolder),
       ),
       'ask' => const SaveDestination.ask(),
-      _ => throw FormatException(_Key.destination, input),
+      _ => throw const FormatException(_Key.destination),
     },
     entries: [
       for (final entry in _Read.maps(input, _Key.entries))
@@ -200,14 +201,14 @@ final class _RequestDecoder
           mimeType: _Read.string(entry, _Key.mime),
           kind:
               SaveItemKind.values.asNameMap()[_Read.string(entry, _Key.kind)] ??
-              (throw FormatException(_Key.kind, entry)),
+              (throw const FormatException(_Key.kind)),
           createdAt: switch (entry[_Key.createdMs]) {
             null => null,
             final int ms => DateTime.fromMillisecondsSinceEpoch(
               ms,
               isUtc: true,
             ),
-            _ => throw FormatException(_Key.createdMs, entry),
+            _ => throw const FormatException(_Key.createdMs),
           },
           move: _Read.boolean(entry, _Key.move),
         ),
@@ -375,7 +376,7 @@ final class _AnswerDecoder
       null => null,
       final name =>
         SaveBlockFallback.values.asNameMap()[name] ??
-            (throw FormatException(_Key.fallback, input)),
+            (throw const FormatException(_Key.fallback)),
     };
     return switch (_Read.string(input, _Key.outcome)) {
       'saved' => SaveBlockAnswer$Saved(
@@ -391,7 +392,7 @@ final class _AnswerDecoder
           null => null,
           final name =>
             SaveBlockAlbum.values.asNameMap()[name] ??
-                (throw FormatException(_Key.album, input)),
+                (throw const FormatException(_Key.album)),
         },
       ),
       'failed' => SaveBlockAnswer$Failed(
@@ -400,7 +401,7 @@ final class _AnswerDecoder
         fallback: fallback,
       ),
       'cancelled' => SaveBlockAnswer$Cancelled(fallback: fallback),
-      _ => throw FormatException(_Key.outcome, input),
+      _ => throw const FormatException(_Key.outcome),
     };
   }
 }
@@ -410,20 +411,20 @@ abstract final class _Read {
   static String string(Map<Object?, Object?> map, String key) =>
       switch (map[key]) {
         final String value => value,
-        _ => throw FormatException(key, map),
+        _ => throw FormatException(key),
       };
 
   static String? optionalString(Map<Object?, Object?> map, String key) =>
       switch (map[key]) {
         null => null,
         final String value => value,
-        _ => throw FormatException(key, map),
+        _ => throw FormatException(key),
       };
 
   static bool boolean(Map<Object?, Object?> map, String key) =>
       switch (map[key]) {
         final bool value => value,
-        _ => throw FormatException(key, map),
+        _ => throw FormatException(key),
       };
 
   static List<Map<Object?, Object?>> maps(
@@ -434,9 +435,9 @@ abstract final class _Read {
       for (final element in list)
         switch (element) {
           final Map<Object?, Object?> entry => entry,
-          _ => throw FormatException(key, map),
+          _ => throw FormatException(key),
         },
     ],
-    _ => throw FormatException(key, map),
+    _ => throw FormatException(key),
   };
 }

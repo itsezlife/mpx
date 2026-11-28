@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
@@ -164,4 +166,145 @@ void main() {
       ['accessDenied', 'accessDenied'],
     );
   });
+
+  group('an error reaches the events of its own item only', () {
+    test('a lease probe that throws for one item never lands on '
+        'another', () async {
+      const a = MediaKey.remote('a');
+      const b = MediaKey.remote('b');
+      final transfers = _ThrowingLeases(FakeTrackedTransfers(), throwFor: a);
+      final job = FakeMediaSaver(transfers: transfers).saveContent([
+        _request(a),
+        _request(b),
+      ], const SaveDestination.gallery());
+
+      await pumpEventQueue();
+      transfers.fake.drive(
+        b,
+        const AssetTransfer.failed(AssetFailureKind.transient),
+      );
+      transfers.fake
+        ..setFile(a, '/cache/a')
+        ..drive(a, AssetTransfer.none);
+      await job.results;
+
+      final failedB = diagnostics
+          .whereOp(SaveOp.itemFailed)
+          .where((e) => e.mediaKey == b)
+          .single;
+      expect(failedB.error, isNull, reason: "a's error is not b's");
+      final ofA = diagnostics.events.where(
+        (e) => e.mediaKey == a && e.error != null,
+      );
+      expect(ofA, hasLength(1), reason: "a's error is reported once, on a");
+    });
+  });
+
+  group('no user content in an event error', () {
+    test('a writer\'s throw is reported by its type, never its source or '
+        'message', () async {
+      final job = FakeMediaSaver(
+        resultFor: (write) => throw const FormatException(
+          'ref',
+          '{path: /secret/holiday.jpg, name: holiday.jpg}',
+        ),
+      ).save([photo()], const SaveDestination.gallery());
+      await job.results;
+
+      final failed = diagnostics.whereOp(SaveOp.itemFailed).single;
+      expect(failed.error, isNotNull);
+      expect('${failed.error}', contains('FormatException'));
+      expect('$failed', isNot(anyOf(contains('secret'), contains('holiday'))));
+    });
+
+    test('a platform error is reported by its type and code, never its '
+        'message', () async {
+      final job = FakeMediaSaver(
+        resultFor: (write) => throw PlatformException(
+          code: 'ENOENT',
+          message: 'open failed: /secret/holiday.jpg',
+          details: '/secret/holiday.jpg',
+        ),
+      ).save([photo()], const SaveDestination.gallery());
+      await job.results;
+
+      final failed = diagnostics.whereOp(SaveOp.itemFailed).single;
+      expect(
+        '${failed.error}',
+        allOf(contains('PlatformException'), contains('ENOENT')),
+      );
+      expect('$failed', isNot(contains('secret')));
+    });
+
+    test('a lease that throws is reported without its message', () async {
+      const a = MediaKey.remote('a');
+      final transfers = _ThrowingLeases(
+        FakeTrackedTransfers(),
+        throwFor: a,
+        always: true,
+      );
+      final job = FakeMediaSaver(
+        transfers: transfers,
+      ).saveContent([_request(a)], const SaveDestination.gallery());
+
+      await pumpEventQueue();
+      transfers.fake.drive(a, AssetTransfer.none);
+      await pumpEventQueue();
+      transfers.fake.drive(a, AssetTransfer.none);
+      await job.results;
+
+      final withErrors = diagnostics.events.where((e) => e.error != null);
+      expect(withErrors, isNotEmpty);
+      for (final event in withErrors) {
+        expect('$event', isNot(contains('secret')));
+      }
+    });
+  });
+}
+
+SaveRequest _request(MediaKey key) => SaveRequest(
+  key,
+  name: 'holiday.jpg',
+  mimeType: 'image/jpeg',
+  kind: SaveItemKind.photo,
+);
+
+/// [fake], but [leaseFile] of [throwFor] throws an error whose message
+/// holds a path: once, or every time with [always].
+final class _ThrowingLeases implements TrackedTransfers {
+  _ThrowingLeases(this.fake, {required this.throwFor, this.always = false});
+
+  final FakeTrackedTransfers fake;
+  final MediaKey throwFor;
+  final bool always;
+  var _thrown = false;
+
+  @override
+  void download(MediaKey key, {TransferOrigin origin = TransferOrigin.user}) =>
+      fake.download(key, origin: origin);
+
+  @override
+  ValueListenable<AssetTransfer> watch(MediaKey key) => fake.watch(key);
+
+  @override
+  void cancel(MediaKey key) => fake.cancel(key);
+
+  @override
+  Future<ContentFileLease?> leaseFile(MediaKey key) async {
+    if (key == throwFor && (always || !_thrown)) {
+      _thrown = true;
+      throw const FileSystemLikeError('lease failed: /secret/cache/a');
+    }
+    return fake.leaseFile(key);
+  }
+}
+
+/// An error whose message holds a path, as a file system's does.
+final class FileSystemLikeError implements Exception {
+  const FileSystemLikeError(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'FileSystemLikeError: $message';
 }

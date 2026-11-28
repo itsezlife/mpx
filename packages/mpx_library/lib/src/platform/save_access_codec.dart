@@ -24,7 +24,8 @@ import 'package:mpx_library/src/save/save_admission.dart';
 /// ## Decoding
 ///
 /// Strict: a missing or unknown `scope` or `status`, or a `missing` that is
-/// not a string, throws a [FormatException] whose message names the field.
+/// not a string, throws a [FormatException] whose message names the field
+/// (with no source).
 /// Unknown keys are ignored.
 final class SaveAccessCodec
     extends Codec<SaveAccessAnswer, Map<Object?, Object?>> {
@@ -88,13 +89,13 @@ final class _Decoder
   SaveAccessAnswer convert(Map<Object?, Object?> input) {
     final scope = SaveAccessScope.values
         .asNameMap()[_string(input, _Key.scope)];
-    if (scope == null) throw FormatException(_Key.scope, input);
+    if (scope == null) throw const FormatException(_Key.scope);
     final access = _Status.read(_string(input, _Key.status));
-    if (access == null) throw FormatException(_Key.status, input);
+    if (access == null) throw const FormatException(_Key.status);
     final missing = switch (input[_Key.missing]) {
       null => null,
       final String define => define,
-      _ => throw FormatException(_Key.missing, input),
+      _ => throw const FormatException(_Key.missing),
     };
     return SaveAccessAnswer(access, scope: scope, missing: missing);
   }
@@ -102,6 +103,6 @@ final class _Decoder
   static String _string(Map<Object?, Object?> input, String key) =>
       switch (input[key]) {
         final String value => value,
-        _ => throw FormatException(key, input),
+        _ => throw FormatException(key),
       };
 }

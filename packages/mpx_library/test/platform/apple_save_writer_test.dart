@@ -392,5 +392,24 @@ void main() {
         isA<FormatException>().having((e) => e.message, 'message', 'outcome'),
       ),
     );
+    // The map holds refs and paths: a format error names the field only.
+    expect(
+      () => answers.decode({
+        'outcome': 'saved',
+        'items': [
+          {'ref': '/secret/a.jpg', 'renamed': 'yes'},
+        ],
+      }),
+      throwsA(isA<FormatException>().having((e) => e.source, 'source', isNull)),
+    );
+    expect(
+      () => requests.decode({
+        'destination': 'downloads',
+        'entries': [
+          {'path': '/secret/a.jpg', 'name': 'a.jpg', 'kind': 'sideways'},
+        ],
+      }),
+      throwsA(isA<FormatException>().having((e) => e.source, 'source', isNull)),
+    );
   });
 }

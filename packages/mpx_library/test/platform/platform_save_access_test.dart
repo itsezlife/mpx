@@ -233,7 +233,9 @@ void main() {
         methods: _methods,
       ).access(const SaveDestination.gallery()),
       throwsA(
-        isA<FormatException>().having((e) => e.message, 'message', 'status'),
+        isA<FormatException>()
+            .having((e) => e.message, 'message', 'status')
+            .having((e) => e.source, 'source', isNull),
       ),
     );
   });

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/src/save/media_saver.dart';
 import 'package:mpx_library/src/save/save_destination.dart';
+import 'package:mpx_library/src/save/save_error_summary.dart';
 import 'package:mpx_library/src/save/save_item.dart';
 import 'package:mpx_library/src/save/save_op.dart';
 import 'package:mpx_library/src/save/save_request.dart';
@@ -117,6 +118,22 @@ final class _Slot {
 
   /// The content's key, for the item's events; null for a `save` item.
   MediaKey? get mediaKey => request?.key;
+
+  /// What a writer or the transfers threw for this item, carried into the
+  /// item's next event: its own, never another item's, since the items of
+  /// a `saveContent` batch arrive at once.
+  (Object, StackTrace)? _$error;
+
+  /// Keeps [error] (with [stackTrace]) for the item's next event.
+  void failedWith(Object error, StackTrace stackTrace) =>
+      _$error = (error, stackTrace);
+
+  /// The kept error, once.
+  (Object, StackTrace)? takeError() {
+    final error = _$error;
+    _$error = null;
+    return error;
+  }
 }
 
 /// How a `saveContent` item's download ended for its job.
@@ -237,7 +254,10 @@ final class _Job implements SaveJob {
     try {
       return await writer.admit(id, destination, items);
     } on Object catch (error, stackTrace) {
-      _error = (error, stackTrace);
+      // The batch's admission failed: every item ends with it.
+      for (final slot in _slots) {
+        slot.failedWith(error, stackTrace);
+      }
       return const SaveResult$Failed(SaveFailure.unavailable, code: 'admit');
     }
   }
@@ -297,7 +317,7 @@ final class _Job implements SaveJob {
           cancellation: _cancellation,
         );
       } on Object catch (error, stackTrace) {
-        _error = (error, stackTrace);
+        _slots[write.index].failedWith(error, stackTrace);
         result = const SaveResult.failed(
           SaveFailure.unavailable,
           code: 'throw',
@@ -333,7 +353,9 @@ final class _Job implements SaveJob {
         throw StateError('${results.length} results for ${writes.length}');
       }
     } on Object catch (error, stackTrace) {
-      _error = (error, stackTrace);
+      for (final write in writes) {
+        _slots[write.index].failedWith(error, stackTrace);
+      }
       results = List.filled(
         writes.length,
         const SaveResult.failed(SaveFailure.unavailable, code: 'throw'),
@@ -361,8 +383,8 @@ final class _Job implements SaveJob {
   void _end(int index, SaveResult result, {String stage = 'copy'}) {
     if (_results[index] != null) return;
     _results[index] = result;
-    final error = _takeError();
     final slot = _slots[index];
+    final error = slot.takeError();
     final item = slot.item;
     switch (result) {
       case SaveResult$Saved(:final renamed):
@@ -378,6 +400,7 @@ final class _Job implements SaveJob {
             'ms': _clock.elapsedMilliseconds,
             'renamed': renamed,
           },
+          error: error,
         );
       case SaveResult$Cancelled():
         _emit(
@@ -385,6 +408,7 @@ final class _Job implements SaveJob {
           SaveOp.itemCancelled,
           mediaKey: slot.mediaKey,
           () => {'index': index, 'stage': stage},
+          error: error,
         );
       case SaveResult$Failed(:final reason, :final code):
         _emit(
@@ -432,7 +456,7 @@ final class _Job implements SaveJob {
     } on Object catch (error, stackTrace) {
       FlutterError.reportError(
         FlutterErrorDetails(
-          exception: error,
+          exception: SaveErrorSummary.of(error),
           stack: stackTrace,
           library: 'mpx_library',
           context: ErrorDescription('while releasing a saved item\'s lease'),
@@ -565,7 +589,7 @@ final class _Job implements SaveJob {
         SaveOp.leaseMissing,
         mediaKey: request.key,
         () => {'index': index, 'attempt': attempt},
-        error: _takeError(),
+        error: slot.takeError(),
       );
       if (attempt == 2) {
         return _end(
@@ -585,7 +609,7 @@ final class _Job implements SaveJob {
     try {
       return await transfers.leaseFile(_slots[index].request!.key);
     } on Object catch (error, stackTrace) {
-      _error = (error, stackTrace);
+      _slots[index].failedWith(error, stackTrace);
       return null;
     }
   }
@@ -644,16 +668,6 @@ final class _Job implements SaveJob {
 
   // --- Diagnostics ---
 
-  /// The error a writer or the transfers threw, carried into the event it
-  /// causes.
-  (Object, StackTrace)? _error;
-
-  (Object, StackTrace)? _takeError() {
-    final error = _error;
-    _error = null;
-    return error;
-  }
-
   int _count(SaveItemKind kind) => _slots.where((s) => s.kind == kind).length;
 
   void _routed(int index, String outcome) => _emit(
@@ -684,7 +698,11 @@ final class _Job implements SaveJob {
     jobId: id,
     mediaKey: mediaKey,
     fields: fields,
-    error: error?.$1,
+    // Its type and code only: the message can hold a path or a name.
+    error: switch (error) {
+      (final error, _) => SaveErrorSummary.of(error),
+      null => null,
+    },
     stackTrace: error?.$2,
   );
 

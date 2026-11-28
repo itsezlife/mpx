@@ -385,6 +385,20 @@ void main() {
           isA<FormatException>().having((e) => e.message, 'message', 'ref'),
         ),
       );
+      // A step carries the saved item's URI: a format error names the field
+      // only.
+      expect(
+        () => step.decode({
+          'written': 2,
+          'total': 2,
+          'done': true,
+          'ref': 7,
+          'path': '/secret/a.jpg',
+        }),
+        throwsA(
+          isA<FormatException>().having((e) => e.source, 'source', isNull),
+        ),
+      );
     });
   });
 }
