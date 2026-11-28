@@ -1,6 +1,6 @@
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/mpx_library.dart';
-import 'package:mpx_player/native.dart';
+import 'package:mpx_player/mpx_player.dart';
 
 /// Where a native player reads a media library video: the platform's URI of
 /// the item, opened in place ([PlayerSource.local]), with no copy and nothing

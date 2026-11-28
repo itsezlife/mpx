@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:http_bytes_cache/native_reader.dart';
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_player/native.dart';
 
 /// The example's media on a loopback origin that answers range requests,

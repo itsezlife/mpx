@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_library/testing.dart';
-import 'package:mpx_player/native.dart';
+import 'package:mpx_player/mpx_player.dart';
 import 'package:mpx_ui/mpx_ui.dart';
 
 void main() {
