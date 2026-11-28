@@ -78,6 +78,8 @@ import 'preparation/fake_media_preparation_test.dart'
     as fake_media_preparation_test;
 import 'preparation/preparation_encoding_test.dart'
     as preparation_encoding_test;
+import 'preparation/preparation_fixture_test.dart'
+    as preparation_fixture_test;
 import 'preset/asset_presets_test.dart' as asset_presets_test;
 import 'texture/fake_frame_texture_host_contract_test.dart'
     as fake_frame_texture_host_contract_test;
@@ -193,6 +195,7 @@ void main() {
   group('viewport_visibility_test', viewport_visibility_test.main);
   group('fake_media_preparation_test', fake_media_preparation_test.main);
   group('preparation_encoding_test', preparation_encoding_test.main);
+  group('preparation_fixture_test', preparation_fixture_test.main);
   group('fake_tracked_transfers_test', fake_tracked_transfers_test.main);
   group('tracked_download_test', tracked_download_test.main);
 }
