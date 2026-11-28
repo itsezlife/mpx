@@ -97,6 +97,8 @@ object EnvelopeHost {
             val exit = try {
                 manager?.getHistoricalProcessExitReasons(null, 0, 1)?.firstOrNull()
             } catch (error: Exception) {
+                // The end is still reported, as a stop, with no exit reason.
+                log.note(EnvelopeLevel.WARNING, "envelope exit reasons unreadable", error)
                 null
             }
             if (exit != null) {
@@ -106,7 +108,7 @@ object EnvelopeHost {
             }
         }
         log.record(
-            "warning",
+            EnvelopeLevel.WARNING,
             "systemEnded",
             fields = buildMap {
                 put("cause", cause)
@@ -158,7 +160,7 @@ object EnvelopeHost {
         events = null
         val ended = session ?: return
         end(ended)
-        log.record("info", "withdrawn", ended.content.shownJob, mapOf("why" to "detached"))
+        log.record(EnvelopeLevel.INFO, "withdrawn", ended.content.shownJob, mapOf("why" to "detached"))
     }
 
     // --- Dart calls ----------------------------------------------------------
@@ -184,7 +186,7 @@ object EnvelopeHost {
     fun adopt(handle: String, content: EnvelopeContent) {
         val current = session
         if (current == null || current.handle != handle) {
-            log.record("info", "withdrawn", content.shownJob, mapOf("why" to "notLive"))
+            log.record(EnvelopeLevel.INFO, "withdrawn", content.shownJob, mapOf("why" to "notLive"))
             return
         }
         update(content)
@@ -218,7 +220,7 @@ object EnvelopeHost {
     fun onJobStarted(service: JobService, params: JobParameters): Boolean {
         val current = session
         if (current == null || current.kind != EnvelopeKind.UIDT) {
-            log.record("info", "withdrawn", fields = mapOf("why" to "noSession"))
+            log.record(EnvelopeLevel.INFO, "withdrawn", fields = mapOf("why" to "noSession"))
             return false
         }
         current.jobService = service
@@ -242,7 +244,14 @@ object EnvelopeHost {
         if (current == null || current.kind != EnvelopeKind.DATA_SYNC || content == null) {
             // Stopped before it came up; startForegroundService still asks
             // for one startForeground, or the system ends the app.
-            content?.let { runCatching { foreground(service, "stopped", it) } }
+            content?.let {
+                try {
+                    foreground(service, "stopped", it)
+                } catch (error: Exception) {
+                    // The service stops next either way; only the log is left.
+                    log.note(EnvelopeLevel.WARNING, "envelope stopped foreground refused", error)
+                }
+            }
             service.stopSelf()
             return
         }
@@ -280,11 +289,11 @@ object EnvelopeHost {
         end(current)
         val sink = events
         if (sink != null) {
-            log.record("info", "userCancelledAll", current.content.shownJob, bridge = false)
+            log.record(EnvelopeLevel.INFO, "userCancelledAll", current.content.shownJob, bridge = false)
             sink(mapOf("type" to "userCancelledAll"))
         } else {
             log.record(
-                "info",
+                EnvelopeLevel.INFO,
                 "userCancelledAll",
                 current.content.shownJob,
                 mapOf("jobs" to current.content.jobs.size),
@@ -294,7 +303,7 @@ object EnvelopeHost {
 
     /** The user tapped the notification that showed job [jobId]. */
     fun onNotificationTap(jobId: String) {
-        log.record("info", "notificationTap", jobId, bridge = false)
+        log.record(EnvelopeLevel.INFO, "notificationTap", jobId, bridge = false)
         val event = mapOf("type" to "notificationTap", "job" to jobId)
         val sink = events
         if (sink != null) sink(event) else pendingEvents.add(event)
@@ -382,7 +391,7 @@ object EnvelopeHost {
 
     // The engine reports the refusal from this answer; logcat keeps it too.
     private fun refuse(answer: (Map<String, Any?>) -> Unit, kind: EnvelopeKind, code: String) {
-        log.record("warning", "refused", fields = mapOf("kind" to kind.wireName, "code" to code), bridge = false)
+        log.record(EnvelopeLevel.WARNING, "refused", fields = mapOf("kind" to kind.wireName, "code" to code), bridge = false)
         answer(mapOf("refused" to code))
     }
 
@@ -414,11 +423,11 @@ object EnvelopeHost {
         end(ended)
         val sink = events
         if (sink != null) {
-            log.record("warning", "systemEnded", ended.content.shownJob, mapOf("cause" to cause), bridge = false)
+            log.record(EnvelopeLevel.WARNING, "systemEnded", ended.content.shownJob, mapOf("cause" to cause), bridge = false)
             sink(mapOf("type" to "systemEnded", "cause" to cause))
         } else {
             log.record(
-                "warning",
+                EnvelopeLevel.WARNING,
                 "systemEnded",
                 ended.content.shownJob,
                 mapOf("cause" to cause, "kind" to ended.kind.wireName, "jobs" to ended.content.jobs.size),
@@ -468,7 +477,7 @@ object EnvelopeHost {
         val content = current.content
         val fraction = EnvelopeRules.progressViewOf(content.done, content.total, null, null).fraction
         log.record(
-            "trace",
+            EnvelopeLevel.TRACE,
             "progressPushed",
             content.shownJob,
             buildMap {
