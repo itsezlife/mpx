@@ -1,9 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/src/platform/android_save_wire.dart';
-import 'package:mpx_library/src/platform/platform_save_access.dart';
 import 'package:mpx_library/src/save/save_destination.dart';
-import 'package:mpx_library/src/save/save_item.dart';
 import 'package:mpx_library/src/save/save_result.dart';
 import 'package:mpx_library/src/save/save_writer.dart';
 
@@ -27,26 +25,16 @@ import 'package:mpx_library/src/save/save_writer.dart';
 /// pending row or file. Platform errors come back as short codes and are
 /// mapped to a [SaveFailure] here, the code kept for diagnostics.
 final class AndroidSaveWriter extends SaveWriter$PerItem {
-  /// The writer over [methods], admitting a batch through [access].
-  const AndroidSaveWriter(this._methods, {required this.access});
+  /// The writer over [methods].
+  const AndroidSaveWriter(this._methods);
 
   final MethodChannel _methods;
-
-  /// The save access (the legacy write permission on API 28 and below).
-  final PlatformSaveAccess access;
 
   static const _start = AndroidSaveStartCodec();
   static const _step = AndroidSaveStepCodec();
 
   @override
   String get platform => 'android';
-
-  @override
-  Future<SaveResult$Failed?> admit(
-    String jobId,
-    SaveDestination destination,
-    List<SaveItem> items,
-  ) => access.admit(jobId, destination);
 
   @override
   Future<SaveResult> write(

@@ -1,6 +1,6 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:mpx_library/src/platform/save_access_codec.dart';
+import 'package:mpx_library/src/platform/save_platform.dart';
 import 'package:mpx_library/src/save/save_access.dart';
 import 'package:mpx_library/src/save/save_admission.dart';
 import 'package:mpx_library/src/save/save_destination.dart';
@@ -15,36 +15,18 @@ import 'package:mpx_library/src/save/save_result.dart';
 /// album) and whether the build has the code for it. The desktops and the
 /// web need nothing and call no native code.
 ///
-/// A platform writer calls [admit] from `SaveWriter.admit`, before it
-/// writes anything.
+/// The saver's job runner calls [admit] once per batch, before anything is
+/// written or downloaded.
 final class PlatformSaveAccess {
-  /// The access over [methods], on [platform] (null: the web).
+  /// The access over [methods], on [platform].
   const PlatformSaveAccess(this._methods, {required this.platform});
-
-  /// The access of the platform the app runs on.
-  factory PlatformSaveAccess.current(MethodChannel methods) =>
-      PlatformSaveAccess(
-        methods,
-        platform: kIsWeb ? null : defaultTargetPlatform,
-      );
 
   final MethodChannel _methods;
 
-  /// The plugin channel the access speaks over, which the platform writer
-  /// shares.
-  MethodChannel get methods => _methods;
-
-  /// The platform whose rules apply; null on the web.
-  final TargetPlatform? platform;
+  /// The platform whose rules apply, the one its writer writes for.
+  final SavePlatform platform;
 
   static const _codec = SaveAccessCodec();
-
-  bool get _native => switch (platform) {
-    TargetPlatform.android ||
-    TargetPlatform.iOS ||
-    TargetPlatform.macOS => true,
-    _ => false,
-  };
 
   /// The access of [destination] now, without asking.
   Future<SaveAccess> access(SaveDestination destination) async =>
@@ -79,7 +61,7 @@ final class PlatformSaveAccess {
     String method,
     SaveDestination destination,
   ) async {
-    if (!_native) return SaveAccessAnswer.notNeeded;
+    if (!platform.asksNatively) return SaveAccessAnswer.notNeeded;
     final map = await _methods.invokeMapMethod<Object?, Object?>(method, {
       'destination': destination.name,
       'album': destination is SaveDestination$Gallery && destination.isNamed,

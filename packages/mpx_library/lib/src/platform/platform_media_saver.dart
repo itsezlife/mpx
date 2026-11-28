@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/src/platform/platform_media_library.dart';
 import 'package:mpx_library/src/platform/platform_save_access.dart';
+import 'package:mpx_library/src/platform/save_platform.dart';
 import 'package:mpx_library/src/platform/save_writer_vm.dart'
     if (dart.library.js_interop) 'package:mpx_library/src/platform/save_writer_js.dart'
     as environment_specific;
@@ -42,24 +43,39 @@ final class PlatformMediaSaver implements MediaSaver {
   /// test passes its own. [transfers] is the composition's tracked
   /// transfers, through which `saveContent` makes content local; without
   /// it every `saveContent` item fails `SaveFailure.unavailable`.
-  PlatformMediaSaver({
+  factory PlatformMediaSaver({
     MethodChannel methods = PlatformMediaLibrary.methodsChannel,
     TrackedTransfers? transfers,
-  }) : this._(PlatformSaveAccess.current(methods), transfers);
-
-  PlatformMediaSaver._(this._access, this._transfers)
-    : _writer = environment_specific.$createSaveWriter(access: _access);
+  }) {
+    // One resolved platform for the access and the writer, so they never
+    // follow different rules.
+    final platform = environment_specific.$savePlatform();
+    return PlatformMediaSaver._(
+      PlatformSaveAccess(methods, platform: platform),
+      environment_specific.$createSaveWriter(platform, methods),
+      transfers,
+    );
+  }
 
   /// The saver over [writer], for a test that runs an adapter with its
-  /// system lookups faked; [access] answers over [methods] as above.
+  /// system lookups faked; its access answers over [methods] by the rules
+  /// of [platform] (the resolved one by default).
   @visibleForTesting
-  PlatformMediaSaver.over(
+  factory PlatformMediaSaver.over(
     SaveWriter writer, {
     MethodChannel methods = PlatformMediaLibrary.methodsChannel,
     TrackedTransfers? transfers,
-  }) : _access = PlatformSaveAccess.current(methods),
-       _transfers = transfers,
-       _writer = writer;
+    SavePlatform? platform,
+  }) => PlatformMediaSaver._(
+    PlatformSaveAccess(
+      methods,
+      platform: platform ?? environment_specific.$savePlatform(),
+    ),
+    writer,
+    transfers,
+  );
+
+  PlatformMediaSaver._(this._access, this._writer, this._transfers);
 
   final PlatformSaveAccess _access;
 
@@ -69,7 +85,7 @@ final class PlatformMediaSaver implements MediaSaver {
 
   @override
   SaveJob save(List<SaveItem> items, SaveDestination destination) =>
-      SaveJobRunner.run(items, destination, _writer);
+      SaveJobRunner.run(items, destination, _writer, access: _access.admit);
 
   @override
   Future<SaveAccess> access(SaveDestination destination) =>
@@ -83,5 +99,11 @@ final class PlatformMediaSaver implements MediaSaver {
   SaveJob saveContent(
     List<SaveRequest> requests,
     SaveDestination destination,
-  ) => SaveJobRunner.runContent(requests, destination, _writer, _transfers);
+  ) => SaveJobRunner.runContent(
+    requests,
+    destination,
+    _writer,
+    _transfers,
+    access: _access.admit,
+  );
 }

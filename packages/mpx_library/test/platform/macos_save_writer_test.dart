@@ -6,11 +6,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
 import 'package:mpx_library/mpx_library.dart';
-import 'package:mpx_library/src/platform/apple_save_writer.dart';
 import 'package:mpx_library/src/platform/desktop_save_writer.dart';
 import 'package:mpx_library/src/platform/macos_home_folders.dart';
-import 'package:mpx_library/src/platform/platform_save_access.dart';
+import 'package:mpx_library/src/platform/macos_save_writer.dart';
 import 'package:mpx_library/src/platform/save_block_codec.dart';
+import 'package:mpx_library/src/platform/save_platform.dart';
 import 'package:mpx_library/testing.dart';
 
 const _methods = MethodChannel('test.mpx.library/macos-save');
@@ -91,17 +91,10 @@ final class _Mac {
 
   /// A saver over the same folders and panel with [transfers].
   MediaSaver saverWith(TrackedTransfers? transfers) => PlatformMediaSaver.over(
-    AppleSaveWriter.macos(
-      _methods,
-      access: const PlatformSaveAccess(
-        _methods,
-        platform: TargetPlatform.macOS,
-      ),
-      folders: folders,
-      pickLocation: _pickLocation,
-    ),
+    MacosSaveWriter(_methods, folders: folders, pickLocation: _pickLocation),
     methods: _methods,
     transfers: transfers,
+    platform: SavePlatform.macos,
   );
 
   /// The contract's harness, saving to [destination].

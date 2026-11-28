@@ -7,6 +7,7 @@ import 'package:mpx_core/testing.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_library/src/platform/desktop_save_writer.dart';
 import 'package:mpx_library/src/platform/save_file_copy.dart';
+import 'package:mpx_library/src/platform/save_platform.dart';
 import 'package:mpx_library/testing.dart';
 
 /// The user's folders as temporary directories, one per [DesktopFolder];
@@ -50,6 +51,13 @@ final class _Desk {
         chunkSize: chunkSize,
         copy: copy,
       ),
+      platform: switch (os) {
+        DesktopPlatform.windows => SavePlatform.windows,
+        DesktopPlatform.linux => SavePlatform.linux,
+        // The files writer alone: no Photos access, which the macOS
+        // writer's own tests cover.
+        DesktopPlatform.macos => SavePlatform.other,
+      },
     );
   }
 

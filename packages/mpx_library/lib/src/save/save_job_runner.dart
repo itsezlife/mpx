@@ -21,7 +21,10 @@ import 'package:mpx_library/src/save/save_writer.dart';
 ///   as `SaveJob.cancel` does. A block
 ///   writer's batch is cancelled only before its block begins; the block's
 ///   end, or its cancel before it began, is reported (`changeBlock`).
-/// - A failed admission (denied access, no adapter) fails every item.
+/// - A batch is admitted once, before anything is written or downloaded:
+///   the access first ([SaveAccessGate], the same for every writer), then
+///   the writer's own check (`SaveWriter.admit`); a refusal (denied access,
+///   no adapter) fails every item.
 /// - A `file` item sent to the gallery goes as a photo or a video by its MIME
 ///   type, or fails `unsupportedFormat` unwritten.
 /// - A leased file is never moved.
@@ -35,18 +38,20 @@ import 'package:mpx_library/src/save/save_writer.dart';
 abstract final class SaveJobRunner {
   static int _lastJob = 0;
 
-  /// Starts saving [items] to [destination] through [writer] and returns the
-  /// job at once; the work begins on a later microtask, so a cancel right
-  /// after this call lands before anything is written.
+  /// Starts saving [items] to [destination] through [writer], admitted
+  /// through [access], and returns the job at once; the work begins on a
+  /// later microtask, so a cancel right after this call lands before
+  /// anything is written.
   static SaveJob run(
     List<SaveItem> items,
     SaveDestination destination,
-    SaveWriter writer,
-  ) {
-    final job = _Job('save-${++_lastJob}', [
+    SaveWriter writer, {
+    required SaveAccessGate access,
+  }) {
+    final job = _Job('save-${++_lastJob}', access, [
       for (final item in items) _Slot.item(item),
     ]);
-    unawaited(job._run(destination, writer.delegateFor(destination) ?? writer));
+    unawaited(job._run(destination, writer));
     return job;
   }
 
@@ -58,21 +63,25 @@ abstract final class SaveJobRunner {
     List<SaveRequest> requests,
     SaveDestination destination,
     SaveWriter writer,
-    TrackedTransfers? transfers,
-  ) {
-    final job = _Job('save-${++_lastJob}', [
+    TrackedTransfers? transfers, {
+    required SaveAccessGate access,
+  }) {
+    final job = _Job('save-${++_lastJob}', access, [
       for (final request in requests) _Slot.request(request),
     ]);
-    unawaited(
-      job._runContent(
-        destination,
-        writer.delegateFor(destination) ?? writer,
-        transfers,
-      ),
-    );
+    unawaited(job._runContent(destination, writer, transfers));
     return job;
   }
 }
+
+/// The access check of a batch, the same for every writer: the failure
+/// every item of job `jobId` to `destination` ends with, or null when the
+/// batch may be written (`SaveAdmission.admit` over the platform's access).
+typedef SaveAccessGate =
+    Future<SaveResult$Failed?> Function(
+      String jobId,
+      SaveDestination destination,
+    );
 
 /// One item of a job: what it is, the item to write once known, and how far
 /// it is.
@@ -154,10 +163,13 @@ enum _Arrival {
 }
 
 final class _Job implements SaveJob {
-  _Job(this.id, this._slots) : _results = List.filled(_slots.length, null);
+  _Job(this.id, this._access, this._slots)
+    : _results = List.filled(_slots.length, null);
 
   @override
   final String id;
+
+  final SaveAccessGate _access;
 
   final List<_Slot> _slots;
   final List<SaveResult?> _results;
@@ -220,8 +232,8 @@ final class _Job implements SaveJob {
     }
   }
 
-  /// Admits the batch through [writer] with [items]; false when it was
-  /// refused, every item then ended with the refusal.
+  /// Admits the batch (the access, then [writer] with [items]); false when
+  /// it was refused, every item then ended with the refusal.
   Future<bool> _admitted(
     SaveDestination destination,
     SaveWriter writer,
@@ -233,6 +245,25 @@ final class _Job implements SaveJob {
     return false;
   }
 
+  /// The access first, then [writer]'s own check: the refusal, or null.
+  /// A throw refuses the batch `unavailable` (code `admit`).
+  Future<SaveResult$Failed?> _admit(
+    SaveWriter writer,
+    SaveDestination destination,
+    List<SaveItem> items,
+  ) async {
+    try {
+      return await _access(id, destination) ??
+          await writer.admit(id, destination, items);
+    } on Object catch (error, stackTrace) {
+      // The batch's admission failed: every item ends with it.
+      for (final slot in _slots) {
+        slot.failedWith(error, stackTrace);
+      }
+      return const SaveResult$Failed(SaveFailure.unavailable, code: 'admit');
+    }
+  }
+
   /// Writes every item not ended yet.
   Future<void> _write(SaveDestination destination, SaveWriter writer) async {
     final writes = <SaveWrite>[];
@@ -240,27 +271,21 @@ final class _Job implements SaveJob {
       if (_results[i] != null) continue;
       if (_writeOf(i, destination) case final write?) writes.add(write);
     }
+    await _writeWith(writer, destination, writes);
+  }
+
+  Future<void> _writeWith(
+    SaveWriter writer,
+    SaveDestination destination,
+    List<SaveWrite> writes,
+  ) async {
     switch (writer) {
       case SaveWriter$PerItem():
         await _writeEach(writer, writes);
       case SaveWriter$Block():
         await _writeBlock(writer, writes);
-    }
-  }
-
-  Future<SaveResult$Failed?> _admit(
-    SaveWriter writer,
-    SaveDestination destination,
-    List<SaveItem> items,
-  ) async {
-    try {
-      return await writer.admit(id, destination, items);
-    } on Object catch (error, stackTrace) {
-      // The batch's admission failed: every item ends with it.
-      for (final slot in _slots) {
-        slot.failedWith(error, stackTrace);
-      }
-      return const SaveResult$Failed(SaveFailure.unavailable, code: 'admit');
+      case SaveWriter$ByDestination():
+        await _writeWith(writer.writerFor(destination), destination, writes);
     }
   }
 

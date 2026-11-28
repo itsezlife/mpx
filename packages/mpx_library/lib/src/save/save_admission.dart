@@ -58,7 +58,8 @@ final class SaveAccessAnswer {
 /// ask once when not determined, and turn what is left into the failure of
 /// every item, with its events.
 ///
-/// It sits in `SaveWriter.admit`, before anything is written.
+/// The job runner asks it once per batch, before anything is written or
+/// downloaded.
 abstract final class SaveAdmission {
   /// The failure every item of job [jobId] to [destination] ends with, or
   /// null when the batch may be written. [read] reads the access without

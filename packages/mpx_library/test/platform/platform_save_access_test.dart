@@ -186,11 +186,12 @@ void main() {
       ).save([photo(0)], const SaveDestination.downloads(subfolder: 'App'));
       await job.results;
 
-      expect(calls.map((c) => c.method), ['saveAccess', 'requestSaveAccess']);
-      expect(calls.last.arguments, {
-        'destination': 'downloads',
-        'album': false,
-      });
+      // The Android writer's own calls follow; the access asked once.
+      expect(calls.map((c) => c.method).take(2), [
+        'saveAccess',
+        'requestSaveAccess',
+      ]);
+      expect(calls[1].arguments, {'destination': 'downloads', 'album': false});
       expect(diagnostics.whereOp(SaveOp.accessRequested), [
         isMpxEvent(
           jobId: job.id,

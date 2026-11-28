@@ -14,7 +14,7 @@ import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_library/src/platform/save_browser_js.dart';
-import 'package:mpx_library/src/platform/save_writer_js.dart';
+import 'package:mpx_library/src/platform/web_save_writer.dart';
 import 'package:mpx_library/testing.dart';
 import 'package:web/web.dart' as web;
 
@@ -358,7 +358,7 @@ void main() {
 /// DOM.
 MediaSaver _webSaver(SaveBrowser browser, {int chunkBytes = 1 << 20}) =>
     PlatformMediaSaver.over(
-      SaveWriter$JS(browser: browser, chunkBytes: chunkBytes),
+      WebSaveWriter(browser: browser, chunkBytes: chunkBytes),
     );
 
 final class _Download {

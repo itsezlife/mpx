@@ -4,11 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/src/platform/desktop_save_writer.dart';
-import 'package:mpx_library/src/platform/platform_save_access.dart';
 import 'package:mpx_library/src/platform/save_block_codec.dart';
-import 'package:mpx_library/src/save/save_destination.dart';
 import 'package:mpx_library/src/save/save_error_summary.dart';
-import 'package:mpx_library/src/save/save_item.dart';
 import 'package:mpx_library/src/save/save_op.dart';
 import 'package:mpx_library/src/save/save_result.dart';
 import 'package:mpx_library/src/save/save_writer.dart';
@@ -30,11 +27,8 @@ import 'package:mpx_library/src/save/save_writer.dart';
 /// - `ask` (iOS): the system's export picker over the whole batch; a
 ///   dismissed picker cancels every item.
 ///
-/// On macOS ([AppleSaveWriter.macos]) only the gallery is a block. Downloads
-/// and `ask` are files the Dart side writes item by item ([files]), with
-/// progress and a cancel inside a copy, which a block has neither of:
-/// `~/Downloads/<subfolder>` (a taken name becomes `name (1)`, `createdAt`
-/// the modification time), and the system save panel, one per item.
+/// On macOS (`MacosSaveWriter`) only the gallery is a block of this
+/// writer; Downloads and `ask` are files the Dart side writes.
 ///
 /// The native side reads files, so an item held in memory
 /// (`SaveItem.bytes`) is first written to a temporary file under its name,
@@ -44,64 +38,16 @@ import 'package:mpx_library/src/save/save_writer.dart';
 /// rule). The native side reports a failure as the platform error it got;
 /// [failureOf] maps it.
 final class AppleSaveWriter extends SaveWriter$Block {
-  /// The writer over [_methods], admitting a batch through [access] first.
-  /// [files], when set, writes every destination but the gallery.
-  const AppleSaveWriter(
-    this._methods, {
-    required this.access,
-    this.platform = 'ios',
-    this.files,
-  });
-
-  /// The writer of macOS: Photos through [_methods], Downloads and the save
-  /// panel as files ([DesktopSaveWriter] of [DesktopPlatform.macos]), both
-  /// admitted through [access]. [folders] defaults to the home's
-  /// (`MacosHomeFolders`), [pickLocation] to the system save panel.
-  AppleSaveWriter.macos(
-    MethodChannel methods, {
-    required PlatformSaveAccess access,
-    DesktopFolders? folders,
-    Future<String?> Function(String suggestedName)? pickLocation,
-  }) : this(
-         methods,
-         access: access,
-         platform: 'macos',
-         files: DesktopSaveWriter(
-           DesktopPlatform.macos,
-           access: access,
-           folders: folders,
-           pickLocation: pickLocation,
-         ),
-       );
+  /// The writer over [_methods], reporting itself as [platform].
+  const AppleSaveWriter(this._methods, {this.platform = 'ios'});
 
   final MethodChannel _methods;
-
-  /// The save access every batch is admitted through.
-  final PlatformSaveAccess access;
 
   @override
   final String platform;
 
-  /// The writer of every destination but the gallery, where the platform
-  /// writes those as files (macOS); null writes them in a native block too
-  /// (iOS).
-  final SaveWriter$PerItem? files;
-
-  @override
-  SaveWriter? delegateFor(SaveDestination destination) => switch (destination) {
-    SaveDestination$Gallery() => null,
-    SaveDestination$Downloads() || SaveDestination$Ask() => files,
-  };
-
   static const _requests = SaveBlockRequestCodec();
   static const _answers = SaveBlockAnswerCodec();
-
-  @override
-  Future<SaveResult$Failed?> admit(
-    String jobId,
-    SaveDestination destination,
-    List<SaveItem> items,
-  ) => access.admit(jobId, destination);
 
   @override
   Future<List<SaveResult>> writeBlock(

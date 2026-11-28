@@ -170,7 +170,12 @@ final class FakeMediaSaver implements MediaSaver {
 
   @override
   SaveJob save(List<SaveItem> items, SaveDestination destination) {
-    final job = SaveJobRunner.run(items, destination, _writer);
+    final job = SaveJobRunner.run(
+      items,
+      destination,
+      _writer,
+      access: _admitAccess,
+    );
     batches.add(
       FakeSaveBatch(
         jobId: job.id,
@@ -198,6 +203,16 @@ final class FakeMediaSaver implements MediaSaver {
     missing: saveAccess == SaveAccess.unavailable ? 'MPX_LIBRARY_SAVE' : null,
   );
 
+  Future<SaveResult$Failed?> _admitAccess(
+    String jobId,
+    SaveDestination destination,
+  ) => SaveAdmission.admit(
+    jobId: jobId,
+    destination: destination,
+    read: _answer,
+    request: _prompt,
+  );
+
   Future<SaveAccessAnswer> _prompt() async {
     accessRequests++;
     saveAccess = grantOnRequest;
@@ -211,6 +226,7 @@ final class FakeMediaSaver implements MediaSaver {
       destination,
       _writer,
       transfers,
+      access: _admitAccess,
     );
     contentBatches.add(
       FakeContentBatch(
@@ -237,17 +253,6 @@ FakeSaveWrite _record(FakeMediaSaver saver, SaveWrite write) {
   return written;
 }
 
-Future<SaveResult$Failed?> _admit(
-  FakeMediaSaver saver,
-  String jobId,
-  SaveDestination destination,
-) => SaveAdmission.admit(
-  jobId: jobId,
-  destination: destination,
-  read: saver._answer,
-  request: saver._prompt,
-);
-
 final class _FakeItemWriter extends SaveWriter$PerItem {
   _FakeItemWriter(this._saver);
 
@@ -255,13 +260,6 @@ final class _FakeItemWriter extends SaveWriter$PerItem {
 
   @override
   String get platform => 'fake';
-
-  @override
-  Future<SaveResult$Failed?> admit(
-    String jobId,
-    SaveDestination destination,
-    List<SaveItem> items,
-  ) => _admit(_saver, jobId, destination);
 
   @override
   Future<SaveResult> write(
@@ -287,13 +285,6 @@ final class _FakeBlockWriter extends SaveWriter$Block {
 
   @override
   String get platform => 'fake';
-
-  @override
-  Future<SaveResult$Failed?> admit(
-    String jobId,
-    SaveDestination destination,
-    List<SaveItem> items,
-  ) => _admit(_saver, jobId, destination);
 
   @override
   Future<List<SaveResult>> writeBlock(

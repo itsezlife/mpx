@@ -4,7 +4,6 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/src/platform/macos_home_folders.dart';
-import 'package:mpx_library/src/platform/platform_save_access.dart';
 import 'package:mpx_library/src/platform/save_file_copy.dart';
 import 'package:mpx_library/src/platform/windows_known_folders.dart';
 import 'package:mpx_library/src/platform/xdg_user_dirs.dart';
@@ -17,7 +16,7 @@ import 'package:mpx_library/src/save/save_writer.dart';
 /// A desktop where a save is a file in a folder: where its folders come
 /// from and what its file system's error codes mean. Windows and Linux save
 /// every destination so; macOS its Downloads and save panel, its gallery
-/// being Photos (`AppleSaveWriter.macos`).
+/// being Photos (`MacosSaveWriter`).
 enum DesktopPlatform {
   /// Windows: known folders, Win32 error codes.
   windows,
@@ -143,17 +142,13 @@ abstract final class DesktopSaveNames {
 /// a crashed worker) removes the part file and the claim. A
 /// host file given with `move` is renamed into place when the volume
 /// allows, else copied and then removed. `createdAt` becomes the file's
-/// modification time. There is no access to ask for: [access], the
-/// platform's, admits every batch, and is checked all the same so a desktop
-/// reads like every other platform.
+/// modification time. There is no access to ask for.
 final class DesktopSaveWriter extends SaveWriter$PerItem {
   /// The writer of [os]. [folders] defaults to the system's for [os],
   /// [pickLocation] (the path for a suggested name, null when dismissed) to
-  /// the system save dialog through `file_selector`. [access] is the
-  /// platform's save access; null admits every batch.
+  /// the system save dialog through `file_selector`.
   DesktopSaveWriter(
     this.os, {
-    this.access,
     DesktopFolders? folders,
     Future<String?> Function(String suggestedName)? pickLocation,
     int chunkSize = SaveFileCopy.defaultChunkSize,
@@ -172,9 +167,6 @@ final class DesktopSaveWriter extends SaveWriter$PerItem {
   /// The desktop this writer saves on.
   final DesktopPlatform os;
 
-  /// The platform's save access; null admits every batch.
-  final PlatformSaveAccess? access;
-
   final DesktopFolders _folders;
   final Future<String?> Function(String suggestedName) _pickLocation;
   final int _chunkSize;
@@ -189,13 +181,6 @@ final class DesktopSaveWriter extends SaveWriter$PerItem {
 
   @override
   String get platform => os.name;
-
-  @override
-  Future<SaveResult$Failed?> admit(
-    String jobId,
-    SaveDestination destination,
-    List<SaveItem> items,
-  ) async => access?.admit(jobId, destination);
 
   @override
   Future<SaveResult> write(
