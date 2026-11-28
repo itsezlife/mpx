@@ -151,4 +151,38 @@ void main() {
       });
     }
   });
+
+  group('a fold of a store as written before', () {
+    for (final (name, fixture, folded, open) in [
+      (
+        'the publish journal',
+        publishFixture,
+        publishCompactedFixture,
+        (JournalStore store) async => (await PublishJournal.open(
+          store,
+          retention: const Duration(hours: 24),
+          now: () => _t0,
+        )).close(),
+      ),
+      (
+        'the reuse table',
+        reuseFixture,
+        reuseCompactedFixture,
+        (JournalStore store) async =>
+            (await ReuseTable.open(store, now: () => _t0)).close(),
+      ),
+    ]) {
+      test('of $name writes the same frames after its header', () async {
+        final store = await _storeOf(fixture);
+        await open(store);
+        final written = _payloads((
+          snapshot: store.bytesOf(JournalBlob.snapshot),
+          log: store.bytesOf(JournalBlob.log),
+        ));
+        expect(written.first, '{"header":1}');
+        expect(written.last, '{"header":1}', reason: 'the new log');
+        expect(written.sublist(1, written.length - 1), _payloads(folded));
+      });
+    }
+  });
 }

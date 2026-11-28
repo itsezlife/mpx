@@ -9,6 +9,15 @@ import 'package:mpx_transfer/src/journal/journal_store.dart';
 
 /// What [RecordLog.read] read back from a store.
 final class RecordLogRead<E> {
+  /// [store] left unread, by an owner that is off for this run: a log over
+  /// it holds nothing, and its owner writes nothing, so what the store
+  /// holds is left for a run that reads it.
+  RecordLogRead.unread(this.store, {this.table, this.now = DateTime.now})
+    : entries = const [],
+      generation = 0,
+      bytes = 0,
+      skipped = 0;
+
   RecordLogRead._({
     required this.store,
     required this.entries,

@@ -1,16 +1,16 @@
 import 'dart:async';
-import 'dart:typed_data';
+import 'dart:convert';
 
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_transfer/src/diagnostics/journal_op.dart';
-import 'package:mpx_transfer/src/journal/journal_frames.dart';
 import 'package:mpx_transfer/src/journal/journal_store.dart';
+import 'package:mpx_transfer/src/journal/record_log.dart';
 import 'package:mpx_transfer/src/publish/publish_record.dart';
 import 'package:mpx_transfer/src/publish/publish_request.dart';
 import 'package:mpx_transfer/src/publish/publish_state.dart';
 
 /// Where publish jobs outlive the process: their records in a store of
-/// their own beside the transfer journal's, in the same frame format.
+/// their own beside the transfer journal's, in the same record log.
 ///
 /// Kept apart from the transfer journal because that one is keyed by
 /// transfer id and holds transfer jobs; a publish job owns several of
@@ -22,35 +22,57 @@ import 'package:mpx_transfer/src/publish/publish_state.dart';
 ///
 /// Internal to the package.
 final class PublishJournal {
-  PublishJournal._(this._store, this._records, this.compactAfter);
+  PublishJournal._(
+    RecordLogRead<_Change> read,
+    this._records, {
+    required int compactAfter,
+  }) {
+    _log = RecordLog(
+      read,
+      codec: const _ChangeCodec(),
+      live: () => [for (final record in _records.values) _Change$Put(record)],
+      compactAfter: compactAfter,
+    );
+  }
 
   /// Reads [store] back, drops the completed jobs older than [retention]
   /// (a job whose aliases are pending stays until they apply) and folds
-  /// the rest into a fresh snapshot. A store that cannot be read
-  /// is reported (`journal` `writeFailed`, `table: publish`) and replaced by
-  /// memory for this run.
+  /// the rest into a fresh snapshot. A store that cannot be read is
+  /// reported (`journal` `writeFailed`, `table: publish`) and replaced by
+  /// memory for this run; a record this build cannot read is skipped and
+  /// counted (`replayed`, `skipped`).
   static Future<PublishJournal> open(
     JournalStore store, {
     required Duration retention,
     DateTime Function() now = DateTime.now,
     int compactAfter = defaultCompactAfter,
   }) async {
-    var source = store;
+    final openedAt = now();
+    final read = await RecordLog.read(
+      store,
+      codec: const _ChangeCodec(),
+      table: _table,
+      now: now,
+    );
     final records = <PublishJobId, PublishRecord>{};
-    try {
-      final snapshot = await source.read(JournalBlob.snapshot);
-      final log = await source.read(JournalBlob.log);
-      for (final payload in [
-        ...JournalFrames.decode(snapshot).payloads,
-        ...JournalFrames.decode(log).payloads,
-      ]) {
-        _apply(records, payload);
+    for (final change in read.entries) {
+      switch (change) {
+        case _Change$Put(:final record):
+          records[record.id] = record;
+        case _Change$Remove(:final id):
+          records.remove(id);
       }
-    } on Object catch (error, stackTrace) {
-      _emitWriteFailed(source, error, stackTrace);
-      source = MemoryJournalStore();
-      records.clear();
     }
+    MpxDiagnostics.current.emit(
+      MpxEventLevel.info,
+      JournalOp.replayed,
+      fields: () => {
+        'table': _table,
+        'jobs': records.length,
+        'ms': now().difference(openedAt).inMilliseconds,
+        if (read.skipped > 0) 'skipped': read.skipped,
+      },
+    );
     final time = now();
     records.removeWhere(
       (_, record) =>
@@ -58,27 +80,21 @@ final class PublishJournal {
           !record.isAliasPending &&
           !time.isBefore(record.updatedAt.add(retention)),
     );
-    final journal = PublishJournal._(source, records, compactAfter);
-    await journal._compact();
+    final journal = PublishJournal._(read, records, compactAfter: compactAfter);
+    await journal._log.compact();
     return journal;
   }
 
   /// How many changes the log takes by default before it is folded.
   static const int defaultCompactAfter = 200;
 
-  static const PublishRecordCodec _codec = PublishRecordCodec();
+  static const String _table = 'publish';
 
   /// How many changes the log takes before it is folded during a run.
-  final int compactAfter;
+  int get compactAfter => _log.compactAfter;
 
-  final JournalStore _store;
+  late final RecordLog<_Change> _log;
   final Map<PublishJobId, PublishRecord> _records;
-
-  int _changesSinceCompaction = 0;
-  bool _rewrite = false;
-  bool _closed = false;
-  bool _abandoned = false;
-  Future<void> _tail = Future.value();
 
   /// Every record, in the order the jobs were made.
   Iterable<PublishRecord> get records => _records.values;
@@ -87,111 +103,93 @@ final class PublishJournal {
   PublishRecord? record(PublishJobId id) => _records[id];
 
   /// The store's kind, for a debug panel.
-  JournalStoreKind get kind => _store.kind;
+  JournalStoreKind get kind => _log.kind;
 
   /// Keeps [record] and writes it; completes once that write is done (or
   /// failed, which is reported).
   Future<void> put(PublishRecord record) {
+    if (_log.isClosed) return _log.idle;
     _records[record.id] = record;
-    return _write({_Change.put: _codec.encode(record)});
+    return _log.append([_Change$Put(record)], jobId: record.id.value);
   }
 
   /// Forgets job [id] and writes that; completes once the write is done.
   Future<void> remove(PublishJobId id) {
-    if (_records.remove(id) == null) return _tail;
-    return _write({_Change.remove: id.value});
+    if (_log.isClosed || _records.remove(id) == null) return _log.idle;
+    return _log.append([_Change$Remove(id)], jobId: id.value);
   }
 
   /// Completes when every write made so far has finished.
-  Future<void> get idle => _tail;
+  Future<void> get idle => _log.idle;
 
   /// Waits for every write and releases the store.
-  Future<void> close() async {
-    if (_closed) return _tail;
-    _closed = true;
-    await _tail;
-    await _store.close();
-  }
+  Future<void> close() => _log.close();
 
   /// Stops as a killed process would: writes not yet begun are never made.
-  void abandon() {
-    if (_closed) return;
-    _closed = true;
-    _abandoned = true;
-    unawaited(_tail.then((_) => _store.close()));
-  }
-
-  Future<void> _write(Map<String, Object?> change) {
-    if (_closed) return _tail;
-    final bytes = JournalFrames.encode([change]);
-    return _tail = _tail.then((_) async {
-      if (_abandoned) return;
-      if (_rewrite) {
-        await _compact();
-        return;
-      }
-      try {
-        await _store.append(bytes);
-      } on Object catch (error, stackTrace) {
-        _rewrite = true;
-        _emitWriteFailed(_store, error, stackTrace);
-        return;
-      }
-      if (++_changesSinceCompaction >= compactAfter) await _compact();
-    });
-  }
-
-  Future<void> _compact() async {
-    final snapshot = JournalFrames.encode([
-      for (final record in _records.values)
-        {_Change.put: _codec.encode(record)},
-    ]);
-    try {
-      await _store.replace(snapshot: snapshot, log: Uint8List(0));
-    } on Object catch (error, stackTrace) {
-      _rewrite = true;
-      _emitWriteFailed(_store, error, stackTrace);
-      return;
-    }
-    _changesSinceCompaction = 0;
-    _rewrite = false;
-  }
-
-  /// Applies one change read back; a record this build cannot read is
-  /// skipped, as the transfer journal skips one.
-  static void _apply(
-    Map<PublishJobId, PublishRecord> records,
-    Object? payload,
-  ) {
-    try {
-      switch (payload) {
-        case {_Change.put: final Map<String, Object?> put}:
-          final record = _codec.decode(put);
-          records[record.id] = record;
-        case {_Change.remove: final String id}:
-          records.remove(PublishJobId.parse(id));
-      }
-    } on Object {
-      // A record of a newer version, or one cut short: skipped.
-    }
-  }
-
-  static void _emitWriteFailed(
-    JournalStore store,
-    Object error,
-    StackTrace stackTrace,
-  ) => MpxDiagnostics.current.emit(
-    MpxEventLevel.error,
-    JournalOp.writeFailed,
-    // The error itself stays out: a file system error names its path.
-    fields: () => {'code': store.errorCode(error), 'table': 'publish'},
-    stackTrace: stackTrace,
-  );
+  void abandon() => _log.abandon();
 }
 
-/// The two changes a frame holds: `{"put": record}`, the record in
-/// [PublishRecordCodec]'s form, and `{"remove": id}`.
-abstract final class _Change {
+/// One change of the publish journal: what a frame holds.
+sealed class _Change {
+  const _Change();
+}
+
+/// A job's record, replacing any earlier one of its id.
+final class _Change$Put extends _Change {
+  const _Change$Put(this.record);
+
+  final PublishRecord record;
+}
+
+/// A job was forgotten.
+final class _Change$Remove extends _Change {
+  const _Change$Remove(this.id);
+
+  final PublishJobId id;
+}
+
+/// A change as a frame payload: `{"put": record}`, the record in
+/// [PublishRecordCodec]'s form, or `{"remove": id}`. Anything else throws
+/// a [FormatException]; the log skips that frame and counts it.
+final class _ChangeCodec extends Codec<_Change, Object?> {
+  const _ChangeCodec();
+
+  @override
+  Converter<_Change, Object?> get encoder => const _ChangeEncoder();
+
+  @override
+  Converter<Object?, _Change> get decoder => const _ChangeDecoder();
+}
+
+final class _ChangeEncoder extends Converter<_Change, Object?> {
+  const _ChangeEncoder();
+
+  static const PublishRecordCodec _records = PublishRecordCodec();
+
+  @override
+  Object? convert(_Change input) => switch (input) {
+    _Change$Put(:final record) => {_Key.put: _records.encode(record)},
+    _Change$Remove(:final id) => {_Key.remove: id.value},
+  };
+}
+
+final class _ChangeDecoder extends Converter<Object?, _Change> {
+  const _ChangeDecoder();
+
+  static const PublishRecordCodec _records = PublishRecordCodec();
+
+  @override
+  _Change convert(Object? input) => switch (input) {
+    {_Key.put: final Map<String, Object?> put} => _Change$Put(
+      _records.decode(put),
+    ),
+    {_Key.remove: final String id} => _Change$Remove(PublishJobId.parse(id)),
+    _ => throw FormatException('Expected a publish journal change.', input),
+  };
+}
+
+/// Field names of a change.
+abstract final class _Key {
   static const String put = 'put';
   static const String remove = 'remove';
 }

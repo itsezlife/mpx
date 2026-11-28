@@ -1,15 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_transfer/src/diagnostics/journal_op.dart';
 import 'package:mpx_transfer/src/diagnostics/reuse_op.dart';
 import 'package:mpx_transfer/src/diagnostics/transfers_debug_snapshot.dart';
-import 'package:mpx_transfer/src/journal/journal_frames.dart';
 import 'package:mpx_transfer/src/journal/journal_store.dart';
 import 'package:mpx_transfer/src/journal/json_fields.dart';
+import 'package:mpx_transfer/src/journal/record_log.dart';
 import 'package:mpx_transfer/src/upload/remote_ref.dart';
 import 'package:mpx_transfer/src/upload/upload_transport.dart';
 
@@ -165,15 +164,24 @@ final class ReusePolicy {
 ///
 /// Single-threaded on the UI isolate.
 final class ReuseTable {
-  ReuseTable._({
-    required JournalStore store,
+  ReuseTable._(
+    RecordLogRead<_Change> read, {
     required this.policy,
     required Map<_Slot, ReuseEntry> entries,
-    required this.compactAfter,
+    required int compactAfter,
     required DateTime Function() now,
-  }) : _store = store,
-       _entries = entries,
-       _now = now;
+  }) : _entries = entries,
+       _now = now {
+    _log = RecordLog(
+      read,
+      codec: const _ChangeCodec(),
+      live: () => [
+        for (final MapEntry(:key, :value) in _entries.entries)
+          _Change$Put(key, value.stored),
+      ],
+      compactAfter: compactAfter,
+    );
+  }
 
   /// Reads [store] back, drops the entries past [policy]'s expiry and
   /// folds the rest into a fresh snapshot.
@@ -181,7 +189,8 @@ final class ReuseTable {
   /// With the table off, [store] is not read: what it holds is left for a
   /// run with the table on. A store that cannot be read is reported
   /// (`journal` `writeFailed`, `table: reuse`) and replaced by memory for
-  /// this run, so the table starts empty.
+  /// this run, so the table starts empty; a change this build cannot read
+  /// is skipped and counted (`replayed`, `skipped`).
   @internal
   static Future<ReuseTable> open(
     JournalStore store, {
@@ -191,55 +200,58 @@ final class ReuseTable {
   }) async {
     if (!policy.enabled) {
       return ReuseTable._(
-        store: store,
+        RecordLogRead.unread(store, table: _table, now: now),
         policy: policy,
         entries: {},
         compactAfter: compactAfter,
         now: now,
       );
     }
-    var source = store;
-    final entries = <_Slot, _Stored>{};
-    try {
-      final snapshot = await source.read(JournalBlob.snapshot);
-      final log = await source.read(JournalBlob.log);
-      // A kill between the two steps of a compaction leaves the new
-      // snapshot beside the old log. The log holds only changes the
-      // snapshot already folded, so replaying it after the snapshot ends
-      // in the same table; an expired entry it brings back is dropped
-      // below with the rest.
-      for (final payload in [
-        ...JournalFrames.decode(snapshot).payloads,
-        ...JournalFrames.decode(log).payloads,
-      ]) {
-        _apply(entries, payload);
-      }
-    } on Object catch (error, stackTrace) {
-      _emitWriteFailed(source, error, stackTrace);
-      source = MemoryJournalStore();
-      entries.clear();
-    }
-
-    final table = ReuseTable._(
-      store: source,
-      policy: policy,
-      entries: {
-        for (final MapEntry(:key, :value) in entries.entries)
-          key: value.entry(policy.expiry),
-      },
-      compactAfter: compactAfter,
+    final openedAt = now();
+    final read = await RecordLog.read(
+      store,
+      codec: const _ChangeCodec(),
+      table: _table,
       now: now,
+    );
+    final entries = <_Slot, ReuseEntry>{};
+    for (final change in read.entries) {
+      switch (change) {
+        case _Change$Put(:final slot, :final stored):
+          entries[slot] = stored.entry(policy.expiry);
+        case _Change$Remove(:final slot):
+          entries.remove(slot);
+      }
+    }
+    MpxDiagnostics.current.emit(
+      MpxEventLevel.info,
+      JournalOp.replayed,
+      fields: () => {
+        'table': _table,
+        'entries': entries.length,
+        'ms': now().difference(openedAt).inMilliseconds,
+        if (read.skipped > 0) 'skipped': read.skipped,
+      },
     );
     final time = now();
     // Dropped in memory only: the compaction right after writes the rest.
-    table._entries.removeWhere((_, entry) {
+    entries.removeWhere((_, entry) {
       final expired = !time.isBefore(entry.expiresAt);
       if (expired) _emitInvalidated('expired');
       return expired;
     });
-    await table._compact();
+    final table = ReuseTable._(
+      read,
+      policy: policy,
+      entries: entries,
+      compactAfter: compactAfter,
+      now: now,
+    );
+    await table._log.compact();
     return table;
   }
+
+  static const String _table = 'reuse';
 
   /// How many changes the log takes by default before it is folded into
   /// the snapshot during a run.
@@ -249,19 +261,14 @@ final class ReuseTable {
   final ReusePolicy policy;
 
   /// How many changes the log takes before it is folded during a run.
-  final int compactAfter;
+  int get compactAfter => _log.compactAfter;
 
-  final JournalStore _store;
+  late final RecordLog<_Change> _log;
   final Map<_Slot, ReuseEntry> _entries;
   final DateTime Function() _now;
 
   int _hits = 0;
   int _misses = 0;
-  int _changesSinceCompaction = 0;
-  bool _rewrite = false;
-  bool _closed = false;
-  bool _abandoned = false;
-  Future<void> _tail = Future.value();
 
   // --- Lookups ---------------------------------------------------------------
 
@@ -370,7 +377,7 @@ final class ReuseTable {
     String? itemId,
     MediaKey? mediaKey,
   }) {
-    if (_closed || !policy.enabled) return;
+    if (_log.isClosed || !policy.enabled) return;
     final slot = (transport: transport.id, key: key);
     final storedAt = _now();
     final entry = ReuseEntry(
@@ -380,7 +387,7 @@ final class ReuseTable {
       expiresAt: storedAt.add(policy.expiry),
     );
     _entries[slot] = entry;
-    _write(_putJson(slot, entry));
+    _log.append([_Change$Put(slot, entry.stored)], jobId: jobId);
     MpxDiagnostics.current.emit(
       MpxEventLevel.debug,
       ReuseOp.stored,
@@ -401,7 +408,7 @@ final class ReuseTable {
     MediaKey? mediaKey,
   }) {
     final slot = (transport: transport.id, key: key);
-    if (_closed || !_entries.containsKey(slot)) return false;
+    if (_log.isClosed || !_entries.containsKey(slot)) return false;
     _drop(
       slot,
       'reuploadItems',
@@ -424,25 +431,15 @@ final class ReuseTable {
 
   /// Completes when every write made so far has finished.
   @internal
-  Future<void> get idle => _tail;
+  Future<void> get idle => _log.idle;
 
   /// Waits for every write and releases the store. Changes after this are
   /// ignored.
-  Future<void> close() async {
-    if (_closed) return _tail;
-    _closed = true;
-    await _tail;
-    await _store.close();
-  }
+  Future<void> close() => _log.close();
 
   /// Stops as a killed process would: writes not yet begun are never made.
   @internal
-  void abandon() {
-    if (_closed) return;
-    _closed = true;
-    _abandoned = true;
-    unawaited(_tail.then((_) => _store.close()));
-  }
+  void abandon() => _log.abandon();
 
   // --- Internals -------------------------------------------------------------
 
@@ -472,125 +469,9 @@ final class ReuseTable {
   );
 
   void _remove(_Slot slot) {
-    if (_entries.remove(slot) == null || _closed) return;
-    _write({_Key.remove: _slotJson(slot)});
+    if (_entries.remove(slot) == null || _log.isClosed) return;
+    _log.append([_Change$Remove(slot)]);
   }
-
-  /// Appends [change] after the writes before it; encoded here, so a change
-  /// that cannot be encoded throws where it was made.
-  void _write(Map<String, Object?> change) {
-    final bytes = JournalFrames.encode([change]);
-    _tail = _tail.then((_) async {
-      if (_abandoned) return;
-      if (_rewrite) {
-        // Memory already holds the change; the rewrite writes it.
-        await _compact();
-        return;
-      }
-      try {
-        await _store.append(bytes);
-      } on Object catch (error, stackTrace) {
-        _rewrite = true;
-        _emitWriteFailed(_store, error, stackTrace);
-        return;
-      }
-      if (++_changesSinceCompaction >= compactAfter) await _compact();
-    });
-  }
-
-  Future<void> _compact() async {
-    final snapshot = JournalFrames.encode([
-      for (final MapEntry(:key, :value) in _entries.entries)
-        _putJson(key, value),
-    ]);
-    try {
-      await _store.replace(snapshot: snapshot, log: Uint8List(0));
-    } on Object catch (error, stackTrace) {
-      _rewrite = true;
-      _emitWriteFailed(_store, error, stackTrace);
-      return;
-    }
-    _changesSinceCompaction = 0;
-    _rewrite = false;
-  }
-
-  // --- Stored form ----------------------------------------------------------
-  //
-  // A change is a frame of `{"put": {transport, key, file, thumbnail?,
-  // storedAt}}` or `{"remove": {transport, key}}`: `key` is the reuse key's
-  // canonical form, `file` and `thumbnail` remote references as the journal
-  // writes them, `storedAt` ISO 8601. The expiry is not stored; the run that
-  // reads an entry applies its own.
-
-  static Map<String, Object?> _slotJson(_Slot slot) => {
-    _Key.transport: slot.transport,
-    _Key.key: slot.key._value,
-  };
-
-  static Map<String, Object?> _putJson(_Slot slot, ReuseEntry entry) => {
-    _Key.put: {
-      ..._slotJson(slot),
-      _Key.file: RemoteRef.codec.encode(entry.file),
-      if (entry.thumbnail case final thumbnail?)
-        _Key.thumbnail: RemoteRef.codec.encode(thumbnail),
-      _Key.storedAt: entry.storedAt.toIso8601String(),
-    },
-  };
-
-  /// Applies one change read back to [entries]; a change this build cannot
-  /// read (a newer version's, one cut short) throws a [FormatException]
-  /// naming the field and is skipped.
-  static void _apply(Map<_Slot, _Stored> entries, Object? payload) {
-    try {
-      switch (payload) {
-        case {_Key.put: final Map<String, Object?> json}:
-          final put = JsonFields(json);
-          entries[_slotOf(put)] = (
-            file: _refOf(put.object(_Key.file)),
-            thumbnail: switch (put.optionalObject(_Key.thumbnail)) {
-              final thumbnail? => _refOf(thumbnail),
-              null => null,
-            },
-            storedAt: put.time(_Key.storedAt),
-          );
-        case {_Key.remove: final Map<String, Object?> remove}:
-          entries.remove(_slotOf(JsonFields(remove)));
-      }
-    } on Object {
-      // A change of a newer version: skipped, as the journal skips one.
-    }
-  }
-
-  static _Slot _slotOf(JsonFields json) => (
-    transport: json.string(_Key.transport),
-    key: ReuseKey._(json.string(_Key.key)),
-  );
-
-  static RemoteRef _refOf(JsonFields json) =>
-      RemoteRef.codec.decode(json.json) as RemoteRef;
-
-  static void _emitWriteFailed(
-    JournalStore store,
-    Object error,
-    StackTrace stackTrace,
-  ) => MpxDiagnostics.current.emit(
-    MpxEventLevel.error,
-    JournalOp.writeFailed,
-    // The error itself stays out: a file system error names its path.
-    fields: () => {'code': store.errorCode(error), 'table': 'reuse'},
-    stackTrace: stackTrace,
-  );
-}
-
-/// Field names of the table's stored form.
-abstract final class _Key {
-  static const String put = 'put';
-  static const String remove = 'remove';
-  static const String transport = 'transport';
-  static const String key = 'key';
-  static const String file = 'file';
-  static const String thumbnail = 'thumbnail';
-  static const String storedAt = 'storedAt';
 }
 
 /// Where an entry sits: the transport that carried the source, and the
@@ -608,4 +489,110 @@ extension on _Stored {
     storedAt: storedAt,
     expiresAt: storedAt.add(expiry),
   );
+}
+
+extension on ReuseEntry {
+  _Stored get stored => (file: file, thumbnail: thumbnail, storedAt: storedAt);
+}
+
+/// One change of the table: what a frame holds.
+sealed class _Change {
+  const _Change();
+}
+
+/// An entry kept at [slot], replacing any before it.
+final class _Change$Put extends _Change {
+  const _Change$Put(this.slot, this.stored);
+
+  final _Slot slot;
+  final _Stored stored;
+}
+
+/// The entry at [slot] dropped.
+final class _Change$Remove extends _Change {
+  const _Change$Remove(this.slot);
+
+  final _Slot slot;
+}
+
+/// The table's stored form: a change is a frame of `{"put": {transport,
+/// key, file, thumbnail?, storedAt}}` or `{"remove": {transport, key}}`.
+/// `key` is the reuse key's canonical form, `file` and `thumbnail` remote
+/// references as the journal writes them, `storedAt` ISO 8601. The expiry
+/// is not stored; the run that reads an entry applies its own.
+///
+/// A change this build cannot read (a newer version's) throws a
+/// [FormatException] naming the field; the log skips it and counts it.
+final class _ChangeCodec extends Codec<_Change, Object?> {
+  const _ChangeCodec();
+
+  @override
+  Converter<_Change, Object?> get encoder => const _ChangeEncoder();
+
+  @override
+  Converter<Object?, _Change> get decoder => const _ChangeDecoder();
+}
+
+final class _ChangeEncoder extends Converter<_Change, Object?> {
+  const _ChangeEncoder();
+
+  @override
+  Object? convert(_Change input) => switch (input) {
+    _Change$Put(:final slot, :final stored) => {
+      _Key.put: {
+        ..._slot(slot),
+        _Key.file: RemoteRef.codec.encode(stored.file),
+        if (stored.thumbnail case final thumbnail?)
+          _Key.thumbnail: RemoteRef.codec.encode(thumbnail),
+        _Key.storedAt: stored.storedAt.toIso8601String(),
+      },
+    },
+    _Change$Remove(:final slot) => {_Key.remove: _slot(slot)},
+  };
+
+  static Map<String, Object?> _slot(_Slot slot) => {
+    _Key.transport: slot.transport,
+    _Key.key: slot.key._value,
+  };
+}
+
+final class _ChangeDecoder extends Converter<Object?, _Change> {
+  const _ChangeDecoder();
+
+  @override
+  _Change convert(Object? input) => switch (input) {
+    {_Key.put: final Map<String, Object?> json} => _put(JsonFields(json)),
+    {_Key.remove: final Map<String, Object?> json} => _Change$Remove(
+      _slot(JsonFields(json)),
+    ),
+    _ => throw FormatException('Expected a reuse table change.', input),
+  };
+
+  static _Change _put(JsonFields put) => _Change$Put(_slot(put), (
+    file: _ref(put.object(_Key.file)),
+    thumbnail: switch (put.optionalObject(_Key.thumbnail)) {
+      final thumbnail? => _ref(thumbnail),
+      null => null,
+    },
+    storedAt: put.time(_Key.storedAt),
+  ));
+
+  static _Slot _slot(JsonFields json) => (
+    transport: json.string(_Key.transport),
+    key: ReuseKey._(json.string(_Key.key)),
+  );
+
+  static RemoteRef _ref(JsonFields json) =>
+      RemoteRef.codec.decode(json.json) as RemoteRef;
+}
+
+/// Field names of the table's stored form.
+abstract final class _Key {
+  static const String put = 'put';
+  static const String remove = 'remove';
+  static const String transport = 'transport';
+  static const String key = 'key';
+  static const String file = 'file';
+  static const String thumbnail = 'thumbnail';
+  static const String storedAt = 'storedAt';
 }
