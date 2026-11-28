@@ -1139,6 +1139,71 @@ void main() {
       expect(painted.paints.last.context.opacity, 1);
     });
 
+    // An animation's decode reports its first frame, then the animation
+    // from that frame: the same picture, so it swaps without a fade.
+    FakeAssetPaintable decodeAnimation(FakeAssetAttempt attempt) {
+      attempt.advance(AssetStage.firstFrame);
+      return attempt.advance(
+        AssetStage.full,
+        tier: AssetTier.animated,
+        frames: List.filled(4, const Duration(milliseconds: 33)),
+      );
+    }
+
+    testWidgets('an animation over its own first frame shows at once', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(AssetView(content: _sticker, preset: _preset)),
+      );
+      producer.last.advance(AssetStage.firstFrame);
+      await tester.pump();
+      await tester.pump(_pastFade);
+      final animation = producer.last.advance(
+        AssetStage.full,
+        tier: AssetTier.animated,
+        frames: List.filled(4, const Duration(milliseconds: 33)),
+      );
+
+      await tester.pump();
+
+      expect(animation.paints.last.context.opacity, 1);
+    });
+
+    testWidgets('a larger view of a playing content shows the first frame at '
+        'once and its own animation without a fade', (tester) async {
+      final larger = AssetPreset(
+        size: const Size.square(60),
+        spec: AssetSpec.atDensity(
+          logicalWidth: 60,
+          logicalHeight: 60,
+          devicePixelRatio: 2,
+        ),
+        profile: const AssetProfile(animate: true),
+      );
+      await tester.pumpWidget(
+        host(AssetView(content: _sticker, preset: _preset)),
+      );
+      final cell = decodeAnimation(producer.last);
+      await tester.pump(_pastFade);
+      await tester.pumpWidget(
+        host(
+          Column(
+            children: [
+              AssetView(content: _sticker, preset: _preset),
+              AssetView(content: _sticker, preset: larger),
+            ],
+          ),
+        ),
+      );
+      expect(cell.firstFrame!.paints.last.context.opacity, 1);
+
+      final own = decodeAnimation(producer.last);
+      await tester.pump();
+
+      expect(own.paints.last.context.opacity, 1);
+    });
+
     testWidgets('scales the opacity the view is given', (tester) async {
       await tester.pumpWidget(
         host(AssetView(content: _sticker, preset: _still, opacity: 0.5)),
