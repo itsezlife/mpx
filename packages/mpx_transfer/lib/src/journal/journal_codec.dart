@@ -8,6 +8,7 @@ import 'package:mpx_transfer/src/job/transfer_state.dart';
 import 'package:mpx_transfer/src/journal/journal_frames.dart';
 import 'package:mpx_transfer/src/journal/journal_record.dart';
 import 'package:mpx_transfer/src/journal/json_fields.dart';
+import 'package:mpx_transfer/src/upload/remote_ref.dart';
 import 'package:mpx_transfer/src/upload/upload_lane.dart';
 
 /// How one kind of [TransferResult] is written into the journal and read
@@ -90,7 +91,9 @@ typedef JournalRead = ({
 /// a completed one holds `result`, `{kind, value}`, the value written by
 /// the [TransferResultCodec] of that kind. An `upload` holds its `source`
 /// (`path`, `size`, `growing`, `fingerprint`, `modified?`), the transport
-/// and its resume state, its acknowledged `parts` and its `owner?`.
+/// and its resume state, its acknowledged `parts`, its `owner?` and the
+/// remote end's `finished?` answer (`{id, attributes?}`), kept until the
+/// completed state is written.
 ///
 /// ## Encoding
 ///
@@ -249,6 +252,8 @@ final class JournalCodec {
         _Key.item: owner.itemId,
         _Key.role: owner.role.name,
       },
+    if (upload.finished case final finished?)
+      _Key.finished: RemoteRef.codec.encode(finished),
   };
 
   JournalUpload _uploadFromJson(JsonFields json) {
@@ -284,6 +289,10 @@ final class JournalCodec {
           itemId: owner.string(_Key.item),
           role: owner.byName(UploadRole.values, _Key.role),
         ),
+        null => null,
+      },
+      finished: switch (json.optionalObject(_Key.finished)) {
+        final finished? => RemoteRef.codec.decode(finished.json) as RemoteRef,
         null => null,
       },
     );
@@ -425,6 +434,7 @@ abstract final class _Key {
   static const String job = 'job';
   static const String item = 'item';
   static const String role = 'role';
+  static const String finished = 'finished';
 
   // A state.
   static const String variant = 'is';

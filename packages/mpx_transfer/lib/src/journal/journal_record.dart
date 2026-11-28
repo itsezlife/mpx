@@ -1,5 +1,6 @@
 import 'package:meta/meta.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
+import 'package:mpx_transfer/src/upload/remote_ref.dart';
 import 'package:mpx_transfer/src/upload/upload_lane.dart';
 
 /// What the journal keeps of one transfer job: the job as queries see it,
@@ -80,6 +81,7 @@ final class JournalUpload {
     Map<int, String?> parts = const {},
     this.highWaterMark = 0,
     this.owner,
+    this.finished,
   }) : parts = Map.unmodifiable(parts);
 
   /// The file the upload reads.
@@ -121,14 +123,22 @@ final class JournalUpload {
   /// null for an upload made on its own.
   final JournalUploadOwner? owner;
 
+  /// What the remote end answered to the upload's finish, kept from the
+  /// answer until the completed state is written: a kill in between
+  /// completes the job with it at the next start instead of finishing an
+  /// upload the remote end may already have closed.
+  final RemoteRef? finished;
+
   /// This upload with the given parts replaced; [clearResumeToken] drops
-  /// the token and its expiry.
+  /// the token and its expiry, [clearFinished] the finish answer.
   JournalUpload copyWith({
     JournalSource? source,
     String? resumeToken,
     bool clearResumeToken = false,
     Map<int, String?>? parts,
     int? highWaterMark,
+    RemoteRef? finished,
+    bool clearFinished = false,
   }) => JournalUpload(
     source: source ?? this.source,
     transportId: transportId,
@@ -141,6 +151,7 @@ final class JournalUpload {
     parts: parts ?? this.parts,
     highWaterMark: highWaterMark ?? this.highWaterMark,
     owner: owner,
+    finished: clearFinished ? null : finished ?? this.finished,
   );
 
   @override
@@ -156,7 +167,8 @@ final class JournalUpload {
       other.resumeExpiresAt == resumeExpiresAt &&
       _sameParts(other.parts, parts) &&
       other.highWaterMark == highWaterMark &&
-      other.owner == owner;
+      other.owner == owner &&
+      other.finished == finished;
 
   @override
   int get hashCode => Object.hash(
@@ -173,6 +185,7 @@ final class JournalUpload {
     ),
     highWaterMark,
     owner,
+    finished,
   );
 
   @override

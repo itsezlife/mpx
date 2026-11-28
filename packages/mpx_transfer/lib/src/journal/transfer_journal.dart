@@ -288,6 +288,16 @@ final class TransferJournal {
     _records[id] = record.copyWith(upload: change(upload));
   }
 
+  /// Changes job [id]'s upload facts with [change] and writes the job at
+  /// once: a fact a kill must not lose, as the remote end's finish answer.
+  void writeUpload(
+    TransferId id,
+    JournalUpload Function(JournalUpload) change,
+  ) {
+    amendUpload(id, change);
+    if (_records[id] case final record? when !_closed) writeState(record.job);
+  }
+
   /// Forgets job [id] and writes that at once.
   void remove(TransferId id) {
     if (_closed || _records.remove(id) == null) return;
