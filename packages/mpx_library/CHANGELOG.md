@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- `PlatformMediaSaver` saves on iOS: one native call per batch with one
+  atomic result. `gallery(album:)` is one Photos change block (one prompt),
+  each asset with the item's name, type and `createdAt`; a GIF animation
+  saves as an animated image; an album is found or made in the block, and
+  skipped under limited access. `downloads(subfolder:)` copies into the
+  app's Documents when the host shows them in Files
+  (`UIFileSharingEnabled`, `LSSupportsOpeningDocumentsInPlace`), else opens
+  the export picker as `ask` does; a taken name gets ` (1)`. `ask` is the
+  export picker over the batch, a dismissed one cancelling every item. A
+  cancel counts only before the block begins. Failures map from the
+  Photos, Foundation and POSIX error codes, which `itemFailed` carries.
+  Events `changeBlock` (from every one-block writer), `fallbackToAsk` (why
+  `noFileSharing`) and `albumSkipped`.
+
 - `SaveAccess`, the access saving needs, apart from `LibraryAccess`:
   `MediaSaver.access(destination)` reads it, `requestAccess(destination)`
   asks ahead, and a batch asks once by itself before writing. Apple asks

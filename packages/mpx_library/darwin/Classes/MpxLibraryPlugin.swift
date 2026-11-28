@@ -7,14 +7,16 @@
 
 /// Native side of mpx_library on iOS and macOS: the PhotoKit library (iOS)
 /// on one method channel, its events (access, changes, downloads) on one
-/// event channel, the system camera (iOS), and the save access.
+/// event channel, the system camera (iOS), and the media saver (its access
+/// and one `saveBlock` call per batch).
 ///
 /// PhotoKit's library compiles only under the host's `MPX_LIBRARY_PHOTOS`
 /// condition, the system camera under `MPX_LIBRARY_CAMERA` and the save
 /// access under `MPX_LIBRARY_SAVE` (README), so a host links only the
 /// Photos code it opted into: without the first, access answers
 /// `restricted`; without the second, the system camera is unavailable;
-/// without the third, saving to the gallery is unavailable.
+/// without the third, saving to the gallery is unavailable (Downloads and
+/// the save dialog need no Photos code).
 public class MpxLibraryPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   private var sink: FlutterEventSink?
 
@@ -85,6 +87,8 @@ public class MpxLibraryPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       return SaveAccess.request(
         destination: args["destination"] as? String ?? "", album: args["album"] as? Bool ?? false
       ) { access in DispatchQueue.main.async { result(access) } }
+    case "saveBlock":
+      return SaveBlock.run(args) { answer in DispatchQueue.main.async { result(answer) } }
     case "openSettings":
       #if os(iOS)
         if let url = URL(string: UIApplication.openSettingsURLString) {

@@ -16,6 +16,7 @@ import 'intake/intake_test.dart' as intake_test;
 import 'library/fake_media_library_contract_test.dart'
     as fake_media_library_contract_test;
 import 'library/fake_media_library_test.dart' as fake_media_library_test;
+import 'platform/apple_save_writer_test.dart' as apple_save_writer_test;
 import 'platform/desktop_save_writer_test.dart' as desktop_save_writer_test;
 import 'platform/platform_media_library_test.dart'
     as platform_media_library_test;
@@ -40,6 +41,7 @@ void main() {
     fake_media_library_contract_test.main,
   );
   group('fake_media_library_test', fake_media_library_test.main);
+  group('apple_save_writer_test', apple_save_writer_test.main);
   group('desktop_save_writer_test', desktop_save_writer_test.main);
   group('platform_media_library_test', platform_media_library_test.main);
   group('platform_media_saver_test', platform_media_saver_test.main);

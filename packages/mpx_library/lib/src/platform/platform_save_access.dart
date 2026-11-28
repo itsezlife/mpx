@@ -30,6 +30,10 @@ final class PlatformSaveAccess {
 
   final MethodChannel _methods;
 
+  /// The plugin's channel this access asks over, which the platform's
+  /// writer saves over too.
+  MethodChannel get methods => _methods;
+
   /// The platform whose rules apply; null on the web.
   final TargetPlatform? platform;
 

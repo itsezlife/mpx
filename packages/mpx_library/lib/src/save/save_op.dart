@@ -79,11 +79,24 @@ enum SaveOp implements DiagnosticOp {
   /// cancelled, `shared` left running).
   downloadsCancelled,
 
-  /// A save to `ask` went as a download instead (debug; `why`:
-  /// `noSavePicker` when the browser has no save picker, with no `index`,
-  /// once per batch; `noActivation` when the page could not open it for
-  /// item `index`).
-  fallbackToAsk;
+  /// A save went another way than asked (debug; `why`). The web's `ask`
+  /// went as a download: `noSavePicker` when the browser has no save
+  /// picker, with no `index`, once per batch; `noActivation` when the page
+  /// could not open it for item `index`. Apple's Downloads went to the
+  /// system's export picker: `noFileSharing` when the app does not show its
+  /// documents in the system's file browser.
+  fallbackToAsk,
+
+  /// A batch written as one atomic block (a Photos change block) ended, or
+  /// was cancelled before it began (debug; `items` in the block, `result`:
+  /// `saved`, `failed` or `cancelled`, and `cancel`: `before` when a cancel
+  /// kept it from beginning, `during` when one came while it ran and had
+  /// no effect).
+  changeBlock,
+
+  /// A batch to a named album was saved without the album (debug; `why`:
+  /// `limited`, the access that can neither fetch nor make an album).
+  albumSkipped;
 
   @override
   String get category => 'save';

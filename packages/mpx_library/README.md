@@ -98,7 +98,7 @@ final job = saver.saveContent([
   saver knows no rights: the caller decides before it calls. It asks for
   its own `SaveAccess` (`access`, `requestAccess`; a batch asks once by
   itself), apart from the library's read access. `PlatformMediaSaver` saves
-  on Windows, Linux and the web; a platform whose adapter has not landed answers
+  on iOS, Windows, Linux and the web; a platform whose adapter has not landed answers
   `unavailable` past the access check.
 - `MediaSaver.saveContent`: `SaveRequest`s (key, name, MIME type, kind) as
   one `SaveJob` over `mpx_core`'s `TrackedTransfers`: a content not local
@@ -138,6 +138,25 @@ XDG user directories (`user-dirs.dirs`, the home when a folder is not
 set). A taken name gets ` (1)`, ` (2)`, … before its extension. The copy
 streams on a worker isolate with progress and cancel; `createdAt` becomes
 the file's modification time. Nothing to declare: no access is asked.
+
+Saving on iOS: a batch is one native call and one atomic result.
+`gallery(album:)` is one Photos change block for the whole batch, so one
+prompt; each asset gets the item's name, its type from the MIME type and
+`createdAt` as its creation date. A GIF animation saves as an animated
+image, a video animation as a video. A named album is found or made in
+the same block; under limited access, which cannot reach albums, the
+assets are saved without it. `downloads(subfolder:)` copies into the app's
+Documents, which the Files app shows when the host declares
+`UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace` in
+`Info.plist`; without both the batch goes to the export picker, as `ask`.
+A taken name there gets ` (1)`, ` (2)`, … before its extension, and a
+failed copy takes back the copies made before it. `ask` opens the system
+export picker over the whole batch; dismissing it cancels every item. A
+cancel counts only before the block begins: once Photos or the picker has
+the batch, it runs to its end. A failure is the batch's and carries the
+platform's code (`photos.3305`, `cocoa.640`, …). `SaveItem.bytes` items are
+not taken on iOS (`unavailable`, code `bytes`). The saved ref is the
+asset's local identifier, or the saved file's path.
 
 On the web a pick that answers nothing within a second of the window
 getting its focus back ends empty (browsers say nothing when the dialog is
@@ -216,6 +235,7 @@ adds, per platform:
 | iOS, macOS: gallery with an album | Photos read and write access | also `NSPhotoLibraryUsageDescription` and `MPX_LIBRARY_PHOTOS` |
 | macOS sandbox | | `com.apple.security.personal-information.photos-library` for the gallery, `com.apple.security.files.downloads.read-write` for Downloads |
 | iOS, macOS: Downloads, the save dialog; Windows, Linux, web | none | nothing |
+| iOS: Downloads shown in Files | none | `UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace` set to true in `Info.plist`; without them Downloads opens the export picker |
 
 **Android** (`AndroidManifest.xml`):
 

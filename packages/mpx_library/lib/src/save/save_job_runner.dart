@@ -16,7 +16,8 @@ import 'package:mpx_library/src/save/save_writer.dart';
 /// - One batch is one job with one id, one progress and a result per item.
 /// - A cancel before the work begins cancels every item; between items it
 ///   cancels the rest; inside an item it is the writer's to honour. A block
-///   writer's batch is cancelled only before its block begins.
+///   writer's batch is cancelled only before its block begins; the block's
+///   end, or its cancel before it began, is reported (`changeBlock`).
 /// - A failed admission (denied access, no adapter) fails every item.
 /// - A `file` item sent to the gallery goes as a photo or a video by its MIME
 ///   type, or fails `unsupportedFormat` unwritten.
@@ -308,6 +309,7 @@ final class _Job implements SaveJob {
     if (writes.isEmpty) return;
     // A block cannot be stopped once begun: a cancel counts only before it.
     if (_cancellation.isCancelled) {
+      _blockEnded(writes.length, 'cancelled', cancel: 'before');
       return _endRemaining(const SaveResult.cancelled());
     }
     List<SaveResult> results;
@@ -333,6 +335,16 @@ final class _Job implements SaveJob {
     }
     // The block is atomic: one failure is every item's.
     final failure = results.whereType<SaveResult$Failed>().firstOrNull;
+    _blockEnded(
+      writes.length,
+      failure != null
+          ? 'failed'
+          : results.every((r) => r is SaveResult$Cancelled)
+          ? 'cancelled'
+          : 'saved',
+      // The cancel came while the block ran, which it could not stop.
+      cancel: _cancellation.isCancelled ? 'during' : null,
+    );
     for (var i = 0; i < writes.length; i++) {
       _end(writes[i].index, failure ?? results[i]);
     }
@@ -646,6 +658,12 @@ final class _Job implements SaveJob {
       'mime': _topType(_slots[index].mimeType),
       'outcome': outcome,
     },
+  );
+
+  void _blockEnded(int items, String result, {String? cancel}) => _emit(
+    MpxEventLevel.debug,
+    SaveOp.changeBlock,
+    () => {'items': items, 'result': result, 'cancel': ?cancel},
   );
 
   void _emit(
