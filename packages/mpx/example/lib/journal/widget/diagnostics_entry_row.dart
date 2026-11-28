@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_example/journal/model/diagnostics_entry.dart';
 import 'package:mpx_example/journal/model/journal_export.dart';
-import 'package:mpx_example/journal/model/journal_record.dart';
 
 /// One colour per level, shared by the chip, the row's stripe and the
 /// badge, so the eye can follow a level across all three.
@@ -17,16 +17,16 @@ extension JournalLevelPalette on ThemeData {
 
 /// One journal line: level stripe, wall-clock time, `category.op`, level
 /// badge, then the correlation ids and the fields.
-class JournalRecordRow extends StatelessWidget {
+class DiagnosticsEntryRow extends StatelessWidget {
   /// A row for [record].
-  const JournalRecordRow({
+  const DiagnosticsEntryRow({
     required this.record,
     required this.onTap,
     super.key,
   });
 
   /// The record shown.
-  final JournalRecord record;
+  final DiagnosticsEntry record;
 
   /// Opens the record's details.
   final VoidCallback onTap;

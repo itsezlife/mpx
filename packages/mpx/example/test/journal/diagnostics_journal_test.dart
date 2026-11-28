@@ -1,6 +1,6 @@
 /// The diagnostics journal keeps every event in a ring that survives a kill.
 ///
-/// **Seam:** [DiagnosticsJournal] over a [JournalStore] (memory, and the
+/// **Seam:** [DiagnosticsJournal] over a [DiagnosticsLineStore] (memory, and the
 /// files of the VM), read back through its records and a second journal
 /// over the same store.
 library;
@@ -14,9 +14,9 @@ import 'package:mpx/mpx.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
 import 'package:mpx_example/journal/data/diagnostics_journal.dart';
-import 'package:mpx_example/journal/data/environment_specific/journal_store_vm.dart';
-import 'package:mpx_example/journal/data/journal_store.dart';
-import 'package:mpx_example/journal/model/journal_record.dart';
+import 'package:mpx_example/journal/data/diagnostics_line_store.dart';
+import 'package:mpx_example/journal/data/environment_specific/diagnostics_line_store_vm.dart';
+import 'package:mpx_example/journal/model/diagnostics_entry.dart';
 
 enum _Op implements DiagnosticOp {
   tick,
@@ -57,11 +57,11 @@ void main() {
       expect(_ns(journal), [0, 1, 2, 3, 4]);
       expect(journal.records.first.category, 'transport');
       expect(journal.records.first.op, 'tick');
-      expect(journal.records.first.source, JournalSource.mpx);
+      expect(journal.records.first.source, DiagnosticsSource.mpx);
     });
 
     test('drops the oldest events past its cap', () {
-      final line = JournalRecord.fromMpxEvent(_event(0)).encode().length + 1;
+      final line = DiagnosticsEntry.fromMpxEvent(_event(0)).encode().length + 1;
       // Room for three lines, not four.
       final journal = DiagnosticsJournal.memory(capBytes: line * 3 + 1);
       addTearDown(journal.dispose);
@@ -76,7 +76,7 @@ void main() {
 
     test('writes a warning or an error, and the batch before it, before it '
         'returns; the rest waits for the batch', () async {
-      final store = MemoryJournalStore();
+      final store = MemoryDiagnosticsLineStore();
       final journal = DiagnosticsJournal(
         store: store,
         batchInterval: const Duration(milliseconds: 20),
@@ -100,7 +100,7 @@ void main() {
 
     test('restores, after a restart, what the previous run kept, before what '
         'arrived since', () async {
-      final store = MemoryJournalStore();
+      final store = MemoryDiagnosticsLineStore();
       final first = DiagnosticsJournal(store: store);
       for (var n = 0; n < 3; n++) {
         first.addMpxEvent(_event(n, jobId: 'j7'));
@@ -127,7 +127,7 @@ void main() {
     });
 
     test('reports its opening with what it restored', () async {
-      final store = MemoryJournalStore();
+      final store = MemoryDiagnosticsLineStore();
       final first = DiagnosticsJournal(store: store)
         ..addMpxEvent(_event(0))
         ..addMpxEvent(_event(1))
@@ -249,12 +249,15 @@ void main() {
       );
 
       final [record] = journal.records.toList();
-      expect(record.source, JournalSource.app);
+      expect(record.source, DiagnosticsSource.app);
       expect(record.category, 'app');
       expect(record.level, MpxEventLevel.error);
       expect(record.message, 'Fetch of https://example.com failed');
       expect(record.stackTrace, '#0 main');
-      expect(JournalRecord.tryParse(record.encode())?.message, record.message);
+      expect(
+        DiagnosticsEntry.tryParse(record.encode())?.message,
+        record.message,
+      );
     });
   });
 
@@ -267,7 +270,10 @@ void main() {
 
     test('a warning is in the file when the call returns, and a journal over '
         'the same folder restores it', () async {
-      final store = await FileJournalStore.open(directory, capBytes: 1 << 20);
+      final store = await FileDiagnosticsLineStore.open(
+        directory,
+        capBytes: 1 << 20,
+      );
       final first = DiagnosticsJournal(store: store)
         ..addMpxEvent(_event(0))
         ..addMpxEvent(_event(1, level: MpxEventLevel.warning));
@@ -278,7 +284,10 @@ void main() {
       first.dispose();
 
       final again = DiagnosticsJournal(
-        store: await FileJournalStore.open(directory, capBytes: 1 << 20),
+        store: await FileDiagnosticsLineStore.open(
+          directory,
+          capBytes: 1 << 20,
+        ),
       );
       addTearDown(again.dispose);
       await again.restore();
@@ -288,9 +297,13 @@ void main() {
     });
 
     test('the files hold about the cap: the oldest lines go first', () async {
-      final line = JournalRecord.fromMpxEvent(_event(10)).encode().length + 1;
+      final line =
+          DiagnosticsEntry.fromMpxEvent(_event(10)).encode().length + 1;
       final cap = line * 8;
-      final store = await FileJournalStore.open(directory, capBytes: cap);
+      final store = await FileDiagnosticsLineStore.open(
+        directory,
+        capBytes: cap,
+      );
       final journal = DiagnosticsJournal(store: store, capBytes: cap);
       for (var n = 10; n < 40; n++) {
         journal
@@ -300,20 +313,23 @@ void main() {
       await journal.close();
       journal.dispose();
 
-      final kept = await (await FileJournalStore.open(
+      final kept = await (await FileDiagnosticsLineStore.open(
         directory,
         capBytes: cap,
       )).read();
       final size = kept.fold(0, (sum, line) => sum + line.length + 1);
       expect(size, lessThanOrEqualTo(cap));
       expect(kept, isNotEmpty);
-      expect(JournalRecord.tryParse(kept.last)?.fields['n'], 39);
-      expect(JournalRecord.tryParse(kept.first)?.fields['n'], greaterThan(10));
+      expect(DiagnosticsEntry.tryParse(kept.last)?.fields['n'], 39);
+      expect(
+        DiagnosticsEntry.tryParse(kept.first)?.fields['n'],
+        greaterThan(10),
+      );
     });
   });
 }
 
-final class _FailingStore implements JournalStore {
+final class _FailingStore implements DiagnosticsLineStore {
   @override
   bool get isPersistent => true;
 

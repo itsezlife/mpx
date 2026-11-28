@@ -54,4 +54,31 @@ void main() {
     expect(settings.transport, DemoTransport.tus);
     expect(settings.startRule, isNull);
   });
+
+  test('a value of the wrong kind fails naming its key', () {
+    expect(
+      () => const TransferSettingsCodec().decode({'transport': 'carrier'}),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          contains('transport'),
+        ),
+      ),
+    );
+    expect(
+      () => const TransferSettingsCodec().decode({'server': 3}),
+      throwsFormatException,
+    );
+    expect(
+      () => const TransferSettingsCodec().decode({'server': 'no-host'}),
+      throwsFormatException,
+    );
+  });
+
+  test('an unreadable file reads as the defaults', () {
+    final file = File('${directory.path}/settings.json')
+      ..writeAsStringSync('{"transport": 7');
+    expect(TransferSettings.load(file.path).transport, DemoTransport.tus);
+  });
 }

@@ -5,8 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart' show Rect;
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_example/journal/data/diagnostics_journal.dart';
+import 'package:mpx_example/journal/model/diagnostics_entry.dart';
 import 'package:mpx_example/journal/model/journal_export.dart';
-import 'package:mpx_example/journal/model/journal_record.dart';
 import 'package:mpx_example/journal/model/journal_view.dart';
 
 /// An export file on its way out: its name, its bytes and their type.
@@ -54,7 +54,7 @@ final class JournalViewController with ChangeNotifier {
   late JournalSnapshot _snapshot;
 
   /// Newest record when [_snapshot] was taken; records after it are new.
-  JournalRecord? _$anchor;
+  DiagnosticsEntry? _$anchor;
   bool _paused = false;
   int _newCount = 0;
   bool _$exporting = false;

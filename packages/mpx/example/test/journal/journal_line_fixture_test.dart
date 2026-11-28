@@ -4,7 +4,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
-import 'package:mpx_example/journal/model/journal_record.dart';
+import 'package:mpx_example/journal/model/diagnostics_entry.dart';
 
 // Written by the encoder before it became a codec.
 const _full =
@@ -17,10 +17,10 @@ const _bare =
     '"o":"log","m":"hello"}';
 
 void main() {
-  final full = JournalRecord(
+  final full = DiagnosticsEntry(
     time: DateTime.fromMicrosecondsSinceEpoch(1795780800000000),
     level: MpxEventLevel.error,
-    source: JournalSource.mpx,
+    source: DiagnosticsSource.mpx,
     category: 'upload',
     op: 'failed',
     ids: const {'jobId': 'j1', 'itemId': 'i2'},
@@ -28,10 +28,10 @@ void main() {
     error: 'SocketException: https://host.test',
     stackTrace: '#0 main',
   );
-  final bare = JournalRecord(
+  final bare = DiagnosticsEntry(
     time: DateTime.fromMicrosecondsSinceEpoch(1795780800000001),
     level: MpxEventLevel.info,
-    source: JournalSource.app,
+    source: DiagnosticsSource.app,
     category: 'app',
     op: 'log',
     message: 'hello',
@@ -44,7 +44,7 @@ void main() {
 
   test('a stored line reads back as the record it was', () {
     for (final (line, record) in [(_full, full), (_bare, bare)]) {
-      final read = JournalRecord.tryParse(line)!;
+      final read = DiagnosticsEntry.tryParse(line)!;
       expect(read.time, record.time);
       expect(read.level, record.level);
       expect(read.source, record.source);
@@ -60,8 +60,30 @@ void main() {
   });
 
   test('a torn line or a line of another format reads as none', () {
-    expect(JournalRecord.tryParse(_full.substring(0, 40)), isNull);
-    expect(JournalRecord.tryParse('{"t":1}'), isNull);
-    expect(JournalRecord.tryParse(_bare.replaceFirst('info', 'loud')), isNull);
+    expect(DiagnosticsEntry.tryParse(_full.substring(0, 40)), isNull);
+    expect(DiagnosticsEntry.tryParse('{"t":1}'), isNull);
+    expect(
+      DiagnosticsEntry.tryParse(_bare.replaceFirst('info', 'loud')),
+      isNull,
+    );
+  });
+
+  test('a field of the wrong kind fails naming its key', () {
+    expect(
+      () => DiagnosticsEntry.codec.decode({
+        't': 1,
+        'l': 'info',
+        's': 'app',
+        'c': 'app',
+        'o': 7,
+      }),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          contains('"o"'),
+        ),
+      ),
+    );
   });
 }

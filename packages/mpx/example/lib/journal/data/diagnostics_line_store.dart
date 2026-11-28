@@ -1,7 +1,7 @@
 /// Where the diagnostics journal keeps its lines between runs.
 library;
 
-import 'package:mpx_example/journal/data/environment_specific/journal_store.dart'
+import 'package:mpx_example/journal/data/environment_specific/diagnostics_line_store.dart'
     as environment_specific;
 
 /// The lines of the diagnostics journal, oldest first, kept where they
@@ -11,13 +11,13 @@ import 'package:mpx_example/journal/data/environment_specific/journal_store.dart
 /// error before the call that reported it returns, so a kill a moment later
 /// still finds it on disk. An asynchronous write could still be queued when
 /// the process dies.
-abstract interface class JournalStore {
+abstract interface class DiagnosticsLineStore {
   /// A store on disk under [directory], holding about [capBytes] of lines,
   /// or one in memory on the web and when [directory] is null.
-  static Future<JournalStore> open({
+  static Future<DiagnosticsLineStore> open({
     required String? directory,
     required int capBytes,
-  }) => environment_specific.$openJournalStore(
+  }) => environment_specific.$openDiagnosticsLineStore(
     directory: directory,
     capBytes: capBytes,
   );
@@ -36,11 +36,11 @@ abstract interface class JournalStore {
   Future<void> close();
 }
 
-/// A [JournalStore] in memory: the web's, and the tests', which open a
+/// A [DiagnosticsLineStore] in memory: the web's, and the tests', which open a
 /// second journal over the same store to stand for a restart.
-final class MemoryJournalStore implements JournalStore {
+final class MemoryDiagnosticsLineStore implements DiagnosticsLineStore {
   /// An empty store.
-  MemoryJournalStore();
+  MemoryDiagnosticsLineStore();
 
   final List<String> _lines = [];
 
