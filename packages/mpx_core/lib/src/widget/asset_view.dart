@@ -48,8 +48,10 @@ import 'package:mpx_core/src/widget/viewport_visibility.dart';
 /// style says (`MediaLoadingStyleScope.resolve`, `MediaStageStyle`): a
 /// preview shows at once; a thumbnail fades in over the preview it replaces
 /// (`stageFade`); content fades in over `stageFade`, or `gifFade` for a view
-/// that plays, with the platform's scale-in (`contentScaleIn`). A length of
-/// zero swaps at once. Each rises over the stand-in the binding kept
+/// that plays, with the platform's scale-in (`contentScaleIn`). An animation
+/// over a first frame already shown (its own still, or a sibling's lent at
+/// the attach) swaps at once: it plays from that frame. A length of zero
+/// swaps at once. Each rises over the stand-in the binding kept
 /// (`AssetBinding.paintStandIn`): a raster one stays opaque beneath, an
 /// outline or one under content that may be transparent fades out. Without
 /// a stand-in the placeholder (the view's own, or else the scope's) fades
@@ -1201,11 +1203,15 @@ class _RenderContent extends RenderBox {
 
   // How long the rise from [from] to [to] fades: a preview shows at once, a
   // thumbnail fades over the preview it replaces, content over the stage
-  // fade, or the loop fade for moving content a view plays.
+  // fade, or the loop fade for moving content a view plays. Content over a
+  // first frame swaps at once: it plays from that frame, the same picture
+  // (the binding's own still, or a sibling's it showed from the attach), so
+  // a fade would only blink it out and back.
   Duration _riseLength(AssetStage from, AssetStage to) => switch (to) {
     AssetStage.none || AssetStage.preview => Duration.zero,
     AssetStage.placeholder =>
       from == AssetStage.preview ? _stages.stageFade : Duration.zero,
+    AssetStage.full when from == AssetStage.firstFrame => Duration.zero,
     AssetStage.firstFrame ||
     AssetStage.full => _plays ? _stages.gifFade : _stages.stageFade,
   };

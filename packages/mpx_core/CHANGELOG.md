@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- An animation that arrives over a first frame the view already shows (its
+  own still, or a sibling's it borrowed at the attach) swaps in at once
+  instead of fading in from nothing: a sticker or custom emoji opened at a
+  new size (a preview, an embed in text) no longer blinks out and fades
+  back.
 - Tracked transfers: the `TrackedTransfers` seam (`download(key, origin:)`
   with `TransferOrigin.user` / `auto`, `watch(key)`, `cancel(key)`,
   `leaseFile(key)` lending a `ContentFileLease`). `AssetCacheScope(tracked:)`
