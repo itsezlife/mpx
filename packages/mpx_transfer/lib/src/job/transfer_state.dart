@@ -52,6 +52,16 @@ sealed class TransferState {
 
   /// Whether the job is waiting for or moving bytes: queued or running.
   bool get isActive => false;
+
+  /// The variant's name, as diagnostics write it: `queued`, `running`,
+  /// `paused`, `failed` or `completed`.
+  String get name => switch (this) {
+    TransferState$Queued() => 'queued',
+    TransferState$Running() => 'running',
+    TransferState$Paused() => 'paused',
+    TransferState$Failed() => 'failed',
+    TransferState$Completed() => 'completed',
+  };
 }
 
 /// [TransferState.queued].

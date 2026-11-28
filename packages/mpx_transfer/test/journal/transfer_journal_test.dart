@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +8,7 @@ import 'package:mpx_core/testing.dart';
 import 'package:mpx_transfer/mpx_transfer.dart';
 import 'package:mpx_transfer/src/journal/journal_codec.dart';
 import 'package:mpx_transfer/src/journal/journal_record.dart';
+import 'package:mpx_transfer/src/journal/journal_store.dart';
 import 'package:mpx_transfer/src/journal/transfer_journal.dart';
 import 'package:mpx_transfer/testing.dart';
 
@@ -37,11 +39,12 @@ void main() {
   group('codec', () {
     final codec = JournalCodec(const [FakeTransferResult.codec]);
 
+    // Through JSON text, as a frame holds it.
     JournalRecord roundTrip(JournalRecord record) {
-      final read = codec.decode(codec.encode([JournalEntry$Put(record)]));
-      expect(read.tornBytes, 0);
-      expect(read.skipped, 0);
-      return (read.entries.single as JournalEntry$Put).record;
+      final stored = jsonDecode(
+        jsonEncode(codec.encode(JournalEntry$Put(record))),
+      );
+      return (codec.decode(stored) as JournalEntry$Put).record;
     }
 
     test('every field of a record reads back', () {
@@ -105,8 +108,9 @@ void main() {
       }
     });
 
-    test('a whole frame that does not read back is skipped, not torn', () {
-      final bytes = codec.encode([
+    test('a record whose result kind no codec knows throws a '
+        'FormatException naming the kind', () {
+      final stored = codec.encode(
         JournalEntry$Put(
           JournalRecord(
             job: _job(
@@ -115,31 +119,17 @@ void main() {
             ),
           ),
         ),
-        JournalEntry$Put(
-          JournalRecord(job: _job('b', const TransferState.queued())),
+      );
+      expect(
+        () => JournalCodec(const []).decode(stored),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('fake'),
+          ),
         ),
-      ]);
-      // A build that knows no codec for the result kind.
-      final read = JournalCodec(const []).decode(bytes);
-      expect(read.skipped, 1);
-      expect(read.tornBytes, 0);
-      expect(read.entries, hasLength(1));
-    });
-
-    test('a frame whose checksum fails ends the log there', () {
-      final bytes = codec.encode([
-        JournalEntry$Put(
-          JournalRecord(job: _job('a', const TransferState.queued())),
-        ),
-        JournalEntry$Put(
-          JournalRecord(job: _job('b', const TransferState.queued())),
-        ),
-      ]);
-      // A frame of zeros, as some file systems leave after a kill.
-      final zeroed = Uint8List.fromList(bytes)..fillRange(8, 16, 0);
-      final read = codec.decode(zeroed);
-      expect(read.entries, isEmpty);
-      expect(read.tornBytes, bytes.length);
+      );
     });
   });
 
@@ -166,6 +156,45 @@ void main() {
 
       final again = await _open(store);
       expect(again.jobs, [_job('a', const TransferState.running(done: 5))]);
+      await again.close();
+    });
+
+    test('a whole frame that does not read back is skipped and counted, '
+        'not torn', () async {
+      final store = MemoryJournalStore();
+      final journal = await _open(store)
+        ..writeState(
+          _job('a', const TransferState.completed(FakeTransferResult('r'))),
+        )
+        ..writeState(_job('b', const TransferState.queued()));
+      await journal.close();
+      recorder.clear();
+      // A build that knows no codec for the result kind.
+      final again = await TransferJournal.open(
+        store,
+        retention: const Duration(hours: 24),
+        now: () => _t0,
+      );
+      expect(again.jobs.map((job) => job.id.value), ['u-b']);
+      expect(recorder.whereOp(JournalOp.replayed).single.fields['skipped'], 1);
+      expect(recorder.whereOp(JournalOp.tornTailDropped), isEmpty);
+      await again.close();
+    });
+
+    test('a frame whose checksum fails ends the log there', () async {
+      final store = MemoryJournalStore();
+      final journal = await _open(store)
+        ..writeState(_job('a', const TransferState.queued()));
+      await journal.close();
+      final snapshot = store.bytesOf(JournalBlob.snapshot);
+      // A frame of zeros, as some file systems leave after a kill.
+      final zeroed = Uint8List.fromList(snapshot)
+        ..fillRange(snapshot.length - 4, snapshot.length, 0);
+      await store.replace(snapshot: zeroed, log: Uint8List(0));
+      recorder.clear();
+      final again = await _open(store);
+      expect(again.jobs, isEmpty);
+      expect(recorder.whereOp(JournalOp.tornTailDropped), hasLength(1));
       await again.close();
     });
 

@@ -13,6 +13,8 @@ import 'download/tracked_downloads_test.dart' as tracked_downloads_test;
 import 'job/transfer_id_test.dart' as transfer_id_test;
 import 'journal/journal_store_contract_test.dart'
     as journal_store_contract_test;
+import 'journal/record_log_test.dart' as record_log_test;
+import 'journal/stored_format_test.dart' as stored_format_test;
 import 'journal/transfer_journal_test.dart' as transfer_journal_test;
 import 'publish/publish_diagnostics_test.dart' as publish_diagnostics_test;
 import 'publish/publish_envelope_test.dart' as publish_envelope_test;
@@ -68,6 +70,8 @@ void main() {
   group('tracked_downloads_test', tracked_downloads_test.main);
   group('transfer_id_test', transfer_id_test.main);
   group('journal_store_contract_test', journal_store_contract_test.main);
+  group('record_log_test', record_log_test.main);
+  group('stored_format_test', stored_format_test.main);
   group('transfer_journal_test', transfer_journal_test.main);
   group('publish_diagnostics_test', publish_diagnostics_test.main);
   group('publish_envelope_test', publish_envelope_test.main);

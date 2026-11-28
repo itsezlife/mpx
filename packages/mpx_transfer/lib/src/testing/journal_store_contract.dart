@@ -8,6 +8,7 @@ import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
 import 'package:mpx_transfer/src/job/transfer_state.dart';
 import 'package:mpx_transfer/src/journal/journal_codec.dart';
+import 'package:mpx_transfer/src/journal/journal_frames.dart';
 import 'package:mpx_transfer/src/journal/journal_record.dart';
 import 'package:mpx_transfer/src/journal/journal_store.dart';
 import 'package:mpx_transfer/src/journal/transfer_journal.dart';
@@ -130,9 +131,11 @@ abstract final class JournalStoreContract {
         await kill(journal);
 
         // A kill in the middle of a write: half of a frame at the end.
-        final frame = JournalCodec(const []).encode([
-          JournalEntry$Put(
-            JournalRecord(job: _job('c', const TransferState.queued())),
+        final frame = JournalFrames.encode([
+          JournalCodec(const []).encode(
+            JournalEntry$Put(
+              JournalRecord(job: _job('c', const TransferState.queued())),
+            ),
           ),
         ]);
         final torn = frame.length ~/ 2;

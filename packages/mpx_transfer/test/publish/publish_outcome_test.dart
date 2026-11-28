@@ -264,7 +264,7 @@ void main() {
         job.snapshot.state,
         const PublishJobState.failed(
           stage: PublishStage.publish,
-          reason: 'reuploadRefused',
+          reason: PublishFailureReason.reuploadRefused,
           retryable: false,
         ),
       );
@@ -319,7 +319,7 @@ void main() {
         job.snapshot.state,
         const PublishJobState.failed(
           stage: PublishStage.publish,
-          reason: 'slowMode',
+          reason: PublishFailureReason('slowMode'),
           retryable: true,
         ),
       );
@@ -565,7 +565,7 @@ void main() {
           h.transfers.publishJob(job.id)!.snapshot.state,
           const PublishJobState.failed(
             stage: PublishStage.publish,
-            reason: 'tooLong',
+            reason: PublishFailureReason('tooLong'),
             retryable: false,
           ),
         );
@@ -608,6 +608,65 @@ void main() {
       await h.restart();
       await pumpEventQueue();
       expect(cache.aliases, hasLength(2), reason: 'applied once, then kept');
+    });
+
+    test('an alias that throws stays pending: the job does not read as '
+        'aliased, and the next start applies it', () async {
+      final cache = _AliasRecorder(error: StateError('disk'));
+      final h = await publishing([fakeTransport()], cache: cache);
+      h.transfers.registerPublisher(
+        publisherId,
+        FakePublisher()..answerWith(
+          PublishOutcome.published(serverKeys: const {'a': server}),
+        ),
+      );
+      final job = h.transfers.publish(
+        requestOf([itemOf('a', PublishSource.prepared(preparedOf(10)))]),
+      );
+      await pumpEventQueue();
+      expect(job.snapshot.state, const PublishJobState.completed(null));
+      expect(job.snapshot.aliasesApplied, isFalse);
+
+      cache.error = null;
+      await h.settle();
+      await h.restart();
+      await pumpEventQueue();
+      expect(cache.aliases, hasLength(2));
+      expect(h.transfers.publishJob(job.id)!.snapshot.aliasesApplied, isTrue);
+    });
+
+    test('a completed job whose aliases are pending outlives its retention '
+        'until they apply', () async {
+      var time = DateTime.utc(2026, 1, 1);
+      final cache = _AliasRecorder(hold: true);
+      final h = await publishing(
+        [fakeTransport()],
+        cache: cache,
+        now: () => time,
+      );
+      h.transfers.registerPublisher(
+        publisherId,
+        FakePublisher()..answerWith(
+          PublishOutcome.published(serverKeys: const {'a': server}),
+        ),
+      );
+      final job = h.transfers.publish(
+        requestOf([itemOf('a', PublishSource.prepared(preparedOf(10)))]),
+      );
+      await pumpEventQueue();
+      expect(job.snapshot.aliasesApplied, isFalse);
+      await h.settle();
+      cache.hold = false;
+      time = time.add(Transfers.defaultRetention + const Duration(hours: 1));
+      await h.kill();
+      await pumpEventQueue();
+
+      expect(cache.aliases, hasLength(2));
+      expect(cache.aliases.last, (
+        local: keyOf('a').encoded,
+        server: server.encoded,
+      ));
+      expect(h.transfers.publishJob(job.id)?.snapshot.aliasesApplied, isTrue);
     });
 
     test('a whole-job failure retried after a restart keeps the uploads it '
@@ -685,7 +744,7 @@ final class _AliasRecorder implements IBytesStore {
 
   final ({int publishCalls, String state}) Function()? onAlias;
   final bool answer;
-  final Object? error;
+  Object? error;
   bool hold;
 
   final List<_Alias> aliases = [];

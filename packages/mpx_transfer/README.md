@@ -30,8 +30,10 @@ import 'package:mpx_transfer/mpx_transfer.dart';
 // In the composition root, once the app runs. Reads back the jobs the
 // last run left, whether it closed or was killed.
 final transfers = await Transfers.open(
-  // The same MediaKey to cache key mapping the bytes cache fetcher uses.
-  cacheKeyOf: (key) => key.encoded,
+  // The same MediaKey to cache key mapping the bytes cache fetcher uses,
+  // and where server keys are aliased after a publish (downloads.store
+  // when omitted).
+  cache: TransferBytesCache(keyOf: (key) => key.encoded, store: bytesStore),
   lifecycle: WidgetsPlaybackLifecycleSource(),
   // The bytes cache's directory; the journal sits in `mpx_transfer` below
   // it. Ignored on the web, where the journal is in OPFS.
@@ -48,9 +50,6 @@ final transfers = await Transfers.open(
   transports: [presigned],
   client: httpBytesClient,
   preparation: preparation,
-  // Where server keys are aliased after a publish (downloads.store when
-  // omitted).
-  cache: bytesStore,
 );
 
 // At app start, before jobs from the last run can publish.
@@ -158,15 +157,13 @@ transfers.cancel(id); // removes it
 // a config `system` jobs run in process. Host setup: "Android" and
 // "iOS" below.
 //   Transfers.open(...,
-//       envelope: Platform.isAndroid
-//           ? AndroidTransferEnvelope()
-//           : Platform.isIOS
-//           ? IosTransferEnvelope()
-//           : null,
-//       envelopeConfig: TransferEnvelopeConfig(
-//         title: l10n.sendingMedia,
-//         cancelAllLabel: l10n.cancelAll,
-//         progressText: (p) => l10n.filesLeft(p.jobs.length),
+//       envelope: TransferEnvelopeSetup(
+//         Platform.isAndroid ? AndroidTransferEnvelope() : IosTransferEnvelope(),
+//         config: TransferEnvelopeConfig(
+//           title: l10n.sendingMedia,
+//           cancelAllLabel: l10n.cancelAll,
+//           progressText: (p) => l10n.filesLeft(p.jobs.length),
+//         ),
 //       ));
 // A tap on the envelope's notification arrives with the job's id.
 transfers.notificationTaps.listen(openChatFor); // the host routes
@@ -280,7 +277,8 @@ task only.
   five tries in all, journals every acknowledged part and resumes with the
   transport's token after a restart, sending only what is missing, while
   the file is unchanged and the transport's window open; otherwise the
-  upload starts again from zero, never failing for it. Two
+  upload starts again from zero, never failing for it. Its bytes done
+  never go back, through a retry or a restart from zero. Two
   lanes (small up to 10 MiB, big), one job each, under 8 shared
   connections. A completed upload holds a `RemoteRef`.
 - `MultipartUploadTransport`: the file in one `multipart/form-data`
@@ -312,7 +310,11 @@ task only.
   completes the job, then aliases each server key to its item's local key
   in the bytes cache (`snapshot.aliasesApplied`); `reuploadItems(ids)`
   drops those items' reuse entries and sends them again, once per job;
-  `rejected(reason, retryable)` fails the job at the publish stage.
+  `rejected(reason, retryable)` fails the job at the publish stage. A
+  publisher that throws fails it the same way, retryable, with
+  `PublishFailureReason.publisherError`; a failed job or item names its
+  `PublishFailureReason` (the engine's own codes, an upload's failure
+  kind, a preparation's code or the publisher's reason).
 - Failure policies and retry: `wholeJob` (default) fails the job with an
   item, `perItem` lets the rest upload and holds the publish.
   `PublishJob.retry()` / `retryItem(id)` repeat only what failed, keeping a
@@ -341,8 +343,10 @@ task only.
 - `watchJobs(filter)`: snapshots of the publish jobs a `PublishJobFilter`
   passes (tag, tag prefix, publisher, state), answered from the journal
   after a restart.
-- `retry(id, source:)`: an upload whose source was lost goes again from a
-  file the host gives, from zero.
+- `retry(id, source:)`: an upload whose source was lost goes again, from
+  zero, from a `SourceBytes` the host gives: a file on the VM
+  (`SourceBytes.file`, or bytes in memory written to a file of the
+  engine's own), the picked file again on the web.
 - `TransferDurability`: `inProcess`, or `system` inside the platform's OS
   envelope (`TransferEnvelope`) where there is one. Publish job uploads
   are `system`, downloads `inProcess` unless the host raises one.
@@ -380,7 +384,10 @@ task only.
   folded into a snapshot at each start. A state change is written and
   flushed at once, progress at most every 250 ms (`progressInterval`), so
   a kill loses at most one window of progress; a record cut short by a
-  kill is dropped.
+  kill is dropped. A remote end's finish answer is written before the
+  upload completes, so a kill in between never finishes it twice; a
+  finish the remote end refuses after a restart sends the upload again.
+  Publish jobs and the reuse table are kept the same way.
 - On the web the journal is in OPFS beside the bytes cache's store (in
   memory where the page has none). An upload's sources are copied there at
   its creation, up to 500 MiB per job (`sourceCopyLimit`), so it resumes

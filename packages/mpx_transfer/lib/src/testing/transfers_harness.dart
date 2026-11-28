@@ -5,6 +5,7 @@ import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_transfer/src/download/transfer_downloads.dart';
 import 'package:mpx_transfer/src/envelope/transfer_envelope.dart';
 import 'package:mpx_transfer/src/envelope/transfer_envelope_config.dart';
+import 'package:mpx_transfer/src/envelope/transfer_envelope_setup.dart';
 import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
 import 'package:mpx_transfer/src/journal/journal_store.dart';
@@ -14,7 +15,9 @@ import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
 import 'package:mpx_transfer/src/reuse/reuse_table.dart';
 import 'package:mpx_transfer/src/testing/fake_transfer_envelope.dart';
 import 'package:mpx_transfer/src/testing/fake_transfer_result.dart';
+import 'package:mpx_transfer/src/testing/fake_upload_source_copies.dart';
 import 'package:mpx_transfer/src/testing/scripted_transfer_runner.dart';
+import 'package:mpx_transfer/src/transfer_bytes_cache.dart';
 import 'package:mpx_transfer/src/transfers.dart';
 
 /// A [Transfers] over a journal in memory (or the store a test gives), its
@@ -53,7 +56,8 @@ final class TransfersHarness {
   /// jobs move their bytes through them, as [Transfers.open]'s do, and only
   /// uploads go through [runner]. [sourceCopies] gives the upload source
   /// copies at each start, as on the web (none by default, as on the VM);
-  /// [unloadWarning] is the page's warning (none by default). [reuseStore]
+  /// [unloadWarning] is the page's warning (none by default; given alone,
+  /// copies in memory come with it). [reuseStore]
   /// gives the reuse table's store at each start, as [store] does the
   /// journal's; [reuse] is the host's say over the table. [envelopeConfig]
   /// is what [envelope] shows ([FakeTransferEnvelope.config] unless given);
@@ -234,21 +238,31 @@ final class TransfersHarness {
       policy: reusePolicy,
       now: now,
     );
+    final envelope = this.envelope;
     final live = await Transfers.liveEnvelopesOf(envelope);
     return transfers = Transfers.engine(
-      cacheKeyOf: cacheKeyOf,
+      cache: TransferBytesCache(keyOf: cacheKeyOf),
       lifecycle: lifecycle,
       runner: runner,
       journal: _journal,
       downloads: downloads,
-      envelope: envelope,
-      envelopeConfig: envelopeConfig,
-      liveEnvelopes: live,
-      sourceCopies: copies,
-      unloadWarning: unloadWarning,
+      envelope: envelope == null
+          ? null
+          : (
+              setup: TransferEnvelopeSetup(envelope, config: envelopeConfig),
+              live: live,
+            ),
+      // A page's warning comes with its copies: a warning alone is a page
+      // whose copies the test does not read.
+      pageSources: copies == null && unloadWarning == null
+          ? null
+          : PageSourceCopies(
+              copies ?? FakeUploadSourceCopies(),
+              unloadWarning: unloadWarning,
+              limit: sourceCopyLimit,
+            ),
       reuse: reuse,
       retention: retention,
-      sourceCopyLimit: sourceCopyLimit,
       online: online,
       now: now,
     );

@@ -5,8 +5,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 import 'package:l/l.dart';
 import 'package:mpx_core/mpx_core.dart';
-import 'package:mpx_example/journal/data/journal_store.dart';
-import 'package:mpx_example/journal/model/journal_record.dart';
+import 'package:mpx_example/journal/data/diagnostics_line_store.dart';
+import 'package:mpx_example/journal/model/diagnostics_entry.dart';
 
 /// What the journal reports about itself.
 enum JournalOp implements DiagnosticOp {
@@ -27,7 +27,7 @@ enum JournalOp implements DiagnosticOp {
 }
 
 /// Every diagnostics event of the process, newest last, in a ring of
-/// [capBytes] kept in memory and in a [JournalStore], so the minutes before a
+/// [capBytes] kept in memory and in a [DiagnosticsLineStore], so the minutes before a
 /// kill are there at the next start.
 ///
 /// The host routes the policies into it once at start ([mpxDiagnostics], and
@@ -42,14 +42,14 @@ enum JournalOp implements DiagnosticOp {
 final class DiagnosticsJournal with ChangeNotifier {
   /// A journal over [store], empty until [restore].
   DiagnosticsJournal({
-    required JournalStore store,
+    required DiagnosticsLineStore store,
     this.capBytes = defaultCapBytes,
     this.batchInterval = const Duration(seconds: 1),
   }) : _store = store;
 
   /// A journal over memory alone, for a host that keeps no file (tests).
   DiagnosticsJournal.memory({int capBytes = defaultCapBytes})
-    : this(store: MemoryJournalStore(), capBytes: capBytes);
+    : this(store: MemoryDiagnosticsLineStore(), capBytes: capBytes);
 
   /// The default ring: 20 MiB, about a day of a busy session's events.
   static const defaultCapBytes = 20 * 1024 * 1024;
@@ -60,8 +60,8 @@ final class DiagnosticsJournal with ChangeNotifier {
   /// The longest a line waits before it is written.
   final Duration batchInterval;
 
-  final JournalStore _store;
-  final Queue<(JournalRecord, int)> _records = Queue();
+  final DiagnosticsLineStore _store;
+  final Queue<(DiagnosticsEntry, int)> _records = Queue();
   final List<String> _$pending = [];
   Timer? _$batch;
   int _$bytes = 0;
@@ -70,7 +70,7 @@ final class DiagnosticsJournal with ChangeNotifier {
   bool _$disposed = false;
 
   /// The records, oldest first.
-  Iterable<JournalRecord> get records => _records.map((entry) => entry.$1);
+  Iterable<DiagnosticsEntry> get records => _records.map((entry) => entry.$1);
 
   /// How many records there are.
   int get length => _records.length;
@@ -86,13 +86,13 @@ final class DiagnosticsJournal with ChangeNotifier {
   MpxDiagnostics get mpxDiagnostics => MpxDiagnostics.onEvent(addMpxEvent);
 
   /// Records an mpx package's [event].
-  void addMpxEvent(MpxEvent event) => add(JournalRecord.fromMpxEvent(event));
+  void addMpxEvent(MpxEvent event) => add(DiagnosticsEntry.fromMpxEvent(event));
 
   /// Records a line of the app's own log.
-  void addLog(LogMessage log) => add(JournalRecord.fromLog(log));
+  void addLog(LogMessage log) => add(DiagnosticsEntry.fromLog(log));
 
   /// Records [record], dropping the oldest past [capBytes].
-  void add(JournalRecord record) {
+  void add(DiagnosticsEntry record) {
     if (_$disposed) return;
     final line = record.encode();
     _push(record, line);
@@ -120,7 +120,7 @@ final class DiagnosticsJournal with ChangeNotifier {
     var restored = 0;
     var skipped = 0;
     for (final line in lines) {
-      switch (JournalRecord.tryParse(line)) {
+      switch (DiagnosticsEntry.tryParse(line)) {
         case final record?:
           _push(record, line);
           restored++;
@@ -179,7 +179,7 @@ final class DiagnosticsJournal with ChangeNotifier {
     await _store.close();
   }
 
-  void _push(JournalRecord record, String line) {
+  void _push(DiagnosticsEntry record, String line) {
     // The line and its newline, as the store holds it.
     final bytes = utf8.encode(line).length + 1;
     _records.add((record, bytes));

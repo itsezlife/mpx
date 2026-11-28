@@ -66,7 +66,8 @@ AssetCacheProvider(
   `AssetCacheScope` takes for the downloads of surfaces with a status
   control, and `MediaPreparation` with its values (`PreparationInput`,
   `PreparationIntent`, `CompressionPreset`, `PreparedMedia`) and their
-  stored form, `PreparationEncoding`.
+  stored form, `PreparationInputCodec`, `PreparationIntentCodec` and
+  `PreparedMediaCodec`.
 - Diagnostics events through `MpxDiagnostics.current`.
 - Fakes and contract suites in `testing.dart`.
 

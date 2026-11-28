@@ -24,6 +24,8 @@ final class FakeUploadTransport implements UploadTransport {
     UploadCapabilities? capabilities,
     this.acceptsResume = true,
     this.holdParts = false,
+    this.holdFinishes = false,
+    this.closesOnFinish = false,
   }) : capabilities = capabilities ?? defaultCapabilities;
 
   /// The part size of [defaultCapabilities]: 64 KiB.
@@ -50,6 +52,15 @@ final class FakeUploadTransport implements UploadTransport {
   /// Whether parts wait for [ack] or [reject].
   bool holdParts;
 
+  /// Whether finishes wait for [answerFinish]. A finish not yet answered
+  /// did not happen: the remote end still holds the upload open.
+  bool holdFinishes;
+
+  /// Whether an upload finished once refuses a second finish, with a
+  /// refusal that does not pass, as a remote end that closes the upload
+  /// when it completes; otherwise a second finish answers again.
+  bool closesOnFinish;
+
   /// When the remote end forgets an upload, as each session opened from now
   /// on tells it ([UploadSession.resumeExpiresAt]); null to say nothing.
   /// The fake itself forgets nothing: the engine judges the expiry.
@@ -64,6 +75,8 @@ final class FakeUploadTransport implements UploadTransport {
   final Queue<Exception> _openFailures = Queue();
   final Queue<Exception> _finishFailures = Queue();
   final List<(int, Completer<UploadPartAck>)> _held = [];
+  final Queue<Completer<void>> _heldFinishes = Queue();
+  final Set<String> _finished = {};
   int _bytesInFlight = 0;
   int _maxBytesInFlight = 0;
 
@@ -117,6 +130,12 @@ final class FakeUploadTransport implements UploadTransport {
   void ack(int index, {String? receipt}) => _takeHeld(
     index,
   ).complete(UploadPartAck(receipt: receipt ?? _receipt(index)));
+
+  /// The finishes waiting for [answerFinish].
+  int get heldFinishes => _heldFinishes.length;
+
+  /// Lets the oldest held finish answer.
+  void answerFinish() => _heldFinishes.removeFirst().complete();
 
   /// Fails the oldest held part [index]'s try with [error].
   void reject(int index, [Exception? error]) =>
@@ -190,12 +209,25 @@ final class FakeUploadTransport implements UploadTransport {
     }
   }
 
-  Future<RemoteRef> _finish(int finalSize, List<UploadPartAck> parts) async {
+  Future<RemoteRef> _finish(
+    String token,
+    int finalSize,
+    List<UploadPartAck> parts,
+  ) async {
     _finishes.add(FakeUploadFinish(finalSize, parts));
     // Numbered before the wait: finishes under way together get their own.
     final number = _finishes.length;
     await null;
+    if (holdFinishes) {
+      final held = Completer<void>();
+      _heldFinishes.add(held);
+      await held.future;
+    }
     if (_finishFailures.isNotEmpty) throw _finishFailures.removeFirst();
+    if (closesOnFinish && _finished.contains(token)) {
+      throw const UploadTransportException('upload_closed', status: 404);
+    }
+    _finished.add(token);
     return RemoteRef('fake-$number');
   }
 }
@@ -229,7 +261,7 @@ final class _FakeSession implements UploadSession {
 
   @override
   Future<RemoteRef> finish(int finalSize, List<UploadPartAck> parts) =>
-      _transport._finish(finalSize, parts);
+      _transport._finish(resumeToken, finalSize, parts);
 }
 
 /// One [FakeUploadTransport.open]: what it was told.

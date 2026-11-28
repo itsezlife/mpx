@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:http_bytes_cache/http_bytes_cache.dart' show BytesCacheKey;
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_transfer/src/diagnostics/cancelled_by.dart';
 import 'package:mpx_transfer/src/download/transfer_downloads.dart';
 import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
@@ -147,7 +148,7 @@ final class TrackedContent implements TrackedTransfers {
   @override
   void cancel(MediaKey key) {
     if (_uploadOf(key) case final upload?) {
-      _publish?.removeItem(upload.job, upload.itemId, by: 'cell');
+      _publish?.removeItem(upload.job, upload.itemId, by: CancelledBy.cell);
       return;
     }
     final job = _downloadOf(key);
@@ -235,12 +236,11 @@ final class TrackedContent implements TrackedTransfers {
     };
   }
 
+  /// The state as a binding's `mapped` event names it: a pause with its
+  /// reason, as `paused.user`.
   static String _stateName(TransferState state) => switch (state) {
-    TransferState$Queued() => 'queued',
-    TransferState$Running() => 'running',
-    TransferState$Paused(:final reason) => 'paused.${reason.name}',
-    TransferState$Failed() => 'failed',
-    TransferState$Completed() => 'completed',
+    TransferState$Paused(:final reason) => '${state.name}.${reason.name}',
+    _ => state.name,
   };
 
   static String _transferName(AssetTransfer transfer) => switch (transfer) {

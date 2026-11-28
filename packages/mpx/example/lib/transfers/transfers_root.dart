@@ -99,7 +99,7 @@ final class TransfersRoot {
     required String? directory,
   }) async {
     final transfers = await Transfers.open(
-      cacheKeyOf: MpxStack.cacheKeyOf,
+      cache: const TransferBytesCache(keyOf: MpxStack.cacheKeyOf),
       lifecycle: WidgetsPlaybackLifecycleSource(),
       directory: directory,
       downloads: TransferDownloads(
@@ -107,8 +107,13 @@ final class TransfersRoot {
         resolver: context.resolver ?? DevServerResolver(server),
         store: context.store,
       ),
-      envelope: platformEnvelope(),
-      envelopeConfig: envelopeConfig(settings),
+      envelope: switch (platformEnvelope()) {
+        final envelope? => TransferEnvelopeSetup(
+          envelope,
+          config: envelopeConfig(settings),
+        ),
+        null => null,
+      },
       transports: server.transports(context.client),
       client: context.client,
       preparation: _preparation(directory),

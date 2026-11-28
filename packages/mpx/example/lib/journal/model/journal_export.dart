@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:mpx_example/journal/data/environment_specific/host_environment.dart'
     as environment_specific;
-import 'package:mpx_example/journal/model/journal_record.dart';
+import 'package:mpx_example/journal/model/diagnostics_entry.dart';
 
 /// What an export says about where it was made, on its first line: enough to
 /// read a device check's log without asking which build ran where.
@@ -104,7 +104,7 @@ abstract final class JournalExport {
 
   /// The file of [newestFirst] (the journal's order) under [header].
   static String encode(
-    List<JournalRecord> newestFirst,
+    List<DiagnosticsEntry> newestFirst,
     JournalExportHeader header,
   ) {
     final buffer = StringBuffer(
@@ -119,8 +119,10 @@ abstract final class JournalExport {
   }
 
   /// One record as indented JSON, for the clipboard.
-  static String entryText(JournalRecord record) =>
-      const JsonEncoder.withIndent('  ').convert(record.toJson());
+  static String entryText(DiagnosticsEntry record) =>
+      const JsonEncoder.withIndent(
+        '  ',
+      ).convert(DiagnosticsEntry.codec.encode(record));
 
   /// The file's name, stamped with [exportedAt]; sorts chronologically.
   static String fileName(DateTime exportedAt) {

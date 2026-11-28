@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -11,6 +10,7 @@ import 'package:mpx_transfer/src/job/transfer_state.dart';
 import 'package:mpx_transfer/src/journal/journal_codec.dart';
 import 'package:mpx_transfer/src/journal/journal_record.dart';
 import 'package:mpx_transfer/src/journal/journal_store.dart';
+import 'package:mpx_transfer/src/journal/record_log.dart';
 
 /// The engine's jobs, kept in memory for the queries and written to a
 /// [JournalStore] so that a start after any kill reads them back.
@@ -30,22 +30,27 @@ import 'package:mpx_transfer/src/journal/journal_store.dart';
 /// Internal to the package.
 final class TransferJournal {
   TransferJournal._({
-    required JournalStore store,
+    required RecordLogRead<JournalEntry> read,
     required JournalCodec codec,
     required Map<TransferId, JournalRecord> records,
-    required int generation,
-    required int bytes,
     required this.progressInterval,
-    required this.compactAfter,
+    required int compactAfter,
     required DateTime Function() now,
     required DateTime openedAt,
-  }) : _store = store,
-       _codec = codec,
-       _records = records,
-       _generation = generation,
-       _bytes = bytes,
+  }) : _records = records,
        _now = now,
-       _openedAt = openedAt;
+       _openedAt = openedAt {
+    _log = RecordLog(
+      read,
+      codec: codec,
+      live: () => [
+        for (final record in _records.values) JournalEntry$Put(record),
+      ],
+      compactAfter: compactAfter,
+      // The snapshot holds the batched progress too.
+      beforeCompaction: _progressPending.clear,
+    );
+  }
 
   /// Reads [store] back, rebuilds the jobs, forgets completed jobs past
   /// [retention] and folds the result into a fresh snapshot.
@@ -63,63 +68,16 @@ final class TransferJournal {
   }) async {
     final codec = JournalCodec(resultCodecs);
     final openedAt = now();
-    var source = store;
-    Uint8List snapshotBytes;
-    Uint8List logBytes;
-    try {
-      snapshotBytes = await source.read(JournalBlob.snapshot);
-      logBytes = await source.read(JournalBlob.log);
-    } on Object catch (error, stackTrace) {
-      _emitWriteFailed(source, error, stackTrace);
-      source = MemoryJournalStore();
-      snapshotBytes = logBytes = Uint8List(0);
-    }
-
-    final snapshot = codec.decode(snapshotBytes);
-    final log = codec.decode(logBytes);
-    final generation = switch (snapshot.entries.firstOrNull) {
-      JournalEntry$Header(:final generation) => generation,
-      _ => 0,
-    };
-    // A log whose generation is not the snapshot's was written before the
-    // snapshot replaced it: a kill fell between the two steps of a
-    // compaction, and the snapshot already holds what the log says.
-    final logEntries = switch (log.entries.firstOrNull) {
-      JournalEntry$Header(generation: final g) when g == generation =>
-        log.entries,
-      _ => const <JournalEntry>[],
-    };
-    final read = [...snapshot.entries, ...logEntries];
-    MpxDiagnostics.current.emit(
-      MpxEventLevel.info,
-      JournalOp.opened,
-      fields: () => {
-        'records': read.where((e) => e is! JournalEntry$Header).length,
-        'bytes': snapshotBytes.length + logBytes.length,
-        'store': source.kind.name,
-      },
-    );
-    final torn = snapshot.tornBytes + log.tornBytes;
-    if (torn > 0) {
-      MpxDiagnostics.current.emit(
-        MpxEventLevel.warning,
-        JournalOp.tornTailDropped,
-        fields: () => {'bytesDropped': torn},
-      );
-    }
-
+    final read = await RecordLog.read(store, codec: codec, now: now);
     final records = <TransferId, JournalRecord>{};
-    for (final entry in read) {
+    for (final entry in read.entries) {
       switch (entry) {
-        case JournalEntry$Header():
-          break;
         case JournalEntry$Put(:final record):
           records[record.job.id] = record;
         case JournalEntry$Remove(:final id):
           records.remove(id);
       }
     }
-    final skipped = snapshot.skipped + log.skipped;
     final jobs = records.values.map((record) => record.job).toList();
     MpxDiagnostics.current.emit(
       MpxEventLevel.info,
@@ -133,23 +91,21 @@ final class TransferJournal {
             .where((job) => job.direction == TransferDirection.download)
             .length,
         'ms': now().difference(openedAt).inMilliseconds,
-        if (skipped > 0) 'skipped': skipped,
+        if (read.skipped > 0) 'skipped': read.skipped,
       },
     );
 
     final journal = TransferJournal._(
-      store: source,
+      read: read,
       codec: codec,
       records: records,
-      generation: generation,
-      bytes: snapshotBytes.length + logBytes.length,
       progressInterval: progressInterval,
       compactAfter: compactAfter,
       now: now,
       openedAt: openedAt,
     );
     journal._expired(retention).forEach(records.remove);
-    await journal._compact();
+    await journal._log.compact();
     return journal;
   }
 
@@ -164,27 +120,17 @@ final class TransferJournal {
   final Duration progressInterval;
 
   /// How many records the log takes before it is folded during a run.
-  final int compactAfter;
+  int get compactAfter => _log.compactAfter;
 
-  final JournalStore _store;
-  final JournalCodec _codec;
+  late final RecordLog<JournalEntry> _log;
   final Map<TransferId, JournalRecord> _records;
   final DateTime Function() _now;
   final DateTime _openedAt;
-
-  int _generation;
-  int _bytes;
-  int _recordsSinceCompaction = 0;
-  bool _rewrite = false;
-  bool _closed = false;
-  bool _abandoned = false;
 
   final Set<TransferId> _progressPending = {};
   Timer? _progressTimer;
   DateTime? _lastStateWriteAt;
   DateTime? _lastProgressFlushAt;
-
-  Future<void> _tail = Future.value();
 
   // --- Reads -----------------------------------------------------------------
 
@@ -201,13 +147,13 @@ final class TransferJournal {
   Iterable<JournalRecord> get records => _records.values;
 
   /// What the storage is.
-  JournalStoreKind get kind => _store.kind;
+  JournalStoreKind get kind => _log.kind;
 
   /// The journal's state now, for a debug panel.
   JournalDebugSnapshot debugSnapshot() => JournalDebugSnapshot(
-    store: _store.kind.name,
-    bytes: _bytes,
-    recordsSinceCompaction: _recordsSinceCompaction,
+    store: _log.kind.name,
+    bytes: _log.bytes,
+    recordsSinceCompaction: _log.sinceCompaction,
     lastStateWriteAt: _lastStateWriteAt,
     lastProgressFlushAt: _lastProgressFlushAt,
   );
@@ -215,18 +161,17 @@ final class TransferJournal {
   /// Completes when every write made so far has finished. A progress
   /// batch still waiting for its window is not one of them.
   @internal
-  Future<void> get idle => _tail;
+  Future<void> get idle => _log.idle;
 
   // --- Writes ----------------------------------------------------------------
 
   /// Keeps [job] and writes it at once: a new job or a change of state.
   void writeState(TransferJob job) {
-    if (_closed) return;
+    if (_log.isClosed) return;
     final record = _put(job);
     _progressPending.remove(job.id);
-    _enqueue(
-      _codec.encode([JournalEntry$Put(record)]),
-      records: 1,
+    _log.append(
+      [JournalEntry$Put(record)],
       jobId: job.id,
       onWritten: (_) {
         _lastStateWriteAt = _now();
@@ -234,7 +179,7 @@ final class TransferJournal {
           MpxEventLevel.trace,
           JournalOp.stateWritten,
           jobId: job.id,
-          fields: () => {'state': _stateName(job.state)},
+          fields: () => {'state': job.state.name},
         );
       },
     );
@@ -243,7 +188,7 @@ final class TransferJournal {
   /// Keeps [job], whose bytes moved on in the same state, and writes it
   /// with the next progress batch.
   void writeProgress(TransferJob job) {
-    if (_closed) return;
+    if (_log.isClosed) return;
     if (!_records.containsKey(job.id)) return writeState(job);
     _put(job);
     _progressPending.add(job.id);
@@ -254,7 +199,7 @@ final class TransferJournal {
   /// first [writeState] writes it whole. A new upload's facts ride in with
   /// its first state this way, so no write holds the job without them.
   void stage(JournalRecord record) {
-    if (_closed) return;
+    if (_log.isClosed) return;
     assert(
       !_records.containsKey(record.job.id),
       'Only a job not yet kept is staged.',
@@ -266,7 +211,7 @@ final class TransferJournal {
   /// at once, so a restart after any kill matches the envelope the native
   /// part still holds to it.
   void writeEnvelopeHandle(TransferId id, String handle) {
-    if (_closed) return;
+    if (_log.isClosed) return;
     final record = _records[id];
     if (record == null || record.envelopeHandle == handle) return;
     _records[id] = record.copyWith(envelopeHandle: handle);
@@ -281,20 +226,29 @@ final class TransferJournal {
     TransferId id,
     JournalUpload Function(JournalUpload) change,
   ) {
-    if (_closed) return;
+    if (_log.isClosed) return;
     final record = _records[id];
     final upload = record?.upload;
     if (record == null || upload == null) return;
     _records[id] = record.copyWith(upload: change(upload));
   }
 
+  /// Changes job [id]'s upload facts with [change] and writes the job at
+  /// once: a fact a kill must not lose, as the remote end's finish answer.
+  void writeUpload(
+    TransferId id,
+    JournalUpload Function(JournalUpload) change,
+  ) {
+    amendUpload(id, change);
+    if (_records[id] case final record?) writeState(record.job);
+  }
+
   /// Forgets job [id] and writes that at once.
   void remove(TransferId id) {
-    if (_closed || _records.remove(id) == null) return;
+    if (_log.isClosed || _records.remove(id) == null) return;
     _progressPending.remove(id);
-    _enqueue(
-      _codec.encode([JournalEntry$Remove(id)]),
-      records: 1,
+    _log.append(
+      [JournalEntry$Remove(id)],
       jobId: id,
       onWritten: (_) {
         _lastStateWriteAt = _now();
@@ -316,19 +270,13 @@ final class TransferJournal {
   }
 
   /// Folds the log into a fresh snapshot after the writes made so far.
-  Future<void> compact() {
-    _enqueueOp(_compact);
-    return _tail;
-  }
+  Future<void> compact() => _log.compact();
 
   /// Writes the progress still batched, waits for every write, and releases
   /// the store. Writes after this are ignored.
-  Future<void> close() async {
-    if (_closed) return _tail;
-    _flushProgress();
-    _closed = true;
-    await _tail;
-    await _store.close();
+  Future<void> close() {
+    if (!_log.isClosed) _flushProgress();
+    return _log.close();
   }
 
   /// Stops at this point as a killed process would: progress still batched
@@ -336,13 +284,10 @@ final class TransferJournal {
   /// finishes or not as the store makes it.
   @internal
   void abandon() {
-    if (_closed) return;
-    _closed = true;
-    _abandoned = true;
     _progressTimer?.cancel();
     _progressTimer = null;
     _progressPending.clear();
-    unawaited(_tail.then((_) => _store.close()));
+    _log.abandon();
   }
 
   // --- Internals -------------------------------------------------------------
@@ -378,15 +323,15 @@ final class TransferJournal {
   void _flushProgress() {
     _progressTimer?.cancel();
     _progressTimer = null;
-    if (_closed || _progressPending.isEmpty) return;
+    if (_log.isClosed || _progressPending.isEmpty) return;
     final entries = [
       for (final id in _progressPending)
         if (_records[id] case final record?) JournalEntry$Put(record),
     ];
     _progressPending.clear();
-    _enqueue(
-      _codec.encode(entries),
-      records: entries.length,
+    _log.append(
+      entries,
+      trace: JournalOp.progressFlushed,
       onWritten: (bytes) {
         final now = _now();
         final since = now.difference(_lastProgressFlushAt ?? _openedAt);
@@ -403,100 +348,4 @@ final class TransferJournal {
       },
     );
   }
-
-  /// Appends [bytes], holding [records] entries, after the writes before
-  /// them; [onWritten] runs with the bytes written once they are durable.
-  ///
-  /// Callers encode before they enqueue, so a record that cannot be encoded
-  /// throws where it was made rather than inside the chain of writes.
-  void _enqueue(
-    Uint8List bytes, {
-    required int records,
-    required void Function(int bytes) onWritten,
-    TransferId? jobId,
-  }) => _enqueueOp(() async {
-    if (_rewrite) {
-      // Memory already holds these entries; the rewrite writes them.
-      if (await _compact()) onWritten(0);
-      return;
-    }
-    try {
-      await _store.append(bytes);
-    } on Object catch (error, stackTrace) {
-      _failed(error, stackTrace, jobId);
-      return;
-    }
-    _bytes += bytes.length;
-    _recordsSinceCompaction += records;
-    onWritten(bytes.length);
-    if (_recordsSinceCompaction >= compactAfter) await _compact();
-  });
-
-  void _enqueueOp(Future<void> Function() op) {
-    _tail = _tail.then((_) => _abandoned ? null : op());
-  }
-
-  /// Writes every record kept as the new snapshot and starts an empty log;
-  /// answers whether it was written.
-  Future<bool> _compact() async {
-    final began = _now();
-    final before = _bytes;
-    final generation = _generation + 1;
-    final snapshot = _codec.encode([
-      JournalEntry$Header(generation),
-      for (final record in _records.values) JournalEntry$Put(record),
-    ]);
-    final log = _codec.encode([JournalEntry$Header(generation)]);
-    // The snapshot holds the batched progress too.
-    _progressPending.clear();
-    try {
-      await _store.replace(snapshot: snapshot, log: log);
-    } on Object catch (error, stackTrace) {
-      _failed(error, stackTrace, null);
-      return false;
-    }
-    _generation = generation;
-    _bytes = snapshot.length + log.length;
-    _recordsSinceCompaction = 0;
-    _rewrite = false;
-    MpxDiagnostics.current.emit(
-      MpxEventLevel.debug,
-      JournalOp.compacted,
-      fields: () => {
-        'bytesBefore': before,
-        'bytesAfter': _bytes,
-        'ms': _now().difference(began).inMilliseconds,
-      },
-    );
-    return true;
-  }
-
-  void _failed(Object error, StackTrace stackTrace, TransferId? jobId) {
-    // A failed append may have left part of a frame, and everything after
-    // a broken frame reads as a torn tail: the next write rewrites it all.
-    _rewrite = true;
-    _emitWriteFailed(_store, error, stackTrace, jobId: jobId);
-  }
-
-  static void _emitWriteFailed(
-    JournalStore store,
-    Object error,
-    StackTrace stackTrace, {
-    TransferId? jobId,
-  }) => MpxDiagnostics.current.emit(
-    MpxEventLevel.error,
-    JournalOp.writeFailed,
-    jobId: jobId,
-    // The error itself stays out: a file system error names its path.
-    fields: () => {'code': store.errorCode(error)},
-    stackTrace: stackTrace,
-  );
-
-  static String _stateName(TransferState state) => switch (state) {
-    TransferState$Queued() => 'queued',
-    TransferState$Running() => 'running',
-    TransferState$Paused() => 'paused',
-    TransferState$Failed() => 'failed',
-    TransferState$Completed() => 'completed',
-  };
 }

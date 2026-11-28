@@ -50,6 +50,26 @@ void main() {
     );
   });
 
+  test('its mirrored fraction never goes back: a job that completes leaves '
+      'with its bytes, and the bytes of a job that drop are folded', () {
+    final a = h.addUpload(total: 100);
+    final b = h.addUpload(total: 100);
+    h.runner
+      ..progress(a, 90, total: 100)
+      ..progress(b, 10, total: 100)
+      ..complete(a, const FakeTransferResult('a'))
+      ..progress(b, 5, total: 100)
+      ..progress(b, 50, total: 100);
+    final fractions = [
+      for (final progress in [...envelope.starts, ...envelope.updates])
+        progress.done / progress.total!,
+    ];
+    expect(fractions, orderedEquals([...fractions]..sort()));
+    expect(envelope.current!.jobs, {b});
+    h.runner.progress(b, 100, total: 100);
+    expect(envelope.current!.done, 100);
+  });
+
   test('has no total while any job has none', () {
     final a = h.addUpload(total: 100);
     h.addUpload();

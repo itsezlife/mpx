@@ -57,17 +57,14 @@ final class RemoteRef implements TransferResult {
 final class _RemoteRefCodec implements TransferResultCodec {
   const _RemoteRefCodec();
 
-  static const String _id = 'id';
-  static const String _attributes = 'attributes';
-
   @override
   String get kind => 'remoteRef';
 
   @override
   Map<String, Object?>? encode(TransferResult result) => switch (result) {
     RemoteRef(:final id, :final attributes) => {
-      _id: id,
-      if (attributes.isNotEmpty) _attributes: attributes,
+      _Key.id: id,
+      if (attributes.isNotEmpty) _Key.attributes: attributes,
     },
     _ => null,
   };
@@ -77,8 +74,14 @@ final class _RemoteRefCodec implements TransferResultCodec {
   RemoteRef decode(Map<String, Object?> json) {
     final fields = JsonFields(json);
     return RemoteRef(
-      fields.string(_id),
-      attributes: fields.optionalStringMap(_attributes),
+      fields.string(_Key.id),
+      attributes: fields.optionalStringMap(_Key.attributes),
     );
   }
+}
+
+/// Field names of a remote reference's stored form.
+abstract final class _Key {
+  static const String id = 'id';
+  static const String attributes = 'attributes';
 }

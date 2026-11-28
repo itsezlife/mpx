@@ -1,13 +1,13 @@
-import 'dart:typed_data';
+import 'dart:convert';
 
 import 'package:http_bytes_cache/http_bytes_cache.dart' show RequestPriority;
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
 import 'package:mpx_transfer/src/job/transfer_state.dart';
-import 'package:mpx_transfer/src/journal/journal_frames.dart';
 import 'package:mpx_transfer/src/journal/journal_record.dart';
 import 'package:mpx_transfer/src/journal/json_fields.dart';
+import 'package:mpx_transfer/src/upload/remote_ref.dart';
 import 'package:mpx_transfer/src/upload/upload_lane.dart';
 
 /// How one kind of [TransferResult] is written into the journal and read
@@ -32,16 +32,6 @@ sealed class JournalEntry {
   const JournalEntry();
 }
 
-/// The first entry of the snapshot and of the log: which compaction wrote
-/// them. A log whose generation is not the snapshot's predates it.
-final class JournalEntry$Header extends JournalEntry {
-  /// The header of [generation].
-  const JournalEntry$Header(this.generation);
-
-  /// The compaction count.
-  final int generation;
-}
-
 /// A job's record, replacing any earlier one of its id.
 final class JournalEntry$Put extends JournalEntry {
   /// [record], put.
@@ -60,26 +50,13 @@ final class JournalEntry$Remove extends JournalEntry {
   final TransferId id;
 }
 
-/// What [JournalCodec.decode] read from a blob.
-typedef JournalRead = ({
-  /// The entries read, in order.
-  List<JournalEntry> entries,
-
-  /// Frames whose bytes were whole but whose content could not be read
-  /// back (a newer version's record, a result kind no codec knows).
-  int skipped,
-
-  /// The bytes after the last whole frame, dropped.
-  int tornBytes,
-});
-
-/// The journal's entries in [JournalFrames], one entry a frame.
+/// The journal's entries as frame payloads, one entry a frame of the
+/// journal's record log (which writes its own generation header frames).
 ///
 /// ## Entries
 ///
 /// | Entry | Frame payload |
 /// |---|---|
-/// | [JournalEntry$Header] | `{"header": generation}` |
 /// | [JournalEntry$Put] | `{"put": record}` |
 /// | [JournalEntry$Remove] | `{"remove": id}` |
 ///
@@ -90,7 +67,9 @@ typedef JournalRead = ({
 /// a completed one holds `result`, `{kind, value}`, the value written by
 /// the [TransferResultCodec] of that kind. An `upload` holds its `source`
 /// (`path`, `size`, `growing`, `fingerprint`, `modified?`), the transport
-/// and its resume state, its acknowledged `parts` and its `owner?`.
+/// and its resume state, its acknowledged `parts`, its `owner?` and the
+/// remote end's `finished?` answer (`{id, attributes?}`), kept until the
+/// completed state is written.
 ///
 /// ## Encoding
 ///
@@ -102,73 +81,41 @@ typedef JournalRead = ({
 ///
 /// A missing field reads as its default where the encoder leaves it out;
 /// a missing required field, a wrong type, an unknown name or tag, or a
-/// result kind no codec knows makes the frame unreadable: [decode] skips it
-/// and counts it in [JournalRead.skipped]. A part of an unknown shape is
-/// dropped alone, since the upload sends it again.
+/// result kind no codec knows throws a [FormatException] naming the field,
+/// and the log skips the frame and counts it. A part of an unknown shape
+/// is dropped alone, since the upload sends it again.
 ///
 /// ## Versioning
 ///
 /// Records carry no version: a field is only ever added, read as its
 /// default when an older record lacks it. A record an older build cannot
 /// read (a new state tag, a new result kind) is skipped by that build.
-final class JournalCodec {
+final class JournalCodec extends Codec<JournalEntry, Object?> {
   /// A codec that writes and reads results through [resultCodecs].
   JournalCodec(Iterable<TransferResultCodec> resultCodecs)
-    : _results = {for (final codec in resultCodecs) codec.kind: codec};
+    : this._({for (final codec in resultCodecs) codec.kind: codec});
+
+  JournalCodec._(Map<String, TransferResultCodec> results)
+    : encoder = _JournalEntryEncoder(results),
+      decoder = _JournalEntryDecoder(results);
+
+  @override
+  final Converter<JournalEntry, Object?> encoder;
+
+  @override
+  final Converter<Object?, JournalEntry> decoder;
+}
+
+final class _JournalEntryEncoder extends Converter<JournalEntry, Object?> {
+  const _JournalEntryEncoder(this._results);
 
   final Map<String, TransferResultCodec> _results;
 
-  // --- Frames ----------------------------------------------------------------
-
-  /// [entries] as frames, one after another.
-  Uint8List encode(Iterable<JournalEntry> entries) =>
-      JournalFrames.encode(entries.map(_entryToJson));
-
-  /// The entries in [bytes], up to the first frame that is not whole.
-  JournalRead decode(Uint8List bytes) {
-    final read = JournalFrames.decode(bytes);
-    final entries = <JournalEntry>[];
-    var skipped = 0;
-    for (final payload in read.payloads) {
-      switch (_tryEntry(payload)) {
-        case final entry?:
-          entries.add(entry);
-        case null:
-          skipped++;
-      }
-    }
-    return (entries: entries, skipped: skipped, tornBytes: read.tornBytes);
-  }
-
-  // --- Entries ---------------------------------------------------------------
-
-  Map<String, Object?> _entryToJson(JournalEntry entry) => switch (entry) {
-    JournalEntry$Header(:final generation) => {_Key.header: generation},
+  @override
+  Object? convert(JournalEntry input) => switch (input) {
     JournalEntry$Put(:final record) => {_Key.put: _recordToJson(record)},
     JournalEntry$Remove(:final id) => {_Key.remove: id.value},
   };
-
-  /// The entry [payload] holds, or null when it cannot be read back.
-  JournalEntry? _tryEntry(Object? payload) {
-    try {
-      return switch (payload) {
-        {_Key.header: final int generation} => JournalEntry$Header(generation),
-        {_Key.put: final Map<String, Object?> record} => JournalEntry$Put(
-          _recordFromJson(JsonFields(record)),
-        ),
-        {_Key.remove: final String id} => JournalEntry$Remove(
-          TransferId.parse(id),
-        ),
-        _ => null,
-      };
-    } on Object {
-      // A whole frame that does not read back is a record of a version or
-      // a result kind this build does not know; it is skipped, not torn.
-      return null;
-    }
-  }
-
-  // --- Records ---------------------------------------------------------------
 
   Map<String, Object?> _recordToJson(JournalRecord record) {
     final job = record.job;
@@ -188,37 +135,6 @@ final class JournalCodec {
       _Key.lastProgressAt: ?record.lastProgressAt?.toIso8601String(),
     };
   }
-
-  JournalRecord _recordFromJson(JsonFields json) => JournalRecord(
-    job: TransferJob(
-      id: TransferId.parse(json.string(_Key.id)),
-      direction: json.byName(TransferDirection.values, _Key.direction),
-      durability: json.byName(TransferDurability.values, _Key.durability),
-      priority: json.byName(RequestPriority.values, _Key.priority),
-      tag: json.optionalString(_Key.tag),
-      key: switch (json.optionalString(_Key.key)) {
-        final encoded? =>
-          MediaKey.tryParse(encoded) ??
-              (throw FormatException(
-                'Expected a media key under "${_Key.key}".',
-                json.json,
-              )),
-        null => null,
-      },
-      resumeOnStart: json.flag(_Key.resumeOnStart),
-      createdAt: json.time(_Key.createdAt),
-      updatedAt: json.time(_Key.updatedAt),
-      state: _stateFromJson(json.object(_Key.state)),
-    ),
-    upload: switch (json.optionalObject(_Key.upload)) {
-      final upload? => _uploadFromJson(upload),
-      null => null,
-    },
-    envelopeHandle: json.optionalString(_Key.envelopeHandle),
-    lastProgressAt: json.optionalTime(_Key.lastProgressAt),
-  );
-
-  // --- Uploads ---------------------------------------------------------------
 
   /// A part is `[index]`, or `[index, receipt]` when the remote end gave
   /// one: the list stays short for a transport that gives none.
@@ -249,47 +165,9 @@ final class JournalCodec {
         _Key.item: owner.itemId,
         _Key.role: owner.role.name,
       },
+    if (upload.finished case final finished?)
+      _Key.finished: RemoteRef.codec.encode(finished),
   };
-
-  JournalUpload _uploadFromJson(JsonFields json) {
-    final source = json.object(_Key.source);
-    return JournalUpload(
-      source: JournalSource(
-        path: source.string(_Key.path),
-        size: source.integer(_Key.size),
-        growing: source.flag(_Key.growing),
-        fingerprint: source.string(_Key.fingerprint),
-        modified: source.optionalTime(_Key.modified),
-      ),
-      transportId: json.string(_Key.transportId),
-      lane: json.byName(UploadLane.values, _Key.lane),
-      partSize: json.integer(_Key.partSize),
-      fileName: json.optionalString(_Key.fileName),
-      contentType: json.optionalString(_Key.contentType),
-      resumeToken: json.optionalString(_Key.resumeToken),
-      resumeExpiresAt: json.optionalTime(_Key.resumeExpiresAt),
-      parts: {
-        // A part of another shape is dropped, not the record: the part is
-        // sent again.
-        for (final part in json.optionalList(_Key.parts))
-          if (part case [final int index])
-            index: null
-          else if (part case [final int index, final String receipt])
-            index: receipt,
-      },
-      highWaterMark: json.optionalInteger(_Key.highWaterMark) ?? 0,
-      owner: switch (json.optionalObject(_Key.owner)) {
-        final owner? => JournalUploadOwner(
-          job: owner.string(_Key.job),
-          itemId: owner.string(_Key.item),
-          role: owner.byName(UploadRole.values, _Key.role),
-        ),
-        null => null,
-      },
-    );
-  }
-
-  // --- States ----------------------------------------------------------------
 
   Map<String, Object?> _stateToJson(TransferState state) => switch (state) {
     TransferState$Queued(:final total) => {
@@ -327,6 +205,105 @@ final class JournalCodec {
     },
   };
 
+  Map<String, Object?> _resultToJson(TransferResult result) {
+    for (final codec in _results.values) {
+      if (codec.encode(result) case final json?) {
+        return {_Key.kind: codec.kind, _Key.value: json};
+      }
+    }
+    throw ArgumentError.value(
+      result,
+      'result',
+      'has no TransferResultCodec: each result kind brings one',
+    );
+  }
+}
+
+final class _JournalEntryDecoder extends Converter<Object?, JournalEntry> {
+  const _JournalEntryDecoder(this._results);
+
+  final Map<String, TransferResultCodec> _results;
+
+  @override
+  JournalEntry convert(Object? input) => switch (input) {
+    {_Key.put: final Map<String, Object?> record} => JournalEntry$Put(
+      _recordFromJson(JsonFields(record)),
+    ),
+    {_Key.remove: final String id} => JournalEntry$Remove(TransferId.parse(id)),
+    _ => throw FormatException('Expected a journal entry.', input),
+  };
+
+  JournalRecord _recordFromJson(JsonFields json) => JournalRecord(
+    job: TransferJob(
+      id: TransferId.parse(json.string(_Key.id)),
+      direction: json.byName(TransferDirection.values, _Key.direction),
+      durability: json.byName(TransferDurability.values, _Key.durability),
+      priority: json.byName(RequestPriority.values, _Key.priority),
+      tag: json.optionalString(_Key.tag),
+      key: switch (json.optionalString(_Key.key)) {
+        final encoded? =>
+          MediaKey.tryParse(encoded) ??
+              (throw FormatException(
+                'Expected a media key under "${_Key.key}".',
+                json.json,
+              )),
+        null => null,
+      },
+      resumeOnStart: json.flag(_Key.resumeOnStart),
+      createdAt: json.time(_Key.createdAt),
+      updatedAt: json.time(_Key.updatedAt),
+      state: _stateFromJson(json.object(_Key.state)),
+    ),
+    upload: switch (json.optionalObject(_Key.upload)) {
+      final upload? => _uploadFromJson(upload),
+      null => null,
+    },
+    envelopeHandle: json.optionalString(_Key.envelopeHandle),
+    lastProgressAt: json.optionalTime(_Key.lastProgressAt),
+  );
+
+  JournalUpload _uploadFromJson(JsonFields json) {
+    final source = json.object(_Key.source);
+    return JournalUpload(
+      source: JournalSource(
+        path: source.string(_Key.path),
+        size: source.integer(_Key.size),
+        growing: source.flag(_Key.growing),
+        fingerprint: source.string(_Key.fingerprint),
+        modified: source.optionalTime(_Key.modified),
+      ),
+      transportId: json.string(_Key.transportId),
+      lane: json.byName(UploadLane.values, _Key.lane),
+      partSize: json.integer(_Key.partSize),
+      fileName: json.optionalString(_Key.fileName),
+      contentType: json.optionalString(_Key.contentType),
+      resumeToken: json.optionalString(_Key.resumeToken),
+      resumeExpiresAt: json.optionalTime(_Key.resumeExpiresAt),
+      parts: {
+        // A part of another shape is dropped, not the record: the part is
+        // sent again.
+        for (final part in json.optionalList(_Key.parts))
+          if (part case [final int index])
+            index: null
+          else if (part case [final int index, final String receipt])
+            index: receipt,
+      },
+      highWaterMark: json.optionalInteger(_Key.highWaterMark) ?? 0,
+      owner: switch (json.optionalObject(_Key.owner)) {
+        final owner? => JournalUploadOwner(
+          job: owner.string(_Key.job),
+          itemId: owner.string(_Key.item),
+          role: owner.byName(UploadRole.values, _Key.role),
+        ),
+        null => null,
+      },
+      finished: switch (json.optionalObject(_Key.finished)) {
+        final finished? => RemoteRef.codec.decode(finished.json) as RemoteRef,
+        null => null,
+      },
+    );
+  }
+
   TransferState _stateFromJson(JsonFields json) {
     final total = json.optionalInteger(_Key.total);
     final done = json.optionalInteger(_Key.done) ?? 0;
@@ -358,19 +335,6 @@ final class JournalCodec {
     };
   }
 
-  Map<String, Object?> _resultToJson(TransferResult result) {
-    for (final codec in _results.values) {
-      if (codec.encode(result) case final json?) {
-        return {_Key.kind: codec.kind, _Key.value: json};
-      }
-    }
-    throw ArgumentError.value(
-      result,
-      'result',
-      'has no TransferResultCodec: each result kind brings one',
-    );
-  }
-
   TransferResult _resultFromJson(JsonFields json) {
     final kind = json.string(_Key.kind);
     final codec =
@@ -386,7 +350,6 @@ final class JournalCodec {
 /// Field names shared by both directions.
 abstract final class _Key {
   // An entry.
-  static const String header = 'header';
   static const String put = 'put';
   static const String remove = 'remove';
 
@@ -425,6 +388,7 @@ abstract final class _Key {
   static const String job = 'job';
   static const String item = 'item';
   static const String role = 'role';
+  static const String finished = 'finished';
 
   // A state.
   static const String variant = 'is';

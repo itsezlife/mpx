@@ -22,4 +22,9 @@ enum ResumeOutcome {
 
   /// The source is gone: the job fails with its source lost.
   sourceLost,
+
+  /// The remote end refused to finish an upload the session reopened, as
+  /// one closed by a finish whose answer a kill lost: it starts from zero,
+  /// once.
+  finishRefused,
 }

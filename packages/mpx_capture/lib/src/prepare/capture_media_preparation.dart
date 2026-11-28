@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:mpx_capture/src/job/capture_job.dart';
-import 'package:mpx_capture/src/prepare/failure_code.dart';
 import 'package:mpx_capture/src/prepare/media_preparer.dart';
 import 'package:mpx_capture/src/prepare/preparation_policy.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -65,7 +64,7 @@ final class _CaptureHandle implements PreparationHandle {
   static PreparationException _translate(Object error) => switch (error) {
     CaptureCancelled() => const PreparationCancelled(),
     final CaptureException error => PreparationFailed(
-      captureFailureCode(error),
+      error.failureCode,
       cause: error,
     ),
     _ => PreparationFailed('failed', cause: error),

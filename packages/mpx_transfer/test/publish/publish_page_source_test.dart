@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' show AppLifecycleState;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
@@ -205,15 +206,43 @@ void main() {
       expect(written(), hasLength(1));
     });
 
-    test('a page source on a retry of an upload is refused: the VM reads '
-        'a file', () async {
-      final h = await uploads([fakeTransport()]);
-      final id = h.upload(sourceOf(4));
-      expect(
-        () =>
-            h.transfers.retry(id, pageSource: SourceBytes.memory(Uint8List(1))),
-        throwsArgumentError,
+    test('bytes in memory on a retry of an upload are written to a file of '
+        'its own, the upload sent from it, and the file deleted once it '
+        'completes', () async {
+      final transport = fakeTransport();
+      final vm = await UploadsHarness.open(
+        lifecycle: ManualPlaybackLifecycleSource(
+          initial: AppLifecycleState.resumed,
+        ),
+        transports: [transport],
+        files: const _Disk(),
+        wait: (_) async {},
+        sourceDirectory: directory.path,
       );
+      addTearDown(vm.transfers.dispose);
+      final id = vm.upload(
+        const UploadSource.finished('/nowhere/x.bin', size: 4),
+      );
+      await pumpEventQueue();
+      expect(
+        await stateOf(vm.transfers, id),
+        isA<TransferState$Failed>().having(
+          (state) => state.kind,
+          'kind',
+          TransferFailureKind.sourceLost,
+        ),
+      );
+      expect(
+        vm.transfers.retry(id, source: SourceBytes.memory(Uint8List(3))),
+        isTrue,
+      );
+      for (var wait = 0; wait < 200; wait++) {
+        if (await stateOf(vm.transfers, id) is TransferState$Completed) break;
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      expect(transport.finishes.single.finalSize, 3);
+      expect(vm.uploadOf(id)!.source.path, startsWith(directory.path));
+      await _until(() => !Directory('${directory.path}/$id').existsSync());
     });
 
     test('a blob source is the web only', () {
@@ -333,7 +362,7 @@ void main() {
         reloaded.snapshot.item('a')!.state,
         const PublishItemState.failed(
           stage: PublishStage.upload,
-          reason: 'sourceLost',
+          reason: PublishFailureReason('sourceLost'),
           retryable: false,
         ),
       );
@@ -369,7 +398,7 @@ void main() {
           job.snapshot.item('a')!.state,
           const PublishItemState.failed(
             stage: PublishStage.upload,
-            reason: 'sourceLost',
+            reason: PublishFailureReason('sourceLost'),
             retryable: true,
           ),
         );

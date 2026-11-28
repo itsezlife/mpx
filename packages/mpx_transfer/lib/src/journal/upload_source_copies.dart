@@ -2,12 +2,14 @@ import 'dart:typed_data';
 
 import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/journal/source_bytes_blob.dart';
+import 'package:mpx_transfer/src/journal/unload_warning.dart';
 
 /// The bytes of one upload source as the page holds them: a file the user
 /// picked, or bytes in memory. A host gives one where an upload has no
-/// file to read (`PublishItem.pageSource`, `Transfers.retry`), and makes it
-/// with [SourceBytes.blob] or [SourceBytes.memory]: the engine reads no
-/// other kind.
+/// file to read (`PublishItem.pageSource`), or a new source for a failed
+/// upload (`Transfers.retry`, `PublishJob.retryItem`), and makes it with
+/// [SourceBytes.blob], [SourceBytes.memory] or [SourceBytes.file]: the
+/// engine reads no other kind.
 ///
 /// On the web a source has no path that outlives the page, so the engine
 /// copies it ([UploadSourceCopies]) when its upload is made and reads the
@@ -23,11 +25,22 @@ abstract interface class SourceBytes {
   /// [UnsupportedError] on the VM.
   factory SourceBytes.blob(Object blob) => $blobSourceBytes(blob);
 
+  /// The file at [path], [size] bytes long, uploaded as it is, with no
+  /// copy. The VM only: throws an [UnsupportedError] on the web.
+  factory SourceBytes.file(String path, {required int size}) =>
+      $fileSourceBytes(path, size);
+
   /// How many bytes the source holds.
   int get size;
 
   /// The bytes from [start] up to [end] (the end of the source when null).
   Future<Uint8List> read([int start = 0, int? end]);
+}
+
+/// [SourceBytes] of a file, on the VM: an upload reads it at [path].
+abstract interface class SourceBytes$File implements SourceBytes {
+  /// Where the file is.
+  String get path;
 }
 
 /// [SourceBytes] held in memory.
@@ -104,4 +117,29 @@ final class NoUploadSourceCopies implements UploadSourceCopies {
 
   @override
   String errorCode(Object error) => error.runtimeType.toString();
+}
+
+/// How the web keeps a page's upload sources: where they are copied, the
+/// warning shown while one is not yet kept, and how many bytes of one
+/// job's sources it copies at most. They travel together: no copies, no
+/// warning and no limit on the VM.
+///
+/// Internal to the package.
+final class PageSourceCopies {
+  /// Copies into [copies], warning through [unloadWarning], at most
+  /// [limit] bytes a job.
+  const PageSourceCopies(
+    this.copies, {
+    required this.limit,
+    this.unloadWarning,
+  });
+
+  /// Where the copies are kept.
+  final UploadSourceCopies copies;
+
+  /// The page's warning before it unloads; null for none.
+  final UnloadWarning? unloadWarning;
+
+  /// How many bytes of one job's sources are copied at most.
+  final int limit;
 }

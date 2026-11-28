@@ -14,6 +14,7 @@ import 'package:mpx_transfer/src/job/transfer_state.dart';
 import 'package:mpx_transfer/src/journal/journal_record.dart';
 import 'package:mpx_transfer/src/journal/transfer_journal.dart';
 import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
+import 'package:mpx_transfer/src/publish/publish_progress.dart';
 import 'package:mpx_transfer/src/upload/remote_ref.dart';
 import 'package:mpx_transfer/src/upload/resume_outcome.dart';
 import 'package:mpx_transfer/src/upload/upload_lane.dart';
@@ -357,15 +358,25 @@ final class _UploadRun {
   bool _ended = false;
   bool _finishing = false;
 
+  /// Whether the session continues an upload the remote end held before.
+  bool _resumed = false;
+
+  /// Whether a refused finish already sent the upload again from zero.
+  bool _resentFromZero = false;
+
   late final JournalSource _source;
+  late final UploadTransport _transport;
   late final int _partSize;
   late final int _budget;
   late final int _partCount;
-  late final UploadSession _session;
+  late UploadSession _session;
   late final DateTime _began;
 
   final Map<int, UploadPartAck> _acks = {};
   final Queue<int> _pending = Queue();
+
+  /// The progress shown, from what the job showed before this run.
+  late final ProgressFold _shown;
 
   /// The parts on the wire: index to the bytes its try has sent so far.
   final Map<int, int> _inFlight = {};
@@ -384,6 +395,13 @@ final class _UploadRun {
     if (upload == null || transport == null) {
       _gaveUpOpening(upload == null ? 'no_upload' : 'unknown_transport');
       return _fail(TransferFailureKind.local, retryable: false);
+    }
+    if (upload.finished case final finished?) {
+      // The remote end finished the upload before a kill took the
+      // completed write: it is done, and a second finish may be refused.
+      _source = upload.source;
+      _partCount = 0;
+      return _complete(finished, journaled: true);
     }
     // A run after one that reported progress continues an upload the
     // remote end may hold part of; a first run has nothing to judge.
@@ -408,6 +426,16 @@ final class _UploadRun {
     }
     if (_ended) return;
     _source = source;
+    // What the job showed before: its bytes done when its state keeps
+    // them, else the bytes the remote end acknowledged, which a run that
+    // starts from zero would otherwise take back.
+    final shownBefore = math.max(
+      record.job.state.total == _size ? record.job.state.done : 0,
+      upload.highWaterMark,
+    );
+    _shown = ProgressFold(
+      _size > 0 ? (shownBefore / _size).clamp(0.0, 1.0) : 0,
+    );
     // A transport is asked again at each run: its declaration may have
     // changed since the job was made.
     final partSize = transport.capabilities.partSize(_size);
@@ -429,6 +457,21 @@ final class _UploadRun {
           )
         : null;
     final token = outcome == ResumeOutcome.resumed ? upload.resumeToken : null;
+    _transport = transport;
+    await _open(upload, token: token, outcome: outcome);
+  }
+
+  /// Opens the session, with [token] to continue an upload, sets the parts
+  /// it holds and starts sending the others. [outcome] is the resume
+  /// decision for an upload that ran before.
+  Future<void> _open(
+    JournalUpload upload, {
+    required String? token,
+    required ResumeOutcome? outcome,
+  }) async {
+    final transport = _transport;
+    final partSize = _partSize;
+    final source = _source;
     final info = UploadInfo(
       size: _size,
       partSize: partSize,
@@ -449,7 +492,7 @@ final class _UploadRun {
     }
     _session = session;
 
-    final resumed = token != null && session.resumed;
+    final resumed = _resumed = token != null && session.resumed;
     // A remote end that keeps the offset is the truth about what it holds;
     // the journal may be a progress window behind it, or ahead of a remote
     // end that lost bytes.
@@ -644,11 +687,14 @@ final class _UploadRun {
             'inFlight': _outstanding,
           },
         );
-        return _session.sendPart(
-          index,
-          offset,
-          _body(index, offset, length),
-          last: index == _partCount - 1,
+        return MpxTrace.async(
+          TransportOp.partSent,
+          () => _session.sendPart(
+            index,
+            offset,
+            _body(index, offset, length),
+            last: index == _partCount - 1,
+          ),
         );
       });
     } on _RunEnded {
@@ -688,9 +734,21 @@ final class _UploadRun {
     } on _RunEnded {
       return;
     } on _GaveUp catch (gaveUp) {
+      if (!gaveUp.retryable && _resumed && !_resentFromZero) {
+        return _resendFromZero();
+      }
       return _fail(gaveUp.kind, retryable: gaveUp.retryable);
     }
     if (_ended) return;
+    // The answer is written before the completion: a kill between the two
+    // completes the job with it at the next start.
+    _journal.writeUpload(id, (upload) => upload.copyWith(finished: ref));
+    _complete(ref, journaled: false);
+  }
+
+  /// Ends the run with the upload done at [ref]; [journaled] when the
+  /// answer was read back from the journal rather than given now.
+  void _complete(RemoteRef ref, {required bool journaled}) {
     MpxDiagnostics.current.emit(
       MpxEventLevel.info,
       TransportOp.finished,
@@ -699,17 +757,45 @@ final class _UploadRun {
         'finalSize': _size,
         'parts': _partCount,
         'ms': _engine._now().difference(_began).inMilliseconds,
+        if (journaled) 'journaled': true,
       },
     );
-    // A completed upload needs neither its parts nor its token again; the
-    // completion's state write keeps the record small.
+    // A completed upload needs neither its parts, its token nor its answer
+    // again; the completion's state write keeps the record small.
     _journal.amendUpload(
       id,
-      (upload) => upload.copyWith(parts: const {}, clearResumeToken: true),
+      (upload) => upload.copyWith(
+        parts: const {},
+        clearResumeToken: true,
+        clearFinished: true,
+      ),
     );
     _end();
     _engine._pageSources.remove(id);
     _sink.complete(ref);
+  }
+
+  /// The remote end refused to finish an upload the session reopened: a
+  /// finish whose answer a kill lost may have closed it. The parts it held
+  /// are no longer the upload's, so it is sent again from zero under a new
+  /// session, once; a refusal of that one fails the job.
+  Future<void> _resendFromZero() async {
+    _resentFromZero = true;
+    _finishing = false;
+    // Opening without a token sends every part.
+    _acks.clear();
+    _pending.clear();
+    _engine._restartsFromZero++;
+    final upload = _journal.record(id)?.upload;
+    if (upload == null) {
+      return _fail(TransferFailureKind.local, retryable: false);
+    }
+    _decided(ResumeOutcome.finishRefused, 0);
+    await _open(
+      upload.copyWith(parts: const {}, highWaterMark: 0),
+      token: null,
+      outcome: null,
+    );
   }
 
   void stop() {
@@ -867,6 +953,9 @@ final class _UploadRun {
       index: ack.receipt,
   };
 
+  /// Reports the bytes done, folded so they never go back: a part tried
+  /// again, or an upload started again from zero, drops what is sent, and
+  /// the job's ring, its cells and the envelope's mirror read this value.
   void _reportProgress() {
     if (_ended) return;
     var done = 0;
@@ -876,7 +965,11 @@ final class _UploadRun {
     for (final sent in _inFlight.values) {
       done += sent;
     }
-    _sink.progress(done, total: _size);
+    final size = _size;
+    final shown = size == 0
+        ? done
+        : (_shown.fold(done / size) * size).floor().clamp(0, size);
+    _sink.progress(shown, total: size);
   }
 }
 

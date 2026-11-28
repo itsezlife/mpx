@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http_bytes_cache/http_bytes_cache.dart'
     show HttpBytesException$Server, HttpBytesRetryBackoff;
 import 'package:mpx_transfer/mpx_transfer.dart';
+import 'package:mpx_transfer/src/journal/journal_store.dart';
 import 'package:mpx_transfer/src/journal/transfer_journal.dart';
 import 'package:mpx_transfer/src/upload/upload_engine.dart';
 import 'package:mpx_transfer/testing.dart';

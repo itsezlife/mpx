@@ -38,18 +38,21 @@ final class DownloadedContent implements TransferResult {
 final class _DownloadedContentCodec implements TransferResultCodec {
   const _DownloadedContentCodec();
 
-  static const String _bytes = 'bytes';
-
   @override
   String get kind => 'download';
 
   @override
   Map<String, Object?>? encode(TransferResult result) => switch (result) {
-    DownloadedContent(:final bytes) => {_bytes: ?bytes},
+    DownloadedContent(:final bytes) => {_Key.bytes: ?bytes},
     _ => null,
   };
 
   @override
   DownloadedContent decode(Map<String, Object?> json) =>
-      DownloadedContent(bytes: JsonFields(json).optionalInteger(_bytes));
+      DownloadedContent(bytes: JsonFields(json).optionalInteger(_Key.bytes));
+}
+
+/// Field names of a downloaded content's stored form.
+abstract final class _Key {
+  static const String bytes = 'bytes';
 }

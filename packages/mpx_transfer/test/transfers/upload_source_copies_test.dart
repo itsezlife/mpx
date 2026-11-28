@@ -6,11 +6,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
 import 'package:mpx_transfer/mpx_transfer.dart';
+import 'package:mpx_transfer/src/journal/upload_source_copies.dart'
+    show NoUploadSourceCopies;
 import 'package:mpx_transfer/testing.dart';
 
 import '../support.dart';
 
-SourceBytes _source(int size) => MemorySourceBytes(Uint8List(size));
+SourceBytes _source(int size) => SourceBytes.memory(Uint8List(size));
 
 void main() {
   late RecordingDiagnostics recorder;
@@ -48,7 +50,7 @@ void main() {
     final directory = Directory.systemTemp.createTempSync('mpx_limit_');
     addTearDown(() => directory.delete(recursive: true));
     final transfers = await Transfers.open(
-      cacheKeyOf: (key) => key.encoded,
+      cache: TransferBytesCache(keyOf: (key) => key.encoded),
       lifecycle: ManualPlaybackLifecycleSource(),
       directory: directory.path,
     );

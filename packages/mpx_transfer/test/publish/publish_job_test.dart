@@ -357,7 +357,7 @@ void main() {
       job.snapshot.state,
       const PublishJobState.failed(
         stage: PublishStage.upload,
-        reason: 'server',
+        reason: PublishFailureReason('server'),
         retryable: false,
       ),
     );
@@ -380,7 +380,7 @@ void main() {
       job.snapshot.state,
       const PublishJobState.failed(
         stage: PublishStage.prepare,
-        reason: 'noSpace',
+        reason: PublishFailureReason('noSpace'),
         retryable: true,
       ),
     );
@@ -443,7 +443,7 @@ void main() {
     expect(
       h.transfers.retry(
         id,
-        source: const UploadSource$Finished('/uploads/again.bin', size: 20),
+        source: SourceBytes.file('/uploads/again.bin', size: 20),
       ),
       isTrue,
     );

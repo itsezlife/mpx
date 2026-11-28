@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
 import 'package:mpx_transfer/mpx_transfer.dart';
+import 'package:mpx_transfer/src/journal/journal_store.dart';
 import 'package:mpx_transfer/testing.dart';
 
 import '../support.dart';
@@ -63,24 +64,34 @@ void main() {
     recorder.clear();
     await h.kill();
 
-    expect(recorder.whereCategory('journal').map((e) => e.op), [
+    expect(_ofJournal(recorder.whereCategory('journal')).map((e) => e.op), [
       JournalOp.opened,
       JournalOp.replayed,
       JournalOp.compacted,
     ]);
-    expect(recorder.whereOp(JournalOp.opened), [
+    for (final table in ['reuse']) {
+      expect(
+        [
+          for (final event in recorder.whereCategory('journal'))
+            if (event.fields['table'] == table) event.op,
+        ],
+        [JournalOp.opened, JournalOp.replayed, JournalOp.compacted],
+        reason: 'the $table store reports its start as the journal does',
+      );
+    }
+    expect(_ofJournal(recorder.whereOp(JournalOp.opened)), [
       isMpxEvent(
         level: MpxEventLevel.info,
         fields: {'records': 3, 'bytes': greaterThan(0), 'store': 'memory'},
       ),
     ]);
-    expect(recorder.whereOp(JournalOp.replayed), [
+    expect(_ofJournal(recorder.whereOp(JournalOp.replayed)), [
       isMpxEvent(
         level: MpxEventLevel.info,
         fields: {'jobs': 3, 'uploads': 2, 'downloads': 1, 'ms': 0},
       ),
     ]);
-    expect(recorder.whereOp(JournalOp.compacted), [
+    expect(_ofJournal(recorder.whereOp(JournalOp.compacted)), [
       isMpxEvent(
         level: MpxEventLevel.debug,
         fields: {
@@ -192,7 +203,7 @@ void main() {
     expect(recorder.whereOp(JournalOp.writeFailed), [
       isMpxEvent(level: MpxEventLevel.error, fields: {'code': 'refused'}),
     ]);
-    expect(recorder.whereOp(JournalOp.opened), [
+    expect(_ofJournal(recorder.whereOp(JournalOp.opened)), [
       isMpxEvent(fields: containsPair('store', 'memory')),
     ]);
     expect(h.transfers.debugSnapshot().journal.store, 'memory');
@@ -202,7 +213,7 @@ void main() {
     final directory = Directory.systemTemp.createTempSync('mpx_journal_');
     addTearDown(() => directory.delete(recursive: true));
     final transfers = await Transfers.open(
-      cacheKeyOf: (key) => key.encoded,
+      cache: TransferBytesCache(keyOf: (key) => key.encoded),
       lifecycle: ManualPlaybackLifecycleSource(),
       directory: directory.path,
     );
@@ -222,7 +233,7 @@ void main() {
     'Transfers.open needs a directory on the VM',
     () => expectLater(
       Transfers.open(
-        cacheKeyOf: (key) => key.encoded,
+        cache: TransferBytesCache(keyOf: (key) => key.encoded),
         lifecycle: ManualPlaybackLifecycleSource(),
       ),
       throwsArgumentError,
@@ -261,3 +272,8 @@ void main() {
     });
   });
 }
+
+/// The transfer journal's own events: the publish journal's and the reuse
+/// table's name their table.
+Iterable<MpxEvent> _ofJournal(Iterable<MpxEvent> events) =>
+    events.where((event) => !event.fields.containsKey('table'));

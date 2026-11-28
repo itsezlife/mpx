@@ -1,7 +1,7 @@
 name: mpx_transfer
 description: >
-  Transfer jobs for mpx: uploads and tracked downloads with one state, a
-  host tag, durability and one observable query on a Transfers facade.
+  Transfer jobs for mpx: resumable uploads, publish jobs with a reuse table,
+  and tracked downloads, journaled and queried on one Transfers facade.
 version: 0.0.1
 homepage: https://github.com/itsezlife/mpx
 repository: https://github.com/itsezlife/mpx/tree/main/packages/mpx_transfer

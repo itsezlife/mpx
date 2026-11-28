@@ -79,7 +79,7 @@ export 'src/playback/scheduler_playback_tick_source.dart';
 export 'src/playback/widgets_playback_lifecycle_source.dart';
 export 'src/preparation/compression_preset.dart';
 export 'src/preparation/media_preparation.dart';
-export 'src/preparation/preparation_encoding.dart';
+export 'src/preparation/preparation_codec.dart';
 export 'src/preparation/preparation_input.dart';
 export 'src/preparation/prepared_media.dart';
 export 'src/texture/frame_texture_host.dart';

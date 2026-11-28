@@ -17,8 +17,11 @@ import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
 import 'package:mpx_transfer/mpx_transfer.dart';
 import 'package:mpx_transfer/src/journal/journal_storage_opfs_js.dart';
+import 'package:mpx_transfer/src/journal/journal_store.dart';
 import 'package:mpx_transfer/src/journal/platform_journal_store_js.dart';
 import 'package:mpx_transfer/src/journal/unload_warning_window_js.dart';
+import 'package:mpx_transfer/src/journal/upload_source_copies.dart'
+    show NoUploadSourceCopies;
 import 'package:mpx_transfer/testing.dart';
 import 'package:web/web.dart' as web;
 
@@ -106,7 +109,7 @@ void main() {
       final directory = await _freshDirectory();
       final copies = await UploadSourceCopies$Opfs$JS.open(directory);
       await copies.copy(const TransferId.parse('u-b'), [
-        MemorySourceBytes(Uint8List(2)),
+        SourceBytes.memory(Uint8List(2)),
       ]);
       // A copy of u-a with its first source written and no mark: a reload
       // fell in the middle of it.
@@ -179,7 +182,13 @@ void main() {
         ),
       );
       expect(recorder.whereOp(JournalOp.sourceLost).single.jobId, over);
-      expect(recorder.whereOp(JournalOp.opened).last.fields['store'], 'opfs');
+      expect(
+        recorder
+            .whereOp(JournalOp.opened)
+            .lastWhere((event) => !event.fields.containsKey('table'))
+            .fields['store'],
+        'opfs',
+      );
 
       // The copy the resumed job reads is the source.
       final copies = await UploadSourceCopies$Opfs$JS.open(directory);
@@ -238,11 +247,15 @@ void main() {
 
     test('Transfers.open opens the journal in OPFS', () async {
       final transfers = await Transfers.open(
-        cacheKeyOf: (key) => key.encoded,
+        cache: TransferBytesCache(keyOf: (key) => key.encoded),
         lifecycle: ManualPlaybackLifecycleSource(),
       );
       addTearDown(transfers.dispose);
-      expect(recorder.whereOp(JournalOp.opened).single.fields['store'], 'opfs');
+      expect(
+        recorder.whereOp(JournalOp.opened).map((e) => e.fields['store']),
+        ['opfs', 'opfs', 'opfs'],
+        reason: 'the journal, the reuse table and the publish journal',
+      );
       expect(transfers.sourceCopyLimit, 500 * 1024 * 1024);
     });
 

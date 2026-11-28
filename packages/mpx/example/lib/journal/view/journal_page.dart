@@ -5,8 +5,8 @@ import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_example/journal/controller/journal_view_controller.dart';
 import 'package:mpx_example/journal/data/diagnostics_journal.dart';
 import 'package:mpx_example/journal/model/journal_view.dart';
-import 'package:mpx_example/journal/widget/journal_record_details_dialog.dart';
-import 'package:mpx_example/journal/widget/journal_record_row.dart';
+import 'package:mpx_example/journal/widget/diagnostics_entry_details_dialog.dart';
+import 'package:mpx_example/journal/widget/diagnostics_entry_row.dart';
 import 'package:share_plus/share_plus.dart';
 
 /// The Logs screen: the journal's records under a filter of level, category
@@ -245,9 +245,9 @@ class _RecordList extends StatelessWidget {
       itemCount: snapshot.visible.length,
       itemBuilder: (context, index) {
         final record = snapshot.visible[index];
-        return JournalRecordRow(
+        return DiagnosticsEntryRow(
           record: record,
-          onTap: () => JournalRecordDetailsDialog.show(context, record),
+          onTap: () => DiagnosticsEntryDetailsDialog.show(context, record),
         );
       },
     );
