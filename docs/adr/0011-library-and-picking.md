@@ -129,7 +129,7 @@ host no permission and no store review flag:
 | Save access | `SaveAccess` is separate from library access: Apple `addOnly` (iOS 14+, macOS 11+) with `NSPhotoLibraryAddUsageDescription`, behind its own build define; nothing on Android 29+; the older write permission on Android 28 and below |
 | Content not yet local | `MediaSaver.saveContent(keys, destination)` runs, per key, download (`TrackedTransfers.download(key, origin: user)`, progress from `watch(key)`), await, `TrackedTransfers.leaseFile(key)` (a `ContentFileLease`, which `mpx_transfer` implements over the bytes cache's own lease), save, release, under one job and one progress (download 90 %, copy 10 %; copy 100 % for an item already local). A null lease after a completed download is downloaded once more, then fails `unavailable`. Cancel cancels the downloads this job started, not others'. Without the seam wired an item that is not local fails `unavailable`, with a debug warning. No new edge: the lease type is `mpx_core`'s |
 | Rights | The saver knows no rights: a caller that has them (a chat's protection) decides before it calls |
-| Platforms | Android (MediaStore insert with a pending flag, then the bytes; public directories on 28 and below; the document creation intent for `ask`), iOS (Photos add-only; `downloads` is the app's Documents shown in Files when the host declares file sharing (`UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace`), a taken name getting `name (1)`, else the export picker; the export picker for `ask`), macOS (Photos add-only 11+; Downloads; the save panel), Windows and Linux (gallery as the Pictures / Videos folders, Downloads through the known folder / XDG; the save dialog), web (gallery and `downloads` as a blob URL download; `ask` through the save file picker where the browser has it, else a download) |
+| Platforms | Android (MediaStore insert with a pending flag, then the bytes; public directories on 28 and below; the document creation intent for `ask`), iOS (Photos add-only; `downloads` is the app's Documents shown in Files when the host declares file sharing (`UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace`), a taken name getting `name (1)`, else the export picker; the export picker for `ask`), macOS (Photos add-only 11+ in one change block as iOS; `~/Downloads/<subfolder>` and the save panel (one per item, through the system file dialog plugin) written as files from Dart item by item, with progress and a cancel inside a copy, a taken name getting `name (1)`, the modification time from `createdAt`; the sandbox adds the user-selected files entitlement for the panel), Windows and Linux (gallery as the Pictures / Videos folders, Downloads through the known folder / XDG; the save dialog), web (gallery and `downloads` as a blob URL download; `ask` through the save file picker where the browser has it, else a download) |
 
 ### Media preparation (`mpx_capture`)
 
@@ -307,7 +307,7 @@ save (progress, result).
 - `mpx_library` ships the write side beside the read side; its README
   lists each platform's declarations for saving (the Android write
   permission for 28 and below, the Apple usage string and define, the
-  macOS sandbox entitlements for Photos and Downloads).
+  macOS sandbox entitlements for Photos, Downloads and the save panel).
 - The chat side checks its protection before offering a save and maps the
   results to its own feedback.
 - **Platform matrix**: macOS gains the saver (Photos add-only and Downloads)

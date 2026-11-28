@@ -53,6 +53,13 @@ sealed class SaveWriter {
   /// `windows`, `linux`, `web`, or a test's own.
   String get platform;
 
+  /// The writer that writes a batch to [destination] in this one's place,
+  /// or null when this one does: a platform that writes destinations in
+  /// different shapes (macOS: Photos as one block, files item by item). The
+  /// runner asks once per batch, before anything else, and runs the batch
+  /// on the writer it gets.
+  SaveWriter? delegateFor(SaveDestination destination) => null;
+
   /// Checked once per batch before anything is written; a failed result
   /// fails every item of the batch with it (denied access, no adapter, a
   /// build without the code). Null lets the batch through. A

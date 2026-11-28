@@ -19,6 +19,7 @@ import 'library/fake_media_library_test.dart' as fake_media_library_test;
 import 'platform/android_save_writer_test.dart' as android_save_writer_test;
 import 'platform/apple_save_writer_test.dart' as apple_save_writer_test;
 import 'platform/desktop_save_writer_test.dart' as desktop_save_writer_test;
+import 'platform/macos_save_writer_test.dart' as macos_save_writer_test;
 import 'platform/platform_media_library_test.dart'
     as platform_media_library_test;
 import 'platform/platform_media_saver_test.dart' as platform_media_saver_test;
@@ -45,6 +46,7 @@ void main() {
   group('android_save_writer_test', android_save_writer_test.main);
   group('apple_save_writer_test', apple_save_writer_test.main);
   group('desktop_save_writer_test', desktop_save_writer_test.main);
+  group('macos_save_writer_test', macos_save_writer_test.main);
   group('platform_media_library_test', platform_media_library_test.main);
   group('platform_media_saver_test', platform_media_saver_test.main);
   group('platform_save_access_test', platform_save_access_test.main);

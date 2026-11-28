@@ -30,10 +30,13 @@ import 'package:mpx_library/src/save/save_writer.dart';
 /// desktops and the web ask for nothing.
 ///
 /// Android writes into the MediaStore (pending until complete; public
-/// directories on API 28 and below) or the create-document dialog. Windows
-/// and Linux write files into the user's folders or where the save dialog
-/// says. A platform without a writer yet fails every item
-/// `SaveFailure.unavailable` (code `noAdapter`), after the access check.
+/// directories on API 28 and below) or the create-document dialog. iOS
+/// writes each batch as one native block (Photos, the app's Documents or
+/// the export picker). macOS writes the gallery as one Photos block, and
+/// Downloads and the save panel as files, as Windows and Linux write every
+/// destination into the user's folders or where the save dialog says. A
+/// platform without a writer fails every item `SaveFailure.unavailable`
+/// (code `noAdapter`), after the access check.
 final class PlatformMediaSaver implements MediaSaver {
   /// The saver of this platform, over the plugin's [methods] channel; a
   /// test passes its own. [transfers] is the composition's tracked

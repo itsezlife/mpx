@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_library/src/platform/macos_home_folders.dart';
 import 'package:mpx_library/src/platform/platform_save_access.dart';
 import 'package:mpx_library/src/platform/save_file_copy.dart';
 import 'package:mpx_library/src/platform/windows_known_folders.dart';
@@ -12,14 +13,19 @@ import 'package:mpx_library/src/save/save_item.dart';
 import 'package:mpx_library/src/save/save_result.dart';
 import 'package:mpx_library/src/save/save_writer.dart';
 
-/// A desktop with no gallery, where a save is a file in a folder: where its
-/// folders come from and what its file system's error codes mean.
+/// A desktop where a save is a file in a folder: where its folders come
+/// from and what its file system's error codes mean. Windows and Linux save
+/// every destination so; macOS its Downloads and save panel, its gallery
+/// being Photos (`AppleSaveWriter.macos`).
 enum DesktopPlatform {
   /// Windows: known folders, Win32 error codes.
   windows,
 
   /// Linux: XDG user directories, `errno`.
-  linux;
+  linux,
+
+  /// macOS: the folders under the home, `errno` (BSD values).
+  macos;
 
   /// What the OS error [code] of a file operation means for a save.
   SaveFailure failureOf(int code) => switch (this) {
@@ -33,6 +39,12 @@ enum DesktopPlatform {
     linux => switch (code) {
       1 || 13 || 30 => SaveFailure.accessDenied,
       28 || 122 => SaveFailure.noSpace,
+      _ => SaveFailure.unavailable,
+    },
+    // EPERM, EACCES, EROFS; ENOSPC, EDQUOT (69 on BSD).
+    macos => switch (code) {
+      1 || 13 || 30 => SaveFailure.accessDenied,
+      28 || 69 => SaveFailure.noSpace,
       _ => SaveFailure.unavailable,
     },
   };
@@ -52,7 +64,7 @@ enum DesktopPlatform {
     // ERROR_FILE_EXISTS, ERROR_ALREADY_EXISTS.
     windows => code == 80 || code == 183,
     // EEXIST.
-    linux => code == 17,
+    linux || macos => code == 17,
   };
 }
 
@@ -107,7 +119,8 @@ abstract final class DesktopSaveNames {
   }
 }
 
-/// The save writer of Windows and Linux: a save is a file in a folder.
+/// The save writer of Windows and Linux, and of macOS's Downloads and save
+/// panel: a save is a file in a folder.
 ///
 /// | Destination | Where |
 /// | --- | --- |
@@ -144,6 +157,7 @@ final class DesktopSaveWriter extends SaveWriter$PerItem {
            switch (os) {
              DesktopPlatform.windows => const WindowsKnownFolders(),
              DesktopPlatform.linux => XdgUserDirs(),
+             DesktopPlatform.macos => const MacosHomeFolders(),
            },
        _pickLocation = pickLocation ?? _pickWithDialog,
        _chunkSize = chunkSize;

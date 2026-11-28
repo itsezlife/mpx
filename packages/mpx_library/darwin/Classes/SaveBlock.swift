@@ -100,8 +100,9 @@ enum SaveAnswer {
 ///
 /// The gallery is Photos, in one change block ([PhotosSave]), compiled only
 /// under the host's `MPX_LIBRARY_SAVE` condition and shared by iOS and
-/// macOS. Downloads and the save dialog need no Photos code and are each
-/// platform's own (iOS: [FilesSave]).
+/// macOS. Downloads and the save dialog need no Photos code: on iOS they are
+/// [FilesSave]; on macOS the Dart side writes them as files and never sends
+/// them here, so they answer `noAdapter`.
 enum SaveBlock {
   static func run(_ args: [String: Any], done: @escaping ([String: Any]) -> Void) {
     guard let raw = args["entries"] as? [Any] else { return done(SaveAnswer.failed("mpx", "badRequest")) }

@@ -98,8 +98,7 @@ final job = saver.saveContent([
   saver knows no rights: the caller decides before it calls. It asks for
   its own `SaveAccess` (`access`, `requestAccess`; a batch asks once by
   itself), apart from the library's read access. `PlatformMediaSaver` saves
-  on Android, iOS, Windows, Linux and the web; a platform whose adapter has
-  not landed (macOS) answers `unavailable` past the access check.
+  on Android, iOS, macOS, Windows, Linux and the web.
 - `MediaSaver.saveContent`: `SaveRequest`s (key, name, MIME type, kind) as
   one `SaveJob` over `mpx_core`'s `TrackedTransfers`: a content not local
   is downloaded as the user's tracked download (or joins one under way),
@@ -248,7 +247,7 @@ adds, per platform:
 | Android 9 (API 28) and below | `WRITE_EXTERNAL_STORAGE`, for the gallery and Downloads | the permission with `android:maxSdkVersion="28"` |
 | iOS, macOS: gallery | Photos add-only access | `NSPhotoLibraryAddUsageDescription` and the `MPX_LIBRARY_SAVE` condition |
 | iOS, macOS: gallery with an album | Photos read and write access | also `NSPhotoLibraryUsageDescription` and `MPX_LIBRARY_PHOTOS` |
-| macOS sandbox | | `com.apple.security.personal-information.photos-library` for the gallery, `com.apple.security.files.downloads.read-write` for Downloads |
+| macOS sandbox | | `com.apple.security.personal-information.photos-library` for the gallery, `com.apple.security.files.downloads.read-write` for Downloads, `com.apple.security.files.user-selected.read-write` for the save panel |
 | iOS, macOS: Downloads, the save dialog; Windows, Linux, web | none | nothing |
 | iOS: Downloads shown in Files | none | `UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace` set to true in `Info.plist`; without them Downloads opens the export picker |
 
@@ -292,7 +291,16 @@ A sandboxed macOS host adds to its entitlements:
 <true/>
 <key>com.apple.security.files.downloads.read-write</key>
 <true/>
+<key>com.apple.security.files.user-selected.read-write</key>
+<true/>
 ```
+
+**macOS**: the gallery is Photos, one change block per batch as on iOS.
+Downloads and `ask` are files written from Dart, item by item, with
+progress and a cancel inside a copy: `~/Downloads/<subfolder>`, where a
+taken name gets ` (1)` and `createdAt` becomes the modification time, and
+the system save panel, one per item, a dismissed one cancelling the rest of
+the batch. An animation sent there is written as the file it is.
 
 ## Testing
 

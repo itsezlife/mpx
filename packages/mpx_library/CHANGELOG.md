@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- `PlatformMediaSaver` saves on macOS. `gallery(album:)` is one Photos
+  change block per batch, as on iOS (add-only access, macOS 11 and later,
+  under `MPX_LIBRARY_SAVE`). `downloads(subfolder:)` writes into
+  `~/Downloads/<subfolder>` item by item, with progress and a cancel inside
+  a copy; a taken name gets ` (1)` and is reported renamed, and `createdAt`
+  becomes the modification time. `ask` opens the system save panel per
+  item, a dismissed one cancelling the rest of the batch. A sandboxed host
+  adds `com.apple.security.files.user-selected.read-write` for the panel,
+  beside the Photos and Downloads entitlements. macOS was `unavailable`
+  (code `noAdapter`) before.
+
 - `PlatformMediaSaver` saves on iOS: one native call per batch with one
   atomic result. `gallery(album:)` is one Photos change block (one prompt),
   each asset with the item's name, type and `createdAt`; a GIF animation

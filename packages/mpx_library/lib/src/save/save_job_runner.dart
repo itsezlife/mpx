@@ -43,7 +43,7 @@ abstract final class SaveJobRunner {
     final job = _Job('save-${++_lastJob}', [
       for (final item in items) _Slot.item(item),
     ]);
-    unawaited(job._run(destination, writer));
+    unawaited(job._run(destination, writer.delegateFor(destination) ?? writer));
     return job;
   }
 
@@ -60,7 +60,13 @@ abstract final class SaveJobRunner {
     final job = _Job('save-${++_lastJob}', [
       for (final request in requests) _Slot.request(request),
     ]);
-    unawaited(job._runContent(destination, writer, transfers));
+    unawaited(
+      job._runContent(
+        destination,
+        writer.delegateFor(destination) ?? writer,
+        transfers,
+      ),
+    );
     return job;
   }
 }
