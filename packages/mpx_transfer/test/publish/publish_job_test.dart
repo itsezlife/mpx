@@ -443,7 +443,7 @@ void main() {
     expect(
       h.transfers.retry(
         id,
-        source: const UploadSource$Finished('/uploads/again.bin', size: 20),
+        source: SourceBytes.file('/uploads/again.bin', size: 20),
       ),
       isTrue,
     );

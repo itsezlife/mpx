@@ -40,7 +40,6 @@ import 'package:mpx_transfer/src/upload/remote_ref.dart';
 import 'package:mpx_transfer/src/upload/resume_outcome.dart';
 import 'package:mpx_transfer/src/upload/upload_engine.dart';
 import 'package:mpx_transfer/src/upload/upload_lane.dart';
-import 'package:mpx_transfer/src/upload/upload_source.dart';
 import 'package:mpx_transfer/src/upload/upload_transport.dart';
 
 /// The one facade of the transfer engine: every transfer job, its verbs and
@@ -99,7 +98,6 @@ final class Transfers {
     bool online = true,
     DateTime Function() now = DateTime.now,
   }) : _cacheKeyOf = cacheKeyOf,
-       _cache = cache ?? downloads?.store,
        _lifecycle = lifecycle,
        _runner = runner,
        _downloadRunner = downloads == null ? null : DownloadRunner(downloads),
@@ -117,7 +115,12 @@ final class Transfers {
       _publish = PublishJobs(
         journal: publishJournal,
         uploads: uploads,
-        host: _PublishHost(this),
+        host: _PublishHost(
+          this,
+          journal: journal,
+          cache: cache ?? downloads?.store,
+          cacheKeyOf: cacheKeyOf,
+        ),
         reuse: reuse,
         preparation: preparation,
         progressWeights: progressWeights,
@@ -298,7 +301,6 @@ final class Transfers {
   Duration get progressInterval => _journal.progressInterval;
 
   final String Function(MediaKey key) _cacheKeyOf;
-  final IBytesStore? _cache;
   final PlaybackLifecycleSource _lifecycle;
   final TransferRunner _runner;
   final DownloadRunner? _downloadRunner;
@@ -354,6 +356,10 @@ final class Transfers {
   int _envelopesEndedBySystem = 0;
   Timer? _pruneTimer;
   TrackedContent? _tracked;
+
+  /// A publish job changed: what the view by content key reads may have
+  /// moved.
+  void _publishChanged() => _tracked?.refresh();
 
   // --- Queries ---------------------------------------------------------------
 
@@ -518,59 +524,84 @@ final class Transfers {
 
   /// Puts failed job [id] back in the queue for another attempt.
   ///
-  /// For an upload, [source] replaces the file it reads: the host's way
-  /// back from a lost source (the user picked the file again). On the web,
-  /// where an upload reads the page's source, [pageSource] does the same
-  /// (a picked `File` again), copied as a new upload's source is. The
-  /// upload then starts from zero, since parts sent from one file say
-  /// nothing about another; the job and its id stay. A download ignores
-  /// both. Give one of them: a [pageSource] on the VM, where an upload
-  /// reads a file, throws an [ArgumentError] (write it to a file with
-  /// `UploadSource.fromBytes` and give that).
+  /// For an upload, [source] replaces what it reads: the host's way back
+  /// from a lost source (the user picked the file again). On the VM, where
+  /// an upload reads a file, a [SourceBytes.file] is read where it is and
+  /// bytes in memory are written to a file of the engine's own first, so
+  /// the job queues once they are; on the web, where an upload reads the
+  /// page's source, it is copied as a new upload's source is. The upload
+  /// then starts from zero, since parts sent from one source say nothing
+  /// about another; the job and its id stay. A download ignores [source].
   ///
   /// Answers whether the job changed: false for an unknown id or a job that
   /// has not failed.
-  bool retry(
-    TransferId id, {
-    UploadSource$Finished? source,
-    SourceBytes? pageSource,
-  }) {
-    if (source != null && pageSource != null) {
-      throw ArgumentError('Give a source or a page source, not both.');
-    }
-    if (pageSource != null && !(_uploads?.readsPageSources ?? false)) {
-      throw ArgumentError.value(
-        pageSource,
-        'pageSource',
-        'is for the web; on the VM give a file as source',
-      );
-    }
+  bool retry(TransferId id, {SourceBytes? source}) {
     final job = _job(id);
     if (job == null || job.state is! TransferState$Failed) return false;
-    var total = job.state.total;
-    final size = source?.size ?? pageSource?.size;
-    if (size != null && _journal.record(id)?.upload != null) {
-      total = size;
-      _journal.amendUpload(
-        id,
-        (upload) => upload.copyWith(
-          source: JournalSource(
-            path: source?.path ?? upload.source.path,
-            size: size,
-            fingerprint: upload.source.fingerprint,
-          ),
-          parts: const {},
-          highWaterMark: 0,
-          clearResumeToken: true,
-        ),
-      );
-      if (pageSource != null) {
-        _uploads?.keepPageSource(id, pageSource);
-        _copySources(id, [pageSource]);
-      }
+    final uploads = _uploads;
+    if (source == null ||
+        uploads == null ||
+        _journal.record(id)?.upload == null) {
+      _queue(job.copyWith(state: TransferState.queued(total: job.state.total)));
+      return true;
     }
-    _queue(job.copyWith(state: TransferState.queued(total: total)));
+    if (uploads.readsPageSources) {
+      uploads.keepPageSource(id, source);
+      _copySources(id, [source]);
+      _retryFrom(job, size: source.size);
+    } else if (source case SourceBytes$File(:final path)) {
+      _retryFrom(job, size: source.size, path: path);
+    } else {
+      unawaited(_writeThenRetry(uploads, job, source));
+    }
     return true;
+  }
+
+  /// Queues failed upload [job] again from zero over a source of [size]
+  /// bytes, at [path] when it is a file of its own.
+  void _retryFrom(TransferJob job, {required int size, String? path}) {
+    _journal.amendUpload(
+      job.id,
+      (upload) => upload.copyWith(
+        source: JournalSource(
+          path: path ?? upload.source.path,
+          size: size,
+          fingerprint: upload.source.fingerprint,
+        ),
+        parts: const {},
+        highWaterMark: 0,
+        clearResumeToken: true,
+      ),
+    );
+    _queue(job.copyWith(state: TransferState.queued(total: size)));
+  }
+
+  /// On the VM: writes [source], bytes in memory, to a file of the engine's
+  /// own, then queues failed upload [job] over it. A write the file system
+  /// refuses is reported and leaves the job failed.
+  Future<void> _writeThenRetry(
+    UploadEngine uploads,
+    TransferJob job,
+    SourceBytes source,
+  ) async {
+    final String path;
+    try {
+      path = await uploads.writeSource(job.id.value, source);
+    } on Object catch (_, stackTrace) {
+      MpxDiagnostics.current.emit(
+        MpxEventLevel.error,
+        JournalOp.writeFailed,
+        jobId: job.id,
+        fields: () => {'code': 'source_write'},
+        stackTrace: stackTrace,
+      );
+      return;
+    }
+    final now = _job(job.id);
+    if (_disposed || now == null || now.state is! TransferState$Failed) {
+      return unawaited(uploads.releaseSources(job.id.value));
+    }
+    _retryFrom(now, size: source.size, path: path);
   }
 
   /// Cancels job [id]: its transfer stops and the job is removed. There is
@@ -1694,6 +1725,23 @@ final class Transfers {
   }
 
   void _deleteSources(TransferId id) {
+    // A file a retry wrote for the job, on the VM.
+    if (_uploads case final uploads?) {
+      unawaited(
+        uploads.releaseSources(id.value).catchError((
+          Object _,
+          StackTrace stackTrace,
+        ) {
+          MpxDiagnostics.current.emit(
+            MpxEventLevel.warning,
+            JournalOp.writeFailed,
+            jobId: id,
+            fields: () => {'code': 'source_delete'},
+            stackTrace: stackTrace,
+          );
+        }),
+      );
+    }
     final copies = _sourceCopies;
     if (copies == null || !copies.holds(id)) return;
     unawaited(
@@ -1800,13 +1848,33 @@ final class _Run implements TransferRunSink {
 }
 
 /// The facade as its publish jobs see it.
+/// The facade as its publish jobs see it: the journal their uploads are
+/// kept in, the bytes cache they alias in, and the facade's verbs on the
+/// uploads.
 final class _PublishHost implements PublishUploadHost {
-  _PublishHost(this._engine);
+  _PublishHost(
+    this._engine, {
+    required TransferJournal journal,
+    required IBytesStore? cache,
+    required String Function(MediaKey key) cacheKeyOf,
+  }) : _journal = journal,
+       _cache = cache,
+       _cacheKeyOf = cacheKeyOf;
 
   final Transfers _engine;
+  final TransferJournal _journal;
+  final IBytesStore? _cache;
+  final String Function(MediaKey key) _cacheKeyOf;
 
   @override
-  JournalRecord? recordOf(TransferId id) => _engine._journal.record(id);
+  JournalRecord? recordOf(TransferId id) => _journal.record(id);
+
+  @override
+  Iterable<String> get sourceOwners => [
+    for (final record in _journal.records)
+      if (record.upload != null && record.job.state is! TransferState$Completed)
+        record.job.id.value,
+  ];
 
   @override
   void enqueueUpload(
@@ -1828,22 +1896,19 @@ final class _PublishHost implements PublishUploadHost {
   );
 
   @override
-  bool retryUpload(
-    TransferId id, {
-    UploadSource$Finished? source,
-    SourceBytes? pageSource,
-  }) => _engine.retry(id, source: source, pageSource: pageSource);
+  bool retryUpload(TransferId id, {SourceBytes? source}) =>
+      _engine.retry(id, source: source);
 
   @override
   void cancelUpload(TransferId id) =>
       _engine._cancel(id, by: CancelledBy.owner);
 
   @override
-  void publishChanged() => _engine._tracked?.refresh();
+  void publishChanged() => _engine._publishChanged();
 
   @override
-  Future<bool>? alias(MediaKey local, MediaKey server) => _engine._cache?.alias(
-    BytesCacheKey(_engine._cacheKeyOf(local)),
-    BytesCacheKey(_engine._cacheKeyOf(server)),
+  Future<bool>? alias(MediaKey local, MediaKey server) => _cache?.alias(
+    BytesCacheKey(_cacheKeyOf(local)),
+    BytesCacheKey(_cacheKeyOf(server)),
   );
 }

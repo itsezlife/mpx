@@ -47,12 +47,13 @@ abstract interface class PublishUploadHost {
   });
 
   /// Queues failed upload [id] again, keeping what it sent, or from zero
-  /// over a new [source] file or [pageSource]; answers whether it changed.
-  bool retryUpload(
-    TransferId id, {
-    UploadSource$Finished? source,
-    SourceBytes? pageSource,
-  });
+  /// over a new [source]: a file on the VM, the page's source on the web.
+  /// Answers whether it changed.
+  bool retryUpload(TransferId id, {SourceBytes? source});
+
+  /// The owners whose written sources a start keeps besides the publish
+  /// jobs': the upload jobs not yet done, for a source a retry gave.
+  Iterable<String> get sourceOwners;
 
   /// Cancels upload [id] for the job that owns it.
   void cancelUpload(TransferId id);
@@ -325,7 +326,8 @@ final class PublishJobs {
       _reportingRelease(
         _uploads.sweepSources({
           for (final record in _journal.records)
-            if (record.end is! PublishJobState$Completed) record.id,
+            if (record.end is! PublishJobState$Completed) record.id.value,
+          ..._host.sourceOwners,
         }),
       ),
     );
@@ -1046,11 +1048,13 @@ final class PublishJobs {
   ) async {
     final progress = item.progress as ItemProgress$Uploading;
     final given = _liveOf(id).newSources.remove(item.item.itemId);
-    UploadSource$Finished? file;
-    SourceBytes? pageSource;
-    if (given != null && !_uploads.readsPageSources) {
+    var source = given;
+    if (given != null &&
+        given is! SourceBytes$File &&
+        !_uploads.readsPageSources) {
+      // On the VM an upload reads a file: bytes in memory become one.
       try {
-        file = UploadSource$Finished(
+        source = SourceBytes.file(
           await _uploads.writeSource(id, given),
           size: given.size,
         );
@@ -1067,8 +1071,6 @@ final class PublishJobs {
         return;
       }
       if (!_running(id)) return;
-    } else {
-      pageSource = given;
     }
     // Each retry is news the item would read with its other upload still
     // failed, failing it again.
@@ -1077,11 +1079,7 @@ final class PublishJobs {
       for (final upload in [progress.file, ?progress.thumbnail]) {
         if (_host.recordOf(upload)?.job.state is TransferState$Failed) {
           final isFile = upload == progress.file;
-          _host.retryUpload(
-            upload,
-            source: isFile ? file : null,
-            pageSource: isFile ? pageSource : null,
-          );
+          _host.retryUpload(upload, source: isFile ? source : null);
         }
       }
     } finally {
