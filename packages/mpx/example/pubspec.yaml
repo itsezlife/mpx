@@ -1,5 +1,5 @@
 name: mpx_example
-description: Shows an mpx stack drawing media, the fullscreen viewer with save and share, and a feed list.
+description: Shows an mpx stack drawing media, the viewer, a feed, uploads and publish jobs over mpx_transfer, and a diagnostics log.
 publish_to: none
 resolution: workspace
 

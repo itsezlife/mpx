@@ -835,8 +835,8 @@ final class Transfers {
   /// Makes a job and queues it, or for a download whose key already has a
   /// job, answers that job's id and changes nothing.
   ///
-  /// The public entry points (downloads, uploads, publish jobs) build on
-  /// this as they land.
+  /// What [download], the publish jobs' uploads and the test harnesses
+  /// make their jobs through.
   @internal
   TransferId enqueue({
     required TransferDirection direction,
