@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
 import 'package:mpx_transfer/mpx_transfer.dart';
+import 'package:mpx_transfer/src/journal/journal_store.dart';
 import 'package:mpx_transfer/testing.dart';
 
 import '../support.dart';

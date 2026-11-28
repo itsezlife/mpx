@@ -1,8 +1,8 @@
 /// Fakes and test support for `mpx_transfer`: an OS envelope with no native
-/// part, a scripted runner in place of real transfers, a result kind, a
-/// journal store in memory with the contract every journal store meets,
-/// upload source copies and a page warning as the web has them, with the
-/// copies' contract, the contract the reuse table meets over every store,
+/// part, a scripted runner in place of real transfers, a result kind, the
+/// contract every journal store meets, upload source copies and a page
+/// warning as the web has them, with the copies' contract (and the seam
+/// they implement), the contract the reuse table meets over every store,
 /// a harness that builds the engine over them, an upload source file
 /// system with no files, and an upload transport with no remote end, the
 /// contract every transport meets,
@@ -13,9 +13,8 @@
 /// never imports them.
 library;
 
-export 'src/journal/journal_store.dart';
 export 'src/journal/unload_warning.dart';
-export 'src/journal/upload_source_copies.dart';
+export 'src/journal/upload_source_copies.dart' show UploadSourceCopies;
 export 'src/testing/fake_publisher.dart';
 export 'src/testing/fake_transfer_envelope.dart';
 export 'src/testing/fake_transfer_result.dart';
