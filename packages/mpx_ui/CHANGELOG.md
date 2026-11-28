@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `mpx_ui.dart` compiles for the web: `LibraryPlayerSources` no longer
+  imports the player's `native.dart` (and through it `dart:ffi`).
 - The viewer's player starts with sound: a player a list left muted (volume 0,
   kept warm) opened silent in the viewer.
 - `FeedClip.onPlay` also shows play over a clip that should play and reads as a

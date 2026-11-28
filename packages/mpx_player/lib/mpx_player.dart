@@ -31,4 +31,5 @@ export 'src/feed/feed_slot.dart';
 export 'src/player/player_diagnostics.dart';
 export 'src/player/player_state.dart';
 export 'src/pool/player_pool.dart';
+export 'src/source/player_source.dart';
 export 'src/widget/player_view.dart';

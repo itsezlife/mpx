@@ -47,6 +47,7 @@ import 'viewer/viewer_strip_test.dart' as viewer_strip_test;
 import 'viewer/viewer_taps_test.dart' as viewer_taps_test;
 import 'viewer/viewer_text_diff_test.dart' as viewer_text_diff_test;
 import 'viewer/viewer_video_test.dart' as viewer_video_test;
+import 'web_compile_test.dart' as web_compile_test;
 
 void main() {
   group('feed_clip_test', feed_clip_test.main);
@@ -86,4 +87,5 @@ void main() {
   group('viewer_taps_test', viewer_taps_test.main);
   group('viewer_text_diff_test', viewer_text_diff_test.main);
   group('viewer_video_test', viewer_video_test.main);
+  group('web_compile_test', web_compile_test.main);
 }

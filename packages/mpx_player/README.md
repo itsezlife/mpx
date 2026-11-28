@@ -103,7 +103,8 @@ warm neighbours (`state.lease`).
 - `PlayerView` with a stand-in until the first frame
 - `NativePlayerBackend` (`native.dart`): Media3 ExoPlayer on Android,
   AVPlayer on iOS and macOS, each into its own texture, reading bytes
-  through `http_bytes_cache`'s native reader; HDR tone-mapped to SDR
+  through `http_bytes_cache`'s native reader; HDR tone-mapped to SDR. Its
+  sources (`PlayerSource`) are in `mpx_player.dart`, which web code may import
 - `PlayerDevice`: the hardware probe and the prepared-player gate
   (`PlayerDevice.budget`); a codec whose decoder failed is skipped next time
 - Picture in picture (`PlayerPool.startPictureInPicture`) and background

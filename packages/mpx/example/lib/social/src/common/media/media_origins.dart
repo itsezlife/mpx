@@ -1,7 +1,7 @@
 import 'package:http_bytes_cache/http_bytes_cache.dart';
 import 'package:mpx/mpx.dart';
 import 'package:mpx_core/mpx_core.dart';
-import 'package:mpx_player/native.dart';
+import 'package:mpx_player/mpx_player.dart';
 
 /// Where one piece of media lives on the web.
 final class MediaOrigin {

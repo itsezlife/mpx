@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `PlayerSource`, `PlayerSourceKind` and `PlayerSourcesOf` move from
+  `native.dart` to `mpx_player.dart`, so web code can name a source without
+  importing the native reader (`dart:ffi`). A host that read them from
+  `native.dart` imports `mpx_player.dart`.
 - `FeedController.requestPlay(index)`: the reader's tap on the play button
   of a clip the gate holds plays it, as long as it shows (list mode);
   `FeedListPlanner.plan` takes the indexes as `requested`.

@@ -11,10 +11,10 @@ import 'package:mpx_player/src/backend/picture_in_picture.dart';
 import 'package:mpx_player/src/backend/player_backend.dart';
 import 'package:mpx_player/src/budget/player_device.dart';
 import 'package:mpx_player/src/native/player_messages.g.dart';
-import 'package:mpx_player/src/native/player_source.dart';
 import 'package:mpx_player/src/player/player_diagnostics.dart';
 import 'package:mpx_player/src/player/player_state.dart';
 import 'package:mpx_player/src/player/player_trace.dart';
+import 'package:mpx_player/src/source/player_source.dart';
 
 /// Publishes one ranged resource to the native reader and returns what
 /// withdraws it.
