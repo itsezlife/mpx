@@ -187,9 +187,10 @@ failed copy takes back the copies made before it. `ask` opens the system
 export picker over the whole batch; dismissing it cancels every item. A
 cancel counts only before the block begins: once Photos or the picker has
 the batch, it runs to its end. A failure is the batch's and carries the
-platform's code (`photos.3305`, `cocoa.640`, …). `SaveItem.bytes` items are
-not taken on iOS (`unavailable`, code `bytes`). The saved ref is the
-asset's local identifier, or the saved file's path.
+platform's code (`photos.3305`, `cocoa.640`, …). A `SaveItem.bytes` item
+is written to a temporary file under its name for the block and removed
+after. The saved ref is the asset's local identifier, or the saved file's
+path.
 
 Saving on macOS: the gallery is Photos, one change block per batch as on iOS.
 Downloads and `ask` are files written from Dart, item by item, with
@@ -205,20 +206,26 @@ Videos folder (videos, video animations), with the album as a sub-folder;
 per item, and dismissing it cancels the rest of the batch. The folders are
 the Windows known folders (a moved Downloads is found where it is) and the
 XDG user directories (`user-dirs.dirs`, the home when a folder is not
-set). A taken name gets ` (1)`, ` (2)`, … before its extension. The copy
-streams on a worker isolate with progress and cancel; `createdAt` becomes
-the file's modification time. Nothing to declare: no access is asked.
+set). A taken name gets ` (1)`, ` (2)`, … before its extension. The bytes go
+into a hidden `.<name>.part` beside the name and are renamed over it at the
+end, so the name never holds part of a file; a cancel or any failure
+removes both. The copy streams on a worker isolate with progress and
+cancel; `createdAt` becomes the file's modification time. Nothing to
+declare: no access is asked.
 
 On the web every save is a download: `gallery` and `downloads` hand each
 item to the browser (`<a download>`; the browser decides whether to ask
 where, and an album or a sub-folder has no meaning there). `ask` opens the
 browser's save picker for each item where it has one (Chromium) and writes
-the item into the picked file; a dismissed picker is `cancelled`. Without
-a picker, or for an item the page has no user gesture left to open one
-for, `ask` is a download too. A saved item is `saved(null)`: the browser
-confirms nothing. Items are `SaveItem.bytes`, or a file in the origin's
-private file system at the item's path. The web needs no access and the
-host declares nothing.
+the item into the picked file; a dismissed picker cancels the rest of the
+batch. Without a picker, or for an item the page has no user gesture left
+to open one for, `ask` is a download too. A saved item is `saved(null)`:
+the browser confirms nothing. Items are `SaveItem.bytes`, or a file in the
+origin's private file system at the item's path. `saveContent` saves on
+the web too: the bytes cache keeps content in browser storage and lends no
+file, so a content already cached is read whole into memory and saved as
+bytes with no download, and one not cached is downloaded once first. The
+web needs no access and the host declares nothing.
 
 ## Diagnostics
 
