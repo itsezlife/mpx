@@ -258,9 +258,7 @@ void main() {
       expect(session.value.value.zoom, closeTo(0.4, 1e-6));
     });
 
-    testWidgets('the knob is a 12 disc, 16.7 pressed', (
-      tester,
-    ) async {
+    testWidgets('the knob is a 12 disc, 16.7 pressed', (tester) async {
       final session = await pumpWide(tester);
       await reveal(tester);
       final paint = find.descendant(

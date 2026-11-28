@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:http_bytes_cache/http_bytes_cache.dart';
+import 'package:mpx/src/diagnostics/cache_diagnostics_bridge.dart';
 import 'package:mpx/src/download/network_auto_download_policy.dart';
 import 'package:mpx/src/fetch/bytes_cache_fetcher.dart';
 import 'package:mpx/src/fetch/ranged_content_publisher.dart';
@@ -64,6 +65,51 @@ typedef MpxDecoderFactory =
 /// [RangedBytes], so the host keeps what it builds here for its players.
 typedef MpxPublisherFactory =
     RangedContentPublisher? Function(RangedBytes ranged);
+
+/// What a host's [MpxTrackedFactory] builds its tracked transfers over: the
+/// parts of the stack a tracked download moves its bytes through, made
+/// before the asset cache scope that takes the result.
+final class MpxTrackedContext {
+  MpxTrackedContext._({
+    required this.store,
+    required this.client,
+    required this.fetcher,
+    required this.resolver,
+    required List<FutureOr<void> Function()> teardowns,
+  }) : _teardowns = teardowns;
+
+  /// The bytes store the fetcher writes to: where tracked downloads land
+  /// and where server keys are aliased.
+  final IBytesStore store;
+
+  /// The HTTP client the fetcher sends through; uploads may share its
+  /// connection slots.
+  final HttpBytesClient client;
+
+  /// The core's fetch seam the pipeline reads, keyed by
+  /// [MpxStack.cacheKeyOf].
+  final BytesCacheFetcher fetcher;
+
+  /// The host's resolver the pipeline was given, or null for none.
+  final MediaResolver? resolver;
+
+  final List<FutureOr<void> Function()> _teardowns;
+
+  /// Runs [teardown] when the stack is disposed: after the scope, before the
+  /// store and the client close. Teardowns run in reverse order of
+  /// registration.
+  void onDispose(FutureOr<void> Function() teardown) =>
+      _teardowns.add(teardown);
+}
+
+/// Builds the host's [TrackedTransfers] over [context], or null for
+/// untracked downloads.
+///
+/// The transfer engine lives in a package `mpx` does not depend on, so the
+/// host builds it here, between the fetcher it downloads through and the
+/// scope that takes its seam (`AssetCacheScope.tracked`).
+typedef MpxTrackedFactory =
+    FutureOr<TrackedTransfers?> Function(MpxTrackedContext context);
 
 /// A media stack assembled in one call: one bytes store, one HTTP client,
 /// the fetch adapter, the pipeline, the asset cache scope and the pause
@@ -133,6 +179,13 @@ final class MpxStack {
   ///   presets of `defaultTargetPlatform`
   ///   ([AutoDownloadPresets.forPlatform]), which the stack disposes; a
   ///   host policy stays the host's.
+  /// - [tracked] builds the host's tracked transfers, which the scope takes
+  ///   for the downloads of surfaces with a status control; see
+  ///   [MpxTrackedFactory]. Without it, downloads are the cache's own.
+  ///
+  /// The stack sets `BytesDiagnostics.current` to
+  /// [CacheDiagnosticsBridge.policy], so the bytes cache reports through
+  /// `MpxDiagnostics.current`, the one policy the host sets at start.
   static Future<MpxStack> create({
     required MediaLocator locate,
     String? cacheDirectory,
@@ -149,20 +202,23 @@ final class MpxStack {
     PlaybackPolicy playbackPolicy = const PlaybackPolicy(),
     bool platformTextures = true,
     ValueListenable<bool>? scrolling,
-    BytesDiagnostics diagnostics = const BytesDiagnostics.silent(),
     AutoDownloadPolicy? autoDownload,
     PreviewStore? previews,
     PreviewBlur? previewBlur,
     RangedParts rangedParts = const RangedParts(),
+    MpxTrackedFactory? tracked,
   }) async {
     final teardowns = <FutureOr<void> Function()>[];
     void own(FutureOr<void> Function() teardown) => teardowns.add(teardown);
 
+    // Before the store opens, so a wipe or a degrade on open is reported
+    // too; the memory store's resolves report under it as well.
+    BytesDiagnostics.current = CacheDiagnosticsBridge.policy;
     final store = cacheDirectory == null && !kIsWeb
         ? MemoryBytesCache()
         : await BytesCache.open(
             directory: cacheDirectory,
-            diagnostics: diagnostics,
+            diagnostics: CacheDiagnosticsBridge.policy,
           );
     own(store.close);
     final http = client ?? _defaultClient();
@@ -244,6 +300,15 @@ final class MpxStack {
       previewBlur: previewBlur,
     );
     own(pipeline.dispose);
+    final trackedTransfers = await tracked?.call(
+      MpxTrackedContext._(
+        store: store,
+        client: http,
+        fetcher: fetcher,
+        resolver: resolver,
+        teardowns: teardowns,
+      ),
+    );
     final scope = AssetCacheScope(
       producer: pipeline,
       budgets: budgets,
@@ -251,6 +316,7 @@ final class MpxStack {
       memoryPressure: memoryPressure,
       textures: textures,
       autoDownload: downloadPolicy,
+      tracked: trackedTransfers,
     );
     own(scope.dispose);
 
@@ -284,6 +350,13 @@ final class MpxStack {
       teardowns: teardowns,
     );
   }
+
+  /// The bytes cache key of [key]'s content as the stack's fetcher keys it
+  /// ([BytesCacheFetcher.cacheKeyOf] of the content part), as a string: the
+  /// one mapping a transfer engine takes for its download ids, file leases
+  /// and aliases.
+  static String cacheKeyOf(MediaKey key) =>
+      BytesCacheFetcher.cacheKeyOf(key, FetchPart.content).value;
 
   // Outermost first: retry over timeout, so each attempt has its own
   // deadline; conditional innermost, so revalidation reaches the wire.

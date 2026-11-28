@@ -136,8 +136,17 @@ final class CaptureOutput {
 sealed class CaptureException implements Exception {
   const CaptureException(this.message);
 
-  /// What happened, for logs.
+  /// What happened, for logs. It may name a path: diagnostics carry
+  /// [failureCode] instead.
   final String message;
+
+  /// The diagnostics-safe reason this stands for: `unreadable` for a file
+  /// the platform could not read or write, `permissionDenied`, `cancelled`.
+  String get failureCode => switch (this) {
+    CaptureFailed() => 'unreadable',
+    CapturePermissionDenied() => 'permissionDenied',
+    CaptureCancelled() => 'cancelled',
+  };
 }
 
 /// The job was cancelled; its output file is gone.

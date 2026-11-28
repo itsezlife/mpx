@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_capture/src/job/capture_job.dart';
 import 'package:mpx_capture/src/preset/compression_preset.dart';
 import 'package:mpx_capture/src/transcode/transcoder.dart';
+import 'package:mpx_core/mpx_core.dart';
 
 /// What a [Transcoder] contract run needs: the transcoder, a video it can
 /// read, a file that is not a video and a directory for outputs.

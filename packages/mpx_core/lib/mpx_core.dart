@@ -21,7 +21,13 @@
 /// `PlatformFrameTextureHost.forPlatform` answers the host of Android, iOS or
 /// macOS (null elsewhere), which a `FrameTexturePool` lends to the scope.
 ///
-/// Single-threaded on the UI isolate; no static state.
+/// Every package of mpx reports what it does as structured events
+/// (`MpxEvent`, an operation from the reporting package's own
+/// `DiagnosticOp` enum) through one process-wide policy,
+/// `MpxDiagnostics.current`, which the host sets once at start; silent until
+/// then. `MpxTrace` adds `Timeline` sections behind the `mpx.trace` define.
+///
+/// Single-threaded on the UI isolate; no static state beyond that policy.
 library;
 
 export 'src/asset/asset_binding.dart';
@@ -48,6 +54,10 @@ export 'src/asset/radial_progress.dart';
 export 'src/asset/rect_placeholder.dart';
 export 'src/asset/soft_placeholder.dart';
 export 'src/asset/svg_path_data.dart';
+export 'src/diagnostics/binding_op.dart';
+export 'src/diagnostics/mpx_diagnostics.dart';
+export 'src/diagnostics/mpx_event.dart';
+export 'src/diagnostics/mpx_trace.dart';
 export 'src/identity/media_descriptor.dart';
 export 'src/identity/media_key.dart';
 export 'src/image/image_codec_decoder.dart';
@@ -67,11 +77,18 @@ export 'src/playback/playback_policy.dart';
 export 'src/playback/playback_tick_source.dart';
 export 'src/playback/scheduler_playback_tick_source.dart';
 export 'src/playback/widgets_playback_lifecycle_source.dart';
+export 'src/preparation/compression_preset.dart';
+export 'src/preparation/media_preparation.dart';
+export 'src/preparation/preparation_codec.dart';
+export 'src/preparation/preparation_input.dart';
+export 'src/preparation/prepared_media.dart';
 export 'src/texture/frame_texture_host.dart';
 export 'src/texture/frame_texture_pool.dart';
 export 'src/texture/platform/frame_texture_natives.dart';
 export 'src/texture/platform/platform_frame_texture_host.dart';
 export 'src/texture/texture_frame_writer.dart';
+export 'src/transfer/content_file_lease.dart';
+export 'src/transfer/tracked_transfers.dart';
 export 'src/widget/asset_cache_provider.dart';
 export 'src/widget/asset_load_state.dart';
 export 'src/widget/asset_status_overlay.dart';

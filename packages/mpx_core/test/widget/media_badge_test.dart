@@ -109,6 +109,20 @@ void main() {
       );
     });
 
+    test('sent / total while an upload sends; nothing once sent', () {
+      expect(rows(transfer: const AssetTransfer.sending(_received, _total)), [
+        '1.2 / 4.5 MB',
+      ]);
+      expect(
+        rows(
+          transfer: const AssetTransfer.sending(_received, _total),
+          width: 80,
+        ),
+        ['26%'],
+      );
+      expect(rows(transfer: AssetTransfer.sent), isEmpty);
+    });
+
     test('a percent when narrow', () {
       expect(
         rows(

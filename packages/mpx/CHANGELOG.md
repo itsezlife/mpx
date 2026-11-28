@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- `MpxStack.create(tracked:)` builds the host's `TrackedTransfers` over the
+  stack's store, client, fetcher and resolver (`MpxTrackedContext`, with
+  teardowns that run before the store closes) and hands it to the scope,
+  so surfaces with a status control download as tracked jobs.
+  `MpxStack.cacheKeyOf` is the fetcher's content key mapping, ready for a
+  transfer engine's `cacheKeyOf`.
+- `CacheDiagnosticsBridge` carries a bytes event's own fields beside
+  `bytesOp` (an upload retry's attempt and delay), and names the upload
+  operations: `CacheOp.uploadStarted`, `uploadRetry`, `uploadGaveUp`.
+- The bytes cache reports through `MpxDiagnostics.current`:
+  `CacheDiagnosticsBridge.policy`, which `MpxStack.create` installs as
+  `BytesDiagnostics.current`, turns each bytes event into an `MpxEvent` of
+  category `cache` (`CacheOp`, the bytes operation in `fields.bytesOp`)
+  with its level and stack trace, and drops its message, which can carry
+  keys and URLs. A host that opens the bytes cache itself installs the
+  same policy. Breaking: `MpxStack.create(diagnostics:)` is gone; set
+  `MpxDiagnostics.current` instead.
 - `MpxStack` repeats what failed for want of a network when the device's
   `network` signal comes back from `none` (`AssetCacheScope.connectivityRestored`):
   an avatar or a picture asked for offline loads once the network is back,

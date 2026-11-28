@@ -1,0 +1,22 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The OS envelope's components. The plugin declares components only,
+         never permissions: a host that wants `system` transfers adds them
+         (README, "Android"). Without them a start is refused and the jobs
+         run in process. -->
+    <application>
+        <!-- Android 14 and later: the user-initiated data transfer job. -->
+        <service
+            android:name="dev.mpx.transfer.MpxTransferJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+        <!-- Before Android 14: the dataSync foreground service. -->
+        <service
+            android:name="dev.mpx.transfer.MpxTransferDataSyncService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+        <!-- The notification's "cancel all". -->
+        <receiver
+            android:name="dev.mpx.transfer.MpxTransferCancelReceiver"
+            android:exported="false" />
+    </application>
+</manifest>

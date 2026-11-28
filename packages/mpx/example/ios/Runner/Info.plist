@@ -72,5 +72,20 @@
 	<string>Takes a photo or a video to pick.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Records the sound of a video.</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER).mpx.transfer.*</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>processing</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Sends media to the development upload server on your network.</string>
 </dict>
 </plist>

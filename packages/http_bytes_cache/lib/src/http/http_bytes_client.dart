@@ -1,15 +1,20 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:cancel_token/cancel_token.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_bytes_cache/src/bytes_cache.dart';
+import 'package:http_bytes_cache/src/bytes_diagnostics.dart';
 import 'package:http_bytes_cache/src/environment_specific/transfer_worker.dart'
     as environment_specific;
 import 'package:http_bytes_cache/src/http/byte_range.dart';
 import 'package:http_bytes_cache/src/http/http_bytes_transfer.dart';
+import 'package:http_bytes_cache/src/http/http_bytes_upload.dart';
+import 'package:http_bytes_cache/src/http/middlewares/retry_middleware.dart';
 import 'package:http_bytes_cache/src/http/middlewares/timeout_middleware.dart';
 import 'package:http_bytes_cache/src/http/request_priority.dart';
+import 'package:http_bytes_cache/src/http/retry_backoff.dart';
 import 'package:http_bytes_cache/src/http/transfer_worker.dart';
 import 'package:meta/meta.dart';
 
@@ -413,10 +418,12 @@ final class HttpBytesResponse {
 ///   abort). Timeout middleware cancels that same flight token and still
 ///   surfaces [HttpBytesException$Timeout], not Cancelled.
 ///
-/// GETs share [maxConcurrent] slots. Waiting GETs are served by priority
+/// Requests share [maxConcurrent] slots (8), of which GETs take at most
+/// [maxDownloads] (6) and uploads at most [maxUploads] (6), so each direction
+/// keeps 2 however busy the other is. Waiting GETs are served by priority
 /// ([PriorityToken], read when a slot frees), then by arrival; a coalesced GET
 /// takes the highest priority among its callers, and a GET whose last caller
-/// cancels leaves the queue at once.
+/// cancels leaves the queue at once. Waiting uploads are served by arrival.
 ///
 /// Status handling: default success is 2xx **or** 304 Not Modified. A 304
 /// completes with headers and an empty body (illegal non-empty 304 bodies are
@@ -426,16 +433,25 @@ final class HttpBytesResponse {
 /// With [transfers], [transfer] runs file-bound GETs on a worker isolate: the
 /// socket, the body and the file writes stay there, and this isolate hears
 /// the head and each span written. [client] then serves every other request.
+///
+/// [upload] sends a body streamed from a file range: on the VM from the
+/// transfer worker (spawned for it with default [HttpBytesTransfers] when the
+/// client was given none), on the web through `fetch`. Its bytes never enter
+/// the calling isolate.
 /// {@endtemplate}
 final class HttpBytesClient {
   /// {@macro http_bytes_client}
   HttpBytesClient({
     http.Client? client,
-    int maxConcurrent = 6,
+    this.maxConcurrent = 8,
+    this.maxDownloads = 6,
+    this.maxUploads = 6,
     Iterable<HttpBytesMiddleware>? middlewares,
     this.validateStatus,
     HttpBytesTransfers? transfers,
   }) : assert(maxConcurrent > 0, 'maxConcurrent must be > 0'),
+       assert(maxDownloads > 0, 'maxDownloads must be > 0'),
+       assert(maxUploads > 0, 'maxUploads must be > 0'),
        _transfers = transfers,
        middlewares = List<HttpBytesMiddleware>.unmodifiable(
          middlewares ??
@@ -444,7 +460,11 @@ final class HttpBytesClient {
     final internalClient = client ?? http.Client();
     _ownsClient = client == null;
     _client = internalClient;
-    _slots = _PrioritySlots(maxConcurrent);
+    _slots = _Slots(
+      total: maxConcurrent,
+      downloads: maxDownloads,
+      uploads: maxUploads,
+    );
     final pipeline = HttpBytesMiddlewareWrapper.merge([...this.middlewares]);
     // User middlewares (Bearer, Retry, Timeout, …) wrap coalesce+send so
     // identity sees post-middleware headers; joiners do not hold a pool slot.
@@ -490,16 +510,32 @@ final class HttpBytesClient {
     BytesCache.addAfterResetShared(resetShared);
   }
 
+  /// Requests running at once, both directions together.
+  final int maxConcurrent;
+
+  /// GETs running at once, within [maxConcurrent]: every GET, coalesced,
+  /// streamed or a transfer.
+  final int maxDownloads;
+
+  /// Uploads ([upload]) running at once, within [maxConcurrent].
+  final int maxUploads;
+
   late final http.Client _client;
   late final bool _ownsClient;
-  late final _PrioritySlots _slots;
+  late final _Slots _slots;
   final HttpBytesTransfers? _transfers;
 
-  /// Spawned with the first transfer.
+  /// Spawned with the first transfer or VM upload.
   late final TransferWorker _worker = environment_specific.$transferWorker(
-    _transfers!,
+    _transfers ?? const HttpBytesTransfers(),
   );
   var _workerUsed = false;
+
+  /// The worker on the VM, `fetch` on the web.
+  late final UploadSender _uploader = environment_specific.$uploadSender(() {
+    _workerUsed = true;
+    return _worker;
+  });
 
   /// Whether [transfer] is available: the client was given transfers, and
   /// the platform has isolates (not the web).
@@ -670,6 +706,327 @@ final class HttpBytesClient {
     return (ctx[_kTransferBody]! as _Transfer)..head = head;
   }
 
+  /// Sends [body] to [url] as the body of a [method] request (`POST`, `PUT`
+  /// or `PATCH`) with [headers], and completes with the answer: its status,
+  /// headers and body, read whole (a small body: over 1 MiB fails).
+  ///
+  /// The body streams from its source as the connection takes it: on the
+  /// VM the transfer worker reads the file range, on the web `fetch` reads
+  /// a slice of the OPFS file or the blob, with the body's prefix before
+  /// and its suffix after. [onBytesSent] hears the bytes sent so far
+  /// against the body's `contentLength`: 0 first, growing in steps of
+  /// [HttpBytesTransfers.landBytes], the last report the length (on the web,
+  /// which reports no upload progress, 0 then the length). A try that is
+  /// retried starts again from 0.
+  ///
+  /// The middlewares run on the request as for a GET, with two changes: the
+  /// connect timeout is off unless [context] sets one, since the head comes
+  /// only after the whole body (the worker's
+  /// [HttpBytesTransfers.receiveTimeout] bounds every gap without progress
+  /// instead); and [HttpBytesRetryMiddleware] is skipped, since retries are
+  /// [retry]'s. An upload holds one of [maxUploads] slots while it sends and
+  /// none while it waits to retry; it is never coalesced.
+  ///
+  /// [retry] retries a try that failed on the network, timed out, or got a
+  /// status [HttpBytesRetryMiddleware.defaultRetryEvaluator] calls transient
+  /// (5xx, 429, 408), waiting [HttpBytesRetryBackoff.backoff] between tries;
+  /// [HttpBytesRetryBackoff.uploadPart] is the preset for parts. Null sends
+  /// once. [retryRandom] draws the jitter; [retryWait] waits each delay (by
+  /// default a timer), a seam for a scheduler that ends waits early or late.
+  /// Each try, each retry and a final failure report to
+  /// [BytesDiagnostics.current] ([BytesLogOp.uploadStarted],
+  /// [BytesLogOp.uploadRetry], [BytesLogOp.uploadGaveUp]).
+  ///
+  /// Cancelling [cancelToken] aborts the request, or the wait, and fails
+  /// with [HttpBytesException$Cancelled]. A status that is not a success
+  /// fails as [getBytes] does, with the answer's body in the exception's
+  /// `data['body']`.
+  Future<HttpBytesResponse> upload(
+    Uri url, {
+    required HttpBytesUploadBody body,
+    String method = 'POST',
+    Map<String, String>? headers,
+    CancelToken? cancelToken,
+    BytesProgressCallback? onBytesSent,
+    HttpBytesRetryBackoff? retry,
+    math.Random? retryRandom,
+    Future<void> Function(Duration delay)? retryWait,
+    Map<String, Object?>? context,
+  }) async {
+    if (_closed) {
+      throw const HttpBytesException$Internal(
+        code: 'closed',
+        message: 'HttpBytesClient is closed.',
+        statusCode: 0,
+      );
+    }
+    final verb = method.toUpperCase();
+    if (!_uploadMethods.contains(verb)) {
+      throw ArgumentError.value(method, 'method', 'is not POST, PUT or PATCH');
+    }
+    if (body is HttpBytesUploadBody$Blob &&
+        !environment_specific.$canSendBlobs) {
+      throw UnsupportedError(
+        'A blob body is for the web; on the VM upload a file.',
+      );
+    }
+    final callerToken = cancelToken ?? CancelToken();
+    final random = retryRandom ?? math.Random();
+    final wait = retryWait ?? Future<void>.delayed;
+    var slept = Duration.zero;
+    for (var attempt = 0; ; attempt++) {
+      BytesDiagnostics.current.report(
+        BytesLogEvent(
+          level: BytesLogLevel.debug,
+          op: BytesLogOp.uploadStarted,
+          message:
+              'upload $verb ${url.scheme}://${url.host}: '
+              '${body.contentLength} bytes, try ${attempt + 1}',
+          fields: <String, Object>{
+            'method': verb,
+            'bytes': body.contentLength,
+            'attempt': attempt + 1,
+          },
+        ),
+      );
+      try {
+        return await _uploadOnce(
+          url,
+          method: verb,
+          body: body,
+          headers: headers,
+          callerToken: callerToken,
+          onBytesSent: onBytesSent,
+          context: context,
+        );
+      } on Object catch (error, stackTrace) {
+        if (error is HttpBytesException$Cancelled || callerToken.isCancelled) {
+          rethrow;
+        }
+        final (status, code) = switch (error) {
+          HttpBytesException(:final statusCode, :final code) => (
+            statusCode,
+            code,
+          ),
+          _ => (0, 'unknown_error'),
+        };
+        final delay = switch (retry) {
+          final retry?
+              when attempt < retry.maxRetries &&
+                  _isRetryableUpload(error, attempt) =>
+            retry.backoff(attempt, random),
+          _ => null,
+        };
+        if (delay == null || !retry!.withinBudget(slept, delay)) {
+          BytesDiagnostics.current.report(
+            BytesLogEvent(
+              level: BytesLogLevel.error,
+              op: BytesLogOp.uploadGaveUp,
+              message:
+                  'upload $verb ${url.scheme}://${url.host} failed after '
+                  '${attempt + 1} tries: $code ($status)',
+              stackTrace: stackTrace,
+              fields: <String, Object>{
+                'attempts': attempt + 1,
+                'status': status,
+                'code': code,
+              },
+            ),
+          );
+          rethrow;
+        }
+        BytesDiagnostics.current.report(
+          BytesLogEvent(
+            level: BytesLogLevel.warning,
+            op: BytesLogOp.uploadRetry,
+            message:
+                'upload $verb ${url.scheme}://${url.host} try ${attempt + 1} '
+                'failed: $code ($status); retry in ${delay.inMilliseconds} ms',
+            fields: <String, Object>{
+              'attempt': attempt + 1,
+              'delayMs': delay.inMilliseconds,
+              'status': status,
+              'code': code,
+            },
+          ),
+        );
+        await _raceCallerCancel(callerToken, url, () => wait(delay));
+        slept += delay;
+      }
+    }
+  }
+
+  /// Sends a request with no body to [url]: a [method] other than `GET`
+  /// (`HEAD`, `POST`, `DELETE`, `OPTIONS`, ...) with [headers], such as a
+  /// protocol's control call beside its uploads. Completes with the answer:
+  /// its status, headers and body, read whole (a small body).
+  ///
+  /// The middlewares run on the request as for a GET (Bearer headers, the
+  /// connect timeout), with no retry: the caller decides whether a failed
+  /// call is tried again. It holds one of [maxUploads] slots while it runs
+  /// and is never coalesced. A status that is not a success fails as for
+  /// [getBytes], unless [context] sets [HttpBytesContext.validateStatusKey];
+  /// cancelling [cancelToken] aborts it with [HttpBytesException$Cancelled].
+  ///
+  /// Throws an [ArgumentError] for a `GET`, which goes through [getBytes],
+  /// [stream] or [transfer].
+  Future<HttpBytesResponse> request(
+    Uri url, {
+    required String method,
+    Map<String, String>? headers,
+    CancelToken? cancelToken,
+    Map<String, Object?>? context,
+  }) {
+    if (_closed) {
+      throw const HttpBytesException$Internal(
+        code: 'closed',
+        message: 'HttpBytesClient is closed.',
+        statusCode: 0,
+      );
+    }
+    final verb = method.toUpperCase();
+    if (verb == 'GET') {
+      throw ArgumentError.value(method, 'method', 'is GET');
+    }
+    final callerToken = cancelToken ?? CancelToken();
+    final ctx = HttpBytesContext(<String, Object?>{...?context})
+      ..callerCancelToken = callerToken
+      ..noRetry = true;
+    ctx[_kBodiless] = true;
+    final request = http.Request(verb, url);
+    if (headers case final h?) request.headers.addAll(h);
+    return _raceCallerCancel(
+      callerToken,
+      url,
+      () => _handler(HttpBytesRequest(request), ctx),
+    );
+  }
+
+  /// A [request] at the center of the chain: an upload slot, the request
+  /// sent on this isolate, its body read whole.
+  Future<HttpBytesResponse> _sendBodiless(
+    HttpBytesHandler clientSend,
+    HttpBytesRequest request,
+    HttpBytesContext context,
+    CancelToken callerToken,
+  ) async {
+    final flightToken = CancelToken();
+    context.cancelToken = flightToken;
+    final flight = _HttpBytesInFlight(
+      flightToken: flightToken,
+      onAbandoned: () {},
+    )..trackCaller(callerToken);
+    final abortable = http.AbortableRequest(
+      request.method,
+      request.url,
+      abortTrigger: flightToken.whenCancel,
+    )..headers.addAll(request.headers);
+
+    await _slots.acquire(flight, upload: true);
+    try {
+      final response = await clientSend(HttpBytesRequest(abortable), context);
+      final bytes = await response.toBytes();
+      return response.clone(
+        stream: http.ByteStream.fromBytes(bytes),
+        body: bytes,
+        contentLength: bytes.length,
+      );
+    } finally {
+      _slots.release(upload: true);
+    }
+  }
+
+  /// One try of [upload] through the middleware chain.
+  Future<HttpBytesResponse> _uploadOnce(
+    Uri url, {
+    required String method,
+    required HttpBytesUploadBody body,
+    required Map<String, String>? headers,
+    required CancelToken callerToken,
+    required BytesProgressCallback? onBytesSent,
+    required Map<String, Object?>? context,
+  }) {
+    // A fresh context per try: the chain fills slots (the flight token) a
+    // retry must not inherit.
+    final ctx = HttpBytesContext(<String, Object?>{...?context})
+      ..callerCancelToken = callerToken
+      ..noRetry = true;
+    if (!ctx.containsKey(HttpBytesContext.connectTimeoutKey)) {
+      ctx.connectTimeout = Duration.zero;
+    }
+    ctx[_kUpload] = _UploadPlan(body, onBytesSent);
+    final request = http.Request(method, url);
+    if (headers case final h?) request.headers.addAll(h);
+    return _raceCallerCancel(
+      callerToken,
+      url,
+      () => _handler(HttpBytesRequest(request), ctx),
+    );
+  }
+
+  /// An [upload] try at the center of the chain: an upload slot, then the
+  /// request sent by [_uploader].
+  Future<HttpBytesResponse> _sendUpload(
+    HttpBytesRequest request,
+    HttpBytesContext context,
+    CancelToken callerToken,
+  ) async {
+    final plan = context[_kUpload]! as _UploadPlan;
+    final flightToken = CancelToken();
+    context.cancelToken = flightToken;
+    final flight = _HttpBytesInFlight(
+      flightToken: flightToken,
+      onAbandoned: () {},
+    )..trackCaller(callerToken);
+
+    await _slots.acquire(flight, upload: true);
+    try {
+      final length = plan.body.contentLength;
+      plan.onBytesSent?.call(0, length);
+      final UploadAnswer answer;
+      try {
+        answer = await _uploader.upload(
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          body: plan.body,
+          abort: flightToken.whenCancel,
+          onSent: (sent) => plan.onBytesSent?.call(sent, length),
+        );
+      } on TransferFailed catch (failure, stackTrace) {
+        Error.throwWithStackTrace(
+          _transferError(
+            failure,
+            request.url,
+            (_transfers ?? const HttpBytesTransfers()).receiveTimeout,
+            ioCode: 'read_failed',
+          ),
+          stackTrace,
+        );
+      }
+      final isSuccess =
+          context.validateStatus ?? validateStatus ?? _defaultValidateStatus;
+      if (!isSuccess(answer.statusCode)) {
+        throw _statusToException(
+          answer.statusCode,
+          answer.headers,
+          request.url,
+          body: answer.body,
+        );
+      }
+      return HttpBytesResponse(
+        statusCode: answer.statusCode,
+        headers: answer.headers,
+        contentLength: answer.body.length,
+        request: request,
+        stream: http.ByteStream.fromBytes(answer.body),
+        body: answer.body,
+      );
+    } finally {
+      _slots.release(upload: true);
+    }
+  }
+
   /// Seeds caller context and runs the middleware chain (coalesce at the center).
   ///
   /// Coalesce identity is taken from the request **after** request-mutating
@@ -788,6 +1145,12 @@ final class HttpBytesClient {
       }
       if (context[_kTransfer] == true) {
         return _sendTransfer(request, context, callerToken);
+      }
+      if (context[_kUpload] != null) {
+        return _sendUpload(request, context, callerToken);
+      }
+      if (context[_kBodiless] == true) {
+        return _sendBodiless(clientSend, request, context, callerToken);
       }
 
       // Explicit override (resolver cacheKey) wins for coalesce; otherwise
@@ -999,6 +1362,33 @@ final class HttpBytesClient {
 /// Context marker for a [HttpBytesClient.transfer] GET.
 const _kTransfer = 'httpBytesTransfer';
 
+/// Context slot for the [_UploadPlan] of a [HttpBytesClient.upload] try.
+const _kUpload = 'httpBytesUpload';
+
+/// Context marker for a [HttpBytesClient.request] with no body.
+const _kBodiless = 'httpBytesBodiless';
+
+/// Methods [HttpBytesClient.upload] sends.
+const _uploadMethods = <String>{'POST', 'PUT', 'PATCH'};
+
+/// What an upload try sends and who hears its progress.
+final class _UploadPlan {
+  const _UploadPlan(this.body, this.onBytesSent);
+
+  final HttpBytesUploadBody body;
+  final BytesProgressCallback? onBytesSent;
+}
+
+/// Whether an upload try that failed with [error] is worth another: what
+/// the retry middleware retries, and a timeout too. The middleware cannot
+/// retry a timeout because the flight it would retry on is already
+/// cancelled; each upload try has a flight of its own, and a stalled send
+/// is the commonest failure of a part.
+bool _isRetryableUpload(Object error, int attempt) => switch (error) {
+  HttpBytesException$Timeout() => true,
+  _ => HttpBytesRetryMiddleware.defaultRetryEvaluator(error, attempt),
+};
+
 /// Context slot for the [_Transfer] a transfer's head leaves behind.
 const _kTransferBody = 'httpBytesTransferBody';
 
@@ -1006,8 +1396,9 @@ const _kTransferBody = 'httpBytesTransferBody';
 HttpBytesException _transferError(
   TransferFailed failure,
   Uri url,
-  Duration receiveTimeout,
-) {
+  Duration receiveTimeout, {
+  String ioCode = 'write_failed',
+}) {
   final data = <String, Object?>{'url': url.toString()};
   return switch (failure.kind) {
     TransferFailure.network => HttpBytesException$Network(
@@ -1026,7 +1417,7 @@ HttpBytesException _transferError(
       data: data,
     ),
     TransferFailure.io => HttpBytesException$Internal(
-      code: 'write_failed',
+      code: ioCode,
       message: failure.message,
       statusCode: 0,
       error: failure,
@@ -1380,22 +1771,34 @@ final class _HttpBytesSubscriber {
   final Completer<HttpBytesResponse>? completer;
 }
 
-/// The [HttpBytesClient]'s concurrency cap: a fixed number of slots and a
-/// queue served by flight priority, then arrival.
+/// The [HttpBytesClient]'s concurrency caps: [total] slots for both
+/// directions, at most [downloads] of them GETs and [uploads] of them
+/// uploads, each direction with a queue of its own.
 ///
-/// Priorities are read when a slot frees, not when a GET queues, so a caller
-/// raising its [PriorityToken] overtakes work queued before it. A queued
-/// flight whose token cancels (its last caller left) leaves the queue at once
-/// instead of waiting for a slot only to abort. A homemade queue rather than
-/// `package:pool`: that pool is first-in first-out with no reordering.
-final class _PrioritySlots {
-  _PrioritySlots(this.capacity);
+/// GETs are served by flight priority, then arrival; uploads by arrival
+/// (their scheduler orders them before they get here). When one slot frees
+/// and both directions wait, the earlier arrival gets it. Priorities are
+/// read when a slot frees, not when a GET queues, so a caller raising its
+/// [PriorityToken] overtakes work queued before it. A queued flight whose
+/// token cancels (its last caller left) leaves the queue at once instead of
+/// waiting for a slot only to abort. A homemade queue rather than
+/// `package:pool`: that pool is first-in first-out with no reordering and
+/// one cap.
+final class _Slots {
+  _Slots({required this.total, required this.downloads, required this.uploads});
 
-  final int capacity;
-  var _active = 0;
+  final int total;
+  final int downloads;
+  final int uploads;
+  var _activeDownloads = 0;
+  var _activeUploads = 0;
+  var _arrivals = 0;
   var _closed = false;
-  final List<_SlotWaiter> _queue = [];
+  final List<_SlotWaiter> _downloadQueue = [];
+  final List<_SlotWaiter> _uploadQueue = [];
   Completer<void>? _idle;
+
+  int get _active => _activeDownloads + _activeUploads;
 
   Future<T> run<T>(
     _HttpBytesInFlight flight,
@@ -1409,14 +1812,23 @@ final class _PrioritySlots {
     }
   }
 
-  /// Gives back a slot [acquire] took.
-  void release() {
-    _active--;
+  /// Gives back a slot [acquire] took for the same direction.
+  void release({bool upload = false}) {
+    if (upload) {
+      _activeUploads--;
+    } else {
+      _activeDownloads--;
+    }
     _dispatch();
   }
 
-  /// Takes a slot for [flight], waiting in the queue when none is free.
-  Future<void> acquire(_HttpBytesInFlight flight) {
+  bool _hasRoom({required bool upload}) =>
+      _active < total &&
+      (upload ? _activeUploads < uploads : _activeDownloads < downloads);
+
+  /// Takes a slot for [flight] in its direction, waiting in that
+  /// direction's queue when none is free.
+  Future<void> acquire(_HttpBytesInFlight flight, {bool upload = false}) {
     if (_closed) {
       return Future<void>.error(
         const HttpBytesException$Internal(
@@ -1426,15 +1838,16 @@ final class _PrioritySlots {
         ),
       );
     }
-    if (_active < capacity) {
-      _active++;
+    final queue = upload ? _uploadQueue : _downloadQueue;
+    if (queue.isEmpty && _hasRoom(upload: upload)) {
+      _take(upload: upload);
       return Future<void>.value();
     }
-    final waiter = _SlotWaiter(flight);
-    _queue.add(waiter);
+    final waiter = _SlotWaiter(flight, _arrivals++, upload: upload);
+    queue.add(waiter);
     unawaited(
       flight.flightToken.whenCancel.then((_) {
-        if (!_queue.remove(waiter)) return;
+        if (!queue.remove(waiter)) return;
         waiter.completer.completeError(
           HttpBytesException$Cancelled(
             error: CancelledException(flight.flightToken.reason),
@@ -1445,20 +1858,47 @@ final class _PrioritySlots {
     return waiter.completer.future;
   }
 
-  void _dispatch() {
-    while (_active < capacity && _queue.isNotEmpty) {
-      var next = _queue.first;
-      var nextPriority = next.flight.priority;
-      for (final waiter in _queue.skip(1)) {
-        final priority = waiter.flight.priority;
-        // Arrival order breaks ties: the queue is kept in arrival order.
-        if (priority.isAbove(nextPriority)) {
-          next = waiter;
-          nextPriority = priority;
-        }
+  void _take({required bool upload}) {
+    if (upload) {
+      _activeUploads++;
+    } else {
+      _activeDownloads++;
+    }
+  }
+
+  /// The GET to serve next: highest priority, then earliest arrival (the
+  /// queue is kept in arrival order).
+  _SlotWaiter? get _nextDownload {
+    if (_downloadQueue.isEmpty || !_hasRoom(upload: false)) return null;
+    var next = _downloadQueue.first;
+    var nextPriority = next.flight.priority;
+    for (final waiter in _downloadQueue.skip(1)) {
+      final priority = waiter.flight.priority;
+      if (priority.isAbove(nextPriority)) {
+        next = waiter;
+        nextPriority = priority;
       }
-      _queue.remove(next);
-      _active++;
+    }
+    return next;
+  }
+
+  _SlotWaiter? get _nextUpload =>
+      _uploadQueue.isEmpty || !_hasRoom(upload: true)
+      ? null
+      : _uploadQueue.first;
+
+  void _dispatch() {
+    while (true) {
+      final next = switch ((_nextDownload, _nextUpload)) {
+        (null, null) => null,
+        (final download?, null) => download,
+        (null, final upload?) => upload,
+        (final download?, final upload?) =>
+          download.arrival < upload.arrival ? download : upload,
+      };
+      if (next == null) break;
+      (next.upload ? _uploadQueue : _downloadQueue).remove(next);
+      _take(upload: next.upload);
       next.completer.complete();
     }
     if (_active == 0) {
@@ -1469,8 +1909,9 @@ final class _PrioritySlots {
 
   Future<void> close() async {
     _closed = true;
-    final queued = List.of(_queue);
-    _queue.clear();
+    final queued = [..._downloadQueue, ..._uploadQueue];
+    _downloadQueue.clear();
+    _uploadQueue.clear();
     for (final waiter in queued) {
       waiter.completer.completeError(
         const HttpBytesException$Internal(
@@ -1486,9 +1927,16 @@ final class _PrioritySlots {
 }
 
 final class _SlotWaiter {
-  _SlotWaiter(this.flight);
+  _SlotWaiter(this.flight, this.arrival, {required this.upload});
 
   final _HttpBytesInFlight flight;
+
+  /// Order of arrival across both queues.
+  final int arrival;
+
+  /// Whether this waits for an upload slot.
+  final bool upload;
+
   final Completer<void> completer = Completer<void>();
 }
 
@@ -1692,12 +2140,14 @@ bool _defaultValidateStatus(int statusCode) =>
 HttpBytesException _statusToException(
   int statusCode,
   Map<String, String> headers,
-  Uri url,
-) {
+  Uri url, {
+  Uint8List? body,
+}) {
   final (code, message) = _codeAndMessageFor(statusCode);
   final data = <String, Object?>{
     'url': url.toString(),
     'headers': headers,
+    'body': ?body,
     if (statusCode == 429 || statusCode == 503)
       'retry-after': ?headers['retry-after'],
   };

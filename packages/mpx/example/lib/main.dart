@@ -12,6 +12,11 @@ import 'package:mpx_core/frame_pool.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_example/feed_page.dart';
 import 'package:mpx_example/gallery.dart';
+import 'package:mpx_example/journal/data/diagnostics_journal.dart';
+import 'package:mpx_example/journal/data/environment_specific/host_environment.dart'
+    as environment_specific;
+import 'package:mpx_example/journal/data/journal_host.dart';
+import 'package:mpx_example/journal/view/journal_page.dart';
 import 'package:mpx_example/lab/corpus.dart';
 import 'package:mpx_example/lab/lab.dart';
 import 'package:mpx_example/lab/lab_coverage.dart';
@@ -20,6 +25,10 @@ import 'package:mpx_example/lab/stress_feed.dart';
 import 'package:mpx_example/loading_demo.dart';
 import 'package:mpx_example/picker_page.dart';
 import 'package:mpx_example/svg_demo.dart';
+import 'package:mpx_example/transfers/transfers_demo.dart';
+import 'package:mpx_example/transfers/transfers_page.dart';
+import 'package:mpx_example/transfers/transfers_root.dart';
+import 'package:mpx_example/transfers/transfers_wiring.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_lottie/mpx_lottie.dart';
 import 'package:mpx_player/mpx_player.dart';
@@ -69,8 +78,20 @@ String _mimeOf(String file) => switch (file.split('.').last.toLowerCase()) {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final cacheDirectory = '${Directory.systemTemp.path}/mpx_example';
-  final framesDirectory = '${Directory.systemTemp.path}/mpx_example_frames';
+  // First, so the previous run's tail and everything below are in it.
+  final journal = await JournalHost.start(name: 'mpx_example_journal');
+  // Beside the journal: on Android the `cache` folder, which an app update
+  // leaves alone, so the transfer journal below the bytes cache outlives an
+  // install over the top.
+  final cacheDirectory = environment_specific.$journalDirectoryPath(
+    'mpx_example',
+  );
+  final framesDirectory = environment_specific.$journalDirectoryPath(
+    'mpx_example_frames',
+  );
+  // The transfers demo: its settings (kept across runs), the debug panel's
+  // network cut, and the development server it sends to.
+  final transfers = TransfersWiring.load(cacheDirectory: cacheDirectory);
   if (kMpxLab) {
     await Lab.start(cacheDirs: [cacheDirectory, framesDirectory]);
     if (Lab.corpus != null && !Lab.homeShowsCorpus) {
@@ -102,6 +123,12 @@ Future<void> main() async {
   // (which tiles download by themselves on this network).
   final signals = DeviceSignals();
   final stack = await MpxStack.create(
+    // The transfer engine over the stack's own fetcher and store, its
+    // tracked transfers handed to the scope: cells with a status control
+    // download as tracked jobs, and an upload's ring shows on its local key.
+    // Its connectivity is the device's network signal, the scope's too.
+    tracked: transfers.tracked(signals.network),
+    resolver: transfers.resolver,
     signals: signals,
     autoDownload: LoadingDemo.policy(signals),
     // Where each key's bytes are. A real host maps its keys to its CDN.
@@ -113,6 +140,8 @@ Future<void> main() async {
         final url? => MediaLocation(url.toString()),
         null => null,
       },
+      _ when transfers.locationOf(descriptor.key) != null =>
+        transfers.locationOf(descriptor.key),
       _ => switch (_fileOf(descriptor.key)) {
         final file? => MediaLocation(_urlOf(file).toString()),
         null => switch (SvgDemo.urlOf(descriptor.key)) {
@@ -135,9 +164,14 @@ Future<void> main() async {
     // The example's origin answers from the app bundle so it runs offline; a
     // real host leaves `client` out and gets the network. A lab run on a
     // corpus takes the network, every request recorded.
+    // The debug panel's network cut fails every request of this client,
+    // which the transfer engine sends its parts through too.
     client:
         (kMpxLab ? Lab.httpClient() : null) ??
-        HttpBytesClient(client: _BundleOrigin()),
+        HttpBytesClient(
+          client: _BundleOrigin(),
+          middlewares: transfers.middlewares,
+        ),
     publisher: (ranged) => NativeRangedReaders.isAvailable
         ? NativeRangedContentPublisher(readers = NativeRangedReaders(ranged))
         : null,
@@ -164,7 +198,10 @@ Future<void> main() async {
   SvgDemo.descriptors.forEach(stack.pipeline.know);
   final players = await _players(readers, stack.scope);
   if (kMpxLab) Lab.attach(stack, players);
-  runApp(MediaApp(stack: stack, players: players));
+  final demo = transfers.demo(stack);
+  runApp(
+    MediaApp(stack: stack, players: players, journal: journal, transfers: demo),
+  );
 }
 
 /// The device's media library, one for the app: the picker shows it and
@@ -388,9 +425,21 @@ final class _BundleOrigin extends http.BaseClient {
 /// fullscreen viewer with save and share; a feed list gated by the device
 /// signals; and the signals themselves.
 class MediaApp extends StatefulWidget {
-  const MediaApp({required this.stack, this.players, super.key});
+  const MediaApp({
+    required this.stack,
+    required this.journal,
+    required this.transfers,
+    this.players,
+    super.key,
+  });
 
   final MpxStack stack;
+
+  /// The transfers demo and its debug panel.
+  final TransfersDemo transfers;
+
+  /// The journal the Logs screen shows.
+  final DiagnosticsJournal journal;
 
   /// The players the viewer plays videos with sound on.
   final PlayerPool? players;
@@ -414,8 +463,14 @@ class _MediaAppState extends State<MediaApp> {
       ),
   ]);
 
+  final GlobalKey<NavigatorState> _navigator = kMpxLab
+      ? Lab.navigatorKey
+      : GlobalKey<NavigatorState>();
+
   @override
   void dispose() {
+    widget.transfers.dispose();
+    widget.transfers.root.dispose();
     _gallery.dispose();
     widget.players?.dispose();
     widget.stack.dispose();
@@ -445,9 +500,13 @@ class _MediaAppState extends State<MediaApp> {
   Widget build(BuildContext context) {
     final signals = widget.stack.signals;
     return MaterialApp(
-      navigatorKey: kMpxLab ? Lab.navigatorKey : null,
+      navigatorKey: _navigator,
       navigatorObservers: [if (kMpxLab) Lab.observer],
-      builder: kMpxLab ? Lab.wrap : null,
+      builder: (context, child) => TransfersQuitGuard(
+        transfers: widget.transfers.transfers,
+        navigatorKey: _navigator,
+        child: kMpxLab ? Lab.wrap(context, child) : child!,
+      ),
       home: AssetCacheProvider(
         scope: widget.stack.scope,
         child: Scaffold(
@@ -455,13 +514,22 @@ class _MediaAppState extends State<MediaApp> {
             title: const Text('mpx'),
             // The lab's stress feed, in the bar so the page below keeps
             // its layout.
-            actions: const [
+            actions: [
               if (kMpxLab)
-                IconButton(
+                const IconButton(
                   tooltip: 'Stress feed (lab)',
                   icon: Icon(Icons.speed),
                   onPressed: Lab.openStress,
                 ),
+              Builder(
+                builder: (context) => IconButton(
+                  tooltip: 'Logs',
+                  icon: const Icon(Icons.article_outlined),
+                  onPressed: () => Navigator.of(
+                    context,
+                  ).push(JournalPage.route(journal: widget.journal)),
+                ),
+              ),
             ],
           ),
           body: Builder(
@@ -522,6 +590,24 @@ class _MediaAppState extends State<MediaApp> {
                                 if (kind != MediaKind.still) key,
                             ].take(2).toList(),
                           ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  ListTile(
+                    title: const Text('Transfers'),
+                    subtitle: const Text(
+                      'Publish jobs, tracked downloads, debug panel',
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(
+                      TransfersPage.route(
+                        demo: widget.transfers,
+                        journal: widget.journal,
+                        pick: DemoPick.fromFileDialog,
+                        wrap: (page) => AssetCacheProvider(
+                          scope: widget.stack.scope,
+                          child: page,
                         ),
                       ),
                     ),

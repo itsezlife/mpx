@@ -681,4 +681,78 @@ void main() {
 
     expect(producer.last.demand.autoDownload(_clip), AutoDownload.now);
   });
+
+  group('an upload of the shown content', () {
+    late FakeTrackedTransfers tracked;
+
+    setUp(() {
+      scope.dispose();
+      tracked = FakeTrackedTransfers();
+      scope = AssetCacheScope(
+        producer: producer,
+        clock: PlaybackClock(ticks: ManualPlaybackTickSource()),
+        tracked: tracked,
+      );
+      addTearDown(scope.dispose);
+    });
+
+    Future<void> showLocal(WidgetTester tester) async {
+      await tester.pumpWidget(
+        host(
+          const AssetView(
+            content: _key,
+            preset: _preset,
+            status: MediaStatusMode.control(),
+            badge: true,
+          ),
+        ),
+      );
+      producer.last
+        ..describe(_photo)
+        ..advance(AssetStage.full);
+      await tester.pump(_gone);
+    }
+
+    testWidgets('sending: a ring with the upload\'s cancel and sent / total '
+        'over the picture; a tap reaches the seam', (tester) async {
+      await showLocal(tester);
+      expect(tracked.isWatched(_key), isTrue);
+      expect(find.byType(MediaStatusControl), findsOneWidget);
+      expect(find.bySemanticsLabel('Cancel upload'), findsNothing);
+
+      tracked.drive(_key, const AssetTransfer.sending(2306867, 4718592));
+      await tester.pump(_gone);
+
+      expect(find.bySemanticsLabel('Cancel upload'), findsOneWidget);
+      expect(find.bySemanticsLabel('Cancel download'), findsNothing);
+      expect(find.text('2.2 MB / 4.5 MB'), findsOneWidget);
+
+      await tester.tap(find.bySemanticsLabel('Cancel upload'));
+      expect(tracked.cancels, [_key]);
+      expect(producer.attempts, hasLength(1));
+    });
+
+    testWidgets('sent: no ring, the picture kept; then none the same', (
+      tester,
+    ) async {
+      await showLocal(tester);
+      tracked.drive(_key, const AssetTransfer.sending(10, 20));
+      await tester.pump(_gone);
+      expect(find.bySemanticsLabel('Cancel upload'), findsOneWidget);
+
+      tracked.drive(_key, AssetTransfer.sent);
+      await tester.pump(_gone);
+
+      expect(find.bySemanticsLabel('Cancel upload'), findsNothing);
+      expect(find.byType(MediaBadge), findsOneWidget);
+      expect(find.textContaining('MB'), findsNothing);
+      expect(producer.attempts, hasLength(1));
+      expect(producer.last.isCancelled, isFalse);
+
+      tracked.drive(_key, AssetTransfer.none);
+      await tester.pump(_gone);
+      expect(find.bySemanticsLabel('Cancel upload'), findsNothing);
+      expect(producer.attempts, hasLength(1));
+    });
+  });
 }

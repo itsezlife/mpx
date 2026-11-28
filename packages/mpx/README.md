@@ -77,6 +77,9 @@ A host with its own wiring takes the fetch adapter alone:
   through the engine codecs; host decoders; folders other owners keep
   registered as store quotas; device signals and the app lifecycle driving the
   pause layers. `dispose` releases what it created.
+- Tracked transfers: `MpxStack.create(tracked:)` builds the host's
+  `TrackedTransfers` between the fetcher and the scope; `MpxStack.cacheKeyOf`
+  is the content key mapping a transfer engine takes.
 - `BytesCacheFetcher`: media keyed in the cache by `MediaKey`, never by URL;
   held media served without a lookup or a request; one download shared by
   every caller, each hearing its progress; cancel settles at once; priorities

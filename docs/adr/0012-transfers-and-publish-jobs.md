@@ -155,9 +155,26 @@ upload's `completed` to `sent` until the publish's alias applies, then to
 
 - The job holds state; the bytes are the bytes cache's data. Parallel parts
   and ranged resume stay inside the download.
+- A binding with a status control is one attached with `tracksTransfer`
+  (`AssetCacheScope.attach`): `AssetView` sets it for the full and the
+  compact control, which offer download and cancel, and not for the bare
+  arc, which offers neither. The scope asks `download(key)` once per
+  content where it would have fetched the content itself, and its attempts
+  fetch only the stand-ins until the job's `watch` goes from receiving to
+  `none`; then they start again and read the cached bytes.
 - After a restart, `origin: user` downloads resume from the cache's data.
   `origin: auto` downloads (auto-download, a visible surface) come back
   `paused(awaitingResume)`. `resumeOnStart` overrides this per job.
+- A download job fetches through the composition root's own
+  `ContentFetcher` and `MediaResolver` (`TransferDownloads`), with
+  `FetchRequest.whole`, so it is the cache's fetch made a job: the same
+  priority queue, cap and ranged resume. `FetchRequest.priority` is fixed
+  for a fetch, so `setPriority` asks again at the new priority while the
+  request still waits for a slot and applies to the next run once bytes
+  move; the fetch seam has no urgency below preload, so a background
+  download is asked at preload.
+- `binding.mapped` is reported by the `TrackedTransfers` implementation,
+  which knows the job and its state, not by the binding.
 
 ### Uploads
 
@@ -166,8 +183,11 @@ growing (bytes available so far, a final size later, a head that may be
 rewritten: ADR 0007's output seam). In-memory bytes go through a temp file.
 
 **Transport.** `UploadTransport.open(info, resumeToken?)` returns a session;
-`sendPart(index, offset, bytes, last)` sends one part; `finish(finalSize)`
-returns a `RemoteRef`. A session may give a `resumeToken`, which the journal
+`sendPart(index, offset, bytes, last)` sends one part; `finish(finalSize,
+parts)` returns a `RemoteRef`, given every part's acknowledgement in index
+order (a protocol that completes with the part list, such as presigned
+multipart, needs them after a restart too, so the engine journals each
+acknowledgement's receipt). A session may give a `resumeToken`, which the journal
 keeps. Each transport declares its capabilities:
 
 | Capability | Use |
@@ -202,6 +222,41 @@ with a slice of the OPFS file or a `Blob`.
 
 A changed source or an expired window restarts the upload from zero; it does
 not fail it. Download freshness stays with the bytes cache.
+
+The multipart adapter's `reuse` default is a lifetime of 24 hours, the
+journal's retention: the adapter knows nothing of how long the remote end
+keeps a file, so the default covers sending the same media again soon and
+bounds the risk of a stale reference; a host whose server keeps files longer,
+or can be asked, passes its own `UploadReuse`. It sends the whole file as one
+part, its form framing as the part body's prefix and suffix, and carries the
+`RemoteRef` in that part's receipt, so `finish` needs nothing the journal does
+not keep.
+
+The numbered-parts adapter's `reuse` default is the same 24 hours, also the
+longest time it trusts the remote end to keep an unfinished upload (its big
+file window). Its upload id is the session's resume token, so the host's
+start answers whatever its server needs to find the upload again (for
+presigned multipart, the object key with the store's upload id). Each part
+keeps its receipt (the `ETag` by default), and the completion lists every
+part's number, from 1, and receipt in order, those of an earlier session
+included. S3, R2 and GCS refuse parts under 5 MiB but the last and take at
+most 10 000, so the 128 KiB / 512 KiB defaults fit a host's own protocol
+only: `NumberedPartsTransport.presignedMultipart` sends parts of 8 MiB, at
+most 10 000, with 32 MiB (four parts) in flight. Larger files grow their
+parts to the next multiple of the base part size that keeps the count
+within the limit.
+
+The tus adapter's `reuse` default is a validity call: a `HEAD` of the
+upload's URL (kept in the reference's `tus.upload` attribute), good while the
+server holds the whole upload and its `Upload-Expires` has not passed. tus
+servers keep completed uploads by their own policy, which a fixed lifetime
+could only guess, and the protocol already answers the question in one small
+request; a server that cannot be reached counts as not holding it, so the
+media goes again rather than as a dead reference. The adapter sends parts one
+at a time (the protocol has no parallel parts without the concatenation
+extension), resumes by the server's offset (`UploadOffsetSession`), not the
+journal's parts, and treats an upload the server forgot (404, 410) or whose
+`Upload-Expires` passed as a restart from zero.
 
 **Reuse table.** Re-sending the same media does not upload it again. Beside
 the journal, `mpx_transfer` keeps a table from source fingerprint plus
@@ -326,6 +381,7 @@ interrupted one starts over.
 | `published(result, serverKeys)` | `completed(result)`; `alias(local, server)` for each entry of `serverKeys` (item id to server `MediaKey`) |
 | `reuploadItems(ids)` | Drops those items' reuse entries, uploads them again, retries publish. Honoured once; a second one fails the job |
 | `rejected(reason, retryable)` | `failed(stage: publish, reason)`; its retry calls publish only |
+| The publisher throws instead of answering | `failed(stage: publish, reason: publisherError, retryable: true)`; its retry calls publish only |
 
 A job whose publisher is not registered waits in `awaitingPublisher`,
 because a closure cannot be journaled. The request may carry an optional
@@ -487,12 +543,52 @@ engine's state (ADR 0013).
 - Hosts that use `system` durability declare the Android permissions and the
   Play Console foreground-service use, add the iOS task identifier and supply
   localised envelope strings.
-- The composition root passes `Transfers` the `cacheKeyOf` mapping and its
-  connectivity signal.
+- The composition root passes `Transfers` its bytes cache
+  (`TransferBytesCache`: the `cacheKeyOf` mapping and the store server keys
+  are aliased in) and its connectivity signal.
 - A host that sends media registers its publishers at app start, before jobs
   from the last run can publish, and returns server keys from them.
 - mpx's glossary gains: transfer job, tracked download, journal, upload
   transport, reuse table, durability, OS envelope, publish job, publisher.
+
+## Settled in implementation
+
+| Point | Settled |
+| --- | --- |
+| Acknowledged parts in the journal | Kept with the job's next progress write, not written one by one: a kill loses at most one window of acknowledgements, whose parts are sent again (idempotent by index and offset). Each part keeps the receipt its acknowledgement carried; the record also keeps the part size, and a transport that now declares another size starts the upload from zero. |
+| Part bodies | A transport never reads the file: it receives an `UploadPartBody` whose `send(url, method, headers)` runs the engine's request (VM: a file range on the transfer worker; web: a `Blob` slice of the page's source or its OPFS copy). The engine retries; the body sends once. |
+| Retries beyond parts | Opening and finishing a session are retried like a part, and report `partRetry` / `partGaveUp` with `step: open \| finish`. |
+| Connections | 8 in all, downloads at most 6 and uploads at most 6 (the bytes cache's own upload cap), so neither direction holds every connection. A request holds one while on the wire and none while it waits to retry. |
+| Resume rules | Judged at every run of an upload that already reported progress (after a restart, and after a pause or a retry too), in order: the source file (size and modification time, read at each run on the VM, none on the web, where the source cannot change), then the transport (no resume, no token, or another part size), then its window (`UploadResume.window` counted from the last progress written; `serverExpiry` from the expiry the session gave, journaled with the token; a session that does not continue a token it was offered counts as a closed window). A file gone on the VM fails the job `sourceLost`, retryable. |
+| Reuse table | Kept in its own store beside the journal's (`reuse.snapshot` / `reuse.log` next to `journal.*`, the same frame format), keyed by fingerprint, preparation intent and transport id: a reference means nothing to another transport. The host's expiry defaults to 7 days and is judged against the policy of the run that reads an entry, so a shorter expiry applies at once; the transport's `reuse` capability judges within it. A validity call that throws is a miss that keeps the entry. With the table off nothing is read, stored or dropped. A storage failure reports `journal` `writeFailed` with `table: reuse`. |
+| Job retryable after a give-up | `retryable: true` when the tries ran out on a failure that may pass; `false` for a refusal that cannot (a 4xx other than 408, 425 and 429, or a transport's non-transient error). |
+| Publish job storage | Its own store beside the journal's (`publish.snapshot` / `publish.log`, the same frame format), keyed by publish job id: the transfer journal holds transfer jobs, and a publish job owns several. Each item's uploads are transfer jobs of their own, carrying the job's tag and durability and the item's key, and each names its job, item and role (file or thumbnail) in its journal record. An item's upload ids are written, and that write awaited, before its uploads are queued, so a restart finds every upload its item names or queues it again under the same id. Completed publish jobs are dropped after the facade's retention. |
+| Where preparation comes in | `Transfers.open(preparation:)`: a job is made by the facade and made again from the journal after a restart, so the seam is the publish machinery's constructor argument, not one job's. A request whose item needs preparation on a facade without it throws `PreparationUnavailable`; a job read back on such a facade fails that item at `prepare`. |
+| Transport of a publish job | `PublishRequest.transport` (a transport id), the facade's first transport when absent. The reuse key holds the transport id (above), so the job needs one before its lookup. |
+| Job state | Derived from the items while the job runs: `preparing` while any item waits or prepares, then `paused(reason)` while any of its uploads is paused, `uploading` while any uploads, then `publishing` (publisher registered) or `awaitingPublisher`. Only `completed` and `failed` are written as the job's own state. An item's `uploading` sums its file's and thumbnail's uploads. |
+| Publisher failures | A publisher that throws fails the job `failed(stage: publish, reason: publisherError, retryable: true)` and reports `outcome: error`; the error itself stays out of diagnostics (it may carry the payload). |
+| A lost source | `Transfers.retry(id, source:)` gives a failed upload a new `SourceBytes`, the type `PublishJob.retryItem(id, source:)` takes, so the two verbs agree: on the web it is the page's source, copied into OPFS; on the VM a `SourceBytes.file` is read where it is and bytes in memory are written to a file of the engine's own under `mpx_transfer/sources/<transfer id>/`, deleted with the job and kept by the start's sweep while the upload is not done. The upload starts from zero under the same id. |
+| A kill after the remote end finished | The finish answer is written to the upload's record (`finished`) and flushed before the completed state: a kill in between completes the job with it at the next start, with no second finish. A finish the remote end refuses on a session that continued an earlier one (the answer itself lost to a kill, so a numbered-parts upload may be closed) sends the upload again from zero under a new session, once (`resumeDecision` `finishRefused`); a refusal of that one fails the job. |
+| Progress never goes back | An upload run folds its bytes done (`ProgressFold`, from what the job showed or the journaled high-water mark), so a part tried again or a restart from zero holds the job's `running` state, its cells' `sending` and the envelope; the envelope folds its summed fraction too, as jobs leave it. |
+| One record log | The journal, the publish journal and the reuse table write through one internal record log: replay with the memory fallback, a generation header first in the snapshot and the log (a log of another generation, left by a kill inside a compaction, is dropped; a blob without one is generation 0, as stores written before the header), the write chain, a whole rewrite after a failed write, compaction, close and abandon. A frame none of the stores can read is skipped and counted alike (`replayed` `skipped`); the publish and reuse stores name themselves in their journal events (`table`). Records keep their stored form byte for byte. |
+| Failure reasons and origins | `PublishJobState$Failed.reason` and `PublishItemState$Failed.reason` are a `PublishFailureReason`, an extension type over the code: the engine's own codes are named on it, and an upload's failure kind, a preparation's code and the publisher's rejection reason pass as given. The `by` of `cancelled` and `itemRemoved` is a closed set (`user`, `owner`, `envelope`, `cell`, `host`). |
+| Events beyond the spec's table | `publish` `cancelled` (info; `by`: `owner` or `envelope`, `items`) for a publish job removed; `journal` `opened`, `replayed`, `tornTailDropped`, `compacted` and `writeFailed` from the publish and reuse stores with `table`; `transport` `finished` with `journaled` for a job completed from its kept answer. |
+| Alias after publish | The completion and the server keys are written to the publish record, and that write awaited, before any alias: a kill in between applies them at the next start and never calls the publisher again. Each alias goes through `cacheKeyOf` for both keys into the facade's bytes cache (`Transfers.open(cache:)`, `downloads.store` by default); a server key naming no item, a local key holding nothing, no cache or an alias that throws is reported (`aliasApplied` `result`) and the others still apply. An alias that throws stays in the record, so the job does not read as aliased and the next start tries it again; a completed job whose aliases are pending outlives its retention until they apply. `PublishJobSnapshot.aliasesApplied` is the signal a binding reads to turn `sent` into `none`. |
+| Re-upload | `reuploadItems` drops each named item's reuse entry (the key is kept in the item's record), takes an item whose file was sent back to that prepared file and a reuse hit back to the start (its lookup now misses), and publishes again with the same key. The honoured count is written before anything is sent again. Ids of remote, unknown or not uploaded items are ignored. A second answer fails the job `failed(publish, reuploadRefused, retryable: false)`. |
+| Retry | `PublishJob.retry()` takes each failed item back to the progress it failed at (prepared, or uploading: failed uploads retried with their parts, lost ones queued again under the same ids) or to the start for a failed preparation, reopens a failed job and reads its other items again (uploads that finished while it was failed are taken up). A job failed at the publish stage publishes again. `retryItem(id)` does the same for one item. Under the whole-job policy, uploads of other items keep running while the job is failed. |
+| Item removal | `PublishJob.removeItem(id)` (`by: host`) or a user's `Transfers.cancel` of one of the item's uploads (`by: cell`) drops the item from a job that has not ended, before or during the publisher's call, and cancels its uploads, completed ones included (`by: owner`). The last item leaves the job `awaitingOwner` (journaled); the engine never cancels it. `commit` publishes what is left, a held job may take new items, or the owner cancels it. A job made with no items publishes at once. `watchItem` ends with a `removed` snapshot. |
+| Uploads by content key | `Transfers.tracked` reads a key's upload from the transfer journal: the uploads whose key is the key and whose owner names a publish job item still in its job, the newest item first; the item's file and thumbnail uploads read as one value (any failed, then any paused by the user, then all completed, all queued, else sending). Completed reads `sent` until the job's `aliasesApplied`, then `none`; while an upload reads anything but `none` it is the key's value, else its download's. `cancel(key)` is `removeItem(by: cell)` on the item's job, `sent` included while the publish runs; `download(key)` resumes a user-paused upload and retries a failed item (`retryItem`), never downloading a key whose upload goes on. Preparation has no transfer job yet, so a preparing item reads `none`. |
+| Ordering group | Each job of a group takes a place in its line, journaled (`groupOrder`), when it joins: at creation, at commit for a held job, and again when a failed job is retried or an owner commits a job that was waiting for it. So a job that joins again goes to the end. A job publishes once no job ahead of it in its group is still on its way. Failed, completed, cancelled and `awaitingOwner` jobs, and held jobs not yet committed, hold no one. A job waiting for its group reads `publishing` (everything is uploaded) and reports `groupWait` once per wait. Under the per-item policy a running job with a failed item still holds its group. |
+| Hold and commit | `hold` and `committed` are journaled. Before the commit, `addItem`, `removeItem`, `reorder`, `setPayload` and `cancel` apply, and a held job reads `uploading` once everything is uploaded, with `PublishJobSnapshot.held`. `commit(payload:)` publishes, with the new payload when one is given. After it, `addItem`, `reorder`, `setPayload` and `commit` answer false. A held job keeps a transport, so it can take items to upload later. |
+| Job cancel | `PublishJob.cancel()` (`by: owner`) and the envelope's cancel of all (`by: envelope`) remove the record, stop preparations, cancel every upload the items hold (completed ones too, which drops what a held job sent), end the watchers and release the group; `PublishOp.cancelled` reports it with the item count. A publisher's call under way at the cancel is ignored when it answers. |
+| Prepared files | The engine deletes no prepared file. The preparation seam owns its outputs (its handle deletes them only on a cancel before it settles), and `reuploadItems` reads them again after the upload. Cleanup when a job ends is the preparation implementation's temp-file policy, not the engine's. |
+| Publish progress | On each job and item snapshot (`progress`), with the shares in `PublishProgressWeights` (video preparation 0.3, photo and file 0.02, publish 0.05). An item with no preparation step is all upload; a remote item weighs nothing; a weight not known yet (no size given and no file to read) is the mean of the known ones. The shown value is folded, never clamped: a drop in the computed value moves only its base, and each later rise fills the same fraction of what remains above the shown value, so the ring keeps moving and reaches 1 with the work. The job's value is written with each record write (no write of its own); a restart starts from the larger of it and the value computed then. An item's value is kept for the run only. |
+| Observing jobs | `Transfers.watchJobs(PublishJobFilter)` over the publish journal's records, in creation order: tag, tag prefix, publisher id and a state test; a change to one job gives the list again with only that job's snapshot replaced. |
+| The envelope's Dart side | `TransferEnvelope` declares the platform's start rule (`long` or `always`), reports the handles it still holds (`live`), starts with the host's `TransferEnvelopeConfig` and answers `started(handle, kind)` or `refused(code)`, takes over a live envelope (`adopt`), and reports `systemEnded(cause)`, `userCancelledAll`, `notificationTap(id)` and `changed(kind, submitDueAt)`. The engine judges the rule: a job is long when an upload of it is in the big lane or a publish job's uploads sum over `longJobBytes`; once started every `system` job joins. The handle is journaled with each job inside; at a start a job naming a live handle has it taken over, and any other live envelope is stopped. A refusal runs those jobs in process for the run (`refused`, `degraded`). A cancel of all cancels the jobs inside and every publish job one of them belongs to, whole. Jobs a system end paused resume on the next return to the foreground, or at a start in the foreground. The engine emits `started`, `refused` and `degraded` from the start's answer, so the native parts do not. |
+| The iOS envelope | `IosTransferEnvelope` over the channel `dev.mpx.transfer/envelope`. A start arms it (start rule `always`); the policy is in Dart, so one test pins it, and the native part does only what must not wait for a round trip or that only it can. Native: a background task begun the moment the app enters the background while armed (every version); on iOS 26+ the continued-processing task, its launch handler registered under a new identifier per submission below the host's `<bundle id>.mpx.transfer.*` permitted entry (the wildcard itself cannot be registered, and registering one identifier twice ends the app), submitted with the `fail` strategy, its progress and subtitle, its expiry. Dart: the submission after `submitAt`'s delay from backgrounding, or at resign-active, once per background and only with jobs inside; progress pushed every second when it changed, never lower within one task; everything let go when the app becomes active, the envelope staying armed. A refused submission keeps the background task (`refused`, `degraded(submitFailed)`), whose end is `systemEnded(expiry)`. The task's expiry handler runs both for a system stop and for the user's cancel in the Live Activity, which the platform does not tell apart, so it is reported `systemEnded(stop)`: the jobs pause, nothing is deleted on a guess (`remainingS` is logged for the device check to look for a tell). Native events go to `os_log` (`dev.mpx.transfer`, `envelope`) and, while no Dart side is attached, to a ring file of at most 2 MiB in Application Support, emitted at the next attach with their time and `native: true`, then `nativeMerged`. |
+| The Android envelope | `AndroidTransferEnvelope` over the channel `dev.mpx.transfer/envelope`, rule `long`. One per process: a user-initiated data transfer job (`setUserInitiated`, any network, the total as estimated upload bytes) on API 34+, a `dataSync` foreground service below, chosen by API level only (a host missing the 14+ permission is refused, not moved to the service). A start while the app is not visible is refused (`notVisible`) before the OS is asked; a missing permission, a `SecurityException` or a scheduler failure is refused with its code, and the foreground service answers only once `startForeground` returned (5 s, else `timeout`). The job and the service do no work and are not rescheduled or restarted: the engine resumes from its journal. A job stop maps the stop reason to `timeLimit` (a timeout) or `stop`; a process that died with an envelope live is reported at the next start from its exit record (`lowMemory` or `stop`, `processEnded: true`) as a merged native record, not a seam event, and its pending job is cancelled. `live` reports only an envelope held in this process (a hot restart); the Dart engine going away ends the envelope (`withdrawn`, `why: detached`). Notification posts are throttled to one a second with a trailing post; the channel is named by the host's title. Native records go to logcat (`mpx_transfer`), to Dart while one is attached, else to a ring file (2 MiB, `nativeLogBytes`, halved when full) merged at attach with `native: true`, then `nativeMerged`. |
+| Wiring in the `mpx` stack | `MpxStack.create(tracked:)` takes a factory called with the stack's store, client, fetcher and resolver (`MpxTrackedContext`) after the fetcher is made and before the scope, so a host opens `Transfers` over the pipeline's own pieces and the scope takes `transfers.tracked`; the factory registers the engine's dispose there, run before the store closes. `MpxStack.cacheKeyOf` is the fetcher's content mapping for `Transfers.open(cache: TransferBytesCache(keyOf:))`. `mpx` gains no edge: the factory returns the core's seam. |
+| Page sources | A publish item takes `pageSource` (`SourceBytes.blob` of a picked `File`, or `SourceBytes.memory`), never journaled; `PreparedMedia.bytes` comes first. An item's file upload reads them where it sends the item's own file (the host's prepared media, or an original the preparation kept). On the web the upload takes them as its page source, copied into OPFS at its creation; a run with neither the page's source nor a copy fails `sourceLost` before opening (a new upload, or one whose copy is gone). On the VM a file at the media's path wins; without one the bytes are written under `mpx_transfer/sources/<publish job id>/` (reported `journal.sourceCopied`), deleted once the job completes or is cancelled, and at each start for every job not still running or failed. `PublishJob.retryItem(id, source:)` and `Transfers.retry(id, source:)` upload a new source from zero. A thumbnail on the web still uploads only from a file. |
 
 ## Open in implementation
 
@@ -501,9 +597,8 @@ engine's state (ADR 0013).
   until the next launch, and what OEM builds do to a foreground service on a
   swipe from Recents. No decision here depends on them; the journal resumes
   after any kill.
-- Which `submitAt` default holds on iOS 26 devices.
-- The `reuse` capability's default per adapter, and the reuse table's
-  default expiry.
+- Which `submitAt` default holds on iOS 26 devices, and whether anything
+  tells a user's cancel in the Live Activity from a system stop.
 
 ## Provenance
 

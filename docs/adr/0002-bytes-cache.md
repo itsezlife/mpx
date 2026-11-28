@@ -39,7 +39,7 @@ resume, the whole body buffered by design.
 | Store | One disk store, one index, one eviction by last use |
 | Quotas | Named quotas: images, video ranges, Lottie frames, glyphs. A long video cannot evict every avatar |
 | Registered quotas | Lottie frame caches and glyph pages keep their own files, formats and offset reads. Their folders register as named quotas: the store accounts total bytes and decides which quota gives back space; the owner evicts when asked, through a callback per quota. The store never touches files it does not own. A registration under a configured name must name the configured limits, else it is refused; an unconfigured name brings its own (amended 2026-11-15). Rows carry the quota as a `BytesQuotaName` |
-| Priorities | Every request carries visible > preload > background; the priority can change while queued or in flight. The 6-slot queue serves by priority, then arrival |
+| Priorities | Every request carries visible > preload > background; the priority can change while queued or in flight. The 6-slot queue serves by priority, then arrival (amended 2026-11-27: 6 GET slots within one cap of 8 shared with uploads) |
 | Stale-while-revalidate | A per-request policy serves stale bytes at once and revalidates in the background through ETag / Last-Modified. Media defaults to no revalidation (immutable); avatars and similar opt in |
 | Fit under the core | A fetch adapter in `mpx`, the composition root over the core and the cache, fills `ContentFetcher`: key to cache key, `CancellationToken` to the cache's cancel token, typed errors to transient / permanent, byte progress to `onProgress`. The core and the cache do not depend on each other |
 
@@ -203,6 +203,22 @@ resume, the whole body buffered by design.
   the UI isolate. The body's idle timeout is the worker's own, since the
   middlewares see no body. The resolve ladder's whole-body GETs (bytes a
   caller wants in memory) still stream through the calling isolate.
+
+- Uploads (2026-11-27, ADR 0012): `HttpBytesClient.upload` sends a
+  `POST` / `PUT` / `PATCH` whose body streams from a file range
+  (`HttpBytesUploadBody`). On the VM it runs on the transfer worker, the one
+  isolate and HTTP stack of both directions, which reads the range as the
+  socket takes it; on the web it is a `fetch` of a slice of an OPFS file or
+  a `Blob`, which reports no upload progress. The middlewares run on the
+  request with the connect timeout off (the head comes after the whole
+  body; the worker's idle gap bounds the send) and the retry middleware
+  skipped: an upload retries through its own `HttpBytesRetryBackoff`, a
+  timeout included, and `HttpBytesRetryBackoff.uploadPart` (five tries, 1 s
+  to 30 s a wait, a `minDelay` floor) is the preset for parts. The client's
+  slots became one cap of 8 for both directions, GETs at most 6 and uploads
+  at most 6, each direction with its own queue (GETs by priority, uploads by
+  arrival), so each keeps 2 however busy the other is. Uploads report
+  through `BytesDiagnostics` with structured `BytesLogEvent.fields`.
 
 ## Open in implementation
 

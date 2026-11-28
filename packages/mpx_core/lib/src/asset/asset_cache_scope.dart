@@ -16,12 +16,16 @@ import 'package:mpx_core/src/asset/asset_spec.dart';
 import 'package:mpx_core/src/asset/asset_transfer.dart';
 import 'package:mpx_core/src/asset/clear_placeholder.dart';
 import 'package:mpx_core/src/asset/outline_paintable.dart';
+import 'package:mpx_core/src/diagnostics/binding_op.dart';
+import 'package:mpx_core/src/diagnostics/mpx_diagnostics.dart';
+import 'package:mpx_core/src/diagnostics/mpx_event.dart';
 import 'package:mpx_core/src/identity/media_descriptor.dart';
 import 'package:mpx_core/src/identity/media_key.dart';
 import 'package:mpx_core/src/pipeline/auto_download.dart';
 import 'package:mpx_core/src/playback/playback_clock.dart';
 import 'package:mpx_core/src/playback/playback_policy.dart';
 import 'package:mpx_core/src/texture/frame_texture_pool.dart';
+import 'package:mpx_core/src/transfer/tracked_transfers.dart';
 
 /// The asset cache of one host: entries keyed by content and [AssetSpec],
 /// bindings that pin them, a byte-budgeted LRU for the ones nobody holds, and
@@ -119,6 +123,25 @@ import 'package:mpx_core/src/texture/frame_texture_pool.dart';
 /// a binding whose tag allows it attaches, waiting content that may download
 /// now starts, in one spec.
 ///
+/// ## Tracked downloads
+///
+/// With [tracked] set, the download of a content a surface shows in a status
+/// control that offers download and cancel ([attach]'s `tracksTransfer`) is a
+/// tracked download: a job of the host's [TrackedTransfers] that outlives the
+/// surface and the process. Where the scope would start fetching the content
+/// (the policy, a surface's request, the user), it asks
+/// `TrackedTransfers.download` instead, once per content however many
+/// surfaces show it: [TransferOrigin.auto] for the policy and a request,
+/// [TransferOrigin.user] for `AssetBinding.download`. Every surface of the
+/// content reads its transfer from `TrackedTransfers.watch`, which may also
+/// be an upload whose source is the content (`AssetTransfer.sending`, then
+/// `AssetTransfer.sent`), and `AssetBinding.cancelDownload` calls
+/// `TrackedTransfers.cancel`. The attempts fetch the stand-ins meanwhile, and
+/// when the job brings the content they start again and read it. Thumbnails,
+/// previews and glyphs stay the scope's own fetches, and so does the content
+/// of surfaces without such a control. Without [tracked], every download is
+/// untracked, as above.
+///
 /// ## Textures
 ///
 /// A platform with a texture host registers its [FrameTexturePool] as
@@ -140,7 +163,9 @@ final class AssetCacheScope {
   /// entries when it fires. [placeholder] is what a binding paints before its
   /// entry has produced any stage (nothing by default, `ClearPlaceholder`).
   /// [textures] is the pool of the platform's
-  /// texture host, or null where there is none.
+  /// texture host, or null where there is none. [tracked] makes the
+  /// downloads of surfaces with a status control tracked (see "Tracked
+  /// downloads" above).
   AssetCacheScope({
     AssetProducer? producer,
     AssetCacheBudgets budgets = AssetCacheBudgets.defaults,
@@ -150,6 +175,7 @@ final class AssetCacheScope {
     this.textures,
     this.preloadPausingLayers = standardPreloadPausingLayers,
     this.autoDownload = AutoDownloadPolicy.always,
+    this.tracked,
   }) : _producer = producer,
        _budgets = budgets,
        _clock = clock ?? PlaybackClock(),
@@ -165,6 +191,10 @@ final class AssetCacheScope {
   /// Which missing content downloads by itself; [AutoDownloadPolicy.always]
   /// unless the host says otherwise. See "Downloads" above.
   final AutoDownloadPolicy autoDownload;
+
+  /// The host's tracked transfers, or null when downloads are untracked. See
+  /// "Tracked downloads" above.
+  final TrackedTransfers? tracked;
 
   // The download state of each content (one record per key, whatever the
   // spec): its entries, the user's intent, its bytes and its transfer.
@@ -220,6 +250,11 @@ final class AssetCacheScope {
 
   void _download(_Entry entry) {
     final content = entry.content..userIntent = _UserIntent.requested;
+    // A tracked content downloads in its job: the user's tap asks for it.
+    if (content.tracks) {
+      content.askTracked(TransferOrigin.user);
+      return;
+    }
     final failed = content.clearStreamFailure();
     content.refresh();
     // The download under way, of any spec, already does what was asked.
@@ -246,6 +281,10 @@ final class AssetCacheScope {
 
   void _cancelDownload(_Entry entry) {
     final content = entry.content;
+    if (content.tracks) {
+      content.cancelTracked();
+      return;
+    }
     if (!content.transfer.isActive) return;
     content.userIntent = _UserIntent.cancelled;
     _stopDownloads(content);
@@ -610,11 +649,17 @@ final class AssetCacheScope {
   /// [downloadContext] is the surface's tag for the [autoDownload] policy
   /// (where it shows the content). It never changes which entry the binding
   /// gets; a binding whose tag lets waiting content download starts it.
+  ///
+  /// [tracksTransfer] says the surface shows the content's transfer in a
+  /// status control that offers download and cancel: with [tracked] set, the
+  /// content's download is a tracked one (see "Tracked downloads" above). A
+  /// surface that shows only stand-ins, or no such control, leaves it false.
   AssetBinding attach(
     MediaKey key,
     AssetSpec spec,
     AssetProfile profile, {
     AutoDownloadContext? downloadContext,
+    bool tracksTransfer = false,
   }) {
     if (_disposed) {
       throw StateError('AssetCacheScope.attach called after dispose.');
@@ -628,9 +673,11 @@ final class AssetCacheScope {
       entry: entry,
       profile: profile,
       downloadContext: downloadContext,
+      tracksTransfer: tracksTransfer,
     )..entryHeld = entry.playbackHolds > 0;
     _unpinned[entry.tier]!.remove(entry);
     entry.bindings.add(binding);
+    if (tracksTransfer) entry.content.trackingChanged();
     entry.demand.refresh(entry);
     entry.content.contextsChanged();
     entry.syncShown();
@@ -1056,6 +1103,7 @@ final class AssetCacheScope {
   void _detached(_EntryBinding binding) {
     final entry = binding.entry;
     entry.bindings.remove(binding);
+    if (binding._tracksTransfer) entry.content.trackingChanged();
     entry.demand.refresh(entry);
     entry.content.contextsChanged();
     if (binding.holdsFrame) entry.syncKeep();
@@ -1346,7 +1394,9 @@ final class _Content {
 
   // Whether an entry of the content downloads it: its attempt reports a
   // transfer under way, or it stays for a user's download.
-  bool get downloading => entries.any((entry) => entry.downloads);
+  bool get downloading =>
+      entries.any((entry) => entry.downloads) ||
+      (tracks && _trackedValue.isActive);
 
   // Whether [entry]'s finished attempt still streams the content.
   bool streams(_Entry entry) => _held.containsKey(entry);
@@ -1416,6 +1466,7 @@ final class _Content {
   void idle() {
     _streamFailure = null;
     _whole = false;
+    _trackedLocal = false;
     _policy = null;
     _transfer = AssetTransfer.none;
   }
@@ -1435,6 +1486,144 @@ final class _Content {
     return _mark = (received: received, total: total ?? mark?.total);
   }
 
+  // --- Tracked transfer -----------------------------------------------------
+
+  // The job's transfer while a surface with a status control shows the
+  // content and the scope has tracked transfers; null otherwise.
+  ValueListenable<AssetTransfer>? _watched;
+
+  // The job's transfer as last heard.
+  AssetTransfer _trackedValue = AssetTransfer.none;
+
+  // The origin of the download asked of the job and not ended since (it
+  // waits for the user, failed or completed): one call per content however
+  // many surfaces and specs start it. Null when nothing is asked.
+  TransferOrigin? _trackedAsked;
+
+  // The job completed the download: the content is local, and an attempt
+  // that still finds it missing fetches it plainly, from the bytes it left.
+  bool _trackedLocal = false;
+
+  // An upload's cancel was forwarded and the upload still sends: its owner
+  // is deciding, so the taps that follow go nowhere. Without this a burst
+  // of taps on the cross sends a cancel each until the value leaves
+  // sending. Cleared when it does.
+  bool _uploadCancelForwarded = false;
+
+  /// Whether the content's transfer is a tracked job's.
+  bool get tracks => _watched != null;
+
+  /// Watches the job while a binding with a status control shows the
+  /// content, and stops when none does. A job keeps going without watchers:
+  /// it is the transfer engine's, not the surface's.
+  void trackingChanged() {
+    final seam = scope.tracked;
+    final wants =
+        seam != null &&
+        !scope._disposed &&
+        entries.any(
+          (entry) => entry.bindings.any((binding) => binding._tracksTransfer),
+        );
+    if (wants == tracks) return;
+    if (wants) {
+      final watched = _watched = seam.watch(key)..addListener(_onTracked);
+      _trackedValue = watched.value;
+    } else {
+      _watched!.removeListener(_onTracked);
+      _watched = null;
+      _trackedValue = AssetTransfer.none;
+      _trackedAsked = null;
+      _uploadCancelForwarded = false;
+    }
+    refresh();
+  }
+
+  void _onTracked() {
+    final watched = _watched;
+    if (watched == null || scope._disposed) return;
+    final value = watched.value;
+    final previous = _trackedValue;
+    if (value == previous) return;
+    // The seam's implementation reports the mapping (`BindingOp.mapped`):
+    // it knows the job and its state, the binding only the value.
+    _trackedValue = value;
+    if (value is! AssetTransfer$Sending) _uploadCancelForwarded = false;
+    switch (value) {
+      case AssetTransfer$Waiting() ||
+          AssetTransfer$Receiving() ||
+          AssetTransfer$Sending():
+        _trackedLocal = false;
+      case AssetTransfer$AwaitingUser() || AssetTransfer$Failed():
+        _trackedAsked = null;
+      case AssetTransfer$None() when previous.isActive:
+        // The job brought the content: the specs still waiting for it start
+        // again and read it.
+        _trackedAsked = null;
+        _trackedLocal = true;
+        scope._contentLocal(this);
+        return;
+      case AssetTransfer$None() || AssetTransfer$Sent():
+        break;
+    }
+    refresh();
+  }
+
+  /// Asks the job to download the content, unless a download of the same
+  /// origin (or the user's) is already asked. A user's ask always goes: it
+  /// is a tap.
+  void askTracked(TransferOrigin origin) {
+    final seam = scope.tracked;
+    if (seam == null) return;
+    if (origin == TransferOrigin.auto && _trackedAsked != null) return;
+    _trackedAsked = origin;
+    MpxDiagnostics.current.emit(
+      MpxEventLevel.debug,
+      BindingOp.trackedDownload,
+      mediaKey: key,
+      fields: () => {'origin': origin.name},
+    );
+    seam.download(key, origin: origin);
+  }
+
+  /// The scope's answer for a tracked content: where it would fetch the
+  /// content, the job downloads it, and the attempt fetches the stand-ins.
+  AutoDownload trackedAnswer(AutoDownload answer, MediaDescriptor? descriptor) {
+    if (_trackedLocal) return AutoDownload.now;
+    if (answer != AutoDownload.now) return answer;
+    // Before the descriptor the attempt only announces; it asks again once
+    // the content is described, and the job is asked then.
+    if (descriptor != null) {
+      askTracked(
+        userIntent == _UserIntent.requested
+            ? TransferOrigin.user
+            : TransferOrigin.auto,
+      );
+    }
+    return AutoDownload.manual;
+  }
+
+  /// Forwards a cancel to the job while it moves bytes. A download's cancel
+  /// is the user's, remembered for the key as an untracked one is; an
+  /// upload's is its owner's to decide, asked once while it sends.
+  void cancelTracked() {
+    final value = _trackedValue;
+    final upload = value is AssetTransfer$Sending;
+    if (!upload && !value.isActive) return;
+    if (upload) {
+      if (_uploadCancelForwarded) return;
+      _uploadCancelForwarded = true;
+    } else {
+      userIntent = _UserIntent.cancelled;
+    }
+    MpxDiagnostics.current.emit(
+      MpxEventLevel.info,
+      BindingOp.cancelForwarded,
+      mediaKey: key,
+      fields: () => {'direction': upload ? 'upload' : 'download'},
+    );
+    scope.tracked?.cancel(key);
+  }
+
   // --- Transfer -------------------------------------------------------------
 
   AssetTransfer _transfer = AssetTransfer.none;
@@ -1446,6 +1635,10 @@ final class _Content {
   /// unless the rest of its streamed content failed (the control's retry).
   AssetTransfer transferFor(_Entry entry) {
     if (!entry.isFinal) return _transfer;
+    // An upload's source is final content: its surface shows the upload.
+    if (_transfer case AssetTransfer$Sending() || AssetTransfer$Sent()) {
+      return _transfer;
+    }
     return _transfer is AssetTransfer$Failed && _streamFailure != null
         ? _transfer
         : AssetTransfer.none;
@@ -1458,12 +1651,16 @@ final class _Content {
     final next = _done(_withSize(_derive()));
     if (next == _transfer) return;
     final bytesOnly =
-        next is AssetTransfer$Receiving && _transfer is AssetTransfer$Receiving;
+        (next is AssetTransfer$Receiving &&
+            _transfer is AssetTransfer$Receiving) ||
+        (next is AssetTransfer$Sending && _transfer is AssetTransfer$Sending);
     _transfer = next;
     _signal(bytesOnly: bytesOnly);
   }
 
   AssetTransfer _derive() {
+    // A tracked content shows its job, whatever its attempts report.
+    if (_watched != null) return _trackedValue;
     // A download under way, of the spec furthest along.
     AssetTransfer? active;
     for (final entry in entries) {
@@ -1559,7 +1756,9 @@ final class _Content {
       ),
       AssetTransfer$Failed(:final kind, :final received) =>
         AssetTransfer.failed(kind, received, size),
-      AssetTransfer$None() => transfer,
+      AssetTransfer$None() ||
+      AssetTransfer$Sending() ||
+      AssetTransfer$Sent() => transfer,
     };
   }
 
@@ -1624,9 +1823,28 @@ final class _Demand implements AssetDemand {
   @override
   Set<AutoDownloadContext?> get downloadContexts => _entry.downloadContexts;
 
+  // The attempt whose untracked download was reported.
+  Object? _untrackedSaid;
+
   @override
-  AutoDownload autoDownload(MediaDescriptor? descriptor) =>
-      _entry.content.answer(_entry, descriptor);
+  AutoDownload autoDownload(MediaDescriptor? descriptor) {
+    final content = _entry.content;
+    final answer = content.answer(_entry, descriptor);
+    if (content.tracks) return content.trackedAnswer(answer, descriptor);
+    // The content's fetch starts now, the scope's own: said once per
+    // attempt, which asks before and after the content is described.
+    if (answer == AutoDownload.now &&
+        descriptor != null &&
+        !identical(_untrackedSaid, _entry.attempt)) {
+      _untrackedSaid = _entry.attempt;
+      MpxDiagnostics.current.emit(
+        MpxEventLevel.debug,
+        BindingOp.untracked,
+        mediaKey: content.key,
+      );
+    }
+    return answer;
+  }
 
   @override
   bool get downloadRequested =>
@@ -1817,7 +2035,9 @@ final class _EntryBinding extends AssetBindingBase {
     required this.entry,
     required super.profile,
     required this.downloadContext,
+    required bool tracksTransfer,
   }) : _scope = scope,
+       _tracksTransfer = tracksTransfer,
        super(
          key: entry.key,
          spec: entry.spec,
@@ -1829,6 +2049,9 @@ final class _EntryBinding extends AssetBindingBase {
   final AssetCacheScope _scope;
   final _Entry entry;
   final AutoDownloadContext? downloadContext;
+  // The surface shows the transfer in a control that offers download and
+  // cancel (AssetCacheScope.attach).
+  final bool _tracksTransfer;
   bool _registered = false;
   // Waiting to release the entry's stand-in.
   bool _holdsStandIn = false;

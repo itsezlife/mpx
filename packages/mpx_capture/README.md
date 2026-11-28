@@ -18,6 +18,9 @@ dependencies:
 
 ```dart
 import 'package:mpx_capture/mpx_capture.dart';
+// CompressionPreset, PreparationInput, PreparationIntent and PreparedMedia
+// are mpx_core's.
+import 'package:mpx_core/mpx_core.dart';
 
 const transcoder = PlatformTranscoder();
 final source = await transcoder.probe(pickedPath);
@@ -36,7 +39,8 @@ final output = await job.output; // or job.cancel()
 
 ### Media preparation
 
-One call per picked item before upload, two at a time, off the UI isolate:
+One call per picked item before upload, two at a time and videos one at a time
+(`PreparationPolicy.videoConcurrency`), off the UI isolate:
 
 ```dart
 final preparer = MediaPreparer(
@@ -61,6 +65,12 @@ policy offers (`policy.offeredPresets(source)`) and its default
 (`policy.defaultPreset(source, remembered: ...)`; the host remembers the
 user's choice); `PreparationIntent.file()` keeps the bytes and makes a
 thumbnail only.
+
+A host that hands preparation to a user such as a publish job passes
+`CaptureMediaPreparation(preparer: preparer, policy: policy)`, which is
+`mpx_core`'s `MediaPreparation`: the limits then hold for every caller, and
+the thumbnail is written as a file beside the outputs
+(`prepared.thumbnailPath`).
 
 | Policy | Still long side (HQ) | JPEG (HQ) | Thumbnail | Video |
 | --- | --- | --- | --- | --- |

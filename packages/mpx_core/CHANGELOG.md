@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+- Tracked transfers: the `TrackedTransfers` seam (`download(key, origin:)`
+  with `TransferOrigin.user` / `auto`, `watch(key)`, `cancel(key)`,
+  `leaseFile(key)` lending a `ContentFileLease`). `AssetCacheScope(tracked:)`
+  takes one: the download of a surface attached with `tracksTransfer: true`
+  (an `AssetView` whose status is the full or the compact control) goes
+  through it, once per content, and every surface of the content reads its
+  transfer from `watch`; cancel goes to `cancel(key)`. Thumbnails, previews,
+  glyphs and surfaces without such a control stay the scope's own fetches,
+  and a scope without the seam downloads as before. The bindings report
+  `binding.trackedDownload`, `cancelForwarded` and `untracked`;
+  `binding.mapped` is the seam implementation's to report, with the job.
+- `AssetTransfer.sending(sent, total)` and `AssetTransfer.sent`: an upload
+  whose source is the content, and its end before the content is
+  published. Only a tracked transfer reports them. Code that switches
+  exhaustively over `AssetTransfer` needs the two cases.
+- The status control shows an upload: `sending` is a ring of the bytes sent
+  with a cancel (`MediaStatus.upload`, read as "Cancel upload",
+  `MediaStatusStrings.cancelUpload`) that goes to the seam's `cancel(key)`,
+  and the badge reads "sent / total"; `sent` shows no ring and keeps the
+  picture. Code that compares `MediaStatus` values sees the new field.
+- Media preparation: the `MediaPreparation` seam (`prepare(input, intent)`
+  returning a `PreparationHandle` with progress, the `PreparedMedia` and
+  cancel; failures `PreparationCancelled` and `PreparationFailed(code)`).
+  `PreparationInput`, `PreparationIntent`, `CompressionPreset`,
+  `PreparedKind` and `PreparedMedia` moved here from `mpx_capture`, compare
+  by value, and `PreparedMedia` gained `thumbnailPath`.
+  `PreparationInputCodec`, `PreparationIntentCodec` and
+  `PreparedMediaCodec` are their stored form, version 1, for journals and
+  reuse tables.
+- `testing.dart`: `FakeTrackedTransfers`, `FakeMediaPreparation`, and the
+  `TrackedTransfersContract` and `MediaPreparationContract` suites.
+- Diagnostics events: `MpxDiagnostics.current`, one process-wide policy the
+  host sets at start (`silent` by default, `developer` logging under `mpx`,
+  or `onEvent` with a `minLevel`), and `MpxEvent` (level, an operation from
+  the reporting package's own `DiagnosticOp` enum and its category, the
+  `jobId` / `itemId` / `mediaKey` / `tag` ids, a few numeric, boolean or
+  short string fields, error and stack trace). `emit` builds its fields
+  only when the level is enabled; a sink that throws is ignored. The core's
+  own operations are `BindingOp`. `MpxTrace` adds `Timeline` sections named
+  `mpx.<category>.<op>` behind the `mpx.trace` define, compiled out by
+  default. `testing.dart` has `RecordingDiagnostics` (`install` restores
+  the previous policy after the test), `isMpxEvent` and the
+  `MpxDiagnosticsContract` suite.
 - `AssetLoadState.standsStill`: a binding that asked for motion and settled on
   a picture that does not move (a video its decoder could not play, shown by
   its first frame).

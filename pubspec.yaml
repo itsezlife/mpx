@@ -18,6 +18,7 @@ workspace:
   - packages/mpx_library
   - packages/mpx
   - packages/mpx/example
+  - packages/mpx_transfer
 
 environment:
   sdk: ^3.11.0

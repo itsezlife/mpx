@@ -10,6 +10,7 @@ import 'dart:js_interop';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_capture/mpx_capture.dart';
 import 'package:mpx_capture/testing.dart';
+import 'package:mpx_core/mpx_core.dart';
 import 'package:web/web.dart' as web;
 
 Future<String> _pngUrl(int width, int height) async {

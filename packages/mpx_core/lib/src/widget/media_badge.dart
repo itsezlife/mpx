@@ -9,7 +9,8 @@ import 'package:mpx_core/src/widget/media_badge_style.dart';
 import 'package:mpx_core/src/widget/media_loading_style.dart';
 
 /// The small label over media: its [duration] (or "GIF" when [gif]) and,
-/// while it downloads, "received / total" ([transfer]); the total alone
+/// while it downloads, "received / total" ([transfer]), and "sent / total"
+/// while it uploads; the total alone
 /// while it waits for the user. Two rows when both show; nothing when
 /// neither does.
 ///
@@ -77,10 +78,12 @@ class MediaBadge extends StatefulWidget {
     final format = style.sizeFormat;
     final narrow = width < format.narrowBelow;
     final size = switch (transfer) {
-      AssetTransfer$Receiving(:final received, :final total) =>
+      // An upload of the content counts the bytes sent the same way.
+      AssetTransfer$Receiving(received: final moved, :final total) ||
+      AssetTransfer$Sending(sent: final moved, :final total) =>
         narrow && total != null
-            ? format.percent(received, total)
-            : format.progress(received, total, strings),
+            ? format.percent(moved, total)
+            : format.progress(moved, total, strings),
       AssetTransfer$Waiting(:final total?) =>
         narrow ? format.percent(0, total) : format.progress(0, total, strings),
       // A download that stopped short shows the bytes it left.

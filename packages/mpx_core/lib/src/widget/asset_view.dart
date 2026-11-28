@@ -121,6 +121,12 @@ import 'package:mpx_core/src/widget/viewport_visibility.dart';
 /// (duration, size) at the top-left. Both live in the view's box with their
 /// own tickers; the content's paint stays repaint-only.
 ///
+/// The full control and the compact one offer download and cancel, so the
+/// view attaches as a surface that tracks the transfer
+/// (`AssetCacheScope.attach`'s `tracksTransfer`): in a scope with tracked
+/// transfers its download is a tracked job. A bare arc offers neither, and
+/// its content is the scope's own fetch.
+///
 /// ## Skin and state
 ///
 /// The loading state is headless: an [AssetLoadState] (the stage, the
@@ -447,6 +453,7 @@ class _AssetViewState extends State<AssetView> {
   MediaKey? _attachedContent;
   AssetPreset? _attachedPreset;
   AutoDownloadContext? _attachedContext;
+  bool _attachedTracks = false;
   // Whether the tickers above are on.
   bool _tickers = true;
 
@@ -587,6 +594,13 @@ class _AssetViewState extends State<AssetView> {
     super.dispose();
   }
 
+  // Whether the status control offers download and cancel, which makes the
+  // content's download a tracked one.
+  bool get _tracks => switch (widget.status) {
+    MediaStatusMode$Control() || MediaStatusMode$Compact() => true,
+    MediaStatusMode$Arc() || MediaStatusMode$None() => false,
+  };
+
   // Attaches when nothing is attached yet or the scope, content or preset
   // changed. The profile is per attach, so a changed preset attaches again as
   // a whole; the entry itself is shared when the spec is the same.
@@ -595,7 +609,8 @@ class _AssetViewState extends State<AssetView> {
     if (identical(scope, _attachedScope) &&
         widget.content == _attachedContent &&
         widget.preset == _attachedPreset &&
-        widget.downloadContext == _attachedContext) {
+        widget.downloadContext == _attachedContext &&
+        _tracks == _attachedTracks) {
       return;
     }
     // Attach first, so an entry both attaches share is never
@@ -605,11 +620,13 @@ class _AssetViewState extends State<AssetView> {
     _attachedContent = widget.content;
     _attachedPreset = widget.preset;
     _attachedContext = widget.downloadContext;
+    _attachedTracks = _tracks;
     _binding = scope.attach(
       widget.content,
       widget.preset.spec,
       widget.preset.profile,
       downloadContext: widget.downloadContext,
+      tracksTransfer: _attachedTracks,
     );
     _apply(_binding!);
     _binding!.requestsDownload = widget.requestsDownload;

@@ -1,0 +1,377 @@
+import 'package:meta/meta.dart';
+import 'package:mpx_transfer/src/envelope/transfer_envelope.dart';
+import 'package:mpx_transfer/src/envelope/transfer_envelope_config.dart';
+import 'package:mpx_transfer/src/job/transfer_id.dart';
+import 'package:mpx_transfer/src/job/transfer_job.dart';
+import 'package:mpx_transfer/src/publish/publish_request.dart';
+import 'package:mpx_transfer/src/publish/publish_state.dart';
+import 'package:mpx_transfer/src/upload/upload_lane.dart';
+
+/// The transfer engine's state at one moment, for a debug panel: read on
+/// demand through `Transfers.debugSnapshot`, never streamed.
+///
+/// Sections arrive with the parts of the engine they describe; this one
+/// holds the jobs, connectivity, the journal, and, where the engine runs
+/// them, the uploads and the shared connections.
+@immutable
+final class TransfersDebugSnapshot {
+  /// A snapshot of [jobs], [online] and [journal].
+  TransfersDebugSnapshot({
+    required List<TransferJob> jobs,
+    required this.online,
+    required this.journal,
+    this.uploads,
+    this.connections,
+    this.reuse,
+    this.publish,
+    this.envelope,
+  }) : jobs = List.unmodifiable(jobs);
+
+  /// Every job not yet completed, oldest first, with its id, tag,
+  /// direction, state (and pause reason), durability, bytes and times.
+  final List<TransferJob> jobs;
+
+  /// Connectivity as the composition root last reported it.
+  final bool online;
+
+  /// Where the jobs are kept, and how far behind memory it is.
+  final JournalDebugSnapshot journal;
+
+  /// The upload lanes and counters; null for an engine that runs no
+  /// uploads.
+  final UploadsDebugSnapshot? uploads;
+
+  /// The shared connections in use against their caps; null for an engine
+  /// that runs no requests of its own.
+  final ConnectionsDebugSnapshot? connections;
+
+  /// The reuse table: entries, hits and misses; null for an engine opened
+  /// without one.
+  final ReuseDebugSnapshot? reuse;
+
+  /// Publish jobs not yet completed, the registered publishers and the
+  /// jobs waiting for a publisher or their owner; null for an engine that
+  /// runs no publish jobs.
+  final PublishDebugSnapshot? publish;
+
+  /// The OS envelope: its state, kind, handle and jobs, the submission
+  /// policy and counters; null on a platform without one.
+  final EnvelopeDebugSnapshot? envelope;
+
+  @override
+  String toString() =>
+      'TransfersDebugSnapshot(${jobs.length} jobs, online: $online, '
+      '$journal${uploads == null ? '' : ', $uploads'}'
+      '${connections == null ? '' : ', $connections'}'
+      '${reuse == null ? '' : ', $reuse'}'
+      '${publish == null ? '' : ', $publish'}'
+      '${envelope == null ? '' : ', $envelope'})';
+}
+
+/// The publish section of a [TransfersDebugSnapshot].
+@immutable
+final class PublishDebugSnapshot {
+  /// A snapshot of the publish jobs.
+  PublishDebugSnapshot({
+    required List<PublishJobDebugSnapshot> jobs,
+    required Iterable<String> publishers,
+  }) : jobs = List.unmodifiable(jobs),
+       publishers = List.unmodifiable(publishers);
+
+  /// Every publish job not yet completed, oldest first.
+  final List<PublishJobDebugSnapshot> jobs;
+
+  /// The ids publishers are registered under.
+  final List<String> publishers;
+
+  /// The jobs waiting for their publisher to be registered.
+  List<PublishJobId> get awaitingPublisher => [
+    for (final job in jobs)
+      if (job.state is PublishJobState$AwaitingPublisher) job.id,
+  ];
+
+  /// The jobs waiting for their owner to decide.
+  List<PublishJobId> get awaitingOwner => [
+    for (final job in jobs)
+      if (job.state is PublishJobState$AwaitingOwner) job.id,
+  ];
+
+  @override
+  String toString() =>
+      'PublishDebugSnapshot(${jobs.length} jobs, '
+      '${publishers.length} publishers)';
+}
+
+/// One publish job in a [PublishDebugSnapshot].
+@immutable
+final class PublishJobDebugSnapshot {
+  /// A job's debug view.
+  PublishJobDebugSnapshot({
+    required this.id,
+    required this.state,
+    required this.attempts,
+    required List<PublishItemDebugSnapshot> items,
+    this.tag,
+    this.publisher,
+  }) : items = List.unmodifiable(items);
+
+  /// The job's id.
+  final PublishJobId id;
+
+  /// The host's tag, as given.
+  final String? tag;
+
+  /// The id of its publisher; null for an upload with none.
+  final String? publisher;
+
+  /// Where the job is.
+  final PublishJobState state;
+
+  /// The publish attempts begun so far.
+  final int attempts;
+
+  /// Its items, in order.
+  final List<PublishItemDebugSnapshot> items;
+
+  @override
+  String toString() =>
+      'PublishJobDebugSnapshot($id, $state, ${items.length} items)';
+}
+
+/// One item in a [PublishJobDebugSnapshot].
+@immutable
+final class PublishItemDebugSnapshot {
+  /// An item's debug view.
+  const PublishItemDebugSnapshot({required this.item, required this.reuseHit});
+
+  /// The item's id, key and state.
+  final PublishItemSnapshot item;
+
+  /// Whether the reuse table answered it, with no preparation or upload.
+  final bool reuseHit;
+
+  @override
+  String toString() => 'PublishItemDebugSnapshot($item, reuseHit: $reuseHit)';
+}
+
+/// The reuse table's section of a [TransfersDebugSnapshot].
+@immutable
+final class ReuseDebugSnapshot {
+  /// A snapshot of the table.
+  const ReuseDebugSnapshot({
+    required this.enabled,
+    required this.entries,
+    required this.hits,
+    required this.misses,
+  });
+
+  /// Whether the host has the table on.
+  final bool enabled;
+
+  /// How many sources the table holds references for.
+  final int entries;
+
+  /// Lookups since start that skipped preparation and upload.
+  final int hits;
+
+  /// Lookups since start that found nothing good (the table on).
+  final int misses;
+
+  @override
+  String toString() =>
+      'ReuseDebugSnapshot(enabled: $enabled, $entries entries, '
+      '$hits hits, $misses misses)';
+}
+
+/// The uploads section of a [TransfersDebugSnapshot]: the lanes, and
+/// counters since the engine started.
+@immutable
+final class UploadsDebugSnapshot {
+  /// A snapshot of the uploads.
+  UploadsDebugSnapshot({
+    required Map<UploadLane, UploadLaneDebugSnapshot> lanes,
+    required this.partsInFlight,
+    required this.partRetries,
+    required this.restartsFromZero,
+  }) : lanes = Map.unmodifiable(lanes);
+
+  /// Each lane: the job it runs and how many wait.
+  final Map<UploadLane, UploadLaneDebugSnapshot> lanes;
+
+  /// Parts sent and not yet acknowledged, now.
+  final int partsInFlight;
+
+  /// Tries of a part (or of opening or finishing) that failed and were
+  /// tried again, since the engine started.
+  final int partRetries;
+
+  /// Uploads that had acknowledged parts but started again from zero,
+  /// since the engine started.
+  final int restartsFromZero;
+
+  @override
+  String toString() =>
+      'UploadsDebugSnapshot(${[for (final MapEntry(:key, :value) in lanes.entries) '${key.name}: $value'].join(', ')}, '
+      '$partsInFlight in flight, $partRetries retries, '
+      '$restartsFromZero restarts)';
+}
+
+/// One lane of an [UploadsDebugSnapshot].
+@immutable
+final class UploadLaneDebugSnapshot {
+  /// A lane running [running], with [queued] jobs waiting.
+  const UploadLaneDebugSnapshot({required this.queued, this.running});
+
+  /// The job the lane runs; null when it is free.
+  final TransferId? running;
+
+  /// Jobs waiting for the lane.
+  final int queued;
+
+  @override
+  String toString() => '${running ?? 'free'} + $queued queued';
+}
+
+/// The connections section of a [TransfersDebugSnapshot]: the requests on
+/// the wire per direction against the caps.
+@immutable
+final class ConnectionsDebugSnapshot {
+  /// A snapshot of the connections.
+  const ConnectionsDebugSnapshot({
+    required this.cap,
+    required this.downloadCap,
+    required this.uploadCap,
+    required this.downloads,
+    required this.uploads,
+    required this.waiting,
+  });
+
+  /// Connections over both directions.
+  final int cap;
+
+  /// Connections downloads may hold.
+  final int downloadCap;
+
+  /// Connections uploads may hold.
+  final int uploadCap;
+
+  /// Connections downloads hold now.
+  final int downloads;
+
+  /// Connections uploads hold now.
+  final int uploads;
+
+  /// Requests waiting for a connection.
+  final int waiting;
+
+  @override
+  String toString() =>
+      'ConnectionsDebugSnapshot(downloads $downloads/$downloadCap, '
+      'uploads $uploads/$uploadCap, cap $cap, $waiting waiting)';
+}
+
+/// The journal section of a [TransfersDebugSnapshot].
+@immutable
+final class JournalDebugSnapshot {
+  /// A snapshot of the journal.
+  const JournalDebugSnapshot({
+    required this.store,
+    required this.bytes,
+    required this.recordsSinceCompaction,
+    this.lastStateWriteAt,
+    this.lastProgressFlushAt,
+  });
+
+  /// The storage's kind: `file`, `opfs` or `memory`.
+  final String store;
+
+  /// The journal's size in storage: the snapshot and the log.
+  final int bytes;
+
+  /// Records appended to the log since it was last folded into the
+  /// snapshot.
+  final int recordsSinceCompaction;
+
+  /// When a state change was last written and flushed; null before any in
+  /// this run.
+  final DateTime? lastStateWriteAt;
+
+  /// When a progress batch was last written and flushed; null before any in
+  /// this run.
+  final DateTime? lastProgressFlushAt;
+
+  @override
+  String toString() =>
+      'JournalDebugSnapshot($store, $bytes bytes, '
+      '$recordsSinceCompaction since compaction)';
+}
+
+/// Where the OS envelope is, in an [EnvelopeDebugSnapshot].
+enum EnvelopeDebugState {
+  /// The host gave no `TransferEnvelopeConfig`: `system` jobs run in
+  /// process.
+  unconfigured,
+
+  /// No envelope is started.
+  idle,
+
+  /// A start is asked for and not yet answered.
+  starting,
+
+  /// An envelope is started (or armed until the app leaves the
+  /// foreground).
+  started,
+}
+
+/// The envelope section of a [TransfersDebugSnapshot].
+@immutable
+final class EnvelopeDebugSnapshot {
+  /// A snapshot of the envelope.
+  EnvelopeDebugSnapshot({
+    required this.state,
+    required this.rule,
+    required Set<TransferId> jobs,
+    required this.started,
+    required this.endedBySystem,
+    this.kind,
+    this.handle,
+    this.submitAt,
+    this.submitDueAt,
+  }) : jobs = Set.unmodifiable(jobs);
+
+  /// Where the envelope is.
+  final EnvelopeDebugState state;
+
+  /// The start rule in force: the host's, else the platform's.
+  final TransferEnvelopeStartRule rule;
+
+  /// What holds the process now; null when nothing does, or not known.
+  final TransferEnvelopeKind? kind;
+
+  /// The started envelope's handle; null while none is started.
+  final String? handle;
+
+  /// The jobs inside.
+  final Set<TransferId> jobs;
+
+  /// When a continued-processing task is submitted, as the host set it;
+  /// null when unconfigured.
+  final TransferEnvelopeSubmitAt? submitAt;
+
+  /// When the native part means to submit it; null when no submission
+  /// waits.
+  final DateTime? submitDueAt;
+
+  /// Envelopes started (or taken over from an earlier run) since the
+  /// engine's start.
+  final int started;
+
+  /// Envelopes the system ended since the engine's start.
+  final int endedBySystem;
+
+  @override
+  String toString() =>
+      'EnvelopeDebugSnapshot(${state.name}, ${rule.name}, ${kind?.name}, '
+      '${jobs.length} jobs, started: $started, '
+      'endedBySystem: $endedBySystem)';
+}

@@ -8,10 +8,23 @@
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <!-- The transfers demo: system transfers keep going in the background
+         (mpx_transfer declares its components and no permissions). Remove
+         these to check that jobs then run in process. -->
+    <!-- Android 14 and later: the user-initiated data transfer job. -->
+    <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
+    <!-- Before Android 14: the dataSync foreground service. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Android 13 and later: the notification in the drawer. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:label="mpx_example"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
+        <!-- Cleartext: the transfers demo's development upload server
+             (tool/upload_server.dart) speaks plain HTTP on the LAN. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mpx_capture/mpx_capture.dart';
+import 'package:mpx_core/mpx_core.dart';
 
 void main() => runApp(const CaptureExampleApp());
 

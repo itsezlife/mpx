@@ -1,0 +1,64 @@
+name: mpx_transfer
+description: >
+  Transfer jobs for mpx: resumable uploads, publish jobs with a reuse table,
+  and tracked downloads, journaled and queried on one Transfers facade.
+version: 0.0.1
+homepage: https://github.com/itsezlife/mpx
+repository: https://github.com/itsezlife/mpx/tree/main/packages/mpx_transfer
+issue_tracker: https://github.com/itsezlife/mpx/issues
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+  flutter: '>=3.38.0'
+
+dependencies:
+  # Workspace edges fixed by ADR 0001 (amended by ADR 0012): mpx_core and
+  # http_bytes_cache only. Nothing in the set depends on this package.
+  # A download's TransferId is a digest of its cache key, so the id carries
+  # no URL (ADR 0013, no user content); the bytes cache already resolves it.
+  crypto: ^3.0.6
+  flutter:
+    sdk: flutter
+  # testing.dart's journal store contract is a test group: it needs the
+  # test framework, and a library cannot import a dev dependency. Production
+  # entry points never import it.
+  flutter_test:
+    sdk: flutter
+  # The web entry of the plugin registers through it.
+  flutter_web_plugins:
+    sdk: flutter
+  http_bytes_cache:
+    path: ../http_bytes_cache
+  # The tus adapter reads the server's Upload-Expires, an HTTP date.
+  http_parser: ^4.1.2
+  meta: ^1.17.0
+  mpx_core:
+    path: ../mpx_core
+  # The web journal: OPFS, `Blob` sources and the page's `beforeunload`.
+  web: ^1.1.1
+
+dev_dependencies:
+  fake_async: ^1.3.3
+  stream_channel: ^2.1.4
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.mpx.transfer
+        pluginClass: MpxTransferPlugin
+      ios:
+        pluginClass: MpxTransferPlugin
+        sharedDarwinSource: true
+      macos:
+        pluginClass: MpxTransferPlugin
+        sharedDarwinSource: true
+      linux:
+        pluginClass: MpxTransferPlugin
+      windows:
+        pluginClass: MpxTransferPluginCApi
+      web:
+        pluginClass: MpxTransferWeb
+        fileName: src/platform/mpx_transfer_web.dart

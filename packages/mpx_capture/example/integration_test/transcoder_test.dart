@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:mpx_capture/mpx_capture.dart';
 import 'package:mpx_capture/testing.dart';
+import 'package:mpx_core/mpx_core.dart';
 
 /// The platform transcoder against the shared contract, on a real device,
 /// with the bundled 960 x 540 H.264 + AAC clip as the source.

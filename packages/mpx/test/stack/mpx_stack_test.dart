@@ -20,6 +20,9 @@ void main() {
   late List<String> requested;
 
   setUp(() {
+    // The stack installs its bridge as the bytes cache's policy.
+    final previousBytesDiagnostics = BytesDiagnostics.current;
+    addTearDown(() => BytesDiagnostics.current = previousBytesDiagnostics);
     signals = FakeDeviceSignals();
     requested = [];
     client = HttpBytesClient(
@@ -67,6 +70,28 @@ void main() {
     );
     signals.network.value = NetworkClass.metered;
     expect(policy.network, NetworkClass.metered);
+  });
+
+  testWidgets('the bytes cache reports through the mpx policy', (tester) async {
+    await create();
+    expect(BytesDiagnostics.current, same(CacheDiagnosticsBridge.policy));
+
+    final diagnostics = RecordingDiagnostics.install();
+    BytesDiagnostics.current.report(
+      const BytesLogEvent(
+        level: BytesLogLevel.error,
+        message: 'write failed for https://cdn.test/loop',
+        op: BytesLogOp.writeThrough,
+      ),
+    );
+    expect(
+      diagnostics.events.single,
+      isMpxEvent(
+        level: MpxEventLevel.error,
+        op: CacheOp.writeThrough,
+        fields: {'bytesOp': 'write_through'},
+      ),
+    );
   });
 
   testWidgets('a host policy reaches the scope', (tester) async {
@@ -275,6 +300,74 @@ void main() {
     await stack.dispose();
 
     expect(log, ['scheduler', 'engine']);
+  });
+
+  testWidgets('the host tracked transfers reach the scope, built over the '
+      'fetcher the pipeline reads', (tester) async {
+    final tracked = FakeTrackedTransfers();
+    final resolver = FakeMediaResolver(const []);
+    MpxTrackedContext? seen;
+    final stack = await MpxStack.create(
+      locate: (descriptor, _) => const MediaLocation('https://cdn.test/x'),
+      signals: signals,
+      client: client,
+      resolver: resolver,
+      platformTextures: false,
+      tracked: (context) {
+        seen = context;
+        return tracked;
+      },
+    );
+    addTearDown(stack.dispose);
+
+    expect(stack.scope.tracked, same(tracked));
+    expect(seen!.store, same(stack.store));
+    expect(seen!.client, same(client));
+    expect(seen!.fetcher, same(stack.fetcher));
+    expect(seen!.resolver, same(resolver));
+  });
+
+  testWidgets('without a tracked factory downloads stay untracked', (
+    tester,
+  ) async {
+    final stack = await create();
+
+    expect(stack.scope.tracked, isNull);
+  });
+
+  testWidgets('teardowns the tracked factory registers run before the store '
+      'closes', (tester) async {
+    final log = <String>[];
+    final stack = await MpxStack.create(
+      locate: (descriptor, _) => const MediaLocation('https://cdn.test/x'),
+      signals: signals,
+      client: client,
+      platformTextures: false,
+      tracked: (context) {
+        context.onDispose(() async {
+          // The store is still open: a transfer engine flushes its journal
+          // beside it.
+          await context.store.write(
+            const BytesCacheKey('k'),
+            Uint8List.fromList([1]),
+          );
+          log.add('transfers');
+        });
+        return null;
+      },
+    );
+
+    await stack.dispose();
+
+    expect(log, ['transfers']);
+  });
+
+  test('the cache key of a content is the fetcher\'s', () {
+    expect(
+      MpxStack.cacheKeyOf(_key),
+      BytesCacheFetcher.cacheKeyOf(_key, FetchPart.content).value,
+    );
+    expect(MpxStack.cacheKeyOf(_key), _key.encoded);
   });
 
   testWidgets('power saving pauses playback', (tester) async {

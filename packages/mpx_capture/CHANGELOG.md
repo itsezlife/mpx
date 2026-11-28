@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- `PreparationPolicy.videoConcurrency` (default 1, every built-in policy):
+  videos prepare one at a time app-wide, beside `concurrency` (2) for all
+  items; a video holds a slot of each and a still or file behind a waiting
+  video goes ahead.
+- `CaptureMediaPreparation`: `mpx_core`'s `MediaPreparation` over a
+  `MediaPreparer` and a policy, so the limits hold for every caller. It
+  writes the thumbnail as a file beside the outputs
+  (`PreparedMedia.thumbnailPath`); `MediaPreparer.prepare` takes
+  `thumbnailFile` for the same.
+- Diagnostics: `PreparationOp` (category `preparation`: `queued`, `started`,
+  `progress`, `finished`, `failed`, `cancelled`) through
+  `MpxDiagnostics.current`. A failure carries its code
+  (`CaptureException.failureCode`), never the error's text, which may
+  name a path.
+- `PreparationInput`, `PreparationIntent`, `CompressionPreset`,
+  `PreparedKind` and `PreparedMedia` moved to `mpx_core`, which a host now
+  imports them from; this package no longer exports them.
+  `CompressionPreset.planFor` stays here, as the `CompressionPresetPlan`
+  extension.
 - `CameraCaptureSurface.show` completes when the page is gone, after its
   close transition, not at the pop: the page keeps building through the
   close. A host that frees what it handed the page when `show` returns

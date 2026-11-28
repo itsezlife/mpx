@@ -1,9 +1,10 @@
 import 'package:meta/meta.dart';
 import 'package:mpx_core/src/asset/asset_producer.dart';
 
-/// The download of an entry's content as a surface shows it: nothing to
+/// The transfer of an entry's content as a surface shows it: nothing to
 /// show, waiting for the first byte, receiving bytes, waiting for the user,
-/// or failed.
+/// failed, or, for content that is the source of an upload, sending bytes
+/// and sent.
 ///
 /// One value per entry, shared by every binding of it, so a list cell, a
 /// feed tile and a viewer page of the same content agree. Read it through
@@ -40,18 +41,31 @@ sealed class AssetTransfer {
     int? total,
   ]) = AssetTransfer$Failed;
 
+  /// [sent] bytes of [total] (null when unknown) of an upload whose source
+  /// is this content have gone out. Only a tracked transfer reports it
+  /// (`TrackedTransfers.watch`); the cache's own downloads never do.
+  const factory AssetTransfer.sending(int sent, [int? total]) =
+      AssetTransfer$Sending;
+
+  /// The upload whose source is this content finished, and the content is
+  /// not yet published under its server identity. It reads [none] once it
+  /// is. Only a tracked transfer reports it.
+  static const AssetTransfer sent = AssetTransfer$Sent._();
+
   /// Nothing to show: the content is cached, final, or not yet asked for.
   static const AssetTransfer none = AssetTransfer$None._();
 
   /// The size of the content in bytes, or null when unknown.
   int? get total => null;
 
-  /// How much has arrived, 0 to 1, or null when that is not known: no total,
-  /// or a state that receives nothing.
+  /// How much has arrived (or, for [AssetTransfer$Sending], gone out), 0 to
+  /// 1, or null when that is not known: no total, or a state that moves
+  /// nothing.
   double? get fraction => null;
 
-  /// Whether bytes are on their way or about to be: [AssetTransfer$Waiting]
-  /// or [AssetTransfer$Receiving].
+  /// Whether a download is on its way or about to be: [AssetTransfer$Waiting]
+  /// or [AssetTransfer$Receiving]. An upload ([AssetTransfer$Sending]) is not
+  /// a download, and reads false.
   bool get isActive => false;
 }
 
@@ -168,6 +182,41 @@ final class AssetTransfer$Failed extends AssetTransfer {
 
   @override
   String toString() => 'AssetTransfer.failed(${kind.name}, $received, $total)';
+}
+
+/// [AssetTransfer.sending].
+final class AssetTransfer$Sending extends AssetTransfer {
+  /// See [AssetTransfer.sending].
+  const AssetTransfer$Sending(this.sent, [this.total]);
+
+  /// Bytes sent so far.
+  final int sent;
+
+  @override
+  final int? total;
+
+  @override
+  double? get fraction => _fraction(sent, total);
+
+  @override
+  bool operator ==(Object other) =>
+      other is AssetTransfer$Sending &&
+      other.sent == sent &&
+      other.total == total;
+
+  @override
+  int get hashCode => Object.hash(AssetTransfer$Sending, sent, total);
+
+  @override
+  String toString() => 'AssetTransfer.sending($sent, $total)';
+}
+
+/// [AssetTransfer.sent].
+final class AssetTransfer$Sent extends AssetTransfer {
+  const AssetTransfer$Sent._();
+
+  @override
+  String toString() => 'AssetTransfer.sent';
 }
 
 double? _fraction(int received, int? total) =>
