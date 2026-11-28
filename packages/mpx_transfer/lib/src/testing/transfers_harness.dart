@@ -15,6 +15,7 @@ import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
 import 'package:mpx_transfer/src/reuse/reuse_table.dart';
 import 'package:mpx_transfer/src/testing/fake_transfer_envelope.dart';
 import 'package:mpx_transfer/src/testing/fake_transfer_result.dart';
+import 'package:mpx_transfer/src/testing/fake_upload_source_copies.dart';
 import 'package:mpx_transfer/src/testing/scripted_transfer_runner.dart';
 import 'package:mpx_transfer/src/transfer_bytes_cache.dart';
 import 'package:mpx_transfer/src/transfers.dart';
@@ -55,7 +56,8 @@ final class TransfersHarness {
   /// jobs move their bytes through them, as [Transfers.open]'s do, and only
   /// uploads go through [runner]. [sourceCopies] gives the upload source
   /// copies at each start, as on the web (none by default, as on the VM);
-  /// [unloadWarning] is the page's warning (none by default). [reuseStore]
+  /// [unloadWarning] is the page's warning (none by default; given alone,
+  /// copies in memory come with it). [reuseStore]
   /// gives the reuse table's store at each start, as [store] does the
   /// journal's; [reuse] is the host's say over the table. [envelopeConfig]
   /// is what [envelope] shows ([FakeTransferEnvelope.config] unless given);
@@ -250,10 +252,12 @@ final class TransfersHarness {
               setup: TransferEnvelopeSetup(envelope, config: envelopeConfig),
               live: live,
             ),
-      pageSources: copies == null
+      // A page's warning comes with its copies: a warning alone is a page
+      // whose copies the test does not read.
+      pageSources: copies == null && unloadWarning == null
           ? null
           : PageSourceCopies(
-              copies,
+              copies ?? FakeUploadSourceCopies(),
               unloadWarning: unloadWarning,
               limit: sourceCopyLimit,
             ),

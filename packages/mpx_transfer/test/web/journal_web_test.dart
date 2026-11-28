@@ -182,7 +182,13 @@ void main() {
         ),
       );
       expect(recorder.whereOp(JournalOp.sourceLost).single.jobId, over);
-      expect(recorder.whereOp(JournalOp.opened).last.fields['store'], 'opfs');
+      expect(
+        recorder
+            .whereOp(JournalOp.opened)
+            .lastWhere((event) => !event.fields.containsKey('table'))
+            .fields['store'],
+        'opfs',
+      );
 
       // The copy the resumed job reads is the source.
       final copies = await UploadSourceCopies$Opfs$JS.open(directory);
@@ -245,7 +251,11 @@ void main() {
         lifecycle: ManualPlaybackLifecycleSource(),
       );
       addTearDown(transfers.dispose);
-      expect(recorder.whereOp(JournalOp.opened).single.fields['store'], 'opfs');
+      expect(
+        recorder.whereOp(JournalOp.opened).map((e) => e.fields['store']),
+        ['opfs', 'opfs', 'opfs'],
+        reason: 'the journal, the reuse table and the publish journal',
+      );
       expect(transfers.sourceCopyLimit, 500 * 1024 * 1024);
     });
 
