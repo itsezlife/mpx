@@ -13,7 +13,9 @@
   `thumbnailFile` for the same.
 - Diagnostics: `PreparationOp` (category `preparation`: `queued`, `started`,
   `progress`, `finished`, `failed`, `cancelled`) through
-  `MpxDiagnostics.current`.
+  `MpxDiagnostics.current`. A failure carries its code
+  (`CaptureException.failureCode`), never the error's text, which may
+  name a path.
 - `PreparationInput`, `PreparationIntent`, `CompressionPreset`,
   `PreparedKind` and `PreparedMedia` moved to `mpx_core`, which a host now
   imports them from; this package no longer exports them.

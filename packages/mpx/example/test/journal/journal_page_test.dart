@@ -18,7 +18,7 @@ import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
 import 'package:mpx_example/journal/controller/journal_view_controller.dart';
 import 'package:mpx_example/journal/data/diagnostics_journal.dart';
-import 'package:mpx_example/journal/model/journal_record.dart';
+import 'package:mpx_example/journal/model/diagnostics_entry.dart';
 import 'package:mpx_example/journal/model/journal_view.dart';
 import 'package:mpx_example/journal/view/journal_page.dart';
 
@@ -251,7 +251,7 @@ void main() {
       );
       expect(records, hasLength(3));
       final times = [
-        for (final line in records) JournalRecord.tryParse(line)!.time,
+        for (final line in records) DiagnosticsEntry.tryParse(line)!.time,
       ];
       expect(times, orderedEquals([...times]..sort()));
       expect(recorder.events, [

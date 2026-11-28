@@ -12,6 +12,18 @@ import org.json.JSONObject
  * A record carries no user content: ops, handles, job ids, counts and
  * causes only.
  */
+/**
+ * How much an envelope record matters: the Dart side's `MpxEventLevel`, by
+ * its [wireName], and the logcat [priority] it is written at.
+ */
+enum class EnvelopeLevel(val wireName: String, val priority: Int) {
+    TRACE("trace", Log.VERBOSE),
+    DEBUG("debug", Log.DEBUG),
+    INFO("info", Log.INFO),
+    WARNING("warning", Log.WARN),
+    ERROR("error", Log.ERROR),
+}
+
 class EnvelopeLog(var ring: NativeRingLog?) {
     companion object {
         /** The logcat tag of every native envelope record. */
@@ -22,13 +34,12 @@ class EnvelopeLog(var ring: NativeRingLog?) {
     var sink: ((Map<String, Any?>) -> Unit)? = null
 
     /**
-     * Records [op] (an `EnvelopeOp` name) at [level] (an `MpxEventLevel`
-     * name) with [fields] and the job [jobId] it concerns. A record the
+     * Records [op] (an `EnvelopeOp` name) at [level] with [fields] and the job [jobId] it concerns. A record the
      * Dart side reports itself (a start's refusal, an end it hears as a seam
      * event) goes to logcat only, with [bridge] false.
      */
     fun record(
-        level: String,
+        level: EnvelopeLevel,
         op: String,
         jobId: String? = null,
         fields: Map<String, Any> = emptyMap(),
@@ -39,7 +50,7 @@ class EnvelopeLog(var ring: NativeRingLog?) {
         if (!bridge) return
         val record = mapOf(
             "time" to timeMs,
-            "level" to level,
+            "level" to level.wireName,
             "op" to op,
             "jobId" to jobId,
             "fields" to fields,
@@ -51,7 +62,7 @@ class EnvelopeLog(var ring: NativeRingLog?) {
         }
         val json = JSONObject()
             .put("time", timeMs)
-            .put("level", level)
+            .put("level", level.wireName)
             .put("op", op)
             .put("fields", JSONObject(fields))
         if (jobId != null) json.put("jobId", jobId)
@@ -92,18 +103,22 @@ class EnvelopeLog(var ring: NativeRingLog?) {
         }
     }
 
-    private fun logcat(level: String, op: String, jobId: String?, fields: Map<String, Any>) {
+    /**
+     * Writes [message] to logcat only: a failure of the envelope's own
+     * machinery that has no `EnvelopeOp`, named by the error's class and
+     * never its message, which may carry a path.
+     */
+    fun note(level: EnvelopeLevel, message: String, error: Throwable? = null) {
+        val text = if (error == null) message else "$message: ${error.javaClass.simpleName}"
+        Log.println(level.priority, TAG, text)
+    }
+
+    private fun logcat(level: EnvelopeLevel, op: String, jobId: String?, fields: Map<String, Any>) {
         val message = buildString {
             append("envelope.").append(op)
             if (jobId != null) append(" job=").append(jobId)
             for ((key, value) in fields) append(' ').append(key).append('=').append(value)
         }
-        when (level) {
-            "trace" -> Log.v(TAG, message)
-            "debug" -> Log.d(TAG, message)
-            "info" -> Log.i(TAG, message)
-            "warning" -> Log.w(TAG, message)
-            else -> Log.e(TAG, message)
-        }
+        Log.println(level.priority, TAG, message)
     }
 }

@@ -3,7 +3,6 @@ import 'dart:collection';
 
 import 'package:mpx_capture/src/diagnostics/preparation_op.dart';
 import 'package:mpx_capture/src/job/capture_job.dart';
-import 'package:mpx_capture/src/prepare/failure_code.dart';
 import 'package:mpx_capture/src/prepare/preparation_codec.dart';
 import 'package:mpx_capture/src/prepare/preparation_policy.dart';
 import 'package:mpx_capture/src/prepare/prepared_files_io.dart'
@@ -199,14 +198,21 @@ final class MediaPreparer {
       case (_, CaptureCancelled()):
         _emit(MpxEventLevel.info, PreparationOp.cancelled, item, {'ms': ms});
       default:
+        // The error itself stays out: its message may name the input's
+        // path. The code says what went wrong; the host gets the error.
         _emit(MpxEventLevel.error, PreparationOp.failed, item, {
-          'code': captureFailureCode(error),
+          'code': error?.failureCode ?? 'failed',
           'ms': ms,
-        }, error);
+        });
     }
   }
 
-  Future<void> _run(_Pending item) async {
+  // One preparation, from its start to its settling, as one trace section
+  // (`mpx.preparation.started`), named by the op that opens it.
+  Future<void> _run(_Pending item) =>
+      MpxTrace.async(PreparationOp.started, () => _prepare(item));
+
+  Future<void> _prepare(_Pending item) async {
     final job = item.job;
     if (job.isDone) return;
     final written = <String>[];
@@ -237,7 +243,9 @@ final class MediaPreparer {
       job._fail(error, stackTrace);
     } on Object catch (error, stackTrace) {
       _delete(written);
-      job._fail(CaptureFailed('$error'), stackTrace);
+      // By its type only: the text of an error from elsewhere (a file
+      // system error) names the path it failed on.
+      job._fail(CaptureFailed('${error.runtimeType}'), stackTrace);
     }
   }
 
@@ -250,7 +258,7 @@ final class MediaPreparer {
     final bytes = media.thumbnail;
     if (!item.thumbnailFile || bytes == null) return media;
     final path = _nextOutput('jpg');
-    if (!files.write(path, bytes)) return media;
+    if (!files.$write(path, bytes)) return media;
     written.add(path);
     return PreparedMedia(
       kind: media.kind,
@@ -376,7 +384,7 @@ final class MediaPreparer {
         kind: PreparedKind.video,
         path: path,
         isOriginal: true,
-        byteSize: item.input.byteSize ?? await files.lengthOf(path),
+        byteSize: item.input.byteSize ?? await files.$lengthOf(path),
         mimeType: item.input.mimeType ?? 'video/mp4',
         dimensions: source.dimensions,
         duration: source.duration,
@@ -420,7 +428,7 @@ final class MediaPreparer {
 
   Future<PreparedMedia> _file(_Pending item) async {
     final path = item.input.path;
-    final byteSize = item.input.byteSize ?? await files.lengthOf(path);
+    final byteSize = item.input.byteSize ?? await files.$lengthOf(path);
     StillSource? still;
     try {
       still = await codec.probeStill(path);
@@ -469,7 +477,7 @@ final class MediaPreparer {
       '${_written++}.$extension';
 
   static void _delete(List<String> paths) {
-    paths.forEach(files.delete);
+    paths.forEach(files.$delete);
   }
 }
 

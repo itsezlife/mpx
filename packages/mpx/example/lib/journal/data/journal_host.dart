@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_example/journal/data/diagnostics_journal.dart';
+import 'package:mpx_example/journal/data/diagnostics_line_store.dart';
 import 'package:mpx_example/journal/data/environment_specific/host_environment.dart'
     as environment_specific;
-import 'package:mpx_example/journal/data/journal_store.dart';
 
 /// Starts the process's journal: the composition root of every example app
 /// calls [start] once, before the media stack, and reads [journal] after.
@@ -22,15 +22,15 @@ abstract final class JournalHost {
     required String name,
     int capBytes = DiagnosticsJournal.defaultCapBytes,
   }) async {
-    JournalStore store;
+    DiagnosticsLineStore store;
     try {
-      store = await JournalStore.open(
+      store = await DiagnosticsLineStore.open(
         directory: environment_specific.$journalDirectoryPath(name),
         capBytes: capBytes,
       );
     } on Object catch (error) {
       debugPrint('The journal store did not open ($error); using memory.');
-      store = MemoryJournalStore();
+      store = MemoryDiagnosticsLineStore();
     }
     final journal = DiagnosticsJournal(store: store, capBytes: capBytes);
     _journal = journal;

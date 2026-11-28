@@ -339,9 +339,10 @@ final class ItemProgress$Failed extends ItemProgress {
 ///
 /// An item is `{itemId, key, fingerprint?, fileName?, source, progress}`.
 /// Its `source` is `{"is": "prepare", input, intent}`, `{"is": "prepared",
-/// media}` or `{"is": "remote"}`, the inner values in
-/// [PreparationEncoding]'s form. Its `progress` is tagged by `is`, one tag
-/// per [ItemProgress] variant: `waiting`; `prepared` (`media`,
+/// media}` or `{"is": "remote"}`, the inner values in the form of
+/// [PreparationInputCodec], [PreparationIntentCodec] and
+/// [PreparedMediaCodec]. Its `progress` is tagged by `is`, one tag per
+/// [ItemProgress] variant: `waiting`; `prepared` (`media`,
 /// `reuseKey?`); `uploading` (`media`, `file`, `thumbnail?`, `reuseKey?`);
 /// `uploaded` (`file?`, `thumbnail?` as [RemoteRef]s, `reused` when true,
 /// `media?`, `reuseKey?`, `uploads` when not empty); `failed` (`stage`,
@@ -498,12 +499,12 @@ final class _PublishRecordEncoder
       _Key.source: switch (item.source) {
         PublishSource$Prepare(:final input, :final intent) => {
           _Key.variant: _Is.prepare,
-          _Key.input: PreparationEncoding.encodeInput(input),
-          _Key.intent: PreparationEncoding.encodeIntent(intent),
+          _Key.input: const PreparationInputCodec().encode(input),
+          _Key.intent: const PreparationIntentCodec().encode(intent),
         },
         PublishSource$Prepared(:final media) => {
           _Key.variant: _Is.prepared,
-          _Key.media: PreparationEncoding.encodePrepared(media),
+          _Key.media: const PreparedMediaCodec().encode(media),
         },
         PublishSource$Remote() => {_Key.variant: _Is.remote},
       },
@@ -516,7 +517,7 @@ final class _PublishRecordEncoder
         ItemProgress$Waiting() => {_Key.variant: _Is.waiting},
         ItemProgress$Prepared(:final media, :final reuseKey) => {
           _Key.variant: _Is.prepared,
-          _Key.media: PreparationEncoding.encodePrepared(media),
+          _Key.media: const PreparedMediaCodec().encode(media),
           _Key.reuseKey: ?reuseKey?.encoded,
         },
         ItemProgress$Uploading(
@@ -527,7 +528,7 @@ final class _PublishRecordEncoder
         ) =>
           {
             _Key.variant: _Is.uploading,
-            _Key.media: PreparationEncoding.encodePrepared(media),
+            _Key.media: const PreparedMediaCodec().encode(media),
             _Key.file: file.value,
             _Key.thumbnail: ?thumbnail?.value,
             _Key.reuseKey: ?reuseKey?.encoded,
@@ -546,7 +547,7 @@ final class _PublishRecordEncoder
             _Key.thumbnail: ?_ref(thumbnail),
             if (reused) _Key.reused: true,
             if (media != null)
-              _Key.media: PreparationEncoding.encodePrepared(media),
+              _Key.media: const PreparedMediaCodec().encode(media),
             _Key.reuseKey: ?reuseKey?.encoded,
             if (uploads.isNotEmpty)
               _Key.uploads: [for (final upload in uploads) upload.value],
@@ -660,8 +661,8 @@ final class _PublishRecordDecoder
   static PublishSource _source(JsonFields json) =>
       switch (json.string(_Key.variant)) {
         _Is.prepare => PublishSource.prepare(
-          PreparationEncoding.decodeInput(json.object(_Key.input).json),
-          PreparationEncoding.decodeIntent(json.object(_Key.intent).json),
+          const PreparationInputCodec().decode(json.object(_Key.input).json),
+          const PreparationIntentCodec().decode(json.object(_Key.intent).json),
         ),
         _Is.prepared => PublishSource.prepared(_media(json)),
         _Is.remote => const PublishSource.remote(),
@@ -692,7 +693,7 @@ final class _PublishRecordDecoder
           thumbnail: _ref(json, _Key.thumbnail),
           reused: json.optionalFlag(_Key.reused),
           media: switch (json.optionalObject(_Key.media)) {
-            final media? => PreparationEncoding.decodePrepared(media.json),
+            final media? => const PreparedMediaCodec().decode(media.json),
             null => null,
           },
           reuseKey: _reuseKey(json),
@@ -739,7 +740,7 @@ final class _PublishRecordDecoder
 
   /// The required prepared file under `media`.
   static PreparedMedia _media(JsonFields json) =>
-      PreparationEncoding.decodePrepared(json.object(_Key.media).json);
+      const PreparedMediaCodec().decode(json.object(_Key.media).json);
 
   static ReuseKey? _reuseKey(JsonFields json) =>
       switch (json.optionalString(_Key.reuseKey)) {

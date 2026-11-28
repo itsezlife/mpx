@@ -28,7 +28,8 @@
   `PreparationInput`, `PreparationIntent`, `CompressionPreset`,
   `PreparedKind` and `PreparedMedia` moved here from `mpx_capture`, compare
   by value, and `PreparedMedia` gained `thumbnailPath`.
-  `PreparationEncoding` is their stored form, version 1, for journals and
+  `PreparationInputCodec`, `PreparationIntentCodec` and
+  `PreparedMediaCodec` are their stored form, version 1, for journals and
   reuse tables.
 - `testing.dart`: `FakeTrackedTransfers`, `FakeMediaPreparation`, and the
   `TrackedTransfersContract` and `MediaPreparationContract` suites.

@@ -1504,6 +1504,12 @@ final class _Content {
   // that still finds it missing fetches it plainly, from the bytes it left.
   bool _trackedLocal = false;
 
+  // An upload's cancel was forwarded and the upload still sends: its owner
+  // is deciding, so the taps that follow go nowhere. Without this a burst
+  // of taps on the cross sends a cancel each until the value leaves
+  // sending. Cleared when it does.
+  bool _uploadCancelForwarded = false;
+
   /// Whether the content's transfer is a tracked job's.
   bool get tracks => _watched != null;
 
@@ -1527,6 +1533,7 @@ final class _Content {
       _watched = null;
       _trackedValue = AssetTransfer.none;
       _trackedAsked = null;
+      _uploadCancelForwarded = false;
     }
     refresh();
   }
@@ -1540,6 +1547,7 @@ final class _Content {
     // The seam's implementation reports the mapping (`BindingOp.mapped`):
     // it knows the job and its state, the binding only the value.
     _trackedValue = value;
+    if (value is! AssetTransfer$Sending) _uploadCancelForwarded = false;
     switch (value) {
       case AssetTransfer$Waiting() ||
           AssetTransfer$Receiving() ||
@@ -1596,12 +1604,17 @@ final class _Content {
 
   /// Forwards a cancel to the job while it moves bytes. A download's cancel
   /// is the user's, remembered for the key as an untracked one is; an
-  /// upload's is its owner's to decide.
+  /// upload's is its owner's to decide, asked once while it sends.
   void cancelTracked() {
     final value = _trackedValue;
     final upload = value is AssetTransfer$Sending;
     if (!upload && !value.isActive) return;
-    if (!upload) userIntent = _UserIntent.cancelled;
+    if (upload) {
+      if (_uploadCancelForwarded) return;
+      _uploadCancelForwarded = true;
+    } else {
+      userIntent = _UserIntent.cancelled;
+    }
     MpxDiagnostics.current.emit(
       MpxEventLevel.info,
       BindingOp.cancelForwarded,

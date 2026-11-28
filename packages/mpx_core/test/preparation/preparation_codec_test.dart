@@ -9,7 +9,7 @@ Map<String, Object?> _stored(Map<String, Object?> encoded) =>
     (jsonDecode(jsonEncode(encoded)) as Map).cast<String, Object?>();
 
 void main() {
-  group('PreparationEncoding', () {
+  group('preparation codecs', () {
     test('an input round-trips, with and without its facts', () {
       const full = PreparationInput(
         '/picked/a.heic',
@@ -20,8 +20,8 @@ void main() {
 
       for (final input in [full, bare]) {
         expect(
-          PreparationEncoding.decodeInput(
-            _stored(PreparationEncoding.encodeInput(input)),
+          const PreparationInputCodec().decode(
+            _stored(const PreparationInputCodec().encode(input)),
           ),
           input,
         );
@@ -40,8 +40,8 @@ void main() {
 
       for (final intent in intents) {
         expect(
-          PreparationEncoding.decodeIntent(
-            _stored(PreparationEncoding.encodeIntent(intent)),
+          const PreparationIntentCodec().decode(
+            _stored(const PreparationIntentCodec().encode(intent)),
           ),
           intent,
         );
@@ -71,8 +71,8 @@ void main() {
 
       for (final media in [video, original]) {
         expect(
-          PreparationEncoding.decodePrepared(
-            _stored(PreparationEncoding.encodePrepared(media)),
+          const PreparedMediaCodec().decode(
+            _stored(const PreparedMediaCodec().encode(media)),
           ),
           media,
         );
@@ -89,8 +89,8 @@ void main() {
         bytes: Uint8List.fromList([1, 2, 3]),
       );
 
-      final decoded = PreparationEncoding.decodePrepared(
-        _stored(PreparationEncoding.encodePrepared(media)),
+      final decoded = const PreparedMediaCodec().decode(
+        _stored(const PreparedMediaCodec().encode(media)),
       );
 
       expect(decoded.thumbnail, isNull);
@@ -99,29 +99,29 @@ void main() {
     });
 
     test('the stored form is pinned: version 1, names and keys', () {
-      expect(PreparationEncoding.version, 1);
+      expect(PreparationInputCodec.version, 1);
       expect(
-        PreparationEncoding.encodeIntent(
+        const PreparationIntentCodec().encode(
           const PreparationIntent.video(preset: CompressionPreset.medium),
         ),
         {'v': 1, 'as': 'video', 'preset': 'medium'},
       );
       expect(
-        PreparationEncoding.encodeIntent(const PreparationIntent.photo()),
+        const PreparationIntentCodec().encode(const PreparationIntent.photo()),
         {'v': 1, 'as': 'photo', 'highQuality': false},
       );
-      expect(PreparationEncoding.encodeIntent(const PreparationIntent.file()), {
-        'v': 1,
-        'as': 'file',
-      });
       expect(
-        PreparationEncoding.encodeInput(
+        const PreparationIntentCodec().encode(const PreparationIntent.file()),
+        {'v': 1, 'as': 'file'},
+      );
+      expect(
+        const PreparationInputCodec().encode(
           const PreparationInput('/a', byteSize: 1),
         ),
         {'v': 1, 'path': '/a', 'mimeType': null, 'byteSize': 1},
       );
       expect(
-        PreparationEncoding.decodePrepared({
+        const PreparedMediaCodec().decode({
           'v': 1,
           'kind': 'photo',
           'path': '/out/3.jpg',
@@ -146,19 +146,19 @@ void main() {
     test('an unknown version, a missing key or an unknown name is a '
         'FormatException', () {
       expect(
-        () => PreparationEncoding.decodeIntent({'v': 2, 'as': 'file'}),
+        () => const PreparationIntentCodec().decode({'v': 2, 'as': 'file'}),
         throwsFormatException,
       );
       expect(
-        () => PreparationEncoding.decodeIntent({'as': 'file'}),
+        () => const PreparationIntentCodec().decode({'as': 'file'}),
         throwsFormatException,
       );
       expect(
-        () => PreparationEncoding.decodeIntent({'v': 1, 'as': 'sticker'}),
+        () => const PreparationIntentCodec().decode({'v': 1, 'as': 'sticker'}),
         throwsFormatException,
       );
       expect(
-        () => PreparationEncoding.decodeIntent({
+        () => const PreparationIntentCodec().decode({
           'v': 1,
           'as': 'video',
           'preset': 'ultra',
@@ -166,11 +166,11 @@ void main() {
         throwsFormatException,
       );
       expect(
-        () => PreparationEncoding.decodeInput({'v': 1}),
+        () => const PreparationInputCodec().decode({'v': 1}),
         throwsFormatException,
       );
       expect(
-        () => PreparationEncoding.decodePrepared({
+        () => const PreparedMediaCodec().decode({
           'v': 1,
           'kind': 'photo',
           'path': '/a',
@@ -186,7 +186,7 @@ void main() {
     test('a failed read names the key and carries the map read', () {
       final missing = <String, Object?>{'v': 1};
       expect(
-        () => PreparationEncoding.decodeInput(missing),
+        () => const PreparationInputCodec().decode(missing),
         throwsA(
           isA<FormatException>()
               .having((error) => error.message, 'message', contains('"path"'))
@@ -195,7 +195,7 @@ void main() {
       );
       final wrong = <String, Object?>{'v': 1, 'as': 'photo', 'highQuality': 1};
       expect(
-        () => PreparationEncoding.decodeIntent(wrong),
+        () => const PreparationIntentCodec().decode(wrong),
         throwsA(
           isA<FormatException>()
               .having(

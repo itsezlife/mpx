@@ -2,5 +2,5 @@
 /// files on the VM, memory on the web.
 library;
 
-export 'journal_store_vm.dart'
-    if (dart.library.js_interop) 'journal_store_js.dart';
+export 'diagnostics_line_store_vm.dart'
+    if (dart.library.js_interop) 'diagnostics_line_store_js.dart';

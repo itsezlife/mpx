@@ -298,6 +298,33 @@ void main() {
       );
     });
 
+    test('a burst of cancels on an upload forwards one, until the upload '
+        'leaves sending', () async {
+      final diagnostics = RecordingDiagnostics.install();
+      harness.fetcher.missing.remove(_key);
+      final binding = harness.attach();
+      await harness.settle();
+      harness.transfers.drive(_key, const AssetTransfer.sending(1, 3));
+
+      for (var tap = 0; tap < 5; tap++) {
+        binding.cancelDownload();
+      }
+      // Bytes still moving while the owner decides do not reopen it.
+      harness.transfers.drive(_key, const AssetTransfer.sending(2, 3));
+      binding.cancelDownload();
+
+      expect(harness.transfers.cancels, [_key]);
+      expect(diagnostics.whereOp(BindingOp.cancelForwarded), hasLength(1));
+
+      // A new send of the content takes a cancel again.
+      harness.transfers
+        ..drive(_key, const AssetTransfer.waiting())
+        ..drive(_key, const AssetTransfer.sending(0, 3));
+      binding.cancelDownload();
+
+      expect(harness.transfers.cancels, [_key, _key]);
+    });
+
     test('an untracked download says so, in both kinds of scope', () async {
       final diagnostics = RecordingDiagnostics.install();
       harness.attach(control: false);

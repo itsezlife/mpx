@@ -1,22 +1,22 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:mpx_example/journal/data/journal_store.dart';
+import 'package:mpx_example/journal/data/diagnostics_line_store.dart';
 
-/// The VM hook: a [FileJournalStore] under [directory], or memory when there
+/// The VM hook: a [FileDiagnosticsLineStore] under [directory], or memory when there
 /// is none (the platform named no cache folder).
-Future<JournalStore> $openJournalStore({
+Future<DiagnosticsLineStore> $openDiagnosticsLineStore({
   required String? directory,
   required int capBytes,
 }) async => switch (directory) {
-  final directory? => FileJournalStore.open(
+  final directory? => FileDiagnosticsLineStore.open(
     Directory(directory),
     capBytes: capBytes,
   ),
-  null => MemoryJournalStore(),
+  null => MemoryDiagnosticsLineStore(),
 };
 
-/// A [JournalStore] in two files of JSON lines that take turns: the current
+/// A [DiagnosticsLineStore] in two files of JSON lines that take turns: the current
 /// one is appended to until the next write would take it past half the cap,
 /// then it becomes the
 /// previous one (the old previous one is deleted) and a new current one
@@ -26,18 +26,23 @@ Future<JournalStore> $openJournalStore({
 /// one delete and one rename, never a rewrite of 20 MiB. A file trimmed from
 /// its front in place would be rewritten on every pass past the cap, and a
 /// kill in the middle of the rewrite would lose both halves.
-final class FileJournalStore implements JournalStore {
-  FileJournalStore._(this._previous, this._current, this._file, this._half);
+final class FileDiagnosticsLineStore implements DiagnosticsLineStore {
+  FileDiagnosticsLineStore._(
+    this._previous,
+    this._current,
+    this._file,
+    this._half,
+  );
 
   /// Opens the store under [directory], creating it when missing.
-  static Future<FileJournalStore> open(
+  static Future<FileDiagnosticsLineStore> open(
     Directory directory, {
     required int capBytes,
   }) async {
     await directory.create(recursive: true);
     final previous = File('${directory.path}/$_previousName');
     final current = File('${directory.path}/$_currentName');
-    return FileJournalStore._(
+    return FileDiagnosticsLineStore._(
       previous,
       current,
       await current.open(mode: FileMode.append),

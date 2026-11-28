@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:mpx_core/mpx_core.dart';
-import 'package:mpx_example/journal/model/journal_record.dart';
+import 'package:mpx_example/journal/model/diagnostics_entry.dart';
 
 /// One correlation id a filter can hold, by the name an `MpxEvent` carries
 /// it under.
@@ -65,12 +65,12 @@ final class JournalFilter {
   final Map<JournalIdKind, String> ids;
 
   /// Whether [record] passes every part.
-  bool accepts(JournalRecord record) =>
+  bool accepts(DiagnosticsEntry record) =>
       levels.contains(record.level) && matchesBesidesLevel(record);
 
   /// Whether [record] passes the categories and the ids, whatever its level,
   /// so the level chips can count what each level would add.
-  bool matchesBesidesLevel(JournalRecord record) =>
+  bool matchesBesidesLevel(DiagnosticsEntry record) =>
       (categories?.contains(record.category) ?? true) &&
       ids.entries.every((entry) => entry.key.of(record.ids) == entry.value);
 
@@ -136,10 +136,10 @@ final class JournalSnapshot {
   /// Projects [records] (oldest first, as the journal holds them) through
   /// [filter].
   factory JournalSnapshot.of(
-    Iterable<JournalRecord> records,
+    Iterable<DiagnosticsEntry> records,
     JournalFilter filter,
   ) {
-    final visible = <JournalRecord>[];
+    final visible = <DiagnosticsEntry>[];
     final countByLevel = <MpxEventLevel, int>{};
     final categories = <String>{};
     var total = 0;
@@ -159,7 +159,7 @@ final class JournalSnapshot {
   }
 
   /// Records that pass the filter, newest first.
-  final List<JournalRecord> visible;
+  final List<DiagnosticsEntry> visible;
 
   /// Records before filtering.
   final int total;

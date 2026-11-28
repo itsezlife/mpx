@@ -1,24 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mpx_example/journal/model/diagnostics_entry.dart';
 import 'package:mpx_example/journal/model/journal_export.dart';
-import 'package:mpx_example/journal/model/journal_record.dart';
-import 'package:mpx_example/journal/widget/journal_record_row.dart';
+import 'package:mpx_example/journal/widget/diagnostics_entry_row.dart';
 
 /// The whole of one record: level, time, source, operation, ids, fields,
 /// error and stack. Copy puts the record on the clipboard as indented JSON.
-class JournalRecordDetailsDialog extends StatelessWidget {
+class DiagnosticsEntryDetailsDialog extends StatelessWidget {
   /// The dialog of [record].
-  const JournalRecordDetailsDialog({required this.record, super.key});
+  const DiagnosticsEntryDetailsDialog({required this.record, super.key});
 
   /// The record shown.
-  final JournalRecord record;
+  final DiagnosticsEntry record;
 
   /// Opens the dialog of [record].
-  static Future<void> show(BuildContext context, JournalRecord record) =>
+  static Future<void> show(BuildContext context, DiagnosticsEntry record) =>
       showDialog<void>(
         useRootNavigator: false,
         context: context,
-        builder: (_) => JournalRecordDetailsDialog(record: record),
+        builder: (_) => DiagnosticsEntryDetailsDialog(record: record),
       );
 
   @override

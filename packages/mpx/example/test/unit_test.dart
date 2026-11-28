@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'journal/diagnostics_journal_test.dart' as diagnostics_journal;
+import 'journal/journal_line_fixture_test.dart' as journal_line_fixture;
 import 'journal/journal_page_test.dart' as journal_page;
 import 'lab/corpus_test.dart' as corpus;
 import 'lab/lab_coverage_test.dart' as lab_coverage;
@@ -21,12 +22,15 @@ import 'social/status_html_test.dart' as status_html;
 import 'social/timeline_controller_test.dart' as timeline_controller;
 import 'social/volume_rise_test.dart' as volume_rise;
 import 'transfers/dev_upload_server_test.dart' as dev_upload_server;
+import 'transfers/transfer_settings_fixture_test.dart'
+    as transfer_settings_fixture;
 import 'transfers/transfers_page_test.dart' as transfers_page;
 import 'transfers/transfers_root_test.dart' as transfers_root;
 import 'video_through_stack_test.dart' as video_through_stack;
 
 void main() {
   group('diagnostics journal', diagnostics_journal.main);
+  group('journal line fixture', journal_line_fixture.main);
   group('journal page', journal_page.main);
   group('corpus', corpus.main);
   group('lab coverage', lab_coverage.main);
@@ -47,6 +51,7 @@ void main() {
   group('social status html', status_html.main);
   group('social timeline controller', timeline_controller.main);
   group('transfers dev upload server', dev_upload_server.main);
+  group('transfer settings fixture', transfer_settings_fixture.main);
   group('transfers page', transfers_page.main);
   group('transfers root', transfers_root.main);
   group('video through the stack', video_through_stack.main);
