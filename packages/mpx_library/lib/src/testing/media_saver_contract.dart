@@ -5,6 +5,7 @@ import 'package:mpx_library/src/save/media_saver.dart';
 import 'package:mpx_library/src/save/save_destination.dart';
 import 'package:mpx_library/src/save/save_item.dart';
 import 'package:mpx_library/src/save/save_op.dart';
+import 'package:mpx_library/src/save/save_request.dart';
 import 'package:mpx_library/src/save/save_result.dart';
 
 /// What a [MediaSaver] contract run needs.
@@ -20,6 +21,10 @@ final class MediaSaverHarness {
   /// place of the per-item cancel. [denyAccess] puts the saver in the state
   /// of refused access, and [failBlock] makes its next block fail; a test
   /// that needs one the harness lacks is skipped.
+  ///
+  /// [transfers] is the `FakeTrackedTransfers` the saver was built with,
+  /// which the `saveContent` tests drive; [withoutTransfers] builds the same
+  /// saver with none. Without them those tests are skipped.
   const MediaSaverHarness({
     required this.saver,
     required this.file,
@@ -27,6 +32,8 @@ final class MediaSaverHarness {
     this.changeBlock = false,
     this.denyAccess,
     this.failBlock,
+    this.transfers,
+    this.withoutTransfers,
   });
 
   /// The saver under test, fresh for each test.
@@ -46,6 +53,12 @@ final class MediaSaverHarness {
 
   /// Fails the saver's next block, under [changeBlock].
   final void Function()? failBlock;
+
+  /// The tracked transfers [saver]'s `saveContent` goes through.
+  final FakeTrackedTransfers? transfers;
+
+  /// A fresh saver like [saver] with no tracked transfers.
+  final MediaSaver Function()? withoutTransfers;
 }
 
 /// The contract every [MediaSaver] meets; see its documentation.
@@ -237,6 +250,153 @@ abstract final class MediaSaverContract {
           }
         }
         expect(diagnostics.errors, isEmpty);
+      });
+
+      // --- saveContent ---
+
+      const remote = MediaKey.remote('contract-remote');
+      const local = MediaKey.remote('contract-local');
+
+      SaveRequest request(MediaKey key) => SaveRequest(
+        key,
+        name: 'contract-content.jpg',
+        mimeType: 'image/jpeg',
+        kind: SaveItemKind.photo,
+      );
+
+      SaveJob saveContent(List<MediaKey> keys) => harness.saver.saveContent([
+        for (final key in keys) request(key),
+      ], harness.destination);
+
+      /// The harness's transfers, or null with the test marked skipped.
+      FakeTrackedTransfers? transfersOrSkip() {
+        final transfers = harness.transfers;
+        if (transfers == null) markTestSkipped('no tracked transfers');
+        return transfers;
+      }
+
+      test('saveContent downloads first, leases each file, saves it and '
+          'releases every lease, with one progress weighted 90 / 10', () async {
+        final transfers = transfersOrSkip();
+        if (transfers == null) return;
+        transfers.setFile(local, harness.file(0));
+        final job = saveContent([remote, local]);
+        final seen = <double>[job.progress.value];
+        job.progress.addListener(() => seen.add(job.progress.value));
+
+        await pumpEventQueue();
+        expect(transfers.downloads, [
+          (key: remote, origin: TransferOrigin.user),
+        ]);
+        transfers.drive(remote, const AssetTransfer.receiving(50, 100));
+        // Half the remote's download: 45 % of its share, half the batch.
+        expect(job.progress.value, closeTo(0.225, 1e-9));
+        transfers
+          ..setFile(remote, harness.file(1))
+          ..drive(remote, AssetTransfer.none);
+        final results = await job.results;
+
+        expect(results, everyElement(isA<SaveResult$Saved>()));
+        expect(transfers.leaseRequests.toSet(), {remote, local});
+        expect(transfers.leases, hasLength(2));
+        expect(transfers.leasesHeld, 0);
+        for (var i = 1; i < seen.length; i++) {
+          expect(seen[i], greaterThanOrEqualTo(seen[i - 1]));
+        }
+        expect(job.progress.value, 1);
+        expect(diagnostics.whereOp(SaveOp.leaseReleased), hasLength(2));
+        for (final op in [SaveOp.itemSaved, SaveOp.leaseReleased]) {
+          expect(diagnostics.whereOp(op).map((e) => e.mediaKey).toSet(), {
+            remote,
+            local,
+          });
+        }
+      });
+
+      test('saveContent releases the lease of an item that fails', () async {
+        final transfers = transfersOrSkip();
+        if (transfers == null) return;
+        if (harness.destination is! SaveDestination$Gallery) {
+          markTestSkipped('the contract runs to another destination');
+          return;
+        }
+        transfers.setFile(local, harness.file(0));
+        final results = await harness.saver.saveContent([
+          const SaveRequest(
+            local,
+            name: 'contract.pdf',
+            mimeType: 'application/pdf',
+            kind: SaveItemKind.file,
+          ),
+        ], harness.destination).results;
+
+        expect(results, [
+          const SaveResult.failed(SaveFailure.unsupportedFormat),
+        ]);
+        expect(transfers.leasesHeld, 0);
+      });
+
+      test('a saveContent cancel stops its own downloads, leaves a shared '
+          'one running and releases every lease', () async {
+        final transfers = transfersOrSkip();
+        if (transfers == null) return;
+        const shared = MediaKey.remote('contract-shared');
+        transfers
+          ..setFile(local, harness.file(0))
+          ..drive(shared, const AssetTransfer.receiving(1, 4));
+        final job = saveContent([remote, shared, local]);
+
+        await pumpEventQueue();
+        job.cancel();
+        final results = await job.results;
+
+        expect(results, everyElement(const SaveResult.cancelled()));
+        expect(transfers.cancels, [remote]);
+        expect(transfers.valueOf(shared).isActive, isTrue);
+        expect(transfers.leasesHeld, 0);
+        expect(job.progress.value, 1);
+      });
+
+      test('a lease missing after a completed download downloads once '
+          'more, then fails unavailable', () async {
+        final transfers = transfersOrSkip();
+        if (transfers == null) return;
+        final job = saveContent([remote]);
+
+        await pumpEventQueue();
+        transfers.drive(remote, AssetTransfer.none);
+        await pumpEventQueue();
+        transfers.drive(remote, AssetTransfer.none);
+        final results = await job.results;
+
+        expect(transfers.downloads, hasLength(2));
+        expect(results.single, isA<SaveResult$Failed>());
+        expect(
+          (results.single as SaveResult$Failed).reason,
+          SaveFailure.unavailable,
+        );
+        expect(diagnostics.whereOp(SaveOp.leaseMissing), hasLength(2));
+      });
+
+      test('saveContent without tracked transfers fails every item '
+          'unavailable', () async {
+        final create = harness.withoutTransfers;
+        if (create == null) {
+          markTestSkipped('no saver without tracked transfers');
+          return;
+        }
+        final results = await create().saveContent([
+          request(remote),
+          request(local),
+        ], harness.destination).results;
+
+        for (final result in results) {
+          expect(result, isA<SaveResult$Failed>());
+          expect((result as SaveResult$Failed).reason, SaveFailure.unavailable);
+        }
+        expect(diagnostics.whereOp(SaveOp.trackedTransfersMissing), [
+          isMpxEvent(level: MpxEventLevel.warning, fields: {'items': 2}),
+        ]);
       });
     });
   }

@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- `MediaSaver.saveContent(requests, destination)`: saves contents by
+  `MediaKey` (`SaveRequest`: key, name, MIME type, kind, optional date)
+  whether they are downloaded or not, through `mpx_core`'s
+  `TrackedTransfers` given to the saver (`PlatformMediaSaver(transfers:)`,
+  `FakeMediaSaver(transfers:)`). A content not local is downloaded as the
+  user's tracked download, or joins another caller's; once complete its
+  file is leased, saved and the lease released when the item ends. One
+  progress: an item's download is 90 % of its share and its copy 10 %, an
+  item already local is all copy. Cancel stops the downloads this job
+  started and leaves others' running. A lease missing after a completed
+  download downloads once more, then fails `unavailable`; a failed download
+  fails `unavailable`; without `TrackedTransfers` every item fails
+  `unavailable`. New `SaveOp`s: `downloadStarted`, `downloadShared`,
+  `leaseMissing`, `trackedTransfersMissing`, `downloadsCancelled`; item
+  events and `leaseReleased` carry the item's `mediaKey`. A host that
+  implements `MediaSaver` adds `saveContent`.
+- `testing.dart`: `MediaSaverContract` checks `saveContent` when the
+  harness passes its `FakeTrackedTransfers` (`transfers`,
+  `withoutTransfers`); `FakeMediaSaver.contentBatches`.
 - `MediaSaver.save(items, destination)`: a batch of `SaveItem`s (a host
   file, a leased cache file or bytes; photo, video, animation or file) to
   `SaveDestination.gallery(album:)`, `.downloads(subfolder:)` or `.ask()`,

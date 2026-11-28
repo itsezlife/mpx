@@ -38,4 +38,38 @@ void main() {
       ['noAdapter', 'noAdapter'],
     );
   });
+
+  test('saveContent goes through the transfers it was given', () async {
+    RecordingDiagnostics.install();
+    const key = MediaKey.remote('a');
+    final transfers = FakeTrackedTransfers()..setFile(key, '/cache/a');
+    const request = SaveRequest(
+      key,
+      name: 'a.jpg',
+      mimeType: 'image/jpeg',
+      kind: SaveItemKind.photo,
+    );
+
+    final withTransfers = PlatformMediaSaver(transfers: transfers);
+    expect(
+      await withTransfers.saveContent([
+        request,
+      ], const SaveDestination.gallery()).results,
+      [const SaveResult.failed(SaveFailure.unavailable, code: 'noAdapter')],
+    );
+    expect(transfers.leaseRequests, [key]);
+    expect(transfers.leasesHeld, 0);
+
+    expect(
+      await PlatformMediaSaver().saveContent([
+        request,
+      ], const SaveDestination.gallery()).results,
+      [
+        const SaveResult.failed(
+          SaveFailure.unavailable,
+          code: 'noTrackedTransfers',
+        ),
+      ],
+    );
+  });
 }

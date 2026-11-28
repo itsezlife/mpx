@@ -54,6 +54,18 @@ job.progress.addListener(() => showProgress(job.progress.value));
 final results = await job.results; // one SaveResult per item
 ```
 
+Saving content by its key, downloaded first when it is not local, through
+the composition's `TrackedTransfers`:
+
+```dart
+final saver = PlatformMediaSaver(transfers: transfers);
+
+final job = saver.saveContent([
+  SaveRequest(key, name: 'clip.mp4', mimeType: 'video/mp4',
+      kind: SaveItemKind.video),
+], const SaveDestination.gallery());
+```
+
 ## Features
 
 - `MediaLibrary`: `access` as a `ValueListenable<LibraryAccess>`
@@ -85,6 +97,12 @@ final results = await job.results; // one SaveResult per item
   copied, never moved, and its lease released when its item ends. The
   saver knows no rights: the caller decides before it calls. Platform
   adapters are not in yet, so `PlatformMediaSaver` answers `unavailable`.
+- `MediaSaver.saveContent`: `SaveRequest`s (key, name, MIME type, kind) as
+  one `SaveJob` over `mpx_core`'s `TrackedTransfers`: a content not local
+  is downloaded as the user's tracked download (or joins one under way),
+  leased, saved and released; one progress (download 90 %, copy 10 %, an
+  item already local all copy); cancel stops only the downloads the job
+  started. Without `TrackedTransfers` every item fails `unavailable`.
 
 ## Platforms
 

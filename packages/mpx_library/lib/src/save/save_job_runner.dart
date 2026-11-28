@@ -6,6 +6,7 @@ import 'package:mpx_library/src/save/media_saver.dart';
 import 'package:mpx_library/src/save/save_destination.dart';
 import 'package:mpx_library/src/save/save_item.dart';
 import 'package:mpx_library/src/save/save_op.dart';
+import 'package:mpx_library/src/save/save_request.dart';
 import 'package:mpx_library/src/save/save_result.dart';
 import 'package:mpx_library/src/save/save_writer.dart';
 
@@ -23,6 +24,10 @@ import 'package:mpx_library/src/save/save_writer.dart';
 /// - Every lease is released once its item ends, before the results
 ///   complete.
 /// - Every step reports its `save` event through `MpxDiagnostics.current`.
+///
+/// A `MediaSaver.saveContent` batch ([runContent]) first makes each content
+/// local through `TrackedTransfers`, then saves the leased files under the
+/// same rules.
 abstract final class SaveJobRunner {
   static int _lastJob = 0;
 
@@ -34,26 +39,108 @@ abstract final class SaveJobRunner {
     SaveDestination destination,
     SaveWriter writer,
   ) {
-    final job = _Job('save-${++_lastJob}', List.unmodifiable(items));
+    final job = _Job('save-${++_lastJob}', [
+      for (final item in items) _Slot.item(item),
+    ]);
     unawaited(job._run(destination, writer));
+    return job;
+  }
+
+  /// Starts saving the contents [requests] name to [destination] through
+  /// [writer], downloading through [transfers] those not local, and returns
+  /// the job at once, as [run] does. Without [transfers] every item fails
+  /// `SaveFailure.unavailable`.
+  static SaveJob runContent(
+    List<SaveRequest> requests,
+    SaveDestination destination,
+    SaveWriter writer,
+    TrackedTransfers? transfers,
+  ) {
+    final job = _Job('save-${++_lastJob}', [
+      for (final request in requests) _Slot.request(request),
+    ]);
+    unawaited(job._runContent(destination, writer, transfers));
     return job;
   }
 }
 
+/// One item of a job: what it is, the item to write once known, and how far
+/// it is.
+final class _Slot {
+  _Slot.item(SaveItem this.item)
+    : request = null,
+      kind = item.kind,
+      mimeType = item.mimeType;
+
+  _Slot.request(SaveRequest this.request)
+    : kind = request.kind,
+      mimeType = request.mimeType;
+
+  /// The share of an item's progress its download takes when it has one.
+  static const double _downloadShare = 0.9;
+
+  /// The `saveContent` request; null for a `save` item.
+  final SaveRequest? request;
+
+  /// What the caller filed it as.
+  final SaveItemKind kind;
+
+  /// Its MIME type, as the caller gave it.
+  final String mimeType;
+
+  /// The item to write: given for `save`, the leased file once a
+  /// `saveContent` item is local.
+  SaveItem? item;
+
+  /// Whether the item's share of the progress is its copy alone: a `save`
+  /// item, or a content already local. Otherwise its download takes
+  /// [_downloadShare] of it and its copy the rest.
+  bool copyOnly = true;
+
+  /// How far its download is, 0 to 1.
+  double downloaded = 0;
+
+  /// How far its copy is, 0 to 1.
+  double copied = 0;
+
+  /// How much of the item's share is done, 0 to 1.
+  double get done => copyOnly
+      ? copied
+      : _downloadShare * downloaded + (1 - _downloadShare) * copied;
+
+  /// The content's key, for the item's events; null for a `save` item.
+  MediaKey? get mediaKey => request?.key;
+}
+
+/// How a `saveContent` item's download ended for its job.
+enum _Arrival {
+  /// The content is whole and local.
+  complete,
+
+  /// The download failed.
+  failed,
+
+  /// The download stopped without the job's cancel (paused elsewhere).
+  stopped,
+
+  /// The job was cancelled.
+  cancelled,
+}
+
 final class _Job implements SaveJob {
-  _Job(this.id, this._items) : _results = List.filled(_items.length, null);
+  _Job(this.id, this._slots) : _results = List.filled(_slots.length, null);
 
   @override
   final String id;
 
-  final List<SaveItem> _items;
+  final List<_Slot> _slots;
   final List<SaveResult?> _results;
   final ValueNotifier<double> _progress = ValueNotifier(0);
   final Completer<List<SaveResult>> _done = Completer();
   final CancellationToken _cancellation = CancellationToken();
   final List<Future<void>> _releases = [];
   final Stopwatch _clock = Stopwatch();
-  late final List<int?> _bytes = List.filled(_items.length, null);
+  late final List<int?> _bytes = List.filled(_slots.length, null);
 
   @override
   ValueListenable<double> get progress => _progress;
@@ -63,17 +150,26 @@ final class _Job implements SaveJob {
 
   @override
   void cancel() {
-    if (_done.isCompleted) return;
+    if (_done.isCompleted || _cancellation.isCancelled) return;
     _cancellation.cancel();
+    _stopDownloads();
   }
 
   Future<void> _run(SaveDestination destination, SaveWriter writer) async {
+    if (await _begin(destination, writer)) await _save(destination, writer);
+    return _finish();
+  }
+
+  /// Reports the start and lets a cancel made right after the call land
+  /// before anything starts; false when one did, every item then
+  /// cancelled.
+  Future<bool> _begin(SaveDestination destination, SaveWriter writer) async {
     _clock.start();
     _emit(
       MpxEventLevel.info,
       SaveOp.jobStarted,
       () => {
-        'items': _items.length,
+        'items': _slots.length,
         'destination': destination.name,
         'named': destination.isNamed,
         'platform': MpxEvent.clip(writer.platform),
@@ -83,19 +179,25 @@ final class _Job implements SaveJob {
         'files': _count(SaveItemKind.file),
       },
     );
-    // Lets a cancel made right after `save` land before anything starts.
     await Future<void>.value();
-    if (_cancellation.isCancelled) {
-      _endRemaining(const SaveResult.cancelled());
-      return _finish();
-    }
-    final refused = await _admit(writer, destination);
+    if (!_cancellation.isCancelled) return true;
+    _endRemaining(const SaveResult.cancelled());
+    return false;
+  }
+
+  /// Admits and writes every item not ended yet.
+  Future<void> _save(SaveDestination destination, SaveWriter writer) async {
+    final refused = await _admit(writer, destination, [
+      for (var i = 0; i < _slots.length; i++)
+        if (_results[i] == null) ?_slots[i].item,
+    ]);
     if (refused != null) {
       _endRemaining(refused);
-      return _finish();
+      return;
     }
     final writes = <SaveWrite>[];
-    for (var i = 0; i < _items.length; i++) {
+    for (var i = 0; i < _slots.length; i++) {
+      if (_results[i] != null) continue;
       if (_writeOf(i, destination) case final write?) writes.add(write);
     }
     switch (writer) {
@@ -104,15 +206,15 @@ final class _Job implements SaveJob {
       case SaveWriter$Block():
         await _writeBlock(writer, writes);
     }
-    return _finish();
   }
 
   Future<SaveResult$Failed?> _admit(
     SaveWriter writer,
     SaveDestination destination,
+    List<SaveItem> items,
   ) async {
     try {
-      return await writer.admit(id, destination, _items);
+      return await writer.admit(id, destination, items);
     } on Object catch (error, stackTrace) {
       _error = (error, stackTrace);
       return const SaveResult$Failed(SaveFailure.unavailable, code: 'admit');
@@ -123,7 +225,7 @@ final class _Job implements SaveJob {
   /// end it here: a `file` sent to the gallery that is neither an image nor
   /// a video fails `unsupportedFormat`.
   SaveWrite? _writeOf(int index, SaveDestination destination) {
-    final item = _items[index];
+    final item = _slots[index].item!;
     var kind = item.kind;
     if (kind == SaveItemKind.file && destination is SaveDestination$Gallery) {
       switch (_topType(item.mimeType)) {
@@ -166,7 +268,7 @@ final class _Job implements SaveJob {
           write,
           onProgress: (written, total) {
             _bytes[write.index] = written;
-            _advance(
+            _copy(
               write.index,
               total == null || total <= 0 ? 0 : written / total,
             );
@@ -181,7 +283,6 @@ final class _Job implements SaveJob {
         );
       }
       _end(write.index, result);
-      _advance(write.index, 1);
     }
     _endRemaining(const SaveResult.cancelled());
   }
@@ -197,7 +298,15 @@ final class _Job implements SaveJob {
     }
     List<SaveResult> results;
     try {
-      results = await writer.writeBlock(writes, onProgress: _advanceBlock);
+      results = await writer.writeBlock(
+        writes,
+        onProgress: (fraction) {
+          for (final write in writes) {
+            _slots[write.index].copied = fraction.clamp(0, 1);
+          }
+          _report('copy');
+        },
+      );
       if (results.length != writes.length) {
         throw StateError('${results.length} results for ${writes.length}');
       }
@@ -216,22 +325,24 @@ final class _Job implements SaveJob {
   }
 
   /// Ends item [index] with [result], reports it, and gives back its lease.
-  void _end(int index, SaveResult result) {
+  /// A cancelled item's [stage] says whether it was still downloading.
+  void _end(int index, SaveResult result, {String stage = 'copy'}) {
     if (_results[index] != null) return;
     _results[index] = result;
-    final error = _error;
-    _error = null;
-    final item = _items[index];
+    final error = _takeError();
+    final slot = _slots[index];
+    final item = slot.item;
     switch (result) {
       case SaveResult$Saved(:final renamed):
         _emit(
           MpxEventLevel.debug,
           SaveOp.itemSaved,
+          mediaKey: slot.mediaKey,
           () => {
             'index': index,
-            'kind': item.kind.name,
-            'mime': _topType(item.mimeType),
-            'bytes': ?(_bytes[index] ?? item.bytes?.length),
+            'kind': slot.kind.name,
+            'mime': _topType(slot.mimeType),
+            'bytes': ?(_bytes[index] ?? item?.bytes?.length),
             'ms': _clock.elapsedMilliseconds,
             'renamed': renamed,
           },
@@ -240,12 +351,14 @@ final class _Job implements SaveJob {
         _emit(
           MpxEventLevel.debug,
           SaveOp.itemCancelled,
-          () => {'index': index, 'stage': 'copy'},
+          mediaKey: slot.mediaKey,
+          () => {'index': index, 'stage': stage},
         );
       case SaveResult$Failed(:final reason, :final code):
         _emit(
           MpxEventLevel.warning,
           SaveOp.itemFailed,
+          mediaKey: slot.mediaKey,
           () => {
             'index': index,
             'reason': reason.name,
@@ -254,9 +367,14 @@ final class _Job implements SaveJob {
           error: error,
         );
     }
-    if (item.lease case final lease?) {
+    if (item?.lease case final lease?) {
       _releases.add(_release(index, lease, result));
     }
+    // An ended item's share is done, however it ended.
+    slot
+      ..downloaded = 1
+      ..copied = 1;
+    _report('copy');
   }
 
   Future<void> _release(
@@ -269,6 +387,7 @@ final class _Job implements SaveJob {
       _emit(
         MpxEventLevel.trace,
         SaveOp.leaseReleased,
+        mediaKey: _slots[index].mediaKey,
         () => {
           'index': index,
           'after': switch (after) {
@@ -292,7 +411,8 @@ final class _Job implements SaveJob {
 
   Future<void> _finish() async {
     await Future.wait(_releases);
-    _advanceBlock(1);
+    // An empty batch has no item to move it: it is done all the same.
+    if (_progress.value < 1) _setProgress(1, 'copy');
     final results = [for (final result in _results) result!];
     _emit(
       MpxEventLevel.info,
@@ -307,19 +427,205 @@ final class _Job implements SaveJob {
     _done.complete(results);
   }
 
+  // --- saveContent: making each content local ---
+
+  /// The transfers a `saveContent` job downloads through.
+  TrackedTransfers? _transfers;
+
+  /// The items whose download is under way for this job, each with whether
+  /// this job started it (true) or joined another caller's (false).
+  final Map<int, bool> _downloading = {};
+
+  Future<void> _runContent(
+    SaveDestination destination,
+    SaveWriter writer,
+    TrackedTransfers? transfers,
+  ) async {
+    if (!await _begin(destination, writer)) return _finish();
+    if (transfers == null) {
+      // A host that wires no transfer engine: no content can be reached,
+      // not even one already local, since only the engine lends its file.
+      _emit(
+        MpxEventLevel.warning,
+        SaveOp.trackedTransfersMissing,
+        () => {'items': _slots.length},
+      );
+      _endRemaining(
+        const SaveResult.failed(
+          SaveFailure.unavailable,
+          code: 'noTrackedTransfers',
+        ),
+      );
+      return _finish();
+    }
+    _transfers = transfers;
+    // Every download runs at once; the engine queues them as it sees fit.
+    await Future.wait([
+      for (var i = 0; i < _slots.length; i++) _arrive(i, transfers),
+    ]);
+    // Admitted only once every item is local, so the batch stays one
+    // operation: one access check, one change block.
+    if (!_cancellation.isCancelled) await _save(destination, writer);
+    _endRemaining(const SaveResult.cancelled());
+    return _finish();
+  }
+
+  /// Makes item [index]'s content local and leases its file, or ends the
+  /// item: download, await, lease; a missing lease downloads once more,
+  /// then fails the item `unavailable`.
+  Future<void> _arrive(int index, TrackedTransfers transfers) async {
+    final slot = _slots[index];
+    final request = slot.request!;
+    if (await _lease(index, transfers) case final lease?) {
+      slot.item = request.leased(lease);
+      _emit(
+        MpxEventLevel.debug,
+        SaveOp.downloadShared,
+        mediaKey: request.key,
+        () => {'index': index, 'why': 'local'},
+      );
+      return;
+    }
+    slot.copyOnly = false;
+    for (var attempt = 1; ; attempt++) {
+      if (_cancellation.isCancelled) {
+        return _end(index, const SaveResult.cancelled(), stage: 'download');
+      }
+      final watched = transfers.watch(request.key);
+      // Another caller's download under way is joined and never cancelled.
+      final own = !watched.value.isActive;
+      _downloading[index] = own;
+      _emit(
+        MpxEventLevel.debug,
+        own ? SaveOp.downloadStarted : SaveOp.downloadShared,
+        mediaKey: request.key,
+        () => own
+            ? {'index': index, 'origin': TransferOrigin.user.name}
+            : {'index': index, 'why': 'other'},
+      );
+      // Joining calls it too: a download an auto origin started becomes the
+      // user's, so it resumes after a restart.
+      transfers.download(request.key);
+      final arrival = await _await(index, watched);
+      _downloading.remove(index);
+      switch (arrival) {
+        case _Arrival.cancelled || _Arrival.stopped:
+          return _end(index, const SaveResult.cancelled(), stage: 'download');
+        case _Arrival.failed:
+          return _end(
+            index,
+            const SaveResult.failed(SaveFailure.unavailable, code: 'download'),
+          );
+        case _Arrival.complete:
+          slot.downloaded = 1;
+          _report('download');
+      }
+      if (await _lease(index, transfers) case final lease?) {
+        slot.item = request.leased(lease);
+        return;
+      }
+      _emit(
+        MpxEventLevel.warning,
+        SaveOp.leaseMissing,
+        mediaKey: request.key,
+        () => {'index': index, 'attempt': attempt},
+        error: _takeError(),
+      );
+      if (attempt == 2) {
+        return _end(
+          index,
+          const SaveResult.failed(SaveFailure.unavailable, code: 'noLease'),
+        );
+      }
+    }
+  }
+
+  /// The lease of item [index]'s file, or null when its content is not
+  /// local; a throw counts as null, its error kept for the event it causes.
+  Future<ContentFileLease?> _lease(
+    int index,
+    TrackedTransfers transfers,
+  ) async {
+    try {
+      return await transfers.leaseFile(_slots[index].request!.key);
+    } on Object catch (error, stackTrace) {
+      _error = (error, stackTrace);
+      return null;
+    }
+  }
+
+  /// Follows [watched] until item [index]'s download ends or the job is
+  /// cancelled, reporting how far it is.
+  Future<_Arrival> _await(int index, ValueListenable<AssetTransfer> watched) {
+    final arrived = Completer<_Arrival>();
+    void check() {
+      if (arrived.isCompleted) return;
+      if (_cancellation.isCancelled) {
+        return arrived.complete(_Arrival.cancelled);
+      }
+      switch (watched.value) {
+        case AssetTransfer$Waiting():
+          break;
+        case AssetTransfer$Receiving(:final fraction):
+          _slots[index].downloaded = fraction ?? 0;
+          _report('download');
+        case AssetTransfer$AwaitingUser():
+          arrived.complete(_Arrival.stopped);
+        case AssetTransfer$Failed():
+          arrived.complete(_Arrival.failed);
+        // No job has the key any more: the download completed. An upload
+        // of it is no download to wait on; the lease tells whether the
+        // content is local.
+        case AssetTransfer$None() ||
+            AssetTransfer$Sending() ||
+            AssetTransfer$Sent():
+          arrived.complete(_Arrival.complete);
+      }
+    }
+
+    watched.addListener(check);
+    _cancellation.onCancel(check);
+    check();
+    return arrived.future.whenComplete(() => watched.removeListener(check));
+  }
+
+  /// On cancel: stops the downloads this job started, leaves the others'.
+  void _stopDownloads() {
+    final transfers = _transfers;
+    if (transfers == null || _downloading.isEmpty) return;
+    final own = [
+      for (final MapEntry(key: index, value: started) in _downloading.entries)
+        if (started) _slots[index].request!.key,
+    ];
+    final shared = _downloading.length - own.length;
+    own.forEach(transfers.cancel);
+    _emit(
+      MpxEventLevel.debug,
+      SaveOp.downloadsCancelled,
+      () => {'own': own.length, 'shared': shared},
+    );
+  }
+
   // --- Diagnostics ---
 
-  /// The error a writer threw, carried into the failure event it causes.
+  /// The error a writer or the transfers threw, carried into the event it
+  /// causes.
   (Object, StackTrace)? _error;
 
-  int _count(SaveItemKind kind) => _items.where((i) => i.kind == kind).length;
+  (Object, StackTrace)? _takeError() {
+    final error = _error;
+    _error = null;
+    return error;
+  }
+
+  int _count(SaveItemKind kind) => _slots.where((s) => s.kind == kind).length;
 
   void _routed(int index, String outcome) => _emit(
     MpxEventLevel.debug,
     SaveOp.routedByMime,
     () => {
       'index': index,
-      'mime': _topType(_items[index].mimeType),
+      'mime': _topType(_slots[index].mimeType),
       'outcome': outcome,
     },
   );
@@ -328,11 +634,13 @@ final class _Job implements SaveJob {
     MpxEventLevel level,
     SaveOp op,
     Map<String, Object> Function() fields, {
+    MediaKey? mediaKey,
     (Object, StackTrace)? error,
   }) => MpxDiagnostics.current.emit(
     level,
     op,
     jobId: id,
+    mediaKey: mediaKey,
     fields: fields,
     error: error?.$1,
     stackTrace: error?.$2,
@@ -354,19 +662,31 @@ final class _Job implements SaveJob {
     }
   }
 
-  /// Item [index] (each item an even share of the batch) is [fraction] done.
-  void _advance(int index, double fraction) =>
-      _advanceBlock((index + fraction.clamp(0, 1)) / _items.length);
+  /// Item [index]'s copy is [fraction] done.
+  void _copy(int index, double fraction) {
+    _slots[index].copied = fraction.clamp(0, 1);
+    _report('copy');
+  }
 
-  /// The batch is [fraction] done; progress never goes back.
-  void _advanceBlock(double fraction) {
+  /// Reports the batch's progress, each item an even share. [stage] names
+  /// what moved it.
+  void _report(String stage) {
+    var done = 0.0;
+    for (final slot in _slots) {
+      done += slot.done;
+    }
+    if (_slots.isNotEmpty) _setProgress(done / _slots.length, stage);
+  }
+
+  /// Moves the progress to [fraction]; it never goes back.
+  void _setProgress(double fraction, String stage) {
     final next = fraction.clamp(0.0, 1.0);
     if (next <= _progress.value) return;
     _progress.value = next;
     _emit(
       MpxEventLevel.trace,
       SaveOp.progress,
-      () => {'fraction': next, 'stage': 'copy'},
+      () => {'fraction': next, 'stage': stage},
     );
   }
 }

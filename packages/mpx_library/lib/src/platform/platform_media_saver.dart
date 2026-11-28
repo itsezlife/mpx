@@ -1,3 +1,4 @@
+import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/src/platform/save_writer_vm.dart'
     if (dart.library.js_interop) 'package:mpx_library/src/platform/save_writer_js.dart'
     as environment_specific;
@@ -5,6 +6,7 @@ import 'package:mpx_library/src/save/media_saver.dart';
 import 'package:mpx_library/src/save/save_destination.dart';
 import 'package:mpx_library/src/save/save_item.dart';
 import 'package:mpx_library/src/save/save_job_runner.dart';
+import 'package:mpx_library/src/save/save_request.dart';
 
 /// The [MediaSaver] of the platform the app runs on.
 ///
@@ -17,12 +19,22 @@ import 'package:mpx_library/src/save/save_job_runner.dart';
 /// A platform without a writer yet fails every item
 /// `SaveFailure.unavailable` (code `noAdapter`).
 final class PlatformMediaSaver implements MediaSaver {
-  /// The saver of this platform.
-  PlatformMediaSaver();
+  /// The saver of this platform. [transfers] is the composition's tracked
+  /// transfers, through which `saveContent` makes content local; without
+  /// it every `saveContent` item fails `SaveFailure.unavailable`.
+  PlatformMediaSaver({TrackedTransfers? transfers}) : _transfers = transfers;
+
+  final TrackedTransfers? _transfers;
 
   final _writer = environment_specific.$createSaveWriter();
 
   @override
   SaveJob save(List<SaveItem> items, SaveDestination destination) =>
       SaveJobRunner.run(items, destination, _writer);
+
+  @override
+  SaveJob saveContent(
+    List<SaveRequest> requests,
+    SaveDestination destination,
+  ) => SaveJobRunner.runContent(requests, destination, _writer, _transfers);
 }

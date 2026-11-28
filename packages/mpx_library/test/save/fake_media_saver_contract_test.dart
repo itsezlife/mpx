@@ -1,22 +1,34 @@
+import 'package:mpx_core/testing.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_library/testing.dart';
 
 void main() {
   MediaSaverContract.run(() {
-    final saver = FakeMediaSaver(progressSteps: 2);
+    final transfers = FakeTrackedTransfers();
+    final saver = FakeMediaSaver(transfers: transfers, progressSteps: 2);
     return MediaSaverHarness(
       saver: saver,
       file: (index) => 'fake/source-$index.jpg',
       denyAccess: () => saver.accessDenied = true,
+      transfers: transfers,
+      withoutTransfers: () => FakeMediaSaver(progressSteps: 2),
     );
   });
 
   MediaSaverContract.run(() {
-    final saver = FakeMediaSaver(changeBlock: true, progressSteps: 2);
+    final transfers = FakeTrackedTransfers();
+    final saver = FakeMediaSaver(
+      transfers: transfers,
+      changeBlock: true,
+      progressSteps: 2,
+    );
     return MediaSaverHarness(
       saver: saver,
       file: (index) => 'fake/source-$index.jpg',
       changeBlock: true,
+      transfers: transfers,
+      withoutTransfers: () =>
+          FakeMediaSaver(changeBlock: true, progressSteps: 2),
       denyAccess: () => saver.accessDenied = true,
       failBlock: () => saver.blockFailure = SaveFailure.noSpace,
     );
