@@ -66,6 +66,8 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Saves photos and videos to your library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Shows your photos and videos to pick from.</string>
 	<key>NSCameraUsageDescription</key>

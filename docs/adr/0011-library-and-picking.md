@@ -369,7 +369,10 @@ save (progress, result).
   places the switcher through `headerBuilder`.
 - **Opt-in define names**: `MPX_LIBRARY_PHOTOS` and `MPX_LIBRARY_CAMERA`
   as Swift active compilation conditions on the `mpx_library` target (the
-  mpx example's Podfile shows how).
+  mpx example's Podfile shows how). The media saver's add-only access
+  compiles under `MPX_LIBRARY_SAVE`; without it the gallery destination is
+  `unavailable`. A named album asks for read and write access, so it also
+  needs `MPX_LIBRARY_PHOTOS`.
 
 ## Open in implementation
 

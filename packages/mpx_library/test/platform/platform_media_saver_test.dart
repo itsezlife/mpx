@@ -1,14 +1,30 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
 import 'package:mpx_library/mpx_library.dart';
 
+const _methods = MethodChannel('test.mpx.library/saver');
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  final messenger =
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+
+  setUp(
+    () => messenger.setMockMethodCallHandler(
+      _methods,
+      (call) async => {'scope': 'none', 'status': 'authorized'},
+    ),
+  );
+
+  tearDown(() => messenger.setMockMethodCallHandler(_methods, null));
+
   test('a platform without an adapter fails every item unavailable and '
       'releases its leases', () async {
     final diagnostics = RecordingDiagnostics.install();
     var released = 0;
-    final job = PlatformMediaSaver().save([
+    final job = PlatformMediaSaver(methods: _methods).save([
       SaveItem.leased(
         ContentFileLease(path: '/cache/a', onRelease: () async => released++),
         name: 'a.jpg',

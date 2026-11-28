@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:mpx_library/src/save/save_access.dart';
 import 'package:mpx_library/src/save/save_destination.dart';
 import 'package:mpx_library/src/save/save_item.dart';
 import 'package:mpx_library/src/save/save_result.dart';
@@ -47,10 +48,22 @@ abstract interface class SaveJob {
 /// - A `SaveItemKind.file` item sent to the gallery is routed by its MIME
 ///   type: an image or a video goes to the gallery, anything else fails
 ///   `SaveFailure.unsupportedFormat`.
-/// - Denied access fails every item of the batch
-///   `SaveFailure.accessDenied`; a platform without an adapter fails every
-///   item `SaveFailure.unavailable`.
+/// - A batch asks for the access its destination needs ([SaveAccess]) once,
+///   before anything is written, when the user was not asked yet. Denied
+///   access fails every item of the batch `SaveFailure.accessDenied`; a
+///   build without the code for the destination, or a platform without an
+///   adapter, fails every item `SaveFailure.unavailable`.
 abstract interface class MediaSaver {
   /// Starts saving [items] to [destination] as one job.
   SaveJob save(List<SaveItem> items, SaveDestination destination);
+
+  /// The access saving to [destination] has now, without asking: a host
+  /// reads it to tell the user ahead (a denied access opens the system
+  /// settings, not a prompt).
+  Future<SaveAccess> access(SaveDestination destination);
+
+  /// Shows the system prompt for the access of [destination] when the user
+  /// was not asked yet, and answers the access after. [save] asks by
+  /// itself, so a host calls this only to ask ahead of a save.
+  Future<SaveAccess> requestAccess(SaveDestination destination);
 }

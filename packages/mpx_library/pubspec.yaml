@@ -48,3 +48,6 @@ flutter:
       ios:
         pluginClass: MpxLibraryPlugin
         sharedDarwinSource: true
+      macos:
+        pluginClass: MpxLibraryPlugin
+        sharedDarwinSource: true

@@ -164,6 +164,11 @@ abstract final class MediaSaverContract {
           return;
         }
         deny();
+        expect(
+          (await harness.saver.access(harness.destination)).canSave,
+          isFalse,
+          reason: 'the saver reads the refusal before it writes',
+        );
         final results = await save(batch(2)).results;
         expect(
           results,
