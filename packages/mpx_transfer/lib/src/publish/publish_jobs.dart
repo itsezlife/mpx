@@ -1351,10 +1351,9 @@ final class PublishJobs {
     };
     final PublishOutcome outcome;
     try {
-      outcome = await publisher.publish(
-        record.payload,
-        items,
-        record.idempotencyKey,
+      outcome = await MpxTrace.async(
+        PublishOp.attempt,
+        () => publisher.publish(record.payload, items, record.idempotencyKey),
       );
     } on Object catch (_, stackTrace) {
       // The publisher's error may carry the payload: only that it threw.

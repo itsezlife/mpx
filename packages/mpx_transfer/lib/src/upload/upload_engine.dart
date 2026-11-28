@@ -687,11 +687,14 @@ final class _UploadRun {
             'inFlight': _outstanding,
           },
         );
-        return _session.sendPart(
-          index,
-          offset,
-          _body(index, offset, length),
-          last: index == _partCount - 1,
+        return MpxTrace.async(
+          TransportOp.partSent,
+          () => _session.sendPart(
+            index,
+            offset,
+            _body(index, offset, length),
+            last: index == _partCount - 1,
+          ),
         );
       });
     } on _RunEnded {

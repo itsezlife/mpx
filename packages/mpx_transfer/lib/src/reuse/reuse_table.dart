@@ -287,6 +287,23 @@ final class ReuseTable {
     String? jobId,
     String? itemId,
     MediaKey? mediaKey,
+  }) => MpxTrace.async(
+    ReuseOp.lookup,
+    () => _lookup(
+      key,
+      transport,
+      jobId: jobId,
+      itemId: itemId,
+      mediaKey: mediaKey,
+    ),
+  );
+
+  Future<ReuseEntry?> _lookup(
+    ReuseKey key,
+    UploadTransport transport, {
+    String? jobId,
+    String? itemId,
+    MediaKey? mediaKey,
   }) async {
     void emit(MpxEventLevel level, ReuseOp op, Map<String, Object> fields) =>
         MpxDiagnostics.current.emit(
