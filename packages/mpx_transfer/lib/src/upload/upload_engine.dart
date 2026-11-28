@@ -14,6 +14,7 @@ import 'package:mpx_transfer/src/job/transfer_state.dart';
 import 'package:mpx_transfer/src/journal/journal_record.dart';
 import 'package:mpx_transfer/src/journal/transfer_journal.dart';
 import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
+import 'package:mpx_transfer/src/publish/publish_progress.dart';
 import 'package:mpx_transfer/src/upload/remote_ref.dart';
 import 'package:mpx_transfer/src/upload/resume_outcome.dart';
 import 'package:mpx_transfer/src/upload/upload_lane.dart';
@@ -374,6 +375,9 @@ final class _UploadRun {
   final Map<int, UploadPartAck> _acks = {};
   final Queue<int> _pending = Queue();
 
+  /// The progress shown, from what the job showed before this run.
+  late final ProgressFold _shown;
+
   /// The parts on the wire: index to the bytes its try has sent so far.
   final Map<int, int> _inFlight = {};
 
@@ -422,6 +426,16 @@ final class _UploadRun {
     }
     if (_ended) return;
     _source = source;
+    // What the job showed before: its bytes done when its state keeps
+    // them, else the bytes the remote end acknowledged, which a run that
+    // starts from zero would otherwise take back.
+    final shownBefore = math.max(
+      record.job.state.total == _size ? record.job.state.done : 0,
+      upload.highWaterMark,
+    );
+    _shown = ProgressFold(
+      _size > 0 ? (shownBefore / _size).clamp(0.0, 1.0) : 0,
+    );
     // A transport is asked again at each run: its declaration may have
     // changed since the job was made.
     final partSize = transport.capabilities.partSize(_size);
@@ -936,6 +950,9 @@ final class _UploadRun {
       index: ack.receipt,
   };
 
+  /// Reports the bytes done, folded so they never go back: a part tried
+  /// again, or an upload started again from zero, drops what is sent, and
+  /// the job's ring, its cells and the envelope's mirror read this value.
   void _reportProgress() {
     if (_ended) return;
     var done = 0;
@@ -945,7 +962,11 @@ final class _UploadRun {
     for (final sent in _inFlight.values) {
       done += sent;
     }
-    _sink.progress(done, total: _size);
+    final size = _size;
+    final shown = size == 0
+        ? done
+        : (_shown.fold(done / size) * size).floor().clamp(0, size);
+    _sink.progress(shown, total: size);
   }
 }
 

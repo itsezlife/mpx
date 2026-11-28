@@ -1382,7 +1382,7 @@ final class Transfers {
       );
       return;
     }
-    final progress = _progressOf(inside);
+    final progress = session.fold(_progressOf(inside));
     if (progress == session.progress) return;
     session.progress = progress;
     envelope.update(progress);
@@ -1725,9 +1725,30 @@ bool _sameJobs(List<TransferJob> a, List<TransferJob> b) {
 /// The OS envelope the engine started: its jobs and progress, and once the
 /// start answered, its handle and what holds the process.
 final class _EnvelopeSession {
-  _EnvelopeSession(this.progress, {this.handle});
+  _EnvelopeSession(this.progress, {this.handle}) {
+    if (progress.total case final total? when total > 0) {
+      _shown.fold(progress.done / total);
+    }
+  }
 
   TransferEnvelopeProgress progress;
+
+  /// The fraction the system's indicator shows: a job that completes leaves
+  /// the envelope with its bytes, and a part tried again drops its own, so
+  /// the sum is folded to never go back.
+  final ProgressFold _shown = ProgressFold();
+
+  /// [raw], the jobs inside summed now, with its bytes done folded.
+  TransferEnvelopeProgress fold(TransferEnvelopeProgress raw) {
+    final total = raw.total;
+    if (total == null || total <= 0) return raw;
+    final done = (_shown.fold(raw.done / total) * total).floor();
+    return TransferEnvelopeProgress(
+      jobs: raw.jobs,
+      done: done.clamp(0, total),
+      total: total,
+    );
+  }
 
   /// Null while the start has not answered.
   String? handle;

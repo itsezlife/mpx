@@ -104,6 +104,48 @@ void main() {
     expect(await stateOf(h.transfers, id), isA<TransferState$Completed>());
   });
 
+  test('an upload started again from zero never shows fewer bytes done '
+      'than it showed', () async {
+    final transport = fakeTransport(
+      partSize: 10,
+      bytesInFlight: 10,
+      holdParts: true,
+    );
+    final h = await uploads([
+      transport,
+    ], progressInterval: const Duration(milliseconds: 20));
+    final id = h.upload(sourceOf(30));
+    await pumpEventQueue();
+    transport
+      ..ack(0)
+      ..acceptsResume = false;
+    await pumpEventQueue();
+    transport.ack(1);
+    await pumpEventQueue();
+    await Future<void>.delayed(_pastWindow);
+    await h.restart();
+    final done = <int>[];
+    final watching = h.transfers.watch().listen((jobs) {
+      for (final job in jobs) {
+        if (job.id == id && job.state is TransferState$Running) {
+          done.add(job.state.done);
+        }
+      }
+    });
+    addTearDown(watching.cancel);
+    await pumpEventQueue();
+    transport.holdParts = false;
+    for (final index in [0, 1, 2]) {
+      if (transport.held.contains(index)) transport.ack(index);
+      await pumpEventQueue();
+    }
+    await pumpEventQueue();
+    expect(transport.sent.map((part) => part.index), [0, 1, 2, 0, 1, 2]);
+    expect(done.first, 20, reason: 'the restart shows what was shown');
+    expect(done, orderedEquals([...done]..sort()));
+    expect(await stateOf(h.transfers, id), isA<TransferState$Completed>());
+  });
+
   test('a transport that cannot resume opens without a token and starts '
       'from zero', () async {
     final transport = fakeTransport(
