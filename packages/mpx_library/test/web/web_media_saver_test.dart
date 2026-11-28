@@ -14,7 +14,7 @@ import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_library/src/platform/save_browser_js.dart';
-import 'package:mpx_library/src/platform/save_writer_js.dart';
+import 'package:mpx_library/src/platform/web_save_writer.dart';
 import 'package:mpx_library/testing.dart';
 import 'package:web/web.dart' as web;
 
@@ -135,7 +135,7 @@ void main() {
       expect(diagnostics.whereOp(SaveOp.fallbackToAsk), isEmpty);
     });
 
-    test('a picker the user dismisses is cancelled', () async {
+    test('a picker the user dismisses cancels the batch', () async {
       browser
         ..hasSavePicker = true
         ..pickErrors.add('AbortError');
@@ -146,11 +146,13 @@ void main() {
 
       expect(results, [
         const SaveResult.cancelled(),
-        const SaveResult.saved(null),
+        const SaveResult.cancelled(),
       ]);
       expect(browser.downloads, isEmpty);
+      expect(browser.picks, isEmpty, reason: 'no second picker opened');
       expect(diagnostics.whereOp(SaveOp.itemCancelled), [
         isMpxEvent(fields: containsPair('index', 0)),
+        isMpxEvent(fields: containsPair('index', 1)),
       ]);
     });
 
@@ -356,7 +358,7 @@ void main() {
 /// DOM.
 MediaSaver _webSaver(SaveBrowser browser, {int chunkBytes = 1 << 20}) =>
     PlatformMediaSaver.over(
-      SaveWriter$JS(browser: browser, chunkBytes: chunkBytes),
+      WebSaveWriter(browser: browser, chunkBytes: chunkBytes),
     );
 
 final class _Download {

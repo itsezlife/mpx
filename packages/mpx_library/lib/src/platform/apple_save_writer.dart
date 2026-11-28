@@ -1,10 +1,11 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/src/platform/desktop_save_writer.dart';
-import 'package:mpx_library/src/platform/platform_save_access.dart';
 import 'package:mpx_library/src/platform/save_block_codec.dart';
-import 'package:mpx_library/src/save/save_destination.dart';
-import 'package:mpx_library/src/save/save_item.dart';
+import 'package:mpx_library/src/save/save_error_summary.dart';
 import 'package:mpx_library/src/save/save_op.dart';
 import 'package:mpx_library/src/save/save_result.dart';
 import 'package:mpx_library/src/save/save_writer.dart';
@@ -26,80 +27,27 @@ import 'package:mpx_library/src/save/save_writer.dart';
 /// - `ask` (iOS): the system's export picker over the whole batch; a
 ///   dismissed picker cancels every item.
 ///
-/// On macOS ([AppleSaveWriter.macos]) only the gallery is a block. Downloads
-/// and `ask` are files the Dart side writes item by item ([files]), with
-/// progress and a cancel inside a copy, which a block has neither of:
-/// `~/Downloads/<subfolder>` (a taken name becomes `name (1)`, `createdAt`
-/// the modification time), and the system save panel, one per item.
+/// On macOS (`MacosSaveWriter`) only the gallery is a block of this
+/// writer; Downloads and `ask` are files the Dart side writes.
+///
+/// The native side reads files, so an item held in memory
+/// (`SaveItem.bytes`) is first written to a temporary file under its name,
+/// removed once the block ends.
 ///
 /// A cancel counts only before the block begins (the runner holds that
 /// rule). The native side reports a failure as the platform error it got;
 /// [failureOf] maps it.
 final class AppleSaveWriter extends SaveWriter$Block {
-  /// The writer over [_methods], admitting a batch through [access] first.
-  /// [files], when set, writes every destination but the gallery.
-  const AppleSaveWriter(
-    this._methods, {
-    required this.access,
-    this.platform = 'ios',
-    this.files,
-  });
-
-  /// The writer of macOS: Photos through [_methods], Downloads and the save
-  /// panel as files ([DesktopSaveWriter] of [DesktopPlatform.macos]), both
-  /// admitted through [access]. [folders] defaults to the home's
-  /// (`MacosHomeFolders`), [pickLocation] to the system save panel.
-  AppleSaveWriter.macos(
-    MethodChannel methods, {
-    required PlatformSaveAccess access,
-    DesktopFolders? folders,
-    Future<String?> Function(String suggestedName)? pickLocation,
-  }) : this(
-         methods,
-         access: access,
-         platform: 'macos',
-         files: DesktopSaveWriter(
-           DesktopPlatform.macos,
-           access: access,
-           folders: folders,
-           pickLocation: pickLocation,
-         ),
-       );
+  /// The writer over [_methods], reporting itself as [platform].
+  const AppleSaveWriter(this._methods, {this.platform = 'ios'});
 
   final MethodChannel _methods;
-
-  /// The save access every batch is admitted through.
-  final PlatformSaveAccess access;
 
   @override
   final String platform;
 
-  /// The writer of every destination but the gallery, where the platform
-  /// writes those as files (macOS); null writes them in a native block too
-  /// (iOS).
-  final SaveWriter$PerItem? files;
-
-  @override
-  SaveWriter? delegateFor(SaveDestination destination) => switch (destination) {
-    SaveDestination$Gallery() => null,
-    SaveDestination$Downloads() || SaveDestination$Ask() => files,
-  };
-
   static const _requests = SaveBlockRequestCodec();
   static const _answers = SaveBlockAnswerCodec();
-
-  @override
-  Future<SaveResult$Failed?> admit(
-    String jobId,
-    SaveDestination destination,
-    List<SaveItem> items,
-  ) async {
-    // The native side reads files; content held in memory is the web's.
-    if (items.any((item) => item.path == null)) {
-      return const SaveResult$Failed(SaveFailure.unavailable, code: 'bytes');
-    }
-    return access.admit(jobId, destination);
-  }
 
   @override
   Future<List<SaveResult>> writeBlock(
@@ -107,16 +55,48 @@ final class AppleSaveWriter extends SaveWriter$Block {
     required void Function(double fraction) onProgress,
   }) async {
     final first = writes.first;
+    // The native side reads files: an item held in memory is written to a
+    // temporary file first, under its own name (Photos and Files name the
+    // saved item after its file), and the folder goes once the block ends.
+    Directory? spill;
+    try {
+      final paths = <String>[];
+      for (final (index, write) in writes.indexed) {
+        if (write.item.bytes case final bytes?) {
+          spill ??= await Directory.systemTemp.createTemp('mpx_library_save_');
+          final folder = await Directory(
+            '${spill.path}${Platform.pathSeparator}$index',
+          ).create();
+          final file = File(
+            '${folder.path}${Platform.pathSeparator}'
+            '${DesktopSaveNames.sanitize(write.item.name)}',
+          );
+          await file.writeAsBytes(bytes, flush: true);
+          paths.add(file.path);
+        } else {
+          paths.add(write.item.path!);
+        }
+      }
+      return await _block(first, writes, paths);
+    } finally {
+      if (spill != null) await _remove(spill);
+    }
+  }
+
+  Future<List<SaveResult>> _block(
+    SaveWrite first,
+    List<SaveWrite> writes,
+    List<String> paths,
+  ) async {
     final map = await _methods.invokeMapMethod<Object?, Object?>(
       'saveBlock',
       _requests.encode(
         SaveBlockRequest(
           destination: first.destination,
           entries: [
-            for (final write in writes)
+            for (final (index, write) in writes.indexed)
               SaveBlockEntry(
-                // Bytes items were refused in [admit].
-                path: write.item.path!,
+                path: paths[index],
                 name: write.item.name,
                 mimeType: write.item.mimeType,
                 kind: write.kind,
@@ -172,6 +152,29 @@ final class AppleSaveWriter extends SaveWriter$Block {
         ('posix', 28 || 69) => SaveFailure.noSpace,
         _ => SaveFailure.unavailable,
       };
+
+  /// Removes the temporary folder of a block's in-memory items. One that
+  /// will not go is reported (by its error's type and code, never the
+  /// path) and left to the system, which clears its temporary files.
+  static Future<void> _remove(Directory spill) async {
+    try {
+      await spill.delete(recursive: true);
+    } on FileSystemException catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: SaveErrorSummary.of(
+            error,
+            code: 'os${error.osError?.errorCode}',
+          ),
+          stack: stackTrace,
+          library: 'mpx_library',
+          context: ErrorDescription(
+            'while removing a saved item\'s temporary file',
+          ),
+        ),
+      );
+    }
+  }
 
   static void _report(String jobId, SaveBlockAnswer answer) {
     if (answer.fallback case final fallback?) {

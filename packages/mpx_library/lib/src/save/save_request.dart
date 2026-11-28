@@ -43,6 +43,16 @@ final class SaveRequest {
     createdAt: createdAt,
   );
 
+  /// The item to save from [bytes], the content as a keeper that lends no
+  /// file (the web) holds it.
+  SaveItem inMemory(Uint8List bytes) => SaveItem.bytes(
+    bytes,
+    name: name,
+    mimeType: mimeType,
+    kind: kind,
+    createdAt: createdAt,
+  );
+
   // The name is user content: kept out of strings logs may hold.
   @override
   String toString() => 'SaveRequest($key, ${kind.name})';

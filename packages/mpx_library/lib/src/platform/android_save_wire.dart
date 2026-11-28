@@ -189,7 +189,8 @@ final class AndroidSaveStep$Done extends AndroidSaveStep {
 /// | `move` | bool |
 ///
 /// Decoding is strict: a missing or mistyped field throws a
-/// [FormatException] whose message names it.
+/// [FormatException] whose message names it, with no source: the map
+/// holds paths, names and URIs.
 final class AndroidSaveStartCodec
     extends Codec<AndroidSaveStart, Map<Object?, Object?>> {
   /// The codec.
@@ -217,7 +218,8 @@ final class AndroidSaveStartCodec
 /// | `renamed` | bool, with `done`: renamed on a name collision |
 ///
 /// Decoding is strict: a missing or mistyped field throws a
-/// [FormatException] whose message names it.
+/// [FormatException] whose message names it, with no source: the map
+/// holds paths, names and URIs.
 final class AndroidSaveStepCodec
     extends Codec<AndroidSaveStep, Map<Object?, Object?>> {
   /// The codec.
@@ -275,12 +277,12 @@ final class _StartDecoder
   AndroidSaveStart convert(Map<Object?, Object?> input) {
     final kind = SaveItemKind.values
         .asNameMap()[_Read.string(input, _Key.kind)];
-    if (kind == null) throw FormatException(_Key.kind, input);
+    if (kind == null) throw const FormatException(_Key.kind);
     final createdAtMs = _Read.optional<int>(input, _Key.createdAtMs);
     final path = _Read.optional<String>(input, _Key.path);
     final bytes = _Read.optional<Uint8List>(input, _Key.bytes);
     if ((path == null) == (bytes == null)) {
-      throw FormatException(_Key.path, input);
+      throw const FormatException(_Key.path);
     }
     return AndroidSaveStart(
       destination: _Read.string(input, _Key.destination),
@@ -350,7 +352,7 @@ abstract final class _Read {
     String key,
   ) => switch (input[key]) {
     final T value => value,
-    _ => throw FormatException(key, input),
+    _ => throw FormatException(key),
   };
 
   static T? optional<T extends Object>(
@@ -359,6 +361,6 @@ abstract final class _Read {
   ) => switch (input[key]) {
     null => null,
     final T value => value,
-    _ => throw FormatException(key, input),
+    _ => throw FormatException(key),
   };
 }

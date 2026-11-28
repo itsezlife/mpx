@@ -376,24 +376,37 @@ save (progress, result).
   needs `MPX_LIBRARY_PHOTOS`.
 
 - **Media saver** (decisions of the save tickets 01 to 08, 2026-11-28):
-  - One runner holds the shared rules (job id, progress, cancel, MIME
-    routing, the `move` rule, lease release, events) over a writer per
-    platform; a writer is per-item or one atomic block. A refused `move` of
-    a leased file is a copy with a `moveRefused` warning, not a failure.
+  - One runner holds the shared rules (job id, progress, cancel, the
+    access check, MIME routing, the `move` rule, lease release, events) over
+    a writer per platform; a writer is per-item, one atomic block, or routes
+    each destination to one of those (macOS). One resolved platform picks
+    both the access rules and the writer. A refused `move` of a leased file
+    is a copy with a `moveRefused` warning, not a failure. An item a writer
+    ends cancelled (a dismissed picker or dialog) ends the batch on every
+    platform, the web included.
   - Android steps the copy over method calls, 4 MiB each, so a cancel acts
     within one step; the native side names the error by a short code and
     Dart maps it. Windows and Linux copy on a worker isolate in 1 MiB chunks
-    and bind the known folders with `dart:ffi` alone.
+    and bind the known folders with `dart:ffi` alone. A desktop save
+    claims its name with an empty file and writes into a hidden
+    `.<name>.part` renamed over it at the end; a cancel or any failure
+    removes both.
   - macOS `downloads` and `ask` are written from Dart through the desktop
     writer, because a native block would have neither progress nor a cancel
     inside a copy; the save panel is the system file dialog plugin's.
   - On iOS every destination is one block. Files needs both
     `UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace`; a named
-    album under limited access is skipped (`albumSkipped`); `SaveItem.bytes`
-    is refused (`unavailable`, code `bytes`).
+    album under limited access is skipped (`albumSkipped`); a
+    `SaveItem.bytes` item is written to a temporary file for the block
+    (reversed 2026-11-28, review: it was refused).
   - On the web an item with a path is read from the origin's private file
-    system; the bytes cache lends no file there, so web saves use bytes. A
+    system; the bytes cache lends no file there, so web saves use bytes:
+    `saveContent` reads a whole content through `TrackedTransfers.readBytes`
+    when no file is lent (a file, where there is one, is still copied). A
     spent user gesture turns a later `ask` into a download (`noActivation`).
+  - Diagnostics carry an error as its type and code only
+    (`SaveErrorSummary`), never its message, and the channel codecs'
+    format errors carry no source.
   - Not confirmed on a device (the device checks settle them): MediaStore's
     rename of a taken name, the Windows and Linux bindings and dialogs, an
     iOS album under full access.

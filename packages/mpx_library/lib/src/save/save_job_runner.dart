@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/src/save/media_saver.dart';
 import 'package:mpx_library/src/save/save_destination.dart';
+import 'package:mpx_library/src/save/save_error_summary.dart';
 import 'package:mpx_library/src/save/save_item.dart';
 import 'package:mpx_library/src/save/save_op.dart';
 import 'package:mpx_library/src/save/save_request.dart';
@@ -15,10 +16,15 @@ import 'package:mpx_library/src/save/save_writer.dart';
 ///
 /// - One batch is one job with one id, one progress and a result per item.
 /// - A cancel before the work begins cancels every item; between items it
-///   cancels the rest; inside an item it is the writer's to honour. A block
+///   cancels the rest; inside an item it is the writer's to honour. An item
+///   a per-item writer ends cancelled (a dismissed picker) cancels the job,
+///   as `SaveJob.cancel` does. A block
 ///   writer's batch is cancelled only before its block begins; the block's
 ///   end, or its cancel before it began, is reported (`changeBlock`).
-/// - A failed admission (denied access, no adapter) fails every item.
+/// - A batch is admitted once, before anything is written or downloaded:
+///   the access first ([SaveAccessGate], the same for every writer), then
+///   the writer's own check (`SaveWriter.admit`); a refusal (denied access,
+///   no adapter) fails every item.
 /// - A `file` item sent to the gallery goes as a photo or a video by its MIME
 ///   type, or fails `unsupportedFormat` unwritten.
 /// - A leased file is never moved.
@@ -32,18 +38,20 @@ import 'package:mpx_library/src/save/save_writer.dart';
 abstract final class SaveJobRunner {
   static int _lastJob = 0;
 
-  /// Starts saving [items] to [destination] through [writer] and returns the
-  /// job at once; the work begins on a later microtask, so a cancel right
-  /// after this call lands before anything is written.
+  /// Starts saving [items] to [destination] through [writer], admitted
+  /// through [access], and returns the job at once; the work begins on a
+  /// later microtask, so a cancel right after this call lands before
+  /// anything is written.
   static SaveJob run(
     List<SaveItem> items,
     SaveDestination destination,
-    SaveWriter writer,
-  ) {
-    final job = _Job('save-${++_lastJob}', [
+    SaveWriter writer, {
+    required SaveAccessGate access,
+  }) {
+    final job = _Job('save-${++_lastJob}', access, [
       for (final item in items) _Slot.item(item),
     ]);
-    unawaited(job._run(destination, writer.delegateFor(destination) ?? writer));
+    unawaited(job._run(destination, writer));
     return job;
   }
 
@@ -55,21 +63,25 @@ abstract final class SaveJobRunner {
     List<SaveRequest> requests,
     SaveDestination destination,
     SaveWriter writer,
-    TrackedTransfers? transfers,
-  ) {
-    final job = _Job('save-${++_lastJob}', [
+    TrackedTransfers? transfers, {
+    required SaveAccessGate access,
+  }) {
+    final job = _Job('save-${++_lastJob}', access, [
       for (final request in requests) _Slot.request(request),
     ]);
-    unawaited(
-      job._runContent(
-        destination,
-        writer.delegateFor(destination) ?? writer,
-        transfers,
-      ),
-    );
+    unawaited(job._runContent(destination, writer, transfers));
     return job;
   }
 }
+
+/// The access check of a batch, the same for every writer: the failure
+/// every item of job `jobId` to `destination` ends with, or null when the
+/// batch may be written (`SaveAdmission.admit` over the platform's access).
+typedef SaveAccessGate =
+    Future<SaveResult$Failed?> Function(
+      String jobId,
+      SaveDestination destination,
+    );
 
 /// One item of a job: what it is, the item to write once known, and how far
 /// it is.
@@ -117,6 +129,22 @@ final class _Slot {
 
   /// The content's key, for the item's events; null for a `save` item.
   MediaKey? get mediaKey => request?.key;
+
+  /// What a writer or the transfers threw for this item, carried into the
+  /// item's next event: its own, never another item's, since the items of
+  /// a `saveContent` batch arrive at once.
+  (Object, StackTrace)? _$error;
+
+  /// Keeps [error] (with [stackTrace]) for the item's next event.
+  void failedWith(Object error, StackTrace stackTrace) =>
+      _$error = (error, stackTrace);
+
+  /// The kept error, once.
+  (Object, StackTrace)? takeError() {
+    final error = _$error;
+    _$error = null;
+    return error;
+  }
 }
 
 /// How a `saveContent` item's download ended for its job.
@@ -135,10 +163,13 @@ enum _Arrival {
 }
 
 final class _Job implements SaveJob {
-  _Job(this.id, this._slots) : _results = List.filled(_slots.length, null);
+  _Job(this.id, this._access, this._slots)
+    : _results = List.filled(_slots.length, null);
 
   @override
   final String id;
+
+  final SaveAccessGate _access;
 
   final List<_Slot> _slots;
   final List<SaveResult?> _results;
@@ -201,8 +232,8 @@ final class _Job implements SaveJob {
     }
   }
 
-  /// Admits the batch through [writer] with [items]; false when it was
-  /// refused, every item then ended with the refusal.
+  /// Admits the batch (the access, then [writer] with [items]); false when
+  /// it was refused, every item then ended with the refusal.
   Future<bool> _admitted(
     SaveDestination destination,
     SaveWriter writer,
@@ -214,6 +245,25 @@ final class _Job implements SaveJob {
     return false;
   }
 
+  /// The access first, then [writer]'s own check: the refusal, or null.
+  /// A throw refuses the batch `unavailable` (code `admit`).
+  Future<SaveResult$Failed?> _admit(
+    SaveWriter writer,
+    SaveDestination destination,
+    List<SaveItem> items,
+  ) async {
+    try {
+      return await _access(id, destination) ??
+          await writer.admit(id, destination, items);
+    } on Object catch (error, stackTrace) {
+      // The batch's admission failed: every item ends with it.
+      for (final slot in _slots) {
+        slot.failedWith(error, stackTrace);
+      }
+      return const SaveResult$Failed(SaveFailure.unavailable, code: 'admit');
+    }
+  }
+
   /// Writes every item not ended yet.
   Future<void> _write(SaveDestination destination, SaveWriter writer) async {
     final writes = <SaveWrite>[];
@@ -221,24 +271,21 @@ final class _Job implements SaveJob {
       if (_results[i] != null) continue;
       if (_writeOf(i, destination) case final write?) writes.add(write);
     }
+    await _writeWith(writer, destination, writes);
+  }
+
+  Future<void> _writeWith(
+    SaveWriter writer,
+    SaveDestination destination,
+    List<SaveWrite> writes,
+  ) async {
     switch (writer) {
       case SaveWriter$PerItem():
         await _writeEach(writer, writes);
       case SaveWriter$Block():
         await _writeBlock(writer, writes);
-    }
-  }
-
-  Future<SaveResult$Failed?> _admit(
-    SaveWriter writer,
-    SaveDestination destination,
-    List<SaveItem> items,
-  ) async {
-    try {
-      return await writer.admit(id, destination, items);
-    } on Object catch (error, stackTrace) {
-      _error = (error, stackTrace);
-      return const SaveResult$Failed(SaveFailure.unavailable, code: 'admit');
+      case SaveWriter$ByDestination():
+        await _writeWith(writer.writerFor(destination), destination, writes);
     }
   }
 
@@ -297,13 +344,17 @@ final class _Job implements SaveJob {
           cancellation: _cancellation,
         );
       } on Object catch (error, stackTrace) {
-        _error = (error, stackTrace);
+        _slots[write.index].failedWith(error, stackTrace);
         result = const SaveResult.failed(
           SaveFailure.unavailable,
           code: 'throw',
         );
       }
       _end(write.index, result);
+      // A writer that ends an item cancelled (the user dismissed its
+      // picker) said no to the batch: the job's cancel ends the items after
+      // it, and stops the downloads the job still has under way.
+      if (result is SaveResult$Cancelled) cancel();
     }
     _endRemaining(const SaveResult.cancelled());
   }
@@ -333,7 +384,9 @@ final class _Job implements SaveJob {
         throw StateError('${results.length} results for ${writes.length}');
       }
     } on Object catch (error, stackTrace) {
-      _error = (error, stackTrace);
+      for (final write in writes) {
+        _slots[write.index].failedWith(error, stackTrace);
+      }
       results = List.filled(
         writes.length,
         const SaveResult.failed(SaveFailure.unavailable, code: 'throw'),
@@ -361,8 +414,8 @@ final class _Job implements SaveJob {
   void _end(int index, SaveResult result, {String stage = 'copy'}) {
     if (_results[index] != null) return;
     _results[index] = result;
-    final error = _takeError();
     final slot = _slots[index];
+    final error = slot.takeError();
     final item = slot.item;
     switch (result) {
       case SaveResult$Saved(:final renamed):
@@ -378,6 +431,7 @@ final class _Job implements SaveJob {
             'ms': _clock.elapsedMilliseconds,
             'renamed': renamed,
           },
+          error: error,
         );
       case SaveResult$Cancelled():
         _emit(
@@ -385,6 +439,7 @@ final class _Job implements SaveJob {
           SaveOp.itemCancelled,
           mediaKey: slot.mediaKey,
           () => {'index': index, 'stage': stage},
+          error: error,
         );
       case SaveResult$Failed(:final reason, :final code):
         _emit(
@@ -432,7 +487,7 @@ final class _Job implements SaveJob {
     } on Object catch (error, stackTrace) {
       FlutterError.reportError(
         FlutterErrorDetails(
-          exception: error,
+          exception: SaveErrorSummary.of(error),
           stack: stackTrace,
           library: 'mpx_library',
           context: ErrorDescription('while releasing a saved item\'s lease'),
@@ -506,14 +561,15 @@ final class _Job implements SaveJob {
     return _finish();
   }
 
-  /// Makes item [index]'s content local and leases its file, or ends the
-  /// item: download, await, lease; a missing lease downloads once more,
-  /// then fails the item `unavailable`.
+  /// Makes item [index]'s content local and leases its file (or reads its
+  /// bytes where the keeper lends no file), or ends the item: download,
+  /// await, lease; content still not there downloads once more, then fails
+  /// the item `unavailable`.
   Future<void> _arrive(int index, TrackedTransfers transfers) async {
     final slot = _slots[index];
     final request = slot.request!;
-    if (await _lease(index, transfers) case final lease?) {
-      slot.item = request.leased(lease);
+    if (await _local(index, transfers) case final item?) {
+      slot.item = item;
       _emit(
         MpxEventLevel.debug,
         SaveOp.downloadShared,
@@ -556,8 +612,8 @@ final class _Job implements SaveJob {
           slot.downloaded = 1;
           _report('download');
       }
-      if (await _lease(index, transfers) case final lease?) {
-        slot.item = request.leased(lease);
+      if (await _local(index, transfers) case final item?) {
+        slot.item = item;
         return;
       }
       _emit(
@@ -565,7 +621,7 @@ final class _Job implements SaveJob {
         SaveOp.leaseMissing,
         mediaKey: request.key,
         () => {'index': index, 'attempt': attempt},
-        error: _takeError(),
+        error: slot.takeError(),
       );
       if (attempt == 2) {
         return _end(
@@ -576,16 +632,23 @@ final class _Job implements SaveJob {
     }
   }
 
-  /// The lease of item [index]'s file, or null when its content is not
-  /// local; a throw counts as null, its error kept for the event it causes.
-  Future<ContentFileLease?> _lease(
-    int index,
-    TrackedTransfers transfers,
-  ) async {
+  /// Item [index]'s content as an item to write, or null when it is not
+  /// local: its file's lease, else, from a keeper that lends no file (the
+  /// web's browser storage), its bytes. A file is asked first, so content
+  /// that has one is copied, never read into memory. A throw counts as
+  /// null, its error kept for the item's next event.
+  Future<SaveItem?> _local(int index, TrackedTransfers transfers) async {
+    final request = _slots[index].request!;
     try {
-      return await transfers.leaseFile(_slots[index].request!.key);
+      if (await transfers.leaseFile(request.key) case final lease?) {
+        return request.leased(lease);
+      }
+      if (await transfers.readBytes(request.key) case final bytes?) {
+        return request.inMemory(bytes);
+      }
+      return null;
     } on Object catch (error, stackTrace) {
-      _error = (error, stackTrace);
+      _slots[index].failedWith(error, stackTrace);
       return null;
     }
   }
@@ -644,16 +707,6 @@ final class _Job implements SaveJob {
 
   // --- Diagnostics ---
 
-  /// The error a writer or the transfers threw, carried into the event it
-  /// causes.
-  (Object, StackTrace)? _error;
-
-  (Object, StackTrace)? _takeError() {
-    final error = _error;
-    _error = null;
-    return error;
-  }
-
   int _count(SaveItemKind kind) => _slots.where((s) => s.kind == kind).length;
 
   void _routed(int index, String outcome) => _emit(
@@ -684,7 +737,11 @@ final class _Job implements SaveJob {
     jobId: id,
     mediaKey: mediaKey,
     fields: fields,
-    error: error?.$1,
+    // Its type and code only: the message can hold a path or a name.
+    error: switch (error) {
+      (final error, _) => SaveErrorSummary.of(error),
+      null => null,
+    },
     stackTrace: error?.$2,
   );
 

@@ -4,11 +4,11 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/src/platform/macos_home_folders.dart';
-import 'package:mpx_library/src/platform/platform_save_access.dart';
 import 'package:mpx_library/src/platform/save_file_copy.dart';
 import 'package:mpx_library/src/platform/windows_known_folders.dart';
 import 'package:mpx_library/src/platform/xdg_user_dirs.dart';
 import 'package:mpx_library/src/save/save_destination.dart';
+import 'package:mpx_library/src/save/save_error_summary.dart';
 import 'package:mpx_library/src/save/save_item.dart';
 import 'package:mpx_library/src/save/save_result.dart';
 import 'package:mpx_library/src/save/save_writer.dart';
@@ -16,7 +16,7 @@ import 'package:mpx_library/src/save/save_writer.dart';
 /// A desktop where a save is a file in a folder: where its folders come
 /// from and what its file system's error codes mean. Windows and Linux save
 /// every destination so; macOS its Downloads and save panel, its gallery
-/// being Photos (`AppleSaveWriter.macos`).
+/// being Photos (`MacosSaveWriter`).
 enum DesktopPlatform {
   /// Windows: known folders, Win32 error codes.
   windows,
@@ -134,25 +134,27 @@ abstract final class DesktopSaveNames {
 /// user chose the file, a file already there included, so it is replaced.
 /// A dismissed dialog cancels the batch: its item and every one after it.
 ///
-/// The copy streams on a worker isolate ([SaveFileCopy]); a cancel stops it
-/// between chunks and the partial file is removed, as on any failure. A
+/// In a folder the bytes go into a hidden part file (`.<name>.part`) beside
+/// the claimed name, renamed over it once complete, so the name never
+/// holds part of the content; in the dialog's pick they go into the picked
+/// file. The copy streams on a worker isolate ([SaveFileCopy]); a cancel
+/// stops it between chunks. A cancel or any failure (a file system error,
+/// a crashed worker) removes the part file and the claim. A
 /// host file given with `move` is renamed into place when the volume
 /// allows, else copied and then removed. `createdAt` becomes the file's
-/// modification time. There is no access to ask for: [access], the
-/// platform's, admits every batch, and is checked all the same so a desktop
-/// reads like every other platform.
+/// modification time. There is no access to ask for.
 final class DesktopSaveWriter extends SaveWriter$PerItem {
   /// The writer of [os]. [folders] defaults to the system's for [os],
   /// [pickLocation] (the path for a suggested name, null when dismissed) to
-  /// the system save dialog through `file_selector`. [access] is the
-  /// platform's save access; null admits every batch.
+  /// the system save dialog through `file_selector`.
   DesktopSaveWriter(
     this.os, {
-    this.access,
     DesktopFolders? folders,
     Future<String?> Function(String suggestedName)? pickLocation,
     int chunkSize = SaveFileCopy.defaultChunkSize,
-  }) : _folders =
+    @visibleForTesting SaveFileCopier? copy,
+  }) : _copy = copy ?? SaveFileCopy.run,
+       _folders =
            folders ??
            switch (os) {
              DesktopPlatform.windows => const WindowsKnownFolders(),
@@ -165,12 +167,10 @@ final class DesktopSaveWriter extends SaveWriter$PerItem {
   /// The desktop this writer saves on.
   final DesktopPlatform os;
 
-  /// The platform's save access; null admits every batch.
-  final PlatformSaveAccess? access;
-
   final DesktopFolders _folders;
   final Future<String?> Function(String suggestedName) _pickLocation;
   final int _chunkSize;
+  final SaveFileCopier _copy;
 
   static Future<String?> _pickWithDialog(String suggestedName) async =>
       (await getSaveLocation(suggestedName: suggestedName))?.path;
@@ -183,13 +183,6 @@ final class DesktopSaveWriter extends SaveWriter$PerItem {
   String get platform => os.name;
 
   @override
-  Future<SaveResult$Failed?> admit(
-    String jobId,
-    SaveDestination destination,
-    List<SaveItem> items,
-  ) async => access?.admit(jobId, destination);
-
-  @override
   Future<SaveResult> write(
     SaveWrite write, {
     required FetchProgress onProgress,
@@ -198,20 +191,33 @@ final class DesktopSaveWriter extends SaveWriter$PerItem {
     if (cancellation.isCancelled) return const SaveResult.cancelled();
     final _Place place;
     try {
-      place = await _placeOf(write, cancellation);
+      place = await _placeOf(write);
     } on _Ended catch (ended) {
       return ended.result;
     } on FileSystemException catch (error) {
       return os.resultOf(error);
     }
+    // In a folder the bytes go into a hidden part file beside the claimed
+    // name, renamed over it at the end, so nothing under the name holds
+    // part of the content. The file the user picked is written in place:
+    // the sandbox lets the app write that file alone, not beside it.
+    final target = place.claimed ? _partOf(place.path) : place.path;
+    var finished = false;
     try {
-      if (!await _fill(write, place.path, onProgress, cancellation)) {
-        await _discard(place.path);
+      if (!await _fill(write, target, onProgress, cancellation)) {
         return const SaveResult.cancelled();
       }
+      if (place.claimed) await _replace(target, place.path);
+      finished = true;
     } on FileSystemException catch (error) {
-      await _discard(place.path);
       return os.resultOf(error);
+    } finally {
+      // Cancelled, failed, or thrown (a worker that crashed, an isolate
+      // that would not start): nothing of the item stays.
+      if (!finished) {
+        if (place.claimed) await _discard(target);
+        await _discard(place.path);
+      }
     }
     if (write.item.createdAt case final createdAt?) {
       await _stamp(place.path, createdAt);
@@ -222,20 +228,17 @@ final class DesktopSaveWriter extends SaveWriter$PerItem {
   // --- Where ---
 
   /// The file [write] goes to, claimed in its folder, or the user's pick.
-  Future<_Place> _placeOf(
-    SaveWrite write,
-    CancellationToken cancellation,
-  ) async {
+  Future<_Place> _placeOf(SaveWrite write) async {
     final name = DesktopSaveNames.sanitize(write.item.name);
     final DesktopFolder folder;
     final String? subfolder;
     switch (write.destination) {
       case SaveDestination$Ask():
         final picked = await _pickLocation(name);
-        if (picked != null) return _Place(picked, renamed: false);
-        // The user said no to the batch, not to one item: the job's cancel
-        // ends this item and stops the ones after it unasked.
-        cancellation.cancel();
+        if (picked != null) {
+          return _Place(picked, renamed: false, claimed: false);
+        }
+        // The user dismissed the dialog: a cancelled item ends the batch.
         throw const _Ended(SaveResult.cancelled());
       case SaveDestination$Gallery(:final album):
         folder = _galleryFolderOf(write);
@@ -282,7 +285,7 @@ final class DesktopSaveWriter extends SaveWriter$PerItem {
       );
       try {
         await File(path).create(exclusive: true);
-        return _Place(path, renamed: n > 0);
+        return _Place(path, renamed: n > 0, claimed: true);
       } on PathExistsException {
         continue;
       } on FileSystemException catch (error) {
@@ -298,6 +301,25 @@ final class DesktopSaveWriter extends SaveWriter$PerItem {
 
   static String _join(String directory, String name) =>
       '$directory${Platform.pathSeparator}$name';
+
+  /// The hidden part file beside [path]: `.<name>.part`, unique because
+  /// [path] was claimed.
+  static String _partOf(String path) {
+    final slash = path.lastIndexOf(Platform.pathSeparator);
+    return '${path.substring(0, slash + 1)}.${path.substring(slash + 1)}.part';
+  }
+
+  /// Puts the finished [part] in place of the claimed [path]. A rename over
+  /// a file replaces it on POSIX at once; a file system that refuses has
+  /// the claim removed first.
+  static Future<void> _replace(String part, String path) async {
+    try {
+      await File(part).rename(path);
+    } on FileSystemException {
+      await File(path).delete();
+      await File(part).rename(path);
+    }
+  }
 
   // --- The bytes ---
 
@@ -316,7 +338,7 @@ final class DesktopSaveWriter extends SaveWriter$PerItem {
     }
     final source = item.path!;
     if (write.move && await _move(source, path, onProgress)) return true;
-    final copied = await SaveFileCopy.run(
+    final copied = await _copy(
       source,
       path,
       onProgress: onProgress,
@@ -355,7 +377,8 @@ final class DesktopSaveWriter extends SaveWriter$PerItem {
     return true;
   }
 
-  /// Removes what a write that did not finish left at [path].
+  /// Removes what a write that did not finish left at [path], or the claim
+  /// it made there.
   static Future<void> _discard(String path) async {
     try {
       await File(path).delete();
@@ -377,23 +400,35 @@ final class DesktopSaveWriter extends SaveWriter$PerItem {
     }
   }
 
-  static void _report(Object error, StackTrace stackTrace, String context) =>
-      FlutterError.reportError(
-        FlutterErrorDetails(
-          exception: error,
-          stack: stackTrace,
-          library: 'mpx_library',
-          context: ErrorDescription(context),
-        ),
-      );
+  // The error's text holds the path: reported by its type and OS code.
+  static void _report(
+    FileSystemException error,
+    StackTrace stackTrace,
+    String context,
+  ) => FlutterError.reportError(
+    FlutterErrorDetails(
+      exception: SaveErrorSummary.of(
+        error,
+        code: switch (error.osError?.errorCode) {
+          final code? => 'os$code',
+          null => null,
+        },
+      ),
+      stack: stackTrace,
+      library: 'mpx_library',
+      context: ErrorDescription(context),
+    ),
+  );
 }
 
-/// Where an item is written, and whether its name was taken.
+/// Where an item is written, whether its name was taken, and whether the
+/// writer claimed it in a folder (else the user picked it).
 final class _Place {
-  const _Place(this.path, {required this.renamed});
+  const _Place(this.path, {required this.renamed, required this.claimed});
 
   final String path;
   final bool renamed;
+  final bool claimed;
 }
 
 /// Ends a write early with [result], from inside the lookup of its place.

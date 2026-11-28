@@ -6,7 +6,7 @@ import 'package:mpx_core/testing.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_library/src/platform/android_save_wire.dart';
 import 'package:mpx_library/src/platform/android_save_writer.dart';
-import 'package:mpx_library/src/platform/platform_save_access.dart';
+import 'package:mpx_library/src/platform/save_platform.dart';
 import 'package:mpx_library/testing.dart';
 
 const _methods = MethodChannel('test.mpx.library/android-save');
@@ -97,14 +97,13 @@ final class _NativeSaver {
 }
 
 /// The platform saver as Android composes it, over the test channel.
-MediaSaver _androidSaver({TrackedTransfers? transfers}) {
-  const access = PlatformSaveAccess(_methods, platform: TargetPlatform.android);
-  return PlatformMediaSaver.over(
-    const AndroidSaveWriter(_methods, access: access),
-    methods: _methods,
-    transfers: transfers,
-  );
-}
+MediaSaver _androidSaver({TrackedTransfers? transfers}) =>
+    PlatformMediaSaver.over(
+      const AndroidSaveWriter(_methods),
+      methods: _methods,
+      transfers: transfers,
+      platform: SavePlatform.android,
+    );
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -153,6 +152,16 @@ void main() {
         );
       });
     }
+  });
+
+  test('the platform saver of an Android target is this writer, on any '
+      'host: the writer and the access follow one platform rule', () async {
+    final results = await PlatformMediaSaver(
+      methods: _methods,
+    ).save([photo(0)], const SaveDestination.downloads()).results;
+
+    expect(results.single, isA<SaveResult$Saved>());
+    expect(native.begun, 1);
   });
 
   test('begins each item with what the native side files it by', () async {
@@ -383,6 +392,20 @@ void main() {
         () => step.decode({'written': 2, 'done': true}),
         throwsA(
           isA<FormatException>().having((e) => e.message, 'message', 'ref'),
+        ),
+      );
+      // A step carries the saved item's URI: a format error names the field
+      // only.
+      expect(
+        () => step.decode({
+          'written': 2,
+          'total': 2,
+          'done': true,
+          'ref': 7,
+          'path': '/secret/a.jpg',
+        }),
+        throwsA(
+          isA<FormatException>().having((e) => e.source, 'source', isNull),
         ),
       );
     });

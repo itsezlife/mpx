@@ -38,14 +38,17 @@ final class SaveWrite {
 }
 
 /// The platform half of a `MediaSaver`: what differs per platform. The
-/// runner (`SaveJobRunner`) holds what does not: one job per batch, routing
-/// by MIME type, no move of a leased file, lease release, progress,
-/// cancel and diagnostics.
+/// runner (`SaveJobRunner`) holds what does not: one job per batch, the
+/// access check, routing by MIME type, no move of a leased file, lease
+/// release, progress, cancel and diagnostics.
 ///
-/// Two shapes, by how the platform writes a batch: [SaveWriter$PerItem]
+/// Three shapes, by how the platform writes a batch: [SaveWriter$PerItem]
 /// writes one item after another and can stop between and inside them;
 /// [SaveWriter$Block] writes the whole batch in one atomic block (a Photos
-/// change block), which cannot be stopped once begun.
+/// change block), which cannot be stopped once begun;
+/// [SaveWriter$ByDestination] writes each destination through another
+/// writer, for a platform that writes destinations in different shapes
+/// (macOS: Photos as one block, files item by item).
 sealed class SaveWriter {
   const SaveWriter();
 
@@ -53,23 +56,16 @@ sealed class SaveWriter {
   /// `windows`, `linux`, `web`, or a test's own.
   String get platform;
 
-  /// The writer that writes a batch to [destination] in this one's place,
-  /// or null when this one does: a platform that writes destinations in
-  /// different shapes (macOS: Photos as one block, files item by item). The
-  /// runner asks once per batch, before anything else, and runs the batch
-  /// on the writer it gets.
-  SaveWriter? delegateFor(SaveDestination destination) => null;
-
-  /// Checked once per batch before anything is written; a failed result
-  /// fails every item of the batch with it (denied access, no adapter, a
-  /// build without the code). Null lets the batch through. A
-  /// `saveContent` batch is admitted before its contents are downloaded, so
-  /// [items] is empty for it.
+  /// The writer's own check of a batch, once access is granted and before
+  /// anything is written; a failed result fails every item of the batch
+  /// with it (no adapter on this platform). Null, the default, lets the
+  /// batch through. A `saveContent` batch is admitted before its contents
+  /// are downloaded, so [items] is empty for it.
   Future<SaveResult$Failed?> admit(
     String jobId,
     SaveDestination destination,
     List<SaveItem> items,
-  );
+  ) async => null;
 }
 
 /// A [SaveWriter] that writes item by item.
@@ -80,6 +76,12 @@ abstract base class SaveWriter$PerItem extends SaveWriter {
   /// Writes [write], reporting the bytes written through [onProgress], and
   /// stops on [cancellation] with [SaveResult.cancelled]. A throw counts as
   /// [SaveFailure.unavailable].
+  ///
+  /// [SaveResult.cancelled] ends the batch, not only its item: the runner
+  /// cancels the job, so the items after it end cancelled unwritten. That is
+  /// how a writer reports a picker the user dismissed (the user said no to
+  /// the batch). A writer never cancels [cancellation] itself, which is the
+  /// job's and would skip what the job's cancel does.
   Future<SaveResult> write(
     SaveWrite write, {
     required FetchProgress onProgress,
@@ -101,4 +103,21 @@ abstract base class SaveWriter$Block extends SaveWriter {
     List<SaveWrite> writes, {
     required void Function(double fraction) onProgress,
   });
+}
+
+/// A [SaveWriter] that writes each destination through the writer
+/// [writerFor] gives, which the runner follows to the one that writes.
+abstract base class SaveWriter$ByDestination extends SaveWriter {
+  /// A writer.
+  const SaveWriter$ByDestination();
+
+  /// The writer of a batch to [destination].
+  SaveWriter writerFor(SaveDestination destination);
+
+  @override
+  Future<SaveResult$Failed?> admit(
+    String jobId,
+    SaveDestination destination,
+    List<SaveItem> items,
+  ) => writerFor(destination).admit(jobId, destination, items);
 }

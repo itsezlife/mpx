@@ -26,7 +26,8 @@ First release: transfer jobs for mpx on one `Transfers` facade.
 - A reuse table, so the same media sent again is neither prepared nor
   uploaded while its transport judges the stored reference good.
 - Tracked downloads and uploads through `tracked`, the core's
-  `TrackedTransfers`, for the asset cache scope.
+  `TrackedTransfers`, for the asset cache scope and the media saver; on the
+  web, where the store lends no file, `readBytes` reads a whole content.
 - Page sources on the web (`SourceBytes.blob`, `SourceBytes.memory`),
   copied into OPFS so a job survives a reload; on the VM bytes in memory
   are written to a file, and `SourceBytes.file` is read where it is.

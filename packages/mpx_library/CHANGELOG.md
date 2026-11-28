@@ -2,55 +2,21 @@
 
 ## Unreleased
 
-- `MediaSaver`, the write side of the library: `save(items, destination)`
-  saves a batch of `SaveItem`s (a host file, a leased cache file or bytes;
-  photo, video, animation or file) to `SaveDestination.gallery(album:)`,
-  `.downloads(subfolder:)` or `.ask()` as one `SaveJob` (an id, one
-  progress, `cancel()`, a `SaveResult` per item: `saved(platformRef)`,
-  `cancelled`, `failed(SaveFailure)`). A `file` sent to the gallery goes by
-  its MIME type or fails `unsupportedFormat`; a `move` of a leased file is
-  refused and the file copied; its lease is released when its item ends.
-  `saveContent(requests, destination)` saves `SaveRequest`s (key, name,
-  MIME type, kind, optional date) through `mpx_core`'s `TrackedTransfers`,
-  given as `PlatformMediaSaver(transfers:)`: a content not local is
-  downloaded as the user's tracked download (or joins one under way), then
-  leased, saved and released, under one progress (a download is 90 % of an
-  item's share, its copy 10 %; an item already local is all copy). The batch
-  is admitted once, before any download. Cancel stops only the downloads
-  the job started. A lease missing after a download downloads once more,
-  then fails `unavailable`; without `TrackedTransfers` every item fails
-  `unavailable`.
-- `SaveAccess`, apart from `LibraryAccess`: `MediaSaver.access(destination)`
-  reads it, `requestAccess(destination)` asks ahead, and a batch asks once
-  by itself. Apple asks for add-only Photos access (read and write for a
-  named album), compiled only under the host's `MPX_LIBRARY_SAVE`
-  condition; without it the gallery reads `unavailable` and a batch to it
-  fails every item `unavailable` (code `defineMissing`). Android 9 and
-  below asks for `WRITE_EXTERNAL_STORAGE`, declared with
-  `maxSdkVersion="28"`. Android 10 and later, Windows, Linux and the web ask
-  for nothing. The plugin registers on macOS for it; the library there
-  still answers `restricted`.
-- `PlatformMediaSaver` saves on every platform. Android: the MediaStore
-  from API 29 (a pending row, published when every byte is in), public
-  directories on API 28 and below, the create-document dialog for `ask`.
-  iOS: one native call and one atomic result per batch, gallery as one
-  Photos change block, Downloads as the app's Documents when the host shows
-  them in Files, else the export picker. macOS: the same Photos block;
-  `~/Downloads/<subfolder>` and the save panel written from Dart item by
-  item. Windows and Linux: the Pictures, Videos and Downloads folders (known
-  folders, XDG user directories) and the save dialog. Web: browser downloads
-  and the save picker where there is one. A taken name becomes `name (1)` on
-  the desktops and iOS Documents and is reported `renamed`; `createdAt` is
-  written where the platform keeps one; copies run off the UI thread with
-  progress and a cancel inside a copy, and a cancelled or failed copy
-  leaves nothing behind. A host adds the declarations the README lists per
-  platform.
+- `MediaSaver` saves photos, videos and files to the gallery
+  (`gallery(album:)`), Downloads (`downloads(subfolder:)`) or a place the
+  user picks (`ask()`), a batch as one `SaveJob` with one progress, a
+  cancel and a `SaveResult` per item. `saveContent(requests, destination)`
+  saves contents by key, downloading those not local through `mpx_core`'s
+  `TrackedTransfers`.
+- `SaveAccess`, apart from `LibraryAccess`: `access` reads it,
+  `requestAccess` asks ahead, a batch asks once by itself. Apple's add-only
+  access compiles under `MPX_LIBRARY_SAVE`.
+- `PlatformMediaSaver` saves on Android, iOS, macOS, Windows, Linux and the
+  web; the README lists where each destination lands and what a host
+  declares.
 - Diagnostics under category `save` (`SaveOp`), listed in the README.
-- `testing.dart`: `FakeMediaSaver` (recorded batches, scripted results,
-  progress steps, cancel, a settable `saveAccess`, `transfers`),
-  `MediaSaverContract` and `MediaSaverHarness` (`changeBlock`, `bytes`,
-  `transfers`, `withoutTransfers`). A host that implements `MediaSaver`
-  adds `access`, `requestAccess` and `saveContent`.
+- `testing.dart`: `FakeMediaSaver`, `MediaSaverContract` and
+  `MediaSaverHarness`.
 - `MediaLibrary.missing`: which of some assets the library no longer
   holds, for a host checking its selection after a change.
   `LibraryAsset.byteSize` (Android). A host that implements `MediaLibrary`
