@@ -16,8 +16,9 @@
 
     /// Copies (or, when allowed, moves) the batch into Documents, in the
     /// host's [subfolder]; a taken name becomes `name (1)`. Atomic as the
-    /// gallery is: a failure takes back every file the batch placed, so a
-    /// failed batch leaves nothing behind. Without file sharing the batch
+    /// gallery is: a failure takes back every file the batch placed, and the
+    /// partial target of the copy that failed, so a failed batch leaves
+    /// nothing behind. Without file sharing the batch
     /// goes to the export picker.
     static func downloads(
       _ entries: [SaveEntry], subfolder: String?, done: @escaping ([String: Any]) -> Void
@@ -26,6 +27,9 @@
       DispatchQueue.global(qos: .userInitiated).async {
         let files = FileManager.default
         var placed: [(target: URL, movedFrom: URL?)] = []
+        // The file being placed: a copy or a move that fails partway can
+        // leave its own partial target, which `placed` does not hold yet.
+        var current: (target: URL, source: URL)?
         do {
           var folder = try files.url(
             for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
@@ -36,6 +40,7 @@
           var items: [[String: Any]] = []
           for entry in entries {
             let (target, renamed) = freeName(in: folder, for: entry.name)
+            current = (target, entry.url)
             if entry.move {
               try files.moveItem(at: entry.url, to: target)
               placed.append((target, entry.url))
@@ -43,6 +48,7 @@
               try files.copyItem(at: entry.url, to: target)
               placed.append((target, nil))
             }
+            current = nil
             if let date = entry.created {
               try? files.setAttributes(
                 [.creationDate: date, .modificationDate: date], ofItemAtPath: target.path)
@@ -51,6 +57,15 @@
           }
           done(SaveAnswer.saved(items))
         } catch {
+          // A partial target goes; a move whose source is gone completed,
+          // and the loop below would not hold it: it goes back.
+          if let current, files.fileExists(atPath: current.target.path) {
+            if files.fileExists(atPath: current.source.path) {
+              try? files.removeItem(at: current.target)
+            } else {
+              try? files.moveItem(at: current.target, to: current.source)
+            }
+          }
           for file in placed {
             if let source = file.movedFrom {
               try? files.moveItem(at: file.target, to: source)
