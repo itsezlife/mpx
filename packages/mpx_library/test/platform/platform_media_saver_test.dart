@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
 import 'package:mpx_library/mpx_library.dart';
+import 'package:mpx_library/src/platform/no_adapter_save_writer.dart';
 
 const _methods = MethodChannel('test.mpx.library/saver');
 
@@ -24,20 +25,29 @@ void main() {
       'releases its leases', () async {
     final diagnostics = RecordingDiagnostics.install();
     var released = 0;
-    final job = PlatformMediaSaver(methods: _methods).save([
-      SaveItem.leased(
-        ContentFileLease(path: '/cache/a', onRelease: () async => released++),
-        name: 'a.jpg',
-        mimeType: 'image/jpeg',
-        kind: SaveItemKind.photo,
-      ),
-      const SaveItem.file(
-        '/host/b.mp4',
-        name: 'b.mp4',
-        mimeType: 'video/mp4',
-        kind: SaveItemKind.video,
-      ),
-    ], const SaveDestination.downloads());
+    // Desktop hosts (a Linux CI runner) have an adapter: the platform
+    // without one is stood in for.
+    final job =
+        PlatformMediaSaver.over(
+          const NoAdapterSaveWriter('test'),
+          methods: _methods,
+        ).save([
+          SaveItem.leased(
+            ContentFileLease(
+              path: '/cache/a',
+              onRelease: () async => released++,
+            ),
+            name: 'a.jpg',
+            mimeType: 'image/jpeg',
+            kind: SaveItemKind.photo,
+          ),
+          const SaveItem.file(
+            '/host/b.mp4',
+            name: 'b.mp4',
+            mimeType: 'video/mp4',
+            kind: SaveItemKind.video,
+          ),
+        ], const SaveDestination.downloads());
 
     const unavailable = SaveResult.failed(
       SaveFailure.unavailable,
@@ -67,7 +77,8 @@ void main() {
       kind: SaveItemKind.photo,
     );
 
-    final withTransfers = PlatformMediaSaver(
+    final withTransfers = PlatformMediaSaver.over(
+      const NoAdapterSaveWriter('test'),
       methods: _methods,
       transfers: transfers,
     );
@@ -82,7 +93,8 @@ void main() {
     expect(transfers.downloads, isEmpty);
 
     expect(
-      await PlatformMediaSaver(
+      await PlatformMediaSaver.over(
+        const NoAdapterSaveWriter('test'),
         methods: _methods,
       ).saveContent([request], const SaveDestination.gallery()).results,
       [

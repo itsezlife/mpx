@@ -38,6 +38,16 @@
 - `testing.dart`: `MediaSaverContract` checks `saveContent` when the
   harness passes its `FakeTrackedTransfers` (`transfers`,
   `withoutTransfers`); `FakeMediaSaver.contentBatches`.
+- `PlatformMediaSaver` saves on Windows and Linux: `gallery(album:)` into
+  the Pictures or Videos folder (by kind, an animation by its MIME type),
+  `downloads(subfolder:)` into Downloads, both through the Windows known
+  folders or the XDG user directories; `ask` through the system save
+  dialog, one per item, a dismissed one cancelling the rest of the batch.
+  A taken name gets ` (1)`, ` (2)`, … and the result is `renamed`; names
+  and sub-folders are made safe for the file system. The copy streams on
+  a worker isolate with progress and cancel, a partial file is removed,
+  and `createdAt` becomes the modification time. A file system error maps
+  to `accessDenied`, `noSpace` or `unavailable` with its OS code.
 - `MediaSaver.save(items, destination)`: a batch of `SaveItem`s (a host
   file, a leased cache file or bytes; photo, video, animation or file) to
   `SaveDestination.gallery(album:)`, `.downloads(subfolder:)` or `.ask()`,

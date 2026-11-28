@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/src/platform/platform_media_library.dart';
@@ -11,6 +12,7 @@ import 'package:mpx_library/src/save/save_destination.dart';
 import 'package:mpx_library/src/save/save_item.dart';
 import 'package:mpx_library/src/save/save_job_runner.dart';
 import 'package:mpx_library/src/save/save_request.dart';
+import 'package:mpx_library/src/save/save_writer.dart';
 
 /// The [MediaSaver] of the platform the app runs on.
 ///
@@ -27,7 +29,8 @@ import 'package:mpx_library/src/save/save_request.dart';
 /// condition; without it the gallery is [SaveAccess.unavailable]. The
 /// desktops and the web ask for nothing.
 ///
-/// A platform without a writer yet fails every item
+/// Windows and Linux write files into the user's folders or where the save
+/// dialog says. A platform without a writer yet fails every item
 /// `SaveFailure.unavailable` (code `noAdapter`), after the access check.
 final class PlatformMediaSaver implements MediaSaver {
   /// The saver of this platform, over the plugin's [methods] channel; a
@@ -37,14 +40,27 @@ final class PlatformMediaSaver implements MediaSaver {
   PlatformMediaSaver({
     MethodChannel methods = PlatformMediaLibrary.methodsChannel,
     TrackedTransfers? transfers,
-  }) : _access = PlatformSaveAccess.current(methods),
-       _transfers = transfers;
+  }) : this._(PlatformSaveAccess.current(methods), transfers);
 
-  final TrackedTransfers? _transfers;
+  PlatformMediaSaver._(this._access, this._transfers)
+    : _writer = environment_specific.$createSaveWriter(access: _access);
+
+  /// The saver over [writer], for a test that runs an adapter with its
+  /// system lookups faked; [access] answers over [methods] as above.
+  @visibleForTesting
+  PlatformMediaSaver.over(
+    SaveWriter writer, {
+    MethodChannel methods = PlatformMediaLibrary.methodsChannel,
+    TrackedTransfers? transfers,
+  }) : _access = PlatformSaveAccess.current(methods),
+       _transfers = transfers,
+       _writer = writer;
 
   final PlatformSaveAccess _access;
 
-  late final _writer = environment_specific.$createSaveWriter(access: _access);
+  final TrackedTransfers? _transfers;
+
+  final SaveWriter _writer;
 
   @override
   SaveJob save(List<SaveItem> items, SaveDestination destination) =>
