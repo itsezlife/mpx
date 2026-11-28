@@ -327,6 +327,10 @@ task only.
   on `commit(payload:)`. Until then `addItem`, `removeItem`, `reorder`,
   `setPayload` and `cancel` apply (`snapshot.held`); once it publishes,
   only `removeItem` and `cancel`.
+- Payload for the owner: `PublishJob.payload` and `snapshot.payload` (also on
+  what `watchJobs` gives) read the job's bytes from its record: the
+  request's, or the last `setPayload` or `commit(payload:)`, after a restart
+  too. They stay out of diagnostics.
 - Item cancel: `removeItem(id)`, or a cancel of one of the item's uploads,
   drops the item and the rest publish. A job left with no items is
   `awaitingOwner` and publishes nothing, after a restart too, until its

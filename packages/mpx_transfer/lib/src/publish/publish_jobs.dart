@@ -1946,6 +1946,7 @@ final class PublishJobs {
       ),
       aliasesApplied: record.isAliased,
       held: record.hold && !record.committed,
+      payload: record.payload,
     );
   }
 
