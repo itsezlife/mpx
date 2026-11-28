@@ -212,7 +212,7 @@ void main() {
     final directory = Directory.systemTemp.createTempSync('mpx_journal_');
     addTearDown(() => directory.delete(recursive: true));
     final transfers = await Transfers.open(
-      cacheKeyOf: (key) => key.encoded,
+      cache: TransferBytesCache(keyOf: (key) => key.encoded),
       lifecycle: ManualPlaybackLifecycleSource(),
       directory: directory.path,
     );
@@ -232,7 +232,7 @@ void main() {
     'Transfers.open needs a directory on the VM',
     () => expectLater(
       Transfers.open(
-        cacheKeyOf: (key) => key.encoded,
+        cache: TransferBytesCache(keyOf: (key) => key.encoded),
         lifecycle: ManualPlaybackLifecycleSource(),
       ),
       throwsArgumentError,

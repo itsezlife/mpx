@@ -19,7 +19,7 @@ void main() {
 
   Future<Transfers> open({ReusePolicy reuse = const ReusePolicy()}) =>
       Transfers.open(
-        cacheKeyOf: (key) => key.encoded,
+        cache: TransferBytesCache(keyOf: (key) => key.encoded),
         lifecycle: ManualPlaybackLifecycleSource(),
         directory: directory.path,
         reuse: reuse,

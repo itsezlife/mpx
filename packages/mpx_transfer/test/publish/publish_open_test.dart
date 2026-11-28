@@ -19,7 +19,7 @@ void main() {
     FakeUploadTransport transport, {
     MediaPreparation? preparation,
   }) => Transfers.open(
-    cacheKeyOf: (key) => key.encoded,
+    cache: TransferBytesCache(keyOf: (key) => key.encoded),
     lifecycle: ManualPlaybackLifecycleSource(),
     directory: directory.path,
     transports: [transport],

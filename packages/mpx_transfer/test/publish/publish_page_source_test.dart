@@ -220,7 +220,9 @@ void main() {
         sourceDirectory: directory.path,
       );
       addTearDown(vm.transfers.dispose);
-      final id = vm.upload(const UploadSource.finished('/nowhere/x.bin', size: 4));
+      final id = vm.upload(
+        const UploadSource.finished('/nowhere/x.bin', size: 4),
+      );
       await pumpEventQueue();
       expect(
         await stateOf(vm.transfers, id),

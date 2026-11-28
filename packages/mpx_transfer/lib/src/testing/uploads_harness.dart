@@ -6,6 +6,7 @@ import 'package:mpx_transfer/src/download/transfer_downloads.dart';
 import 'package:mpx_transfer/src/engine/connection_slots.dart';
 import 'package:mpx_transfer/src/envelope/transfer_envelope.dart';
 import 'package:mpx_transfer/src/envelope/transfer_envelope_config.dart';
+import 'package:mpx_transfer/src/envelope/transfer_envelope_setup.dart';
 import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
 import 'package:mpx_transfer/src/journal/journal_record.dart';
@@ -15,6 +16,7 @@ import 'package:mpx_transfer/src/journal/upload_source_copies.dart';
 import 'package:mpx_transfer/src/publish/publish_journal.dart';
 import 'package:mpx_transfer/src/publish/publish_progress.dart';
 import 'package:mpx_transfer/src/reuse/reuse_table.dart';
+import 'package:mpx_transfer/src/transfer_bytes_cache.dart';
 import 'package:mpx_transfer/src/transfers.dart';
 import 'package:mpx_transfer/src/upload/upload_engine.dart';
 import 'package:mpx_transfer/src/upload/upload_lane.dart';
@@ -287,12 +289,17 @@ final class UploadsHarness {
       wait: wait,
       now: now,
     );
+    final envelope = this.envelope;
     final live = await Transfers.liveEnvelopesOf(envelope);
+    final copies = sourceCopies;
     return transfers = Transfers.engine(
-      envelope: envelope,
-      envelopeConfig: envelopeConfig,
-      liveEnvelopes: live,
-      cacheKeyOf: (key) => key.encoded,
+      envelope: envelope == null
+          ? null
+          : (
+              setup: TransferEnvelopeSetup(envelope, config: envelopeConfig),
+              live: live,
+            ),
+      cache: TransferBytesCache(keyOf: (key) => key.encoded, store: cache),
       lifecycle: lifecycle,
       runner: _engine,
       journal: _journal,
@@ -300,10 +307,11 @@ final class UploadsHarness {
       reuse: _reuse,
       publishJournal: _publish,
       preparation: preparation,
-      cache: cache,
       progressWeights: progressWeights,
       downloads: downloads,
-      sourceCopies: sourceCopies,
+      pageSources: copies == null
+          ? null
+          : PageSourceCopies(copies, limit: Transfers.defaultSourceCopyLimit),
       now: now,
     );
   }

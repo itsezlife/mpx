@@ -18,6 +18,7 @@ import 'package:mpx_transfer/src/download/transfer_downloads.dart';
 import 'package:mpx_transfer/src/engine/transfer_runner.dart';
 import 'package:mpx_transfer/src/envelope/transfer_envelope.dart';
 import 'package:mpx_transfer/src/envelope/transfer_envelope_config.dart';
+import 'package:mpx_transfer/src/envelope/transfer_envelope_setup.dart';
 import 'package:mpx_transfer/src/job/transfer_id.dart';
 import 'package:mpx_transfer/src/job/transfer_job.dart';
 import 'package:mpx_transfer/src/job/transfer_state.dart';
@@ -36,6 +37,7 @@ import 'package:mpx_transfer/src/publish/publish_state.dart';
 import 'package:mpx_transfer/src/publish/publisher.dart';
 import 'package:mpx_transfer/src/reuse/reuse_table.dart';
 import 'package:mpx_transfer/src/tracked/tracked_content.dart';
+import 'package:mpx_transfer/src/transfer_bytes_cache.dart';
 import 'package:mpx_transfer/src/upload/remote_ref.dart';
 import 'package:mpx_transfer/src/upload/resume_outcome.dart';
 import 'package:mpx_transfer/src/upload/upload_engine.dart';
@@ -72,40 +74,38 @@ final class Transfers {
   /// download jobs move their bytes through them and [runner] moves the
   /// rest; without, [runner] moves every job. With [uploads] and
   /// [publishJournal], the facade runs publish jobs, preparing items
-  /// through [preparation] and aliasing their server keys in [cache]
-  /// (`downloads.store` unless given). [liveEnvelopes] are the handles
-  /// [envelope] reported live at the start ([TransferEnvelope.live]).
+  /// through [preparation] and aliasing their server keys in [cache]'s
+  /// store (`downloads.store` unless given). [envelope]'s `live` are the
+  /// handles its envelope reported live at the start
+  /// ([TransferEnvelope.live]). [pageSources] is the web's copies of page
+  /// sources; null on the VM.
   @internal
   Transfers.engine({
-    required String Function(MediaKey key) cacheKeyOf,
+    required TransferBytesCache cache,
     required PlaybackLifecycleSource lifecycle,
     required TransferRunner runner,
     required TransferJournal journal,
     TransferDownloads? downloads,
-    TransferEnvelope? envelope,
-    TransferEnvelopeConfig? envelopeConfig,
-    Set<String> liveEnvelopes = const {},
-    UploadSourceCopies? sourceCopies,
-    UnloadWarning? unloadWarning,
+    ({TransferEnvelopeSetup setup, Set<String> live})? envelope,
+    PageSourceCopies? pageSources,
     UploadEngine? uploads,
     ReuseTable? reuse,
     PublishJournal? publishJournal,
     MediaPreparation? preparation,
-    IBytesStore? cache,
     PublishProgressWeights progressWeights = PublishProgressWeights.standard,
     this.retention = defaultRetention,
-    this.sourceCopyLimit = defaultSourceCopyLimit,
     bool online = true,
     DateTime Function() now = DateTime.now,
-  }) : _cacheKeyOf = cacheKeyOf,
+  }) : _cacheKeyOf = cache.keyOf,
        _lifecycle = lifecycle,
        _runner = runner,
        _downloadRunner = downloads == null ? null : DownloadRunner(downloads),
        _journal = journal,
-       _envelope = envelope,
-       _envelopeConfig = envelopeConfig,
-       _sourceCopies = sourceCopies,
-       _unloadWarning = unloadWarning,
+       _envelope = envelope?.setup.envelope,
+       _envelopeConfig = envelope?.setup.config,
+       _sourceCopies = pageSources?.copies,
+       _unloadWarning = pageSources?.unloadWarning,
+       sourceCopyLimit = pageSources?.limit ?? defaultSourceCopyLimit,
        _uploads = uploads,
        _reuse = reuse,
        _online = online,
@@ -118,8 +118,8 @@ final class Transfers {
         host: _PublishHost(
           this,
           journal: journal,
-          cache: cache ?? downloads?.store,
-          cacheKeyOf: cacheKeyOf,
+          cache: cache.store ?? downloads?.store,
+          cacheKeyOf: cache.keyOf,
         ),
         reuse: reuse,
         preparation: preparation,
@@ -136,8 +136,8 @@ final class Transfers {
       );
     }
     _lifecycle.addListener(_onLifecycle);
-    _envelopeEvents = envelope?.events.listen(_onEnvelopeEvent);
-    _adoptLiveEnvelope(liveEnvelopes);
+    _envelopeEvents = _envelope?.events.listen(_onEnvelopeEvent);
+    _adoptLiveEnvelope(envelope?.live ?? const {});
     _restore();
     // After the uploads they own are queued again, so each job finds them.
     _publish?.restore();
@@ -156,10 +156,9 @@ final class Transfers {
   /// copies at most ([defaultSourceCopyLimit] unless given).
   /// [progressInterval] is the shortest time between two progress writes
   /// ([defaultProgressInterval] unless given). [envelope] is the platform's
-  /// OS envelope; without one, `system` jobs run in process. It shows
-  /// [envelopeConfig], the host's localised text and icon and its say over
-  /// when the envelope starts; without a config no envelope starts either,
-  /// reported once as `envelope` `degraded`. [online] is
+  /// OS envelope with what it shows; without one, `system` jobs run in
+  /// process, and without its config no envelope starts either, reported
+  /// once as `envelope` `degraded`. [online] is
   /// the connectivity at start; [now] reads the time. [downloads] is what
   /// tracked downloads fetch through ([download], [tracked]); without it the
   /// facade makes no download jobs. [reuse] is the host's say over the
@@ -172,21 +171,21 @@ final class Transfers {
   /// of publish jobs that need it; without one such a job is refused.
   /// [progressWeights] weigh a publish job's progress
   /// ([PublishProgressWeights.standard] unless given). Publish jobs are
-  /// kept beside the journal too. Once a publisher answers published, each
-  /// server key it gave is aliased to its item's local key in [cache], both
-  /// through [cacheKeyOf]: the bytes cache the composition root's fetcher
-  /// reads, `downloads.store` unless given. Without either, no alias is
+  /// kept beside the journal too. [cache] is the bytes cache the
+  /// composition root's fetcher reads: its key mapping names tracked
+  /// downloads, and once a publisher answers published, each server key
+  /// it gave is aliased to its item's local key in its store
+  /// (`downloads.store` unless given). Without either store, no alias is
   /// made.
   ///
   /// A journal that cannot be read is reported (`journal` `writeFailed`)
   /// and the engine runs in memory for this run, with no jobs.
   static Future<Transfers> open({
-    required String Function(MediaKey key) cacheKeyOf,
+    required TransferBytesCache cache,
     required PlaybackLifecycleSource lifecycle,
     String? directory,
     TransferDownloads? downloads,
-    TransferEnvelope? envelope,
-    TransferEnvelopeConfig? envelopeConfig,
+    TransferEnvelopeSetup? envelope,
     Duration retention = defaultRetention,
     Duration progressInterval = defaultProgressInterval,
     int sourceCopyLimit = defaultSourceCopyLimit,
@@ -194,7 +193,6 @@ final class Transfers {
     List<UploadTransport> transports = const [],
     HttpBytesClient? client,
     MediaPreparation? preparation,
-    IBytesStore? cache,
     PublishProgressWeights progressWeights = PublishProgressWeights.standard,
     bool online = true,
     DateTime Function() now = DateTime.now,
@@ -225,25 +223,29 @@ final class Transfers {
       sourceDirectory: platform.sourceDirectory,
       now: now,
     );
+    final copies = platform.sourceCopies;
     return Transfers.engine(
-      cacheKeyOf: cacheKeyOf,
+      cache: cache,
       lifecycle: lifecycle,
       runner: uploads,
       journal: journal,
       downloads: downloads,
-      envelope: envelope,
-      envelopeConfig: envelopeConfig,
-      liveEnvelopes: await liveEnvelopesOf(envelope),
+      envelope: envelope == null
+          ? null
+          : (setup: envelope, live: await liveEnvelopesOf(envelope.envelope)),
       reuse: table,
       uploads: uploads,
       publishJournal: publishJournal,
       preparation: preparation,
-      cache: cache,
       progressWeights: progressWeights,
-      sourceCopies: platform.sourceCopies,
-      unloadWarning: platform.unloadWarning,
+      pageSources: copies == null
+          ? null
+          : PageSourceCopies(
+              copies,
+              unloadWarning: platform.unloadWarning,
+              limit: sourceCopyLimit,
+            ),
       retention: retention,
-      sourceCopyLimit: sourceCopyLimit,
       online: online,
       now: now,
     );

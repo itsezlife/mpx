@@ -238,7 +238,7 @@ void main() {
 
     test('Transfers.open opens the journal in OPFS', () async {
       final transfers = await Transfers.open(
-        cacheKeyOf: (key) => key.encoded,
+        cache: TransferBytesCache(keyOf: (key) => key.encoded),
         lifecycle: ManualPlaybackLifecycleSource(),
       );
       addTearDown(transfers.dispose);

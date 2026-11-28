@@ -48,7 +48,7 @@ void main() {
     final directory = Directory.systemTemp.createTempSync('mpx_limit_');
     addTearDown(() => directory.delete(recursive: true));
     final transfers = await Transfers.open(
-      cacheKeyOf: (key) => key.encoded,
+      cache: TransferBytesCache(keyOf: (key) => key.encoded),
       lifecycle: ManualPlaybackLifecycleSource(),
       directory: directory.path,
     );
