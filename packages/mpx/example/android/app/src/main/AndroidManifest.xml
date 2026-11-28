@@ -8,6 +8,10 @@
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <!-- The media saver on Android 9 and below; 10 and later need nothing. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
     <!-- The transfers demo: system transfers keep going in the background
          (mpx_transfer declares its components and no permissions). Remove
          these to check that jobs then run in process. -->

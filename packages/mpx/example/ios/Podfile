@@ -45,11 +45,11 @@ post_install do |installer|
       if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 15.0
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
       end
-      # The example opts into the library's PhotoKit and system camera code
-      # (mpx_library README); a host that does not links none of it.
+      # The example opts into the library's PhotoKit, system camera and save
+      # code (mpx_library README); a host that does not links none of it.
       if target.name == 'mpx_library'
         config.build_settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] =
-          '$(inherited) MPX_LIBRARY_PHOTOS MPX_LIBRARY_CAMERA'
+          '$(inherited) MPX_LIBRARY_PHOTOS MPX_LIBRARY_CAMERA MPX_LIBRARY_SAVE'
       end
     end
   end

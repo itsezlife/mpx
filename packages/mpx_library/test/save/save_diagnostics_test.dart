@@ -154,7 +154,7 @@ void main() {
   });
 
   test('denied access is one failure per item', () async {
-    await (FakeMediaSaver()..accessDenied = true).save([
+    await (FakeMediaSaver()..saveAccess = SaveAccess.denied).save([
       photo(),
       photo(),
     ], const SaveDestination.gallery()).results;

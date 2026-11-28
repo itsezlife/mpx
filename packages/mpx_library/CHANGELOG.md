@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- `SaveAccess`, the access saving needs, apart from `LibraryAccess`:
+  `MediaSaver.access(destination)` reads it, `requestAccess(destination)`
+  asks ahead, and a batch asks once by itself before writing. Apple asks
+  for add-only Photos access (read and write for a named album), compiled
+  only under the host's `MPX_LIBRARY_SAVE` condition: without it a batch to
+  the gallery fails every item `unavailable` (code `defineMissing`). Android
+  28 and below asks for `WRITE_EXTERNAL_STORAGE`, which the host declares
+  with `maxSdkVersion="28"`; 29 and later, the desktops and the web ask for
+  nothing. A host that implements `MediaSaver` adds `access` and
+  `requestAccess`. Events `accessRequested` and `defineMissing`.
+- `FakeMediaSaver.saveAccess` (a `SaveAccess`, with `grantOnRequest` and
+  `accessRequests`) replaces the `accessDenied` flag: a test that set
+  `accessDenied = true` sets `saveAccess = SaveAccess.denied`.
+- The plugin registers on macOS too, for the save access; the library
+  there still answers `restricted`.
 - `MediaSaver.save(items, destination)`: a batch of `SaveItem`s (a host
   file, a leased cache file or bytes; photo, video, animation or file) to
   `SaveDestination.gallery(album:)`, `.downloads(subfolder:)` or `.ask()`,

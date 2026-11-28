@@ -8,7 +8,8 @@
 /// system file dialog and the system camera. `MediaSaver` saves photos,
 /// videos and files into the gallery, the user's Downloads or a place the
 /// user picks, a batch as one `SaveJob` with progress, cancel and a result
-/// per item; `PlatformMediaSaver` is the platform's.
+/// per item, asking for its own `SaveAccess` (add-only on Apple);
+/// `PlatformMediaSaver` is the platform's.
 ///
 /// Fakes and contract suites are in `testing.dart`.
 library;
@@ -30,6 +31,7 @@ export 'src/platform/library_wire.dart';
 export 'src/platform/platform_media_library.dart';
 export 'src/platform/platform_media_saver.dart';
 export 'src/save/media_saver.dart';
+export 'src/save/save_access.dart';
 export 'src/save/save_destination.dart';
 export 'src/save/save_item.dart';
 export 'src/save/save_op.dart';

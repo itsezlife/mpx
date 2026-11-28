@@ -19,6 +19,7 @@ PODS:
     - FlutterMacOS
   - mpx_library (0.0.1):
     - Flutter
+    - FlutterMacOS
   - mpx_player (0.0.1):
     - Flutter
     - FlutterMacOS
@@ -87,13 +88,13 @@ SPEC CHECKSUMS:
   mpx: ee4afd6125f6ec5d05f9bf3da39c91adde91c282
   mpx_capture: 94cc85d1c7410a320e2ade3781a33651e3e15246
   mpx_core: 9ae8d0a68d78b47367b4bb8dd47d555532abb832
-  mpx_library: 1cef2375b2808f3cecdcac4777d2b8f3b3661e7c
+  mpx_library: d6b1109c3e147aa0656bc9b1e40f3b016a287935
   mpx_player: ac175bf85c8d8d97bcfdff9479c3056f8a06184a
   mpx_transfer: 2ef9a79af836e4ec0d3fb183a818ccf94bc670b5
   share_plus: 50da8cb520a8f0f65671c6c6a99b3617ed10a58a
   super_native_extensions: b763c02dc3a8fd078389f410bf15149179020cb4
   url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
 
-PODFILE CHECKSUM: 00737aa83f3db464c137e38213ef63113d9a68c9
+PODFILE CHECKSUM: e54ff12b07bf0eddddd6f83cd32c3ec70b3e8205
 
 COCOAPODS: 1.16.2

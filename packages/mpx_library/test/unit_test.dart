@@ -19,6 +19,7 @@ import 'library/fake_media_library_test.dart' as fake_media_library_test;
 import 'platform/platform_media_library_test.dart'
     as platform_media_library_test;
 import 'platform/platform_media_saver_test.dart' as platform_media_saver_test;
+import 'platform/platform_save_access_test.dart' as platform_save_access_test;
 import 'save/fake_media_saver_contract_test.dart'
     as fake_media_saver_contract_test;
 import 'save/fake_media_saver_test.dart' as fake_media_saver_test;
@@ -37,6 +38,7 @@ void main() {
   group('fake_media_library_test', fake_media_library_test.main);
   group('platform_media_library_test', platform_media_library_test.main);
   group('platform_media_saver_test', platform_media_saver_test.main);
+  group('platform_save_access_test', platform_save_access_test.main);
   group('fake_media_saver_contract_test', fake_media_saver_contract_test.main);
   group('fake_media_saver_test', fake_media_saver_test.main);
   group('save_diagnostics_test', save_diagnostics_test.main);

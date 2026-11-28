@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/src/save/media_saver.dart';
+import 'package:mpx_library/src/save/save_access.dart';
+import 'package:mpx_library/src/save/save_admission.dart';
 import 'package:mpx_library/src/save/save_destination.dart';
 import 'package:mpx_library/src/save/save_item.dart';
 import 'package:mpx_library/src/save/save_job_runner.dart';
@@ -111,9 +113,18 @@ final class FakeMediaSaver implements MediaSaver {
   /// How long each step takes.
   final Duration stepDelay;
 
-  /// Whether the user refused the access saving needs: every item of a batch
-  /// then fails `SaveFailure.accessDenied`.
-  bool accessDenied = false;
+  /// The access saving has, the same for every destination. A batch asks
+  /// for it while [SaveAccess.notDetermined] (the user answers
+  /// [grantOnRequest]); [SaveAccess.denied] or [SaveAccess.restricted] fail
+  /// every item `SaveFailure.accessDenied`, [SaveAccess.unavailable] (a
+  /// build without the save code) `SaveFailure.unavailable`.
+  SaveAccess saveAccess = SaveAccess.granted;
+
+  /// What the user answers the system prompt.
+  SaveAccess grantOnRequest = SaveAccess.granted;
+
+  /// How many times the system prompt was shown.
+  int accessRequests = 0;
 
   /// Every batch given to [save], oldest first.
   final List<FakeSaveBatch> batches = [];
@@ -138,6 +149,29 @@ final class FakeMediaSaver implements MediaSaver {
     );
     return job;
   }
+
+  @override
+  Future<SaveAccess> access(SaveDestination destination) async => saveAccess;
+
+  @override
+  Future<SaveAccess> requestAccess(SaveDestination destination) async {
+    if (saveAccess != SaveAccess.notDetermined) return saveAccess;
+    return (await SaveAdmission.ask(_prompt)).access;
+  }
+
+  // The fake stands for Apple's gallery: add-only access, and the save
+  // define as the build define it lacks.
+  Future<SaveAccessAnswer> _answer() async => SaveAccessAnswer(
+    saveAccess,
+    scope: SaveAccessScope.addOnly,
+    missing: saveAccess == SaveAccess.unavailable ? 'MPX_LIBRARY_SAVE' : null,
+  );
+
+  Future<SaveAccessAnswer> _prompt() async {
+    accessRequests++;
+    saveAccess = grantOnRequest;
+    return _answer();
+  }
 }
 
 // Shared by both writer shapes, which the sealed `SaveWriter` keeps apart.
@@ -154,10 +188,16 @@ FakeSaveWrite _record(FakeMediaSaver saver, SaveWrite write) {
   return written;
 }
 
-Future<SaveResult$Failed?> _admit(FakeMediaSaver saver) async =>
-    saver.accessDenied
-    ? const SaveResult$Failed(SaveFailure.accessDenied)
-    : null;
+Future<SaveResult$Failed?> _admit(
+  FakeMediaSaver saver,
+  String jobId,
+  SaveDestination destination,
+) => SaveAdmission.admit(
+  jobId: jobId,
+  destination: destination,
+  read: saver._answer,
+  request: saver._prompt,
+);
 
 final class _FakeItemWriter extends SaveWriter$PerItem {
   _FakeItemWriter(this._saver);
@@ -172,7 +212,7 @@ final class _FakeItemWriter extends SaveWriter$PerItem {
     String jobId,
     SaveDestination destination,
     List<SaveItem> items,
-  ) => _admit(_saver);
+  ) => _admit(_saver, jobId, destination);
 
   @override
   Future<SaveResult> write(
@@ -204,7 +244,7 @@ final class _FakeBlockWriter extends SaveWriter$Block {
     String jobId,
     SaveDestination destination,
     List<SaveItem> items,
-  ) => _admit(_saver);
+  ) => _admit(_saver, jobId, destination);
 
   @override
   Future<List<SaveResult>> writeBlock(

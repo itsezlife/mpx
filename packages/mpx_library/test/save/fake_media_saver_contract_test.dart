@@ -7,7 +7,7 @@ void main() {
     return MediaSaverHarness(
       saver: saver,
       file: (index) => 'fake/source-$index.jpg',
-      denyAccess: () => saver.accessDenied = true,
+      denyAccess: () => saver.saveAccess = SaveAccess.denied,
     );
   });
 
@@ -17,7 +17,7 @@ void main() {
       saver: saver,
       file: (index) => 'fake/source-$index.jpg',
       changeBlock: true,
-      denyAccess: () => saver.accessDenied = true,
+      denyAccess: () => saver.saveAccess = SaveAccess.denied,
       failBlock: () => saver.blockFailure = SaveFailure.noSpace,
     );
   });

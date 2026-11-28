@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_core/testing.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_library/testing.dart';
 
@@ -199,7 +200,7 @@ void main() {
 
     test('refused for denied access', () async {
       final lender = _Lender();
-      final saver = FakeMediaSaver()..accessDenied = true;
+      final saver = FakeMediaSaver()..saveAccess = SaveAccess.denied;
       await saver.save([
         lender.leased(0),
       ], const SaveDestination.gallery()).results;
@@ -209,7 +210,7 @@ void main() {
 
   test('denied access fails every item accessDenied and writes '
       'nothing', () async {
-    final saver = FakeMediaSaver()..accessDenied = true;
+    final saver = FakeMediaSaver()..saveAccess = SaveAccess.denied;
     final results = await saver.save([
       _photo(0),
       _photo(1),
@@ -220,6 +221,100 @@ void main() {
       const SaveResult.failed(SaveFailure.accessDenied),
     ]);
     expect(saver.writes, isEmpty);
+  });
+
+  group('save access', () {
+    test('a batch asks once while not determined, then saves', () async {
+      final diagnostics = RecordingDiagnostics.install();
+      final saver = FakeMediaSaver()..saveAccess = SaveAccess.notDetermined;
+
+      final job = saver.save([_photo(0)], const SaveDestination.gallery());
+      expect(await job.results, [isA<SaveResult$Saved>()]);
+      await saver.save([_photo(1)], const SaveDestination.gallery()).results;
+
+      expect(saver.accessRequests, 1);
+      expect(
+        await saver.access(const SaveDestination.gallery()),
+        SaveAccess.granted,
+      );
+      expect(diagnostics.whereOp(SaveOp.accessRequested), [
+        isMpxEvent(
+          jobId: job.id,
+          fields: {'access': 'addOnly', 'result': 'granted'},
+        ),
+      ]);
+    });
+
+    test('a refused prompt fails every item accessDenied', () async {
+      final saver = FakeMediaSaver()
+        ..saveAccess = SaveAccess.notDetermined
+        ..grantOnRequest = SaveAccess.denied;
+
+      final results = await saver.save([
+        _photo(0),
+        _photo(1),
+      ], const SaveDestination.gallery()).results;
+
+      expect(results, [
+        const SaveResult.failed(SaveFailure.accessDenied),
+        const SaveResult.failed(SaveFailure.accessDenied),
+      ]);
+      expect(saver.writes, isEmpty);
+    });
+
+    test('a host asks ahead; asking again shows no prompt', () async {
+      final saver = FakeMediaSaver()..saveAccess = SaveAccess.notDetermined;
+
+      expect(
+        await saver.requestAccess(const SaveDestination.gallery()),
+        SaveAccess.granted,
+      );
+      expect(
+        await saver.requestAccess(const SaveDestination.gallery()),
+        SaveAccess.granted,
+      );
+      expect(saver.accessRequests, 1);
+    });
+
+    test('a restricted access is refused without a prompt', () async {
+      final saver = FakeMediaSaver()..saveAccess = SaveAccess.restricted;
+
+      final results = await saver.save([
+        _photo(0),
+      ], const SaveDestination.gallery()).results;
+
+      expect(results, [const SaveResult.failed(SaveFailure.accessDenied)]);
+      expect(saver.accessRequests, 0);
+    });
+
+    test(
+      'a build without the save code fails every item unavailable',
+      () async {
+        final diagnostics = RecordingDiagnostics.install();
+        final saver = FakeMediaSaver()..saveAccess = SaveAccess.unavailable;
+
+        final job = saver.save([
+          _photo(0),
+        ], const SaveDestination.gallery(album: 'Trips'));
+
+        expect(await job.results, [
+          const SaveResult.failed(
+            SaveFailure.unavailable,
+            code: 'defineMissing',
+          ),
+        ]);
+        expect(diagnostics.whereOp(SaveOp.defineMissing), [
+          isMpxEvent(
+            jobId: job.id,
+            fields: {
+              'destination': 'gallery',
+              'named': true,
+              'define': 'MPX_LIBRARY_SAVE',
+            },
+          ),
+        ]);
+      },
+    );
   });
 
   group('one change block per batch', () {

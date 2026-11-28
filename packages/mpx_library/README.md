@@ -83,8 +83,11 @@ final results = await job.results; // one SaveResult per item
   one `SaveJob` (progress over the batch, cancel, a result per item). A
   file sent to the gallery goes by its MIME type; a leased cache file is
   copied, never moved, and its lease released when its item ends. The
-  saver knows no rights: the caller decides before it calls. Platform
-  adapters are not in yet, so `PlatformMediaSaver` answers `unavailable`.
+  saver knows no rights: the caller decides before it calls. It asks for
+  its own `SaveAccess` (`access`, `requestAccess`; a batch asks once by
+  itself), apart from the library's read access. Platform adapters are not
+  in yet, so past the access check `PlatformMediaSaver` answers
+  `unavailable`.
 
 ## Platforms
 
@@ -160,13 +163,70 @@ The host that opts in adds the usage strings to `Info.plist`:
 <string>Lets you take a photo or a video to share.</string>
 ```
 
+### Saving
+
+`MediaSaver` asks for its own access, never the library's. What the host
+adds, per platform:
+
+| Platform | Access asked | The host adds |
+| --- | --- | --- |
+| Android 10 (API 29) and later | none | nothing |
+| Android 9 (API 28) and below | `WRITE_EXTERNAL_STORAGE`, for the gallery and Downloads | the permission with `android:maxSdkVersion="28"` |
+| iOS, macOS: gallery | Photos add-only access | `NSPhotoLibraryAddUsageDescription` and the `MPX_LIBRARY_SAVE` condition |
+| iOS, macOS: gallery with an album | Photos read and write access | also `NSPhotoLibraryUsageDescription` and `MPX_LIBRARY_PHOTOS` |
+| macOS sandbox | | `com.apple.security.personal-information.photos-library` for the gallery, `com.apple.security.files.downloads.read-write` for Downloads |
+| iOS, macOS: Downloads, the save dialog; Windows, Linux, web | none | nothing |
+
+**Android** (`AndroidManifest.xml`):
+
+```xml
+<uses-permission
+    android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+    android:maxSdkVersion="28" />
+```
+
+From API 29 an app adds media and downloads it owns to the MediaStore
+without a permission, so the declaration stops at 28. A permission the host
+did not declare reads `SaveAccess.restricted`.
+
+**iOS and macOS**: the save code compiles only under the Swift condition
+`MPX_LIBRARY_SAVE`, beside `MPX_LIBRARY_PHOTOS` and `MPX_LIBRARY_CAMERA`.
+Without it the gallery reads `SaveAccess.unavailable` and a batch to it
+fails every item `unavailable` (code `defineMissing`); Downloads and the save
+dialog need no Photos code. Add-only access reads nothing, so a host that
+only saves links no library reading. A named album needs read and write
+access, so it also needs `MPX_LIBRARY_PHOTOS`; without it an album save is
+`unavailable` too. In the `Podfile`'s `post_install`, as above:
+
+```ruby
+config.build_settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] =
+  '$(inherited) MPX_LIBRARY_SAVE'
+```
+
+and in `Info.plist`:
+
+```xml
+<key>NSPhotoLibraryAddUsageDescription</key>
+<string>Saves photos and videos to your library.</string>
+```
+
+A sandboxed macOS host adds to its entitlements:
+
+```xml
+<key>com.apple.security.personal-information.photos-library</key>
+<true/>
+<key>com.apple.security.files.downloads.read-write</key>
+<true/>
+```
+
 ## Testing
 
 `package:mpx_library/testing.dart` has `FakeMediaLibrary` (scripted access
 transitions, generated assets, added albums, change events, slow cloud-held
 originals), `FakeFileIntake` (scripted picks and captures),
-`FakeDropSource`, `FakeClipboardReader`, and the `MediaLibraryContract`,
-`FileIntakeContract`, `DropSourceContract` and `ClipboardReaderContract`
+`FakeDropSource`, `FakeClipboardReader`, `FakeMediaSaver` (a settable
+`SaveAccess`), and the `MediaLibraryContract`, `FileIntakeContract`,
+`DropSourceContract`, `ClipboardReaderContract` and `MediaSaverContract`
 suites every implementation meets. The web routes have
 browser tests: `flutter test --platform chrome test/web`.
 
