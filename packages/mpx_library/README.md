@@ -128,6 +128,21 @@ albums, then user albums, newest created first; albums other than Recents
 are oldest first and `startsAtEnd`. Changes come out per album from
 PhotoKit's change details. Originals download from iCloud with progress.
 
+Saving on Android: from API 29 a save is a MediaStore row inserted pending
+(`IS_PENDING`), so other apps see nothing until every byte is in.
+`gallery(album:)` is the images (photos, GIFs) under `Pictures/<album>` or
+the video (videos, video animations) under `Movies/<album>`, with
+`createdAt` as `DATE_TAKEN`; `downloads(subfolder:)` is the downloads under
+`Download/<subfolder>`. The store renames a taken name and the result is
+`renamed`. On API 28 and below the file is written hidden in the public
+Pictures, Movies or Download directory, renamed into place (`name(1)` to
+`name(10)` when taken) and handed to the media scanner. `ask` opens the
+system's create-document dialog per item; dismissing it cancels the rest
+of the batch. A save is always a copy (`move` deletes the host's file
+after it). The copy runs off the main thread a few MiB at a time, with
+progress and cancel; a cancelled or failed copy leaves nothing behind. The
+ref is the content URI.
+
 Saving on Windows and Linux: there is no gallery, so a save is a file in a
 folder. `gallery(album:)` is the Pictures folder (photos, GIFs) or the
 Videos folder (videos, video animations), with the album as a sub-folder;

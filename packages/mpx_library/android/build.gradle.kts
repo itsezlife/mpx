@@ -44,6 +44,9 @@ android {
         getByName("main") {
             java.srcDirs("src/main/kotlin")
         }
+        getByName("test") {
+            java.srcDirs("src/test/kotlin")
+        }
     }
 
     defaultConfig {
@@ -55,4 +58,7 @@ android {
 dependencies {
     // ContextCompat and the file provider of the system camera intake.
     implementation("androidx.core:core-ktx:1.16.0")
+    // JVM unit tests (src/test): the saver's placement, names, error codes
+    // and its insert-then-write order.
+    testImplementation("junit:junit:4.13.2")
 }
