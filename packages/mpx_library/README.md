@@ -1,6 +1,6 @@
 # mpx_library
 
-Optional device media library and file intake for mpx: access with its transitions, albums, paged assets, change events, the original of an asset as a file, and a fetcher that serves library thumbnails to the asset pipeline.
+Optional device media library and file intake for mpx: access with its transitions, albums, paged assets, change events, the original of an asset as a file, a fetcher that serves library thumbnails to the asset pipeline, and a saver that writes photos, videos and files to the gallery or Downloads.
 
 ## Install
 
@@ -40,6 +40,32 @@ library.changes.listen((change) {
 final fetcher = LibraryFetcher(library);
 ```
 
+Saving into the gallery, Downloads or a place the user picks:
+
+```dart
+final MediaSaver saver = PlatformMediaSaver(); // or FakeMediaSaver
+
+final job = saver.save([
+  SaveItem.file(path, name: 'photo.jpg', mimeType: 'image/jpeg',
+      kind: SaveItemKind.photo),
+], const SaveDestination.gallery());
+
+job.progress.addListener(() => showProgress(job.progress.value));
+final results = await job.results; // one SaveResult per item
+```
+
+Saving content by its key, downloaded first when it is not local, through
+the composition's `TrackedTransfers`:
+
+```dart
+final saver = PlatformMediaSaver(transfers: transfers);
+
+final job = saver.saveContent([
+  SaveRequest(key, name: 'clip.mp4', mimeType: 'video/mp4',
+      kind: SaveItemKind.video),
+], const SaveDestination.gallery());
+```
+
 ## Features
 
 - `MediaLibrary`: `access` as a `ValueListenable<LibraryAccess>`
@@ -65,6 +91,20 @@ final fetcher = LibraryFetcher(library);
   `ClipboardReader`, `IntakeFiles.fromPath` / `fromBytes` for a host field
   that already reads pasted media, and `IntakeKind.classify` (photo, video,
   animation, audio, file).
+- `MediaSaver`: a batch of photos, videos, animations and files saved as
+  one `SaveJob` (progress over the batch, cancel, a result per item). A
+  file sent to the gallery goes by its MIME type; a leased cache file is
+  copied, never moved, and its lease released when its item ends. The
+  saver knows no rights: the caller decides before it calls. It asks for
+  its own `SaveAccess` (`access`, `requestAccess`; a batch asks once by
+  itself), apart from the library's read access. `PlatformMediaSaver` saves
+  on Android, iOS, macOS, Windows, Linux and the web.
+- `MediaSaver.saveContent`: `SaveRequest`s (key, name, MIME type, kind) as
+  one `SaveJob` over `mpx_core`'s `TrackedTransfers`: a content not local
+  is downloaded as the user's tracked download (or joins one under way),
+  leased, saved and released; one progress (download 90 %, copy 10 %, an
+  item already local all copy); cancel stops only the downloads the job
+  started. Without `TrackedTransfers` every item fails `unavailable`.
 
 ## Platforms
 
@@ -74,6 +114,7 @@ final fetcher = LibraryFetcher(library);
 | `PlatformIntake.fileIntake()` | system dialog, camera intent | system dialog, image picker camera (opt-in) | system dialog | hidden file input |
 | `PlatformIntake.dropSource()` | drop region | drop region | drop region | DOM drag events |
 | `PlatformIntake.clipboardReader()` | system clipboard | system clipboard | system clipboard | async clipboard |
+| `PlatformMediaSaver` | MediaStore, public directories on API 28 and below | Photos, Documents or export picker | Photos, `~/Downloads`, save panel (macOS); Pictures, Videos, Downloads, save dialog (Windows, Linux) | browser download or save picker |
 
 Android: albums are All media, All photos, All videos, the Camera folder,
 then the other folders by their newest item; pages are newest first by
@@ -97,10 +138,114 @@ pasted image data is written to a file. Their native core pins `win32` 5
 (through `device_info_plus` < 12), so a host takes `share_plus` 12, not
 13.
 
+## Saving
+
+Where each destination lands:
+
+| Platform | `gallery(album:)` | `downloads(subfolder:)` | `ask()` |
+| --- | --- | --- | --- |
+| Android 10 and later | MediaStore images under `Pictures/<album>`, video under `Movies/<album>` | MediaStore downloads under `Download/<subfolder>` | create-document dialog, one per item |
+| Android 9 and below | public Pictures or Movies directory | public Download directory | create-document dialog, one per item |
+| iOS | one Photos change block | the app's Documents in Files, else the export picker | export picker over the batch |
+| macOS | one Photos change block | `~/Downloads/<subfolder>` | save panel, one per item |
+| Windows, Linux | Pictures or Videos folder, the album a sub-folder | Downloads | save dialog, one per item |
+| Web | browser download | browser download | save picker where there is one, else a download |
+
+A result is `saved(ref)` (a content URI, a Photos asset id or a path; null on
+the web), `cancelled`, or `failed` with `accessDenied`, `noSpace`,
+`unsupportedFormat` or `unavailable` and the platform's code. A named album
+needs read and write access on iOS and macOS (see Permissions); the
+Android album is a sub-folder and needs nothing.
+
+Saving on Android: from API 29 a save is a MediaStore row inserted pending
+(`IS_PENDING`), so other apps see nothing until every byte is in.
+`gallery(album:)` is the images (photos, GIFs) under `Pictures/<album>` or
+the video (videos, video animations) under `Movies/<album>`, with
+`createdAt` as `DATE_TAKEN`; `downloads(subfolder:)` is the downloads under
+`Download/<subfolder>`. The store renames a taken name and the result is
+`renamed`. On API 28 and below the file is written hidden in the public
+Pictures, Movies or Download directory, renamed into place (`name(1)` to
+`name(10)` when taken) and handed to the media scanner. `ask` opens the
+system's create-document dialog per item; dismissing it cancels the rest
+of the batch. A save is always a copy (`move` deletes the host's file
+after it). The copy runs off the main thread a few MiB at a time, with
+progress and cancel; a cancelled or failed copy leaves nothing behind. The
+ref is the content URI.
+
+Saving on iOS: a batch is one native call and one atomic result.
+`gallery(album:)` is one Photos change block for the whole batch, so one
+prompt; each asset gets the item's name, its type from the MIME type and
+`createdAt` as its creation date. A GIF animation saves as an animated
+image, a video animation as a video. A named album is found or made in
+the same block; under limited access, which cannot reach albums, the
+assets are saved without it. `downloads(subfolder:)` copies into the app's
+Documents, which the Files app shows when the host declares
+`UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace` in
+`Info.plist`; without both the batch goes to the export picker, as `ask`.
+A taken name there gets ` (1)`, ` (2)`, … before its extension, and a
+failed copy takes back the copies made before it. `ask` opens the system
+export picker over the whole batch; dismissing it cancels every item. A
+cancel counts only before the block begins: once Photos or the picker has
+the batch, it runs to its end. A failure is the batch's and carries the
+platform's code (`photos.3305`, `cocoa.640`, …). A `SaveItem.bytes` item
+is written to a temporary file under its name for the block and removed
+after. The saved ref is the asset's local identifier, or the saved file's
+path.
+
+Saving on macOS: the gallery is Photos, one change block per batch as on iOS.
+Downloads and `ask` are files written from Dart, item by item, with
+progress and a cancel inside a copy: `~/Downloads/<subfolder>`, where a
+taken name gets ` (1)` and `createdAt` becomes the modification time, and
+the system save panel, one per item, a dismissed one cancelling the rest of
+the batch. An animation sent there is written as the file it is.
+
+Saving on Windows and Linux: there is no gallery, so a save is a file in a
+folder. `gallery(album:)` is the Pictures folder (photos, GIFs) or the
+Videos folder (videos, video animations), with the album as a sub-folder;
+`downloads(subfolder:)` is Downloads; `ask` opens the system save dialog
+per item, and dismissing it cancels the rest of the batch. The folders are
+the Windows known folders (a moved Downloads is found where it is) and the
+XDG user directories (`user-dirs.dirs`, the home when a folder is not
+set). A taken name gets ` (1)`, ` (2)`, … before its extension. The bytes go
+into a hidden `.<name>.part` beside the name and are renamed over it at the
+end, so the name never holds part of a file; a cancel or any failure
+removes both. The copy streams on a worker isolate with progress and
+cancel; `createdAt` becomes the file's modification time. Nothing to
+declare: no access is asked.
+
+On the web every save is a download: `gallery` and `downloads` hand each
+item to the browser (`<a download>`; the browser decides whether to ask
+where, and an album or a sub-folder has no meaning there). `ask` opens the
+browser's save picker for each item where it has one (Chromium) and writes
+the item into the picked file; a dismissed picker cancels the rest of the
+batch. Without a picker, or for an item the page has no user gesture left
+to open one for, `ask` is a download too. A saved item is `saved(null)`:
+the browser confirms nothing. Items are `SaveItem.bytes`, or a file in the
+origin's private file system at the item's path. `saveContent` saves on
+the web too: the bytes cache keeps content in browser storage and lends no
+file, so a content already cached is read whole into memory and saved as
+bytes with no download, and one not cached is downloaded once first. The
+web needs no access and the host declares nothing.
+
+## Diagnostics
+
+The saver reports under category `save` through `MpxDiagnostics`, op enum
+`SaveOp`, never with a name, path, album, sub-folder, ref or URL. Every event
+of a batch carries the `SaveJob`'s id as `jobId`; an item's carry its `index`.
+
+| Ops | Meaning |
+| --- | --- |
+| `jobStarted`, `progress`, `jobFinished` | a batch began, moved (stage `download` or `copy`), ended with its counts |
+| `itemSaved`, `itemFailed`, `itemCancelled` | an item's end, with the platform code on a failure and `renamed` on a taken name |
+| `moveRefused`, `routedByMime` | a `move` of a cache file copied instead; a `file` routed to the gallery or refused by its MIME type |
+| `accessRequested`, `defineMissing` | the access prompt and its result; a gallery batch refused for want of `MPX_LIBRARY_SAVE` |
+| `changeBlock`, `albumSkipped`, `fallbackToAsk` | a Photos block's end and cancel phase; an album skipped under limited access; a save that went the `ask` way (`noFileSharing`, `noSavePicker`, `noActivation`) |
+| `downloadStarted`, `downloadShared`, `leaseMissing`, `leaseReleased`, `trackedTransfersMissing`, `downloadsCancelled` | the `saveContent` steps, carrying the item's `mediaKey` |
+
 ## Permissions
 
 The package declares no permission, so a host that only links it pays none.
-A host that reads the library declares them itself.
+A host that reads the library or saves declares them itself.
 
 **Android** (`AndroidManifest.xml`):
 
@@ -140,13 +285,73 @@ The host that opts in adds the usage strings to `Info.plist`:
 <string>Lets you take a photo or a video to share.</string>
 ```
 
+### Saving
+
+`MediaSaver` asks for its own access, never the library's. What the host
+adds, per platform:
+
+| Platform | Access asked | The host adds |
+| --- | --- | --- |
+| Android 10 (API 29) and later | none | nothing |
+| Android 9 (API 28) and below | `WRITE_EXTERNAL_STORAGE`, for the gallery and Downloads | the permission with `android:maxSdkVersion="28"` |
+| iOS, macOS: gallery | Photos add-only access | `NSPhotoLibraryAddUsageDescription` and the `MPX_LIBRARY_SAVE` condition |
+| iOS, macOS: gallery with an album | Photos read and write access | also `NSPhotoLibraryUsageDescription` and `MPX_LIBRARY_PHOTOS` |
+| macOS sandbox | | `com.apple.security.personal-information.photos-library` for the gallery, `com.apple.security.files.downloads.read-write` for Downloads, `com.apple.security.files.user-selected.read-write` for the save panel |
+| iOS, macOS: Downloads, the save dialog; Windows, Linux, web | none | nothing |
+| iOS: Downloads shown in Files | none | `UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace` set to true in `Info.plist`; without them Downloads opens the export picker |
+
+**Android** (`AndroidManifest.xml`):
+
+```xml
+<uses-permission
+    android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+    android:maxSdkVersion="28" />
+```
+
+From API 29 an app adds media and downloads it owns to the MediaStore
+without a permission, so the declaration stops at 28. A permission the host
+did not declare reads `SaveAccess.restricted`.
+
+**iOS and macOS**: the save code compiles only under the Swift condition
+`MPX_LIBRARY_SAVE`, beside `MPX_LIBRARY_PHOTOS` and `MPX_LIBRARY_CAMERA`.
+Without it the gallery reads `SaveAccess.unavailable` and a batch to it
+fails every item `unavailable` (code `defineMissing`); Downloads and the save
+dialog need no Photos code. Add-only access reads nothing, so a host that
+only saves links no library reading. A named album needs read and write
+access, so it also needs `MPX_LIBRARY_PHOTOS`; without it an album save is
+`unavailable` too. In the `Podfile`'s `post_install`, as above:
+
+```ruby
+config.build_settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] =
+  '$(inherited) MPX_LIBRARY_SAVE'
+```
+
+and in `Info.plist`:
+
+```xml
+<key>NSPhotoLibraryAddUsageDescription</key>
+<string>Saves photos and videos to your library.</string>
+```
+
+A sandboxed macOS host adds to its entitlements:
+
+```xml
+<key>com.apple.security.personal-information.photos-library</key>
+<true/>
+<key>com.apple.security.files.downloads.read-write</key>
+<true/>
+<key>com.apple.security.files.user-selected.read-write</key>
+<true/>
+```
+
 ## Testing
 
 `package:mpx_library/testing.dart` has `FakeMediaLibrary` (scripted access
 transitions, generated assets, added albums, change events, slow cloud-held
 originals), `FakeFileIntake` (scripted picks and captures),
-`FakeDropSource`, `FakeClipboardReader`, and the `MediaLibraryContract`,
-`FileIntakeContract`, `DropSourceContract` and `ClipboardReaderContract`
+`FakeDropSource`, `FakeClipboardReader`, `FakeMediaSaver` (a settable
+`SaveAccess`), and the `MediaLibraryContract`, `FileIntakeContract`,
+`DropSourceContract`, `ClipboardReaderContract` and `MediaSaverContract`
 suites every implementation meets. The web routes have
 browser tests: `flutter test --platform chrome test/web`.
 

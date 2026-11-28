@@ -184,6 +184,17 @@ abstract final class TrackedTransfersContract {
         expect(lease.isReleased, isTrue);
       });
 
+      test('readBytes answers the whole content once it is local', () async {
+        expect(await transfers.readBytes(harness.content), isNull);
+
+        transfers.download(harness.content);
+        await advanceUntil(
+          () => valueOf(harness.content) is AssetTransfer$None,
+        );
+
+        expect(await transfers.readBytes(harness.content), isNotEmpty);
+      });
+
       test('a download the system or the network paused holds its last '
           'receiving value, and goes on when it may', () async {
         final interrupt = harness.interrupt;

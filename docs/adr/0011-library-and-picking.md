@@ -122,14 +122,15 @@ host no permission and no store review flag:
 | Seam | `MediaSaver.save(items, destination)` returns a `SaveJob`: progress over the batch, cancel, and a result per item. A fake (`FakeMediaSaver`) and a contract suite ship in `testing.dart` |
 | Save request | `saveContent` takes `SaveRequest(key, name, mime, kind)` per item: the caller passes name, MIME and kind beside each key; the saver guesses nothing |
 | Save item | `SaveItem`: a path and a lease (`mpx_core`'s `ContentFileLease`: path and `release()`; bytes only as the web / memory fallback), name, MIME, kind (photo, video, animation, file), optional creation date, written where the platform stores one (Android `DATE_TAKEN`, the asset date on Apple, the file modification time on desktop). A `file` item sent to the gallery is routed by its MIME: an image or video goes to the gallery, anything else fails `unsupportedFormat`. An animation saves to Photos as an animated image on Apple, and as its `.gif` or mp4 to the gallery on Android; on desktop and the web it saves as any file |
-| Destination | `gallery(album?)`, `downloads(subfolder?)`, `ask` (the system save dialog). The sub-folder name is the host's. A named album needs read / write access on iOS, so the album is optional and documented as such; on Android it is the `RELATIVE_PATH` sub-folder (`Pictures/<album>`). Name collisions: the platform store renames on Android 29+; desktop Downloads appends `name (1)` |
-| Batch | One call is one operation: one Photos change block on Apple, so one system prompt. On Apple a failed block fails every item in it; a cancel before the block makes every item `cancelled`; a cancel during the block has no effect |
+| Destination | `gallery(album?)`, `downloads(subfolder?)`, `ask` (the system save dialog). The sub-folder name is the host's. A named album needs read / write access on iOS, so the album is optional and documented as such; on Android it is the `RELATIVE_PATH` sub-folder (`Pictures/<album>`). Name collisions: the platform store renames on Android 29+ (the result is `renamed`, not confirmed on a device); Android 28 and below, iOS Documents and every desktop folder (Downloads, Pictures, Videos) append `name (1)`, Android 28 and below up to `name(10)` |
+| Batch | One call is one operation: one Photos change block on Apple, so one system prompt. On Apple a failed block fails every item in it; a cancel before the block makes every item `cancelled`; a cancel during the block has no effect. On iOS every destination is one block: Downloads takes back its copies when one fails, and the export picker answers for the whole batch (dismissed: every item `cancelled`). A named album under limited access, which cannot fetch or make albums, is skipped and the assets saved without it (`albumSkipped`) |
 | Copy | Copies stream off the UI isolate with progress and cancel. `move` only for a file the host owns, never a cache file: moving consumes the source |
 | Result | Per item: `saved(platformRef)` (a content URI, a Photos asset id, a path; null on the web, where the browser confirms nothing), `cancelled`, or `failed` with `accessDenied`, `noSpace`, `unsupportedFormat` or `unavailable` |
-| Save access | `SaveAccess` is separate from library access: Apple `addOnly` (iOS 14+, macOS 11+) with `NSPhotoLibraryAddUsageDescription`, behind its own build define; nothing on Android 29+; the older write permission on Android 28 and below |
-| Content not yet local | `MediaSaver.saveContent(keys, destination)` runs, per key, download (`TrackedTransfers.download(key, origin: user)`, progress from `watch(key)`), await, `TrackedTransfers.leaseFile(key)` (a `ContentFileLease`, which `mpx_transfer` implements over the bytes cache's own lease), save, release, under one job and one progress (download 90 %, copy 10 %; copy 100 % for an item already local). A null lease after a completed download is downloaded once more, then fails `unavailable`. Cancel cancels the downloads this job started, not others'. Without the seam wired an item that is not local fails `unavailable`, with a debug warning. No new edge: the lease type is `mpx_core`'s |
+| Save access | `SaveAccess` (`notDetermined`, `denied`, `restricted`, `limited`, `granted`, `unavailable`) is separate from library access, read with `MediaSaver.access(destination)` and asked with `requestAccess(destination)`; a batch asks once by itself. Apple `addOnly` (iOS 14+, macOS 11+) with `NSPhotoLibraryAddUsageDescription`, behind its own build define `MPX_LIBRARY_SAVE`; without it the gallery reads `unavailable` and a batch fails every item `unavailable` (code `defineMissing`). A named album asks for read and write access, full not limited, and also needs `MPX_LIBRARY_PHOTOS`. Nothing on Android 29+; the older write permission on Android 28 and below, with `maxSdkVersion="28"` (verified against the platform's storage documentation); nothing on Windows, Linux and the web |
+| Content not yet local | `MediaSaver.saveContent(requests, destination)` runs, per request, download (`TrackedTransfers.download(key, origin: user)`, progress from `watch(key)`), await, `TrackedTransfers.leaseFile(key)` (a `ContentFileLease`, which `mpx_transfer` implements over the bytes cache's own lease), save, release, under one job and one progress (download 90 %, copy 10 %; copy 100 % for an item already local). A null lease after a completed download is downloaded once more, then fails `unavailable`. Cancel cancels the downloads this job started, not others'. The batch is admitted (access asked) once, before any download. An item counts as local when the seam lends its file at the start; a failed download fails the item `unavailable`. Without the seam wired every item fails `unavailable` (code `noTrackedTransfers`), with a warning event, because only the seam lends a file. No new edge: the lease type is `mpx_core`'s |
+| Diagnostics | Category `save`, the closed enum `SaveOp` in `mpx_library`: the batch, each item's end, access, the define, the Apple block, the `ask` fallbacks and the `saveContent` steps, with the job's id and, per item, `index` and `mediaKey`. No field carries a name, path, album, sub-folder, ref or URL. ADR 0013; the README lists the ops |
 | Rights | The saver knows no rights: a caller that has them (a chat's protection) decides before it calls |
-| Platforms | Android (MediaStore insert with a pending flag, then the bytes; public directories on 28 and below; the document creation intent for `ask`), iOS (Photos add-only; `downloads` is the app's Documents shown in Files when the host declares file sharing, else the export picker; the export picker for `ask`), macOS (Photos add-only 11+; Downloads; the save panel), Windows and Linux (gallery as the Pictures / Videos folders, Downloads through the known folder / XDG; the save dialog), web (gallery and `downloads` as a blob URL download; `ask` through the save file picker where the browser has it, else a download) |
+| Platforms | Android (MediaStore insert with a pending flag, then the bytes; public directories on 28 and below; the document creation intent for `ask`), iOS (Photos add-only; `downloads` is the app's Documents shown in Files when the host declares file sharing (`UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace`), a taken name getting `name (1)`, else the export picker; the export picker for `ask`), macOS (Photos add-only 11+ in one change block as iOS; `~/Downloads/<subfolder>` and the save panel (one per item, through the system file dialog plugin) written as files from Dart item by item, with progress and a cancel inside a copy, a taken name getting `name (1)`, the modification time from `createdAt`; the sandbox adds the user-selected files entitlement for the panel), Windows and Linux (gallery as the Pictures / Videos folders, Downloads through the known folder / XDG; the save dialog), web (gallery and `downloads` as a blob URL download; `ask` through the save file picker where the browser has it, else a download) |
 
 ### Media preparation (`mpx_capture`)
 
@@ -307,7 +308,7 @@ save (progress, result).
 - `mpx_library` ships the write side beside the read side; its README
   lists each platform's declarations for saving (the Android write
   permission for 28 and below, the Apple usage string and define, the
-  macOS sandbox entitlements for Photos and Downloads).
+  macOS sandbox entitlements for Photos, Downloads and the save panel).
 - The chat side checks its protection before offering a save and maps the
   results to its own feedback.
 - **Platform matrix**: macOS gains the saver (Photos add-only and Downloads)
@@ -369,7 +370,46 @@ save (progress, result).
   places the switcher through `headerBuilder`.
 - **Opt-in define names**: `MPX_LIBRARY_PHOTOS` and `MPX_LIBRARY_CAMERA`
   as Swift active compilation conditions on the `mpx_library` target (the
-  mpx example's Podfile shows how).
+  mpx example's Podfile shows how). The media saver's add-only access
+  compiles under `MPX_LIBRARY_SAVE`; without it the gallery destination is
+  `unavailable`. A named album asks for read and write access, so it also
+  needs `MPX_LIBRARY_PHOTOS`.
+
+- **Media saver** (decisions of the save tickets 01 to 08, 2026-11-28):
+  - One runner holds the shared rules (job id, progress, cancel, the
+    access check, MIME routing, the `move` rule, lease release, events) over
+    a writer per platform; a writer is per-item, one atomic block, or routes
+    each destination to one of those (macOS). One resolved platform picks
+    both the access rules and the writer. A refused `move` of a leased file
+    is a copy with a `moveRefused` warning, not a failure. An item a writer
+    ends cancelled (a dismissed picker or dialog) ends the batch on every
+    platform, the web included.
+  - Android steps the copy over method calls, 4 MiB each, so a cancel acts
+    within one step; the native side names the error by a short code and
+    Dart maps it. Windows and Linux copy on a worker isolate in 1 MiB chunks
+    and bind the known folders with `dart:ffi` alone. A desktop save
+    claims its name with an empty file and writes into a hidden
+    `.<name>.part` renamed over it at the end; a cancel or any failure
+    removes both.
+  - macOS `downloads` and `ask` are written from Dart through the desktop
+    writer, because a native block would have neither progress nor a cancel
+    inside a copy; the save panel is the system file dialog plugin's.
+  - On iOS every destination is one block. Files needs both
+    `UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace`; a named
+    album under limited access is skipped (`albumSkipped`); a
+    `SaveItem.bytes` item is written to a temporary file for the block
+    (reversed 2026-11-28, review: it was refused).
+  - On the web an item with a path is read from the origin's private file
+    system; the bytes cache lends no file there, so web saves use bytes:
+    `saveContent` reads a whole content through `TrackedTransfers.readBytes`
+    when no file is lent (a file, where there is one, is still copied). A
+    spent user gesture turns a later `ask` into a download (`noActivation`).
+  - Diagnostics carry an error as its type and code only
+    (`SaveErrorSummary`), never its message, and the channel codecs'
+    format errors carry no source.
+  - Not confirmed on a device (the device checks settle them): MediaStore's
+    rename of a taken name, the Windows and Linux bindings and dialogs, an
+    iOS album under full access.
 
 ## Open in implementation
 

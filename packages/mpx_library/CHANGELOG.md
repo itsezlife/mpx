@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- `MediaSaver` saves photos, videos and files to the gallery
+  (`gallery(album:)`), Downloads (`downloads(subfolder:)`) or a place the
+  user picks (`ask()`), a batch as one `SaveJob` with one progress, a
+  cancel and a `SaveResult` per item. `saveContent(requests, destination)`
+  saves contents by key, downloading those not local through `mpx_core`'s
+  `TrackedTransfers`.
+- `SaveAccess`, apart from `LibraryAccess`: `access` reads it,
+  `requestAccess` asks ahead, a batch asks once by itself. Apple's add-only
+  access compiles under `MPX_LIBRARY_SAVE`.
+- `PlatformMediaSaver` saves on Android, iOS, macOS, Windows, Linux and the
+  web; the README lists where each destination lands and what a host
+  declares.
+- Diagnostics under category `save` (`SaveOp`), listed in the README.
+- `testing.dart`: `FakeMediaSaver`, `MediaSaverContract` and
+  `MediaSaverHarness`.
 - `MediaLibrary.missing`: which of some assets the library no longer
   holds, for a host checking its selection after a change.
   `LibraryAsset.byteSize` (Android). A host that implements `MediaLibrary`

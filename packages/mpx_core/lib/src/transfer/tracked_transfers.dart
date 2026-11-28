@@ -67,4 +67,12 @@ abstract interface class TrackedTransfers {
   /// Lends the local file of [key]'s whole content until the lease is
   /// released, or answers null when the content is not whole and local.
   Future<ContentFileLease?> leaseFile(MediaKey key);
+
+  /// The bytes of [key]'s whole content, or null when it is not whole and
+  /// local.
+  ///
+  /// For a keeper that holds content without files (the web's browser
+  /// storage), where [leaseFile] lends none; a caller that can copy a file
+  /// asks [leaseFile] first, since this holds the whole content in memory.
+  Future<Uint8List?> readBytes(MediaKey key);
 }

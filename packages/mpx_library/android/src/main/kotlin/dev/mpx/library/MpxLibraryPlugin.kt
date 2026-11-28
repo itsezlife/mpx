@@ -22,8 +22,9 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 /**
- * Native side of mpx_library on Android: the MediaStore library on one
- * method channel, its events (access, changes) on one event channel.
+ * Native side of mpx_library on Android: the MediaStore library, the save
+ * access and the saver ([NativeSaver]) on one method channel, the library's events (access,
+ * changes) on one event channel.
  * Queries run on a small pool; answers go back on the main thread.
  *
  * The plugin declares no permission: the host's manifest does (README). A
@@ -37,6 +38,8 @@ class MpxLibraryPlugin :
     PluginRegistry.RequestPermissionsResultListener {
     private lateinit var context: Context
     private lateinit var library: MediaStoreLibrary
+    private lateinit var save: SaveAccess
+    private lateinit var saver: NativeSaver
     private lateinit var methods: MethodChannel
     private lateinit var events: EventChannel
     private var sink: EventChannel.EventSink? = null
@@ -44,6 +47,7 @@ class MpxLibraryPlugin :
     private val main = Handler(Looper.getMainLooper())
     private val pool: ExecutorService = Executors.newFixedThreadPool(3)
     private val accessReplies = mutableListOf<MethodChannel.Result>()
+    private val saveReplies = mutableListOf<Pair<String, MethodChannel.Result>>()
     private val cancels = ConcurrentHashMap<Int, CancellationSignal>()
     internal var intake: SystemCameraIntake? = null
 
@@ -58,6 +62,8 @@ class MpxLibraryPlugin :
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
         library = MediaStoreLibrary(context)
+        save = SaveAccess(context)
+        saver = NativeSaver(context)
         methods = MethodChannel(binding.binaryMessenger, "dev.mpx.library/methods")
         methods.setMethodCallHandler(this)
         events = EventChannel(binding.binaryMessenger, "dev.mpx.library/events")
@@ -69,6 +75,7 @@ class MpxLibraryPlugin :
         events.setStreamHandler(null)
         onCancel(null)
         pool.shutdown()
+        saver.dispose()
     }
 
     // --- Activity and permissions ---
@@ -76,6 +83,7 @@ class MpxLibraryPlugin :
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activity = binding
         binding.addRequestPermissionsResultListener(this)
+        saver.attach(binding)
         intake = SystemCameraIntake(binding).also { binding.addActivityResultListener(it) }
     }
 
@@ -88,8 +96,10 @@ class MpxLibraryPlugin :
         activity?.removeRequestPermissionsResultListener(this)
         intake?.let { activity?.removeActivityResultListener(it); it.abandon() }
         intake = null
+        saver.detach()
         activity = null
         answerAccess()
+        answerSaveAccess()
     }
 
     override fun onRequestPermissionsResult(
@@ -97,8 +107,11 @@ class MpxLibraryPlugin :
         permissions: Array<out String>,
         grantResults: IntArray,
     ): Boolean {
-        if (requestCode != ACCESS_REQUEST) return false
-        answerAccess()
+        when (requestCode) {
+            ACCESS_REQUEST -> answerAccess()
+            SAVE_ACCESS_REQUEST -> answerSaveAccess()
+            else -> return false
+        }
         return true
     }
 
@@ -115,6 +128,23 @@ class MpxLibraryPlugin :
         accessReplies.forEach { it.success(access) }
         accessReplies.clear()
         sink?.success(access + ("type" to "access"))
+    }
+
+    // The legacy write permission saving needs on API 28 and below; one
+    // system prompt answers every request made while it shows.
+    private fun requestSaveAccess(destination: String, result: MethodChannel.Result) {
+        val now = save.answer(destination)
+        val host: Activity? = activity?.activity
+        if (now["status"] != "notDetermined" || host == null) return result.success(now)
+        saveReplies += destination to result
+        if (saveReplies.size > 1) return
+        save.asked = true
+        host.requestPermissions(arrayOf(SaveAccess.PERMISSION), SAVE_ACCESS_REQUEST)
+    }
+
+    private fun answerSaveAccess() {
+        saveReplies.forEach { (destination, reply) -> reply.success(save.answer(destination)) }
+        saveReplies.clear()
     }
 
     private fun openSettings() {
@@ -152,6 +182,12 @@ class MpxLibraryPlugin :
             "requestAccess" -> requestAccess(result)
             // Asking again makes Android 14 show its choice of items again.
             "manageSelected" -> requestAccess(result)
+            "saveAccess" -> result.success(save.answer(call.argument<String>("destination") ?: ""))
+            "requestSaveAccess" ->
+                requestSaveAccess(call.argument<String>("destination") ?: "", result)
+            "saveBegin" -> saver.begin(call.arguments as? Map<*, *> ?: emptyMap<Any, Any>(), result)
+            "saveStep" -> saver.step(call.argument<Int>("write") ?: 0, result)
+            "saveAbort" -> saver.abort(call.argument<Int>("write") ?: 0, result)
             "openSettings" -> {
                 openSettings()
                 result.success(null)
@@ -226,3 +262,4 @@ class MpxLibraryPlugin :
 }
 
 private const val ACCESS_REQUEST = 0x6d6c
+private const val SAVE_ACCESS_REQUEST = 0x6d73

@@ -1,7 +1,7 @@
 name: mpx_library
 description: >
-  Optional device media library and file intake for mpx: access, albums,
-  paged assets, change events, originals and a fetcher for their thumbnails.
+  Optional device media library, file intake and media saver for mpx:
+  access, albums, paged assets, originals, and saves to the gallery or Downloads.
 version: 0.0.1
 homepage: https://github.com/itsezlife/mpx
 repository: https://github.com/itsezlife/mpx/tree/main/packages/mpx_library
@@ -46,5 +46,8 @@ flutter:
         package: dev.mpx.library
         pluginClass: MpxLibraryPlugin
       ios:
+        pluginClass: MpxLibraryPlugin
+        sharedDarwinSource: true
+      macos:
         pluginClass: MpxLibraryPlugin
         sharedDarwinSource: true

@@ -179,6 +179,19 @@ final class TrackedContent implements TrackedTransfers {
     return ContentFileLease(path: lease.path, onRelease: lease.release);
   }
 
+  /// The whole content's bytes from the downloads' store, which on the web
+  /// holds them without a file.
+  @override
+  Future<Uint8List?> readBytes(MediaKey key) async {
+    final store = _downloads?.store;
+    if (store == null) return null;
+    final cacheKey = BytesCacheKey(_engine.cacheKeyOf(key));
+    // A ranged resource still arriving reads only in part: only a whole one
+    // is read.
+    if (!store.contains(cacheKey)) return null;
+    return store.read(cacheKey);
+  }
+
   /// The engine's jobs or publish jobs changed: every watched key whose
   /// value moved tells its listeners, and a watched download waiting to
   /// resume resumes.

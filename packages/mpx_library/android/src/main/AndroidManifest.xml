@@ -3,7 +3,9 @@
       No permissions on purpose (ADR 0011): a host that only links this
       plugin pays no permission. A host that reads the library declares
       READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ_MEDIA_VISUAL_USER_SELECTED
-      and READ_EXTERNAL_STORAGE (maxSdkVersion 32) itself; see the README.
+      and READ_EXTERNAL_STORAGE (maxSdkVersion 32) itself; a host that saves
+      to the gallery or Downloads on Android 9 and below declares
+      WRITE_EXTERNAL_STORAGE (maxSdkVersion 28); see the README.
     -->
     <application>
         <!--
