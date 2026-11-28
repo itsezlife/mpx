@@ -83,8 +83,9 @@ final results = await job.results; // one SaveResult per item
   one `SaveJob` (progress over the batch, cancel, a result per item). A
   file sent to the gallery goes by its MIME type; a leased cache file is
   copied, never moved, and its lease released when its item ends. The
-  saver knows no rights: the caller decides before it calls. Platform
-  adapters are not in yet, so `PlatformMediaSaver` answers `unavailable`.
+  saver knows no rights: the caller decides before it calls.
+  `PlatformMediaSaver` answers `unavailable` on a platform whose adapter
+  is not in yet; the web's is.
 
 ## Platforms
 
@@ -110,6 +111,17 @@ PhotoKit's change details. Originals download from iCloud with progress.
 On the web a pick that answers nothing within a second of the window
 getting its focus back ends empty (browsers say nothing when the dialog is
 dismissed), and files are blob handles (`IntakeSource.blob`).
+
+On the web every save is a download: `gallery` and `downloads` hand each
+item to the browser (`<a download>`; the browser decides whether to ask
+where, and an album or a sub-folder has no meaning there). `ask` opens the
+browser's save picker for each item where it has one (Chromium) and writes
+the item into the picked file; a dismissed picker is `cancelled`. Without
+a picker, or for an item the page has no user gesture left to open one
+for, `ask` is a download too. A saved item is `saved(null)`: the browser
+confirms nothing. Items are `SaveItem.bytes`, or a file in the origin's
+private file system at the item's path. The web needs no access and the
+host declares nothing.
 
 Native drag and drop and paste go through `super_drag_and_drop` and
 `super_clipboard` 0.9: a dropped or pasted file URI comes back as its file,

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
@@ -20,9 +21,14 @@ final class MediaSaverHarness {
   /// place of the per-item cancel. [denyAccess] puts the saver in the state
   /// of refused access, and [failBlock] makes its next block fail; a test
   /// that needs one the harness lacks is skipped.
+  ///
+  /// With [bytes] the contract's photos are `SaveItem.bytes` items of it,
+  /// the web's and in-memory content's fallback, in place of files at
+  /// [file]; leased items still lend a file at [file].
   const MediaSaverHarness({
     required this.saver,
     required this.file,
+    this.bytes,
     this.destination = const SaveDestination.gallery(),
     this.changeBlock = false,
     this.denyAccess,
@@ -34,6 +40,9 @@ final class MediaSaverHarness {
 
   /// A fresh source file for item [index].
   final String Function(int index) file;
+
+  /// The content of item [index], when the contract saves bytes.
+  final Uint8List Function(int index)? bytes;
 
   /// Where the contract saves.
   final SaveDestination destination;
@@ -64,12 +73,20 @@ abstract final class MediaSaverContract {
         diagnostics = RecordingDiagnostics.install();
       });
 
-      SaveItem photo(int index) => SaveItem.file(
-        harness.file(index),
-        name: 'contract-$index.jpg',
-        mimeType: 'image/jpeg',
-        kind: SaveItemKind.photo,
-      );
+      SaveItem photo(int index) => switch (harness.bytes) {
+        final bytes? => SaveItem.bytes(
+          bytes(index),
+          name: 'contract-$index.jpg',
+          mimeType: 'image/jpeg',
+          kind: SaveItemKind.photo,
+        ),
+        null => SaveItem.file(
+          harness.file(index),
+          name: 'contract-$index.jpg',
+          mimeType: 'image/jpeg',
+          kind: SaveItemKind.photo,
+        ),
+      };
 
       List<SaveItem> batch(int count) => [
         for (var i = 0; i < count; i++) photo(i),

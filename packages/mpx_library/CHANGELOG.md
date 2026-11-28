@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `PlatformMediaSaver` on the web: `gallery` and `downloads` are browser
+  downloads; `ask` writes into the file the user picks in the browser's
+  save picker where there is one, else downloads (`SaveOp.fallbackToAsk`).
+  A saved item is `saved(null)`, a dismissed picker `cancelled`. Items are
+  `SaveItem.bytes` or a file in the origin's private file system.
+- `MediaSaverHarness.bytes`: the contract saves `SaveItem.bytes` items, for
+  a saver over content without files.
 - `MediaSaver.save(items, destination)`: a batch of `SaveItem`s (a host
   file, a leased cache file or bytes; photo, video, animation or file) to
   `SaveDestination.gallery(album:)`, `.downloads(subfolder:)` or `.ask()`,

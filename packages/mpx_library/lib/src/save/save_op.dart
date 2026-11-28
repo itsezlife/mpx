@@ -40,7 +40,13 @@ enum SaveOp implements DiagnosticOp {
 
   /// An item's lease was given back (trace; `index`, `after`: `saved`,
   /// `cancelled` or `failed`).
-  leaseReleased;
+  leaseReleased,
+
+  /// A save to `ask` went as a download instead (debug; `why`:
+  /// `noSavePicker` when the browser has no save picker, with no `index`,
+  /// once per batch; `noActivation` when the page could not open it for
+  /// item `index`).
+  fallbackToAsk;
 
   @override
   String get category => 'save';
