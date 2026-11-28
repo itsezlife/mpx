@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Publish from page sources: `PublishItem.pageSource` takes a picked file
+  as the page holds it (`SourceBytes.blob`, the web) or bytes in memory
+  (`SourceBytes.memory`), and `PreparedMedia.bytes` is uploaded where
+  there is no file at the media's path. On the web the upload is copied
+  into OPFS when it is made and resumes from the copy after a reload; a
+  run with no source and no copy fails `sourceLost` before it opens. On
+  the VM such bytes are written to a file under `mpx_transfer/sources`,
+  deleted once the job completes or is cancelled. A new source for a
+  lost one: `PublishJob.retryItem(itemId, source:)`, and
+  `Transfers.retry(id, pageSource:)` on the web.
+- `UploadsHarness.open(sourceCopies:, sourceDirectory:)`: uploads that
+  read page sources, as on the web, and a directory for written sources.
+
 - Uploads through `Transfers.tracked`: `watch(key)` of a publish job
   item's local key reads its uploads (file and thumbnail together):
   `waiting` while queued, `sending(sent, total)` while running and held

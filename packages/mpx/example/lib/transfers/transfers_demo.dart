@@ -23,32 +23,45 @@ final class DemoPick {
     this.mimeType,
     this.name,
     this.modified,
+    this.pageSource,
   });
 
-  /// Picks images and videos through the system's file dialog. A picked
-  /// file the platform hands as a blob (the web) is left out: the engine's
-  /// publish jobs read files.
+  /// Picks images and videos through the system's file dialog: a file at
+  /// its path, or on the web the picked `File`, which its upload reads as
+  /// the item's page source.
   static Future<List<DemoPick>> fromFileDialog() async {
     final intake = await PlatformIntake.fileIntake();
     final files = await intake.pickFiles(filter: IntakeFilter.imagesAndVideos);
     return [
       for (final file in files)
-        if (file.source case IntakeSource$Path(:final path))
-          DemoPick(
-            path: path,
-            size: file.size,
-            mimeType: file.mimeType,
-            name: file.name,
-            modified: file.modified,
-          ),
+        DemoPick(
+          path: switch (file.source) {
+            IntakeSource$Path(:final path) => path,
+            // A name for the remote end; nothing reads it as a path.
+            IntakeSource$Blob() => file.name,
+          },
+          size: file.size,
+          mimeType: file.mimeType,
+          name: file.name,
+          modified: file.modified,
+          pageSource: switch (file.source) {
+            IntakeSource$Path() => null,
+            IntakeSource$Blob(:final handle) => SourceBytes.blob(handle),
+          },
+        ),
     ];
   }
 
+  /// Where the file is on this device; on the web, its name.
   final String path;
   final int size;
   final String? mimeType;
   final String? name;
   final DateTime? modified;
+
+  /// The picked file as the page holds it (the web); null for a file at
+  /// [path].
+  final SourceBytes? pageSource;
 
   /// The intent the item is prepared by: its kind.
   PreparationIntent get intent => switch (mimeType) {
@@ -134,7 +147,8 @@ final class TransfersDemo {
   /// Sends [picks] as one publish job to the server's publisher through
   /// [transport] ([TransferSettings.transport] unless given). With
   /// [prepare] each item is prepared by its kind (stills scaled, videos
-  /// compressed); without, it uploads as picked.
+  /// compressed); without, it uploads as picked. A file the page holds
+  /// (the web) uploads as picked: the preparation reads files.
   Future<PublishJob> send(
     List<DemoPick> picks, {
     bool prepare = true,
@@ -162,7 +176,9 @@ final class TransfersDemo {
           itemId: key.uuid,
           key: key,
           fingerprint: pick.fingerprint,
-          source: prepare
+          fileName: pick.pageSource == null ? null : pick.name,
+          pageSource: pick.pageSource,
+          source: prepare && pick.pageSource == null
               ? PublishSource.prepare(
                   PreparationInput(
                     pick.path,

@@ -387,6 +387,13 @@ task only.
   after a reload; a job over the limit, or on a page without OPFS, comes
   back failed with `sourceLost`. Leaving the page asks first while a job
   is queued or running.
+- Page sources: a publish item uploads a picked file the page holds
+  (`PublishItem.pageSource`, `SourceBytes.blob(file)`) or prepared bytes
+  (`PreparedMedia.bytes`). On the web they are copied into OPFS as above;
+  an item whose copy is gone after a reload fails with `sourceLost`, and
+  `job.retryItem(itemId, source:)` takes the file picked again. On the VM,
+  bytes with no file at the media's path are written to a file of the
+  engine's own, deleted once the job ends.
 - Diagnostics through `MpxDiagnostics.current` (`JournalOp`,
   `SchedulerOp`, `TransportOp`, `EnvelopeOp`, `ReuseOp`, `PublishOp`,
   `PublishPreparationOp`) and `debugSnapshot()` for a debug panel, with

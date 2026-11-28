@@ -43,12 +43,15 @@ enum JournalOp implements DiagnosticOp {
   /// memory, and the next write rewrites the whole journal. On the web
   /// also a copy of an upload source that the storage refused, or an OPFS
   /// that refused to open. The reuse table's storage reports here too, with
-  /// `table: reuse`.
+  /// `table: reuse`; a file written for a publish job's sources that could
+  /// not be deleted, with `code: source_delete`.
   writeFailed,
 
   /// On the web, an upload job's sources were copied into OPFS at its
-  /// creation, so the job survives a reload (debug; `bytes` copied, `ms`;
-  /// job).
+  /// creation, so the job survives a reload; on the VM, bytes a publish
+  /// item held in memory were written to a file of the engine's own, so
+  /// the upload survives a kill (debug; `bytes` copied, `ms`; job, the
+  /// upload's).
   sourceCopied,
 
   /// On the web, an upload job's sources are larger together than the copy

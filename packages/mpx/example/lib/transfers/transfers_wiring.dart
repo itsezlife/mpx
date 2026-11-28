@@ -103,17 +103,26 @@ final class TransfersWiring {
   /// any upload; the server key is aliased to them after.
   TransfersDemo demo(MpxStack stack) => TransfersDemo(
     root: root,
-    keepLocal: (key, pick) => CaptureCache(store: stack.store).put(
-      key,
-      CaptureOutput(
-        path: pick.path,
-        size: pick.size,
-        duration: Duration.zero,
-        dimensions: const MediaDimensions(1, 1),
-        headerRewritten: false,
-      ),
-      deleteSource: false,
-    ),
+    keepLocal: (key, pick) async {
+      // A picked file the page holds (the web) has no path to read.
+      if (pick.pageSource case final source?) {
+        return stack.store.write(
+          CaptureCache.cacheKeyOf(key),
+          await source.read(),
+        );
+      }
+      return CaptureCache(store: stack.store).put(
+        key,
+        CaptureOutput(
+          path: pick.path,
+          size: pick.size,
+          duration: Duration.zero,
+          dimensions: const MediaDimensions(1, 1),
+          headerRewritten: false,
+        ),
+        deleteSource: false,
+      );
+    },
     know: stack.pipeline.know,
   );
 }

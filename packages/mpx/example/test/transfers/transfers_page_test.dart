@@ -10,6 +10,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
@@ -62,7 +63,12 @@ final class _Rig {
 
   Transfers get transfers => root.transfers;
 
-  static Future<_Rig> open({bool holdParts = false}) async {
+  /// [sourceCopies] makes the engine read picked files as the page holds
+  /// them, as on the web.
+  static Future<_Rig> open({
+    bool holdParts = false,
+    UploadSourceCopies? sourceCopies,
+  }) async {
     final files = FakeUploadSourceFiles()..put(_path, size: _pick.size);
     final transports = {
       for (final transport in DemoTransport.values)
@@ -82,6 +88,7 @@ final class _Rig {
       files: files,
       envelope: FakeTransferEnvelope(),
       envelopeConfig: TransfersRoot.envelopeConfig(settings),
+      sourceCopies: sourceCopies,
     );
     final publisher = FakePublisher(hold: true);
     harness.transfers.registerPublisher(DevServerPublisher.id, publisher);
@@ -196,6 +203,42 @@ void main() {
     for (final event in recorder.events) {
       expect('${event.fields}', isNot(contains('holiday')));
     }
+    await rig.close(tester);
+  });
+
+  testWidgets('a file the page holds (the web) goes out as picked, read '
+      'from the page and copied, though preparation was asked for', (
+    tester,
+  ) async {
+    final recorder = RecordingDiagnostics.install();
+    final copies = FakeUploadSourceCopies();
+    final rig = await _Rig.open(sourceCopies: copies);
+    final bytes = Uint8List.fromList(List.generate(12, (i) => i));
+
+    final job = await rig.demo.send([
+      DemoPick(
+        path: 'picked.jpg',
+        size: bytes.length,
+        mimeType: 'image/jpeg',
+        name: 'picked.jpg',
+        pageSource: SourceBytes.memory(bytes),
+      ),
+    ], prepare: true);
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+
+    expect(job.snapshot.items.single.state, isA<PublishItemState$Uploaded>());
+    expect(rig.transports[rig.root.settings.transport.id]!.opens, hasLength(1));
+    // Copied at the start, deleted once the upload completed.
+    expect(copies.deleted, hasLength(1));
+    expect(
+      recorder.events
+          .where((event) => event.op.name == 'sourceCopied')
+          .single
+          .fields['bytes'],
+      12,
+    );
+    expect(recorder.errors, isEmpty);
     await rig.close(tester);
   });
 
