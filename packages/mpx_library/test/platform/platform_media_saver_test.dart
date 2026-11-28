@@ -54,4 +54,43 @@ void main() {
       ['noAdapter', 'noAdapter'],
     );
   });
+
+  test('saveContent is refused before it leases or downloads, and fails '
+      'unavailable without transfers', () async {
+    RecordingDiagnostics.install();
+    const key = MediaKey.remote('a');
+    final transfers = FakeTrackedTransfers()..setFile(key, '/cache/a');
+    const request = SaveRequest(
+      key,
+      name: 'a.jpg',
+      mimeType: 'image/jpeg',
+      kind: SaveItemKind.photo,
+    );
+
+    final withTransfers = PlatformMediaSaver(
+      methods: _methods,
+      transfers: transfers,
+    );
+    expect(
+      await withTransfers.saveContent([
+        request,
+      ], const SaveDestination.gallery()).results,
+      [const SaveResult.failed(SaveFailure.unavailable, code: 'noAdapter')],
+    );
+    // Refused at admission, before any lease or download.
+    expect(transfers.leaseRequests, isEmpty);
+    expect(transfers.downloads, isEmpty);
+
+    expect(
+      await PlatformMediaSaver(
+        methods: _methods,
+      ).saveContent([request], const SaveDestination.gallery()).results,
+      [
+        const SaveResult.failed(
+          SaveFailure.unavailable,
+          code: 'noTrackedTransfers',
+        ),
+      ],
+    );
+  });
 }

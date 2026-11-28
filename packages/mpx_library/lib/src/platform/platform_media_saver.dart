@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/src/platform/platform_media_library.dart';
 import 'package:mpx_library/src/platform/platform_save_access.dart';
 import 'package:mpx_library/src/platform/save_writer_vm.dart'
@@ -9,6 +10,7 @@ import 'package:mpx_library/src/save/save_access.dart';
 import 'package:mpx_library/src/save/save_destination.dart';
 import 'package:mpx_library/src/save/save_item.dart';
 import 'package:mpx_library/src/save/save_job_runner.dart';
+import 'package:mpx_library/src/save/save_request.dart';
 
 /// The [MediaSaver] of the platform the app runs on.
 ///
@@ -29,10 +31,16 @@ import 'package:mpx_library/src/save/save_job_runner.dart';
 /// `SaveFailure.unavailable` (code `noAdapter`), after the access check.
 final class PlatformMediaSaver implements MediaSaver {
   /// The saver of this platform, over the plugin's [methods] channel; a
-  /// test passes its own.
+  /// test passes its own. [transfers] is the composition's tracked
+  /// transfers, through which `saveContent` makes content local; without
+  /// it every `saveContent` item fails `SaveFailure.unavailable`.
   PlatformMediaSaver({
     MethodChannel methods = PlatformMediaLibrary.methodsChannel,
-  }) : _access = PlatformSaveAccess.current(methods);
+    TrackedTransfers? transfers,
+  }) : _access = PlatformSaveAccess.current(methods),
+       _transfers = transfers;
+
+  final TrackedTransfers? _transfers;
 
   final PlatformSaveAccess _access;
 
@@ -49,4 +57,10 @@ final class PlatformMediaSaver implements MediaSaver {
   @override
   Future<SaveAccess> requestAccess(SaveDestination destination) =>
       _access.request(destination);
+
+  @override
+  SaveJob saveContent(
+    List<SaveRequest> requests,
+    SaveDestination destination,
+  ) => SaveJobRunner.runContent(requests, destination, _writer, _transfers);
 }

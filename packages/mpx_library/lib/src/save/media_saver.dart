@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:mpx_library/src/save/save_access.dart';
 import 'package:mpx_library/src/save/save_destination.dart';
 import 'package:mpx_library/src/save/save_item.dart';
+import 'package:mpx_library/src/save/save_request.dart';
 import 'package:mpx_library/src/save/save_result.dart';
 
 /// One `MediaSaver.save` batch on its way: one progress over every item, a
@@ -53,6 +54,8 @@ abstract interface class SaveJob {
 ///   access fails every item of the batch `SaveFailure.accessDenied`; a
 ///   build without the code for the destination, or a platform without an
 ///   adapter, fails every item `SaveFailure.unavailable`.
+/// - [saveContent] makes each content local through `TrackedTransfers`
+///   first; see there.
 abstract interface class MediaSaver {
   /// Starts saving [items] to [destination] as one job.
   SaveJob save(List<SaveItem> items, SaveDestination destination);
@@ -66,4 +69,28 @@ abstract interface class MediaSaver {
   /// was not asked yet, and answers the access after. [save] asks by
   /// itself, so a host calls this only to ask ahead of a save.
   Future<SaveAccess> requestAccess(SaveDestination destination);
+
+  /// Starts saving the contents [requests] name to [destination] as one
+  /// job, downloading those not local yet.
+  ///
+  /// Per request: a content not whole and local is downloaded as a tracked
+  /// download the user started (`TrackedTransfers.download`, origin
+  /// `user`), or joins the download another caller has under way; once it
+  /// completes its file is leased (`TrackedTransfers.leaseFile`), saved as
+  /// [save] saves a `SaveItem.leased`, and the lease is released when the
+  /// item is done. A completed download whose file cannot be leased is
+  /// downloaded once more, then fails `SaveFailure.unavailable`, as does a
+  /// download that fails.
+  ///
+  /// One progress covers both stages: an item's download is 90 % of its
+  /// share and its copy 10 %; an item already local counts its copy as its
+  /// whole share. The batch is admitted (access) once, before any
+  /// download: a refused access downloads nothing.
+  ///
+  /// [SaveJob.cancel] cancels the downloads this job started and leaves
+  /// running those another caller started; their items end cancelled.
+  ///
+  /// Without `TrackedTransfers` in the saver's composition no content can be
+  /// reached, and every item fails `SaveFailure.unavailable`.
+  SaveJob saveContent(List<SaveRequest> requests, SaveDestination destination);
 }

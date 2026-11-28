@@ -55,7 +55,9 @@ sealed class SaveWriter {
 
   /// Checked once per batch before anything is written; a failed result
   /// fails every item of the batch with it (denied access, no adapter, a
-  /// build without the code). Null lets the batch through.
+  /// build without the code). Null lets the batch through. A
+  /// `saveContent` batch is admitted before its contents are downloaded, so
+  /// [items] is empty for it.
   Future<SaveResult$Failed?> admit(
     String jobId,
     SaveDestination destination,

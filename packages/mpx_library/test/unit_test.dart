@@ -23,6 +23,7 @@ import 'platform/platform_save_access_test.dart' as platform_save_access_test;
 import 'save/fake_media_saver_contract_test.dart'
     as fake_media_saver_contract_test;
 import 'save/fake_media_saver_test.dart' as fake_media_saver_test;
+import 'save/save_content_test.dart' as save_content_test;
 import 'save/save_diagnostics_test.dart' as save_diagnostics_test;
 
 void main() {
@@ -41,5 +42,6 @@ void main() {
   group('platform_save_access_test', platform_save_access_test.main);
   group('fake_media_saver_contract_test', fake_media_saver_contract_test.main);
   group('fake_media_saver_test', fake_media_saver_test.main);
+  group('save_content_test', save_content_test.main);
   group('save_diagnostics_test', save_diagnostics_test.main);
 }

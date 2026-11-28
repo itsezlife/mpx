@@ -7,6 +7,7 @@ import 'package:mpx_library/src/save/save_admission.dart';
 import 'package:mpx_library/src/save/save_destination.dart';
 import 'package:mpx_library/src/save/save_item.dart';
 import 'package:mpx_library/src/save/save_job_runner.dart';
+import 'package:mpx_library/src/save/save_request.dart';
 import 'package:mpx_library/src/save/save_result.dart';
 import 'package:mpx_library/src/save/save_writer.dart';
 
@@ -24,6 +25,25 @@ final class FakeSaveBatch {
 
   /// The items, as given.
   final List<SaveItem> items;
+
+  /// Where they went.
+  final SaveDestination destination;
+}
+
+/// One `saveContent` batch a [FakeMediaSaver] was given.
+final class FakeContentBatch {
+  /// The batch of job [jobId].
+  const FakeContentBatch({
+    required this.jobId,
+    required this.requests,
+    required this.destination,
+  });
+
+  /// The job's id.
+  final String jobId;
+
+  /// The requests, as given.
+  final List<SaveRequest> requests;
 
   /// Where they went.
   final SaveDestination destination;
@@ -80,8 +100,13 @@ final class FakeMediaSaver implements MediaSaver {
   /// does on Apple: [progressSteps] steps for the whole block, a cancel
   /// before it cancels every item, a cancel during it has no effect, and
   /// [blockFailure] fails every item.
+  ///
+  /// [transfers] is what `saveContent` downloads and leases through (a
+  /// `FakeTrackedTransfers` in tests); without it every `saveContent` item
+  /// fails `SaveFailure.unavailable`.
   FakeMediaSaver({
     SaveResult Function(FakeSaveWrite write)? resultFor,
+    this.transfers,
     this.changeBlock = false,
     this.progressSteps = 4,
     this.stepBytes = 1024,
@@ -93,6 +118,9 @@ final class FakeMediaSaver implements MediaSaver {
 
   static SaveResult _saved(FakeSaveWrite write) =>
       SaveResult.saved('fake-${++_lastRef}');
+
+  /// The tracked transfers `saveContent` makes content local through.
+  final TrackedTransfers? transfers;
 
   /// How each item ends once written.
   SaveResult Function(FakeSaveWrite write) resultFor;
@@ -133,13 +161,16 @@ final class FakeMediaSaver implements MediaSaver {
   /// its write is not here.
   final List<FakeSaveWrite> writes = [];
 
+  /// Every `saveContent` batch, oldest first, as given; its items, once
+  /// local, are in [writes].
+  final List<FakeContentBatch> contentBatches = [];
+
+  SaveWriter get _writer =>
+      changeBlock ? _FakeBlockWriter(this) : _FakeItemWriter(this);
+
   @override
   SaveJob save(List<SaveItem> items, SaveDestination destination) {
-    final job = SaveJobRunner.run(
-      items,
-      destination,
-      changeBlock ? _FakeBlockWriter(this) : _FakeItemWriter(this),
-    );
+    final job = SaveJobRunner.run(items, destination, _writer);
     batches.add(
       FakeSaveBatch(
         jobId: job.id,
@@ -171,6 +202,24 @@ final class FakeMediaSaver implements MediaSaver {
     accessRequests++;
     saveAccess = grantOnRequest;
     return _answer();
+  }
+
+  @override
+  SaveJob saveContent(List<SaveRequest> requests, SaveDestination destination) {
+    final job = SaveJobRunner.runContent(
+      requests,
+      destination,
+      _writer,
+      transfers,
+    );
+    contentBatches.add(
+      FakeContentBatch(
+        jobId: job.id,
+        requests: List.unmodifiable(requests),
+        destination: destination,
+      ),
+    );
+    return job;
   }
 }
 
