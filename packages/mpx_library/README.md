@@ -40,6 +40,20 @@ library.changes.listen((change) {
 final fetcher = LibraryFetcher(library);
 ```
 
+Saving into the gallery, Downloads or a place the user picks:
+
+```dart
+final MediaSaver saver = PlatformMediaSaver(); // or FakeMediaSaver
+
+final job = saver.save([
+  SaveItem.file(path, name: 'photo.jpg', mimeType: 'image/jpeg',
+      kind: SaveItemKind.photo),
+], const SaveDestination.gallery());
+
+job.progress.addListener(() => showProgress(job.progress.value));
+final results = await job.results; // one SaveResult per item
+```
+
 ## Features
 
 - `MediaLibrary`: `access` as a `ValueListenable<LibraryAccess>`
@@ -65,6 +79,12 @@ final fetcher = LibraryFetcher(library);
   `ClipboardReader`, `IntakeFiles.fromPath` / `fromBytes` for a host field
   that already reads pasted media, and `IntakeKind.classify` (photo, video,
   animation, audio, file).
+- `MediaSaver`: a batch of photos, videos, animations and files saved as
+  one `SaveJob` (progress over the batch, cancel, a result per item). A
+  file sent to the gallery goes by its MIME type; a leased cache file is
+  copied, never moved, and its lease released when its item ends. The
+  saver knows no rights: the caller decides before it calls. Platform
+  adapters are not in yet, so `PlatformMediaSaver` answers `unavailable`.
 
 ## Platforms
 

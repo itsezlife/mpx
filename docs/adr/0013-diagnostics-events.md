@@ -39,8 +39,8 @@ a kill, when the developer console is not attached.
 
 Categories and the package whose op enum holds them: `journal`,
 `scheduler`, `transport`, `envelope`, `reuse` and `publish` in
-`mpx_transfer`; `preparation` in `mpx_capture`; `binding` in `mpx_core`;
-`cache` in `mpx`. `mpx_core` declares no other package's ops, so a package
+`mpx_transfer`; `preparation` in `mpx_capture`; `save` in `mpx_library`
+(the media saver, ADR 0011); `binding` in `mpx_core`; `cache` in `mpx`. `mpx_core` declares no other package's ops, so a package
 adds an op without touching the core. ADR 0012's paths each have
 their operations (a part sent, acknowledged, retried or given up; a journal
 flush or compaction; an envelope started, refused, degraded, ended by the

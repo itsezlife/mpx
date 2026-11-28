@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- `MediaSaver.save(items, destination)`: a batch of `SaveItem`s (a host
+  file, a leased cache file or bytes; photo, video, animation or file) to
+  `SaveDestination.gallery(album:)`, `.downloads(subfolder:)` or `.ask()`,
+  as one `SaveJob` with an id, one progress, `cancel()` and a `SaveResult`
+  per item (`saved(platformRef)`, `cancelled`, `failed(SaveFailure)`). A
+  file sent to the gallery goes by its MIME type or fails
+  `unsupportedFormat`; a leased file is never moved and its lease is
+  released when its item ends. `PlatformMediaSaver` has no platform adapter
+  yet: every item fails `unavailable`. Diagnostics events under category
+  `save` (`SaveOp`).
+- `testing.dart`: `FakeMediaSaver` (recorded batches and writes, scripted
+  results, progress steps, cancel, denied access, one change block) and
+  `MediaSaverContract`.
 - `MediaLibrary.missing`: which of some assets the library no longer
   holds, for a host checking its selection after a change.
   `LibraryAsset.byteSize` (Android). A host that implements `MediaLibrary`
