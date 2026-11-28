@@ -2,110 +2,55 @@
 
 ## Unreleased
 
-- `PlatformMediaSaver` saves on macOS. `gallery(album:)` is one Photos
-  change block per batch, as on iOS (add-only access, macOS 11 and later,
-  under `MPX_LIBRARY_SAVE`). `downloads(subfolder:)` writes into
-  `~/Downloads/<subfolder>` item by item, with progress and a cancel inside
-  a copy; a taken name gets ` (1)` and is reported renamed, and `createdAt`
-  becomes the modification time. `ask` opens the system save panel per
-  item, a dismissed one cancelling the rest of the batch. A sandboxed host
-  adds `com.apple.security.files.user-selected.read-write` for the panel,
-  beside the Photos and Downloads entitlements. macOS was `unavailable`
-  (code `noAdapter`) before.
-
-- `PlatformMediaSaver` saves on iOS: one native call per batch with one
-  atomic result. `gallery(album:)` is one Photos change block (one prompt),
-  each asset with the item's name, type and `createdAt`; a GIF animation
-  saves as an animated image; an album is found or made in the block, and
-  skipped under limited access. `downloads(subfolder:)` copies into the
-  app's Documents when the host shows them in Files
-  (`UIFileSharingEnabled`, `LSSupportsOpeningDocumentsInPlace`), else opens
-  the export picker as `ask` does; a taken name gets ` (1)`. `ask` is the
-  export picker over the batch, a dismissed one cancelling every item. A
-  cancel counts only before the block begins. Failures map from the
-  Photos, Foundation and POSIX error codes, which `itemFailed` carries.
-  Events `changeBlock` (from every one-block writer), `fallbackToAsk` (why
-  `noFileSharing`) and `albumSkipped`.
-
-- `SaveAccess`, the access saving needs, apart from `LibraryAccess`:
-  `MediaSaver.access(destination)` reads it, `requestAccess(destination)`
-  asks ahead, and a batch asks once by itself before writing. Apple asks
-  for add-only Photos access (read and write for a named album), compiled
-  only under the host's `MPX_LIBRARY_SAVE` condition: without it a batch to
-  the gallery fails every item `unavailable` (code `defineMissing`). Android
-  28 and below asks for `WRITE_EXTERNAL_STORAGE`, which the host declares
-  with `maxSdkVersion="28"`; 29 and later, the desktops and the web ask for
-  nothing. A host that implements `MediaSaver` adds `access` and
-  `requestAccess`. Events `accessRequested` and `defineMissing`.
-- `FakeMediaSaver.saveAccess` (a `SaveAccess`, with `grantOnRequest` and
-  `accessRequests`) replaces the `accessDenied` flag: a test that set
-  `accessDenied = true` sets `saveAccess = SaveAccess.denied`.
-- The plugin registers on macOS too, for the save access; the library
-  there still answers `restricted`.
-- `MediaSaver.saveContent(requests, destination)`: saves contents by
-  `MediaKey` (`SaveRequest`: key, name, MIME type, kind, optional date)
-  whether they are downloaded or not, through `mpx_core`'s
-  `TrackedTransfers` given to the saver (`PlatformMediaSaver(transfers:)`,
-  `FakeMediaSaver(transfers:)`). A content not local is downloaded as the
-  user's tracked download, or joins another caller's; once complete its
-  file is leased, saved and the lease released when the item ends. One
-  progress: an item's download is 90 % of its share and its copy 10 %, an
-  item already local is all copy. The batch is admitted (its access asked
-  for) once, before any download, so a refused one downloads nothing.
-  Cancel stops the downloads this job
-  started and leaves others' running. A lease missing after a completed
-  download downloads once more, then fails `unavailable`; a failed download
-  fails `unavailable`; without `TrackedTransfers` every item fails
-  `unavailable`. New `SaveOp`s: `downloadStarted`, `downloadShared`,
-  `leaseMissing`, `trackedTransfersMissing`, `downloadsCancelled`; item
-  events and `leaseReleased` carry the item's `mediaKey`. A host that
-  implements `MediaSaver` adds `saveContent`.
-- `testing.dart`: `MediaSaverContract` checks `saveContent` when the
-  harness passes its `FakeTrackedTransfers` (`transfers`,
-  `withoutTransfers`); `FakeMediaSaver.contentBatches`.
-- `PlatformMediaSaver` saves on Android: from API 29 into the MediaStore,
-  a row inserted pending and published once every byte is in
-  (`gallery(album:)` as images under `Pictures/<album>` or video under
-  `Movies/<album>`, an animation by its MIME type, `createdAt` as
-  `DATE_TAKEN`; `downloads(subfolder:)` under `Download/<subfolder>`), the
-  store's own rename of a taken name reported as `renamed`; on API 28 and
-  below a file in the public directory renamed into place (`name(1)` to
-  `name(10)`) and scanned; `ask` through the create-document dialog, one
-  per item, a dismissed one cancelling the rest of the batch. The copy
-  runs off the main thread in steps, with progress and cancel; a cancel or
-  a failure removes the pending row or file. Platform errors map to
-  `noSpace` (`ENOSPC`), `unsupportedFormat` (`mimeRejected`),
-  `accessDenied` (`security`) or `unavailable`, with the code kept.
-- `PlatformMediaSaver` saves on Windows and Linux: `gallery(album:)` into
-  the Pictures or Videos folder (by kind, an animation by its MIME type),
-  `downloads(subfolder:)` into Downloads, both through the Windows known
-  folders or the XDG user directories; `ask` through the system save
-  dialog, one per item, a dismissed one cancelling the rest of the batch.
-  A taken name gets ` (1)`, ` (2)`, … and the result is `renamed`; names
-  and sub-folders are made safe for the file system. The copy streams on
-  a worker isolate with progress and cancel, a partial file is removed,
-  and `createdAt` becomes the modification time. A file system error maps
-  to `accessDenied`, `noSpace` or `unavailable` with its OS code.
-- `PlatformMediaSaver` on the web: `gallery` and `downloads` are browser
-  downloads; `ask` writes into the file the user picks in the browser's
-  save picker where there is one, else downloads (`SaveOp.fallbackToAsk`).
-  A saved item is `saved(null)`, a dismissed picker `cancelled`. Items are
-  `SaveItem.bytes` or a file in the origin's private file system.
-- `MediaSaverHarness.bytes`: the contract saves `SaveItem.bytes` items, for
-  a saver over content without files.
-- `MediaSaver.save(items, destination)`: a batch of `SaveItem`s (a host
-  file, a leased cache file or bytes; photo, video, animation or file) to
-  `SaveDestination.gallery(album:)`, `.downloads(subfolder:)` or `.ask()`,
-  as one `SaveJob` with an id, one progress, `cancel()` and a `SaveResult`
-  per item (`saved(platformRef)`, `cancelled`, `failed(SaveFailure)`). A
-  file sent to the gallery goes by its MIME type or fails
-  `unsupportedFormat`; a leased file is never moved and its lease is
-  released when its item ends. `PlatformMediaSaver` has no platform adapter
-  yet: every item fails `unavailable`. Diagnostics events under category
-  `save` (`SaveOp`).
-- `testing.dart`: `FakeMediaSaver` (recorded batches and writes, scripted
-  results, progress steps, cancel, denied access, one change block) and
-  `MediaSaverContract`.
+- `MediaSaver`, the write side of the library: `save(items, destination)`
+  saves a batch of `SaveItem`s (a host file, a leased cache file or bytes;
+  photo, video, animation or file) to `SaveDestination.gallery(album:)`,
+  `.downloads(subfolder:)` or `.ask()` as one `SaveJob` (an id, one
+  progress, `cancel()`, a `SaveResult` per item: `saved(platformRef)`,
+  `cancelled`, `failed(SaveFailure)`). A `file` sent to the gallery goes by
+  its MIME type or fails `unsupportedFormat`; a `move` of a leased file is
+  refused and the file copied; its lease is released when its item ends.
+  `saveContent(requests, destination)` saves `SaveRequest`s (key, name,
+  MIME type, kind, optional date) through `mpx_core`'s `TrackedTransfers`,
+  given as `PlatformMediaSaver(transfers:)`: a content not local is
+  downloaded as the user's tracked download (or joins one under way), then
+  leased, saved and released, under one progress (a download is 90 % of an
+  item's share, its copy 10 %; an item already local is all copy). The batch
+  is admitted once, before any download. Cancel stops only the downloads
+  the job started. A lease missing after a download downloads once more,
+  then fails `unavailable`; without `TrackedTransfers` every item fails
+  `unavailable`.
+- `SaveAccess`, apart from `LibraryAccess`: `MediaSaver.access(destination)`
+  reads it, `requestAccess(destination)` asks ahead, and a batch asks once
+  by itself. Apple asks for add-only Photos access (read and write for a
+  named album), compiled only under the host's `MPX_LIBRARY_SAVE`
+  condition; without it the gallery reads `unavailable` and a batch to it
+  fails every item `unavailable` (code `defineMissing`). Android 9 and
+  below asks for `WRITE_EXTERNAL_STORAGE`, declared with
+  `maxSdkVersion="28"`. Android 10 and later, Windows, Linux and the web ask
+  for nothing. The plugin registers on macOS for it; the library there
+  still answers `restricted`.
+- `PlatformMediaSaver` saves on every platform. Android: the MediaStore
+  from API 29 (a pending row, published when every byte is in), public
+  directories on API 28 and below, the create-document dialog for `ask`.
+  iOS: one native call and one atomic result per batch, gallery as one
+  Photos change block, Downloads as the app's Documents when the host shows
+  them in Files, else the export picker. macOS: the same Photos block;
+  `~/Downloads/<subfolder>` and the save panel written from Dart item by
+  item. Windows and Linux: the Pictures, Videos and Downloads folders (known
+  folders, XDG user directories) and the save dialog. Web: browser downloads
+  and the save picker where there is one. A taken name becomes `name (1)` on
+  the desktops and iOS Documents and is reported `renamed`; `createdAt` is
+  written where the platform keeps one; copies run off the UI thread with
+  progress and a cancel inside a copy, and a cancelled or failed copy
+  leaves nothing behind. A host adds the declarations the README lists per
+  platform.
+- Diagnostics under category `save` (`SaveOp`), listed in the README.
+- `testing.dart`: `FakeMediaSaver` (recorded batches, scripted results,
+  progress steps, cancel, a settable `saveAccess`, `transfers`),
+  `MediaSaverContract` and `MediaSaverHarness` (`changeBlock`, `bytes`,
+  `transfers`, `withoutTransfers`). A host that implements `MediaSaver`
+  adds `access`, `requestAccess` and `saveContent`.
 - `MediaLibrary.missing`: which of some assets the library no longer
   holds, for a host checking its selection after a change.
   `LibraryAsset.byteSize` (Android). A host that implements `MediaLibrary`

@@ -47,7 +47,9 @@ flush or compaction; an envelope started, refused, degraded, ended by the
 system or withdrawn; a reuse hit or invalidation; a publish attempt and its
 outcome; a preparation started or finished; a binding's tracked download and
 its mapped state). The full table of operations, levels, fields and ids is
-kept in the transfers specification beside ADR 0012.
+kept in the transfers specification beside ADR 0012. The `save` operations are the closed enum `SaveOp` in
+`mpx_library`, with their levels, fields and ids in its dartdoc and a list in
+its README; the media saver's events carry the `SaveJob`'s id as `jobId`.
 
 Levels: `trace` for per-part and per-batch detail, `debug` for stage changes,
 `info` for milestones, `warning` for a degrade or a retry, `error` for a
