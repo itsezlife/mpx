@@ -333,7 +333,7 @@ void main() {
         reloaded.snapshot.item('a')!.state,
         const PublishItemState.failed(
           stage: PublishStage.upload,
-          reason: 'sourceLost',
+          reason: PublishFailureReason('sourceLost'),
           retryable: false,
         ),
       );
@@ -369,7 +369,7 @@ void main() {
           job.snapshot.item('a')!.state,
           const PublishItemState.failed(
             stage: PublishStage.upload,
-            reason: 'sourceLost',
+            reason: PublishFailureReason('sourceLost'),
             retryable: true,
           ),
         );

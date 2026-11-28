@@ -264,7 +264,7 @@ void main() {
         job.snapshot.state,
         const PublishJobState.failed(
           stage: PublishStage.publish,
-          reason: 'reuploadRefused',
+          reason: PublishFailureReason.reuploadRefused,
           retryable: false,
         ),
       );
@@ -319,7 +319,7 @@ void main() {
         job.snapshot.state,
         const PublishJobState.failed(
           stage: PublishStage.publish,
-          reason: 'slowMode',
+          reason: PublishFailureReason('slowMode'),
           retryable: true,
         ),
       );
@@ -565,7 +565,7 @@ void main() {
           h.transfers.publishJob(job.id)!.snapshot.state,
           const PublishJobState.failed(
             stage: PublishStage.publish,
-            reason: 'tooLong',
+            reason: PublishFailureReason('tooLong'),
             retryable: false,
           ),
         );

@@ -357,7 +357,7 @@ void main() {
       job.snapshot.state,
       const PublishJobState.failed(
         stage: PublishStage.upload,
-        reason: 'server',
+        reason: PublishFailureReason('server'),
         retryable: false,
       ),
     );
@@ -380,7 +380,7 @@ void main() {
       job.snapshot.state,
       const PublishJobState.failed(
         stage: PublishStage.prepare,
-        reason: 'noSpace',
+        reason: PublishFailureReason('noSpace'),
         retryable: true,
       ),
     );

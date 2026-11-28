@@ -197,7 +197,7 @@ void main() {
       job.snapshot.state,
       const PublishJobState.failed(
         stage: PublishStage.publish,
-        reason: 'publisherError',
+        reason: PublishFailureReason.publisherError,
         retryable: true,
       ),
     );

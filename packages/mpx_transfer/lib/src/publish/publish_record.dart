@@ -303,7 +303,7 @@ final class ItemProgress$Failed extends ItemProgress {
   final PublishStage stage;
 
   /// A short code for why.
-  final String reason;
+  final PublishFailureReason reason;
 
   /// Whether a retry may succeed.
   final bool retryable;
@@ -704,7 +704,7 @@ final class _PublishRecordDecoder
         ),
         _Is.failed => ItemProgress$Failed(
           stage: json.byName(PublishStage.values, _Key.stage),
-          reason: json.string(_Key.reason),
+          reason: PublishFailureReason(json.string(_Key.reason)),
           retryable: json.flag(_Key.retryable),
           before: switch (json.optionalObject(_Key.before)) {
             final before? => _progress(before),
@@ -727,7 +727,7 @@ final class _PublishRecordDecoder
         }),
         _Is.failed => PublishJobState.failed(
           stage: json.byName(PublishStage.values, _Key.stage),
-          reason: json.string(_Key.reason),
+          reason: PublishFailureReason(json.string(_Key.reason)),
           retryable: json.flag(_Key.retryable),
         ),
         final other => throw FormatException(

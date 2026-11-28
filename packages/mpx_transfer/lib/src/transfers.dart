@@ -6,6 +6,7 @@ import 'package:http_bytes_cache/http_bytes_cache.dart'
     show BytesCacheKey, HttpBytesClient, IBytesStore, RequestPriority;
 import 'package:meta/meta.dart';
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_transfer/src/diagnostics/cancelled_by.dart';
 import 'package:mpx_transfer/src/diagnostics/envelope_op.dart';
 import 'package:mpx_transfer/src/diagnostics/journal_op.dart';
 import 'package:mpx_transfer/src/diagnostics/scheduler_op.dart';
@@ -579,10 +580,10 @@ final class Transfers {
   /// before its retention ends). An upload of a publish job's item takes
   /// the item out of its job, which goes on with the rest
   /// (`PublishJob.removeItem`). Answers false for an unknown id.
-  bool cancel(TransferId id) => _cancel(id, by: 'user');
+  bool cancel(TransferId id) => _cancel(id, by: CancelledBy.user);
 
   /// [cancel], reported as made [by] the user or the job's owner.
-  bool _cancel(TransferId id, {required String by}) {
+  bool _cancel(TransferId id, {required CancelledBy by}) {
     final job = _job(id);
     if (job == null) return false;
     final owner = _journal.record(id)?.upload?.owner;
@@ -592,7 +593,7 @@ final class Transfers {
     if (owner != null) {
       // A user's cancel of one upload drops its item from the job; the
       // job's own cancels only tell it.
-      if (by == 'user') {
+      if (by == CancelledBy.user) {
         _publish?.uploadCancelled(owner);
       } else {
         _publish?.uploadChanged(job, owner);
@@ -605,7 +606,7 @@ final class Transfers {
       jobId: id,
       mediaKey: job.key,
       tag: job.tag,
-      fields: () => {'by': by, 'durability': job.durability.name},
+      fields: () => {'by': by.name, 'durability': job.durability.name},
     );
     _changed();
     return true;
@@ -1154,12 +1155,14 @@ final class Transfers {
           PublishJobId.parse(owner.job),
     };
     for (final owner in owners) {
-      cancelled.addAll(_publish?.cancel(owner, by: 'envelope') ?? const []);
+      cancelled.addAll(
+        _publish?.cancel(owner, by: CancelledBy.envelope) ?? const [],
+      );
     }
     _envelopeHeld = true;
     try {
       for (final id in cancelled) {
-        _cancel(id, by: 'envelope');
+        _cancel(id, by: CancelledBy.envelope);
       }
     } finally {
       _envelopeHeld = false;
@@ -1832,7 +1835,8 @@ final class _PublishHost implements PublishUploadHost {
   }) => _engine.retry(id, source: source, pageSource: pageSource);
 
   @override
-  void cancelUpload(TransferId id) => _engine._cancel(id, by: 'owner');
+  void cancelUpload(TransferId id) =>
+      _engine._cancel(id, by: CancelledBy.owner);
 
   @override
   void publishChanged() => _engine._tracked?.refresh();

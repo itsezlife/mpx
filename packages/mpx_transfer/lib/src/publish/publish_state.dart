@@ -7,6 +7,60 @@ import 'package:mpx_transfer/src/job/transfer_state.dart';
 import 'package:mpx_transfer/src/publish/publish_request.dart';
 import 'package:mpx_transfer/src/upload/remote_ref.dart';
 
+/// Why a publish job or one of its items failed: a short code, safe for
+/// diagnostics.
+///
+/// An open set: beside the engine's own codes, named here, a reason is an
+/// upload's failure kind ([TransferFailureKind.name]), a preparation's code
+/// (`PreparationFailed.code`, which preparers extend) or the reason the
+/// publisher gave with a rejection.
+extension type const PublishFailureReason(String code) implements String {
+  /// An item needs preparing and the facade was built without preparation.
+  static const PublishFailureReason noPreparation = PublishFailureReason(
+    'noPreparation',
+  );
+
+  /// The item's preparation or upload was cancelled under it.
+  static const PublishFailureReason cancelled = PublishFailureReason(
+    'cancelled',
+  );
+
+  /// The preparation threw something other than a preparation failure.
+  static const PublishFailureReason unexpected = PublishFailureReason(
+    'unexpected',
+  );
+
+  /// The job names a transport the engine was not given.
+  static const PublishFailureReason unknownTransport = PublishFailureReason(
+    'unknownTransport',
+  );
+
+  /// Bytes held in memory could not be written to a file to upload.
+  static const PublishFailureReason sourceUnwritable = PublishFailureReason(
+    'sourceUnwritable',
+  );
+
+  /// The prepared thumbnail could not be read.
+  static const PublishFailureReason thumbnailUnreadable = PublishFailureReason(
+    'thumbnailUnreadable',
+  );
+
+  /// The transport refused the upload as described.
+  static const PublishFailureReason transport = PublishFailureReason(
+    'transport',
+  );
+
+  /// The publisher threw instead of answering an outcome.
+  static const PublishFailureReason publisherError = PublishFailureReason(
+    'publisherError',
+  );
+
+  /// The publisher asked for items again after the one resend it gets.
+  static const PublishFailureReason reuploadRefused = PublishFailureReason(
+    'reuploadRefused',
+  );
+}
+
 /// The step of a publish job a failure stopped.
 enum PublishStage {
   /// Preparing an item (compression, still encoding).
@@ -59,7 +113,7 @@ sealed class PublishJobState {
   /// may succeed.
   const factory PublishJobState.failed({
     required PublishStage stage,
-    required String reason,
+    required PublishFailureReason reason,
     required bool retryable,
   }) = PublishJobState$Failed;
 
@@ -169,7 +223,7 @@ final class PublishJobState$Failed extends PublishJobState {
   final PublishStage stage;
 
   /// A short code for why, safe for diagnostics.
-  final String reason;
+  final PublishFailureReason reason;
 
   /// Whether a retry may succeed.
   final bool retryable;
@@ -251,7 +305,7 @@ sealed class PublishItemState {
   /// may succeed.
   const factory PublishItemState.failed({
     required PublishStage stage,
-    required String reason,
+    required PublishFailureReason reason,
     required bool retryable,
   }) = PublishItemState$Failed;
 
@@ -369,7 +423,7 @@ final class PublishItemState$Failed extends PublishItemState {
   final PublishStage stage;
 
   /// A short code for why, safe for diagnostics.
-  final String reason;
+  final PublishFailureReason reason;
 
   /// Whether a retry may succeed.
   final bool retryable;

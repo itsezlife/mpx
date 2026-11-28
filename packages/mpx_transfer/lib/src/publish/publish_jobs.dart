@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:mpx_core/mpx_core.dart';
+import 'package:mpx_transfer/src/diagnostics/cancelled_by.dart';
 import 'package:mpx_transfer/src/diagnostics/journal_op.dart';
 import 'package:mpx_transfer/src/diagnostics/publish_op.dart';
 import 'package:mpx_transfer/src/diagnostics/transfers_debug_snapshot.dart';
@@ -355,7 +356,7 @@ final class PublishJobs {
   /// end and `watchJobs` lists it no more, as an owner sees a cancelled job
   /// leave; the jobs behind it in its ordering group go on. [by] is
   /// `owner` or `envelope`, for its event. Answers null for an unknown job.
-  List<TransferId>? cancel(PublishJobId id, {required String by}) {
+  List<TransferId>? cancel(PublishJobId id, {required CancelledBy by}) {
     final record = _journal.record(id);
     if (record == null) return null;
     final live = _live.remove(id);
@@ -384,7 +385,7 @@ final class PublishJobs {
       PublishOp.cancelled,
       jobId: id,
       tag: record.tag,
-      fields: () => {'by': by, 'items': record.items.length},
+      fields: () => {'by': by.name, 'items': record.items.length},
     );
     if (!_disposed) _releaseGroup(record);
     return [for (final item in record.items) ..._uploadsOf(item)];
@@ -394,7 +395,7 @@ final class PublishJobs {
   /// whatever its state.
   bool cancelByOwner(PublishJobId id) {
     if (_disposed) return false;
-    final uploads = cancel(id, by: 'owner');
+    final uploads = cancel(id, by: CancelledBy.owner);
     if (uploads == null) return false;
     for (final upload in uploads) {
       if (_host.recordOf(upload) != null) _host.cancelUpload(upload);
@@ -679,7 +680,13 @@ final class PublishJobs {
         jobId: id,
         itemId: item.itemId,
       );
-      _failItem(id, item, PublishStage.prepare, 'noPreparation', false);
+      _failItem(
+        id,
+        item,
+        PublishStage.prepare,
+        PublishFailureReason.noPreparation,
+        false,
+      );
       return null;
     }
     final live = _liveOf(id);
@@ -698,8 +705,8 @@ final class PublishJobs {
     } on PreparationException catch (error, stackTrace) {
       if (!_running(id)) return null;
       final (reason, retryable) = switch (error) {
-        PreparationCancelled() => ('cancelled', true),
-        PreparationFailed(:final code) => (code, true),
+        PreparationCancelled() => (PublishFailureReason.cancelled, true),
+        PreparationFailed(:final code) => (PublishFailureReason(code), true),
       };
       _failItem(
         id,
@@ -716,7 +723,7 @@ final class PublishJobs {
         id,
         item,
         PublishStage.prepare,
-        'unexpected',
+        PublishFailureReason.unexpected,
         false,
         stackTrace: stackTrace,
       );
@@ -741,7 +748,13 @@ final class PublishJobs {
     final record = _journal.record(id)!;
     final transport = _uploads.transport(record.transport!);
     if (transport == null) {
-      _failItem(id, item, PublishStage.upload, 'unknownTransport', false);
+      _failItem(
+        id,
+        item,
+        PublishStage.upload,
+        PublishFailureReason.unknownTransport,
+        false,
+      );
       return;
     }
     final fileId = TransferId.issue();
@@ -755,7 +768,7 @@ final class PublishJobs {
         id,
         item,
         PublishStage.upload,
-        'sourceUnwritable',
+        PublishFailureReason.sourceUnwritable,
         true,
         stackTrace: stackTrace,
       );
@@ -776,7 +789,7 @@ final class PublishJobs {
             id,
             item,
             PublishStage.upload,
-            'thumbnailUnreadable',
+            PublishFailureReason.thumbnailUnreadable,
             false,
           );
           return;
@@ -789,7 +802,7 @@ final class PublishJobs {
         id,
         item,
         PublishStage.upload,
-        'transport',
+        PublishFailureReason.transport,
         false,
         stackTrace: stackTrace,
       );
@@ -973,7 +986,7 @@ final class PublishJobs {
         id,
         item.item,
         PublishStage.upload,
-        'transport',
+        PublishFailureReason.transport,
         false,
         stackTrace: stackTrace,
       );
@@ -996,7 +1009,7 @@ final class PublishJobs {
             id,
             item.item,
             PublishStage.upload,
-            'thumbnailUnreadable',
+            PublishFailureReason.thumbnailUnreadable,
             false,
           );
           return;
@@ -1013,7 +1026,7 @@ final class PublishJobs {
             id,
             item.item,
             PublishStage.upload,
-            'transport',
+            PublishFailureReason.transport,
             false,
             stackTrace: stackTrace,
           );
@@ -1047,7 +1060,7 @@ final class PublishJobs {
           id,
           item.item,
           PublishStage.upload,
-          'sourceUnwritable',
+          PublishFailureReason.sourceUnwritable,
           true,
           stackTrace: stackTrace,
         );
@@ -1095,12 +1108,24 @@ final class PublishJobs {
       return;
     }
     if (jobs.contains(null)) {
-      _failItem(id, item.item, PublishStage.upload, 'cancelled', true);
+      _failItem(
+        id,
+        item.item,
+        PublishStage.upload,
+        PublishFailureReason.cancelled,
+        true,
+      );
       return;
     }
     for (final job in jobs.nonNulls) {
       if (job.state case TransferState$Failed(:final kind, :final retryable)) {
-        _failItem(id, item.item, PublishStage.upload, kind.name, retryable);
+        _failItem(
+          id,
+          item.item,
+          PublishStage.upload,
+          PublishFailureReason(kind.name),
+          retryable,
+        );
         return;
       }
     }
@@ -1146,7 +1171,7 @@ final class PublishJobs {
     PublishJobId id,
     PublishItem item,
     PublishStage stage,
-    String reason,
+    PublishFailureReason reason,
     bool retryable, {
     StackTrace? stackTrace,
   }) => _setItem(
@@ -1371,7 +1396,7 @@ final class PublishJobs {
         _journal.record(id)!,
         const PublishJobState.failed(
           stage: PublishStage.publish,
-          reason: 'publisherError',
+          reason: PublishFailureReason.publisherError,
           retryable: true,
         ),
       );
@@ -1422,7 +1447,7 @@ final class PublishJobs {
           current,
           PublishJobState.failed(
             stage: PublishStage.publish,
-            reason: reason,
+            reason: PublishFailureReason(reason),
             retryable: retryable,
           ),
         );
@@ -1451,7 +1476,7 @@ final class PublishJobs {
         record,
         const PublishJobState.failed(
           stage: PublishStage.publish,
-          reason: 'reuploadRefused',
+          reason: PublishFailureReason.reuploadRefused,
           retryable: false,
         ),
       );
@@ -1623,7 +1648,11 @@ final class PublishJobs {
 
   /// See [PublishJob.removeItem]; [by] is `host` for the host's verb and
   /// `cell` for a cancel of one of the item's uploads.
-  bool removeItem(PublishJobId id, String itemId, {String by = 'host'}) {
+  bool removeItem(
+    PublishJobId id,
+    String itemId, {
+    CancelledBy by = CancelledBy.host,
+  }) {
     final record = _journal.record(id);
     if (_disposed || record == null || record.end != null) return false;
     final item = _itemRecord(id, itemId);
@@ -1654,7 +1683,7 @@ final class PublishJobs {
       itemId: itemId,
       mediaKey: item.item.key,
       tag: record.tag,
-      fields: () => {'by': by},
+      fields: () => {'by': by.name},
     );
     if (left.isEmpty) {
       // The engine never cancels an empty job: whether nothing is left to
@@ -1679,7 +1708,7 @@ final class PublishJobs {
   void uploadCancelled(JournalUploadOwner owner) {
     if (_disposed) return;
     final id = PublishJobId.parse(owner.job);
-    if (removeItem(id, owner.itemId, by: 'cell')) return;
+    if (removeItem(id, owner.itemId, by: CancelledBy.cell)) return;
     // An ended job keeps its item; one still running reads the loss.
     if (_live.containsKey(id)) _checkUploads(id, owner.itemId);
   }
