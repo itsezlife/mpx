@@ -6,6 +6,7 @@ import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
 import 'package:mpx_library/mpx_library.dart';
 import 'package:mpx_library/src/platform/desktop_save_writer.dart';
+import 'package:mpx_library/src/platform/save_file_copy.dart';
 import 'package:mpx_library/testing.dart';
 
 /// The user's folders as temporary directories, one per [DesktopFolder];
@@ -32,6 +33,7 @@ final class _Desk {
     Set<DesktopFolder> missing = const {},
     Future<String?> Function(String suggestedName)? pickLocation,
     int chunkSize = 1 << 20,
+    SaveFileCopier? copy,
   }) : root = Directory.systemTemp.createTempSync('mpx_desktop_save_') {
     addTearDown(() => root.deleteSync(recursive: true));
     folders = _TempFolders(
@@ -46,6 +48,7 @@ final class _Desk {
         folders: folders,
         pickLocation: pickLocation ?? (_) async => null,
         chunkSize: chunkSize,
+        copy: copy,
       ),
     );
   }
@@ -425,6 +428,147 @@ void main() {
       expect(diagnostics.whereOp(SaveOp.itemCancelled), [
         isMpxEvent(fields: containsPair('stage', 'copy')),
       ]);
+    });
+  });
+
+  group('a write that does not finish leaves nothing', () {
+    test('while the copy runs the bytes go into a hidden part file, and the '
+        'name holds no partial content', () async {
+      late _Desk desk;
+      final seen = <List<String>>[];
+      final sizes = <int>[];
+      desk = _Desk(DesktopPlatform.linux, chunkSize: 1024);
+      final job = desk.saver.save([
+        SaveItem.file(
+          desk.source(List.filled(4096, 1)),
+          name: 'big.bin',
+          mimeType: 'application/octet-stream',
+          kind: SaveItemKind.file,
+        ),
+      ], const SaveDestination.downloads());
+      final downloads = desk.folders.path(DesktopFolder.downloads);
+      job.progress.addListener(() {
+        if (job.progress.value >= 1 || seen.isNotEmpty) return;
+        seen.add(desk.namesIn(downloads));
+        sizes.add(
+          File(desk.inFolder(DesktopFolder.downloads, 'big.bin')).lengthSync(),
+        );
+      });
+
+      expect((await job.results).single, isA<SaveResult$Saved>());
+      expect(seen.single, ['.big.bin.part', 'big.bin']);
+      expect(sizes.single, 0, reason: 'the claim is empty until the end');
+      expect(desk.namesIn(downloads), ['big.bin']);
+      expect(
+        File(desk.inFolder(DesktopFolder.downloads, 'big.bin')).lengthSync(),
+        4096,
+      );
+    });
+
+    test('a copy worker that fails leaves neither the claimed name nor the '
+        'part file', () async {
+      final desk = _Desk(
+        DesktopPlatform.windows,
+        copy:
+            (
+              from,
+              to, {
+              required onProgress,
+              required cancellation,
+              chunkSize = 0,
+            }) async {
+              File(to).writeAsBytesSync([1, 2]);
+              throw StateError('the copy worker failed');
+            },
+      );
+      final results = await desk.saver.save([
+        SaveItem.file(
+          desk.source(),
+          name: 'a.jpg',
+          mimeType: 'image/jpeg',
+          kind: SaveItemKind.photo,
+        ),
+      ], const SaveDestination.gallery()).results;
+
+      expect(results, [
+        const SaveResult.failed(SaveFailure.unavailable, code: 'throw'),
+      ]);
+      expect(desk.namesIn(desk.folders.path(DesktopFolder.pictures)), isEmpty);
+    });
+
+    test('a file the user picked is removed when its copy fails', () async {
+      late _Desk desk;
+      desk = _Desk(
+        DesktopPlatform.linux,
+        pickLocation: (_) async =>
+            '${desk.root.path}${Platform.pathSeparator}picked.jpg',
+        copy:
+            (
+              from,
+              to, {
+              required onProgress,
+              required cancellation,
+              chunkSize = 0,
+            }) async {
+              File(to).writeAsBytesSync([1, 2]);
+              throw StateError('the copy worker failed');
+            },
+      );
+      await desk.saver.save([
+        SaveItem.file(
+          desk.source(),
+          name: 'a.jpg',
+          mimeType: 'image/jpeg',
+          kind: SaveItemKind.photo,
+        ),
+      ], const SaveDestination.ask()).results;
+
+      expect(
+        File(
+          '${desk.root.path}${Platform.pathSeparator}picked.jpg',
+        ).existsSync(),
+        isFalse,
+      );
+    });
+
+    test('a leftover that will not go is reported by its type and code, '
+        'never its path', () async {
+      final reported = <FlutterErrorDetails>[];
+      final previous = FlutterError.onError;
+      FlutterError.onError = reported.add;
+      addTearDown(() => FlutterError.onError = previous);
+      final desk = _Desk(
+        DesktopPlatform.linux,
+        // A part that turned into a folder with a file in it: removing it
+        // as a file fails.
+        copy:
+            (
+              from,
+              to, {
+              required onProgress,
+              required cancellation,
+              chunkSize = 0,
+            }) async {
+              File(
+                '$to${Platform.pathSeparator}inside',
+              ).createSync(recursive: true);
+              throw StateError('the copy worker failed');
+            },
+      );
+      await desk.saver.save([
+        SaveItem.file(
+          desk.source(),
+          name: 'secret.jpg',
+          mimeType: 'image/jpeg',
+          kind: SaveItemKind.photo,
+        ),
+      ], const SaveDestination.downloads()).results;
+
+      expect(reported, isNotEmpty);
+      for (final details in reported) {
+        expect('${details.exception}', isNot(contains('secret')));
+        expect('${details.exception}', isNot(contains(desk.root.path)));
+      }
     });
   });
 

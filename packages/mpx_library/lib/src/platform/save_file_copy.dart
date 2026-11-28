@@ -4,6 +4,16 @@ import 'dart:isolate';
 
 import 'package:mpx_core/mpx_core.dart';
 
+/// How a desktop save copies a file: [SaveFileCopy.run], or a test's own.
+typedef SaveFileCopier =
+    Future<bool> Function(
+      String from,
+      String to, {
+      required FetchProgress onProgress,
+      required CancellationToken cancellation,
+      int chunkSize,
+    });
+
 /// A file copy for a save, streamed on a worker isolate so neither the
 /// bytes nor the loop over them reach the UI isolate.
 ///
@@ -51,10 +61,11 @@ abstract final class SaveFileCopy {
         case _CopyFailure(:final error):
           done.completeError(error);
         // The worker's uncaught error ([error, stack] as strings), or its
-        // exit before an end.
-        case [final Object? error, final Object? stack]:
+        // exit before an end. The error's text can name the paths, so only
+        // the fact goes on, with the worker's stack.
+        case [_, final Object? stack]:
           done.completeError(
-            StateError('the copy worker failed: $error'),
+            StateError('the copy worker failed'),
             StackTrace.fromString('$stack'),
           );
         case null:
