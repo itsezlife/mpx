@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
@@ -90,6 +91,47 @@ void main() {
     expect(diagnostics.whereOp(SaveOp.leaseReleased), [
       isMpxEvent(mediaKey: _a, fields: {'index': 0, 'after': 'saved'}),
     ]);
+  });
+
+  group('a keeper that lends no file (the web)', () {
+    test('a local content is saved from its bytes, with no download and no '
+        'missing lease', () async {
+      transfers.setBytes(_a, Uint8List.fromList([1, 2, 3]));
+      final saver = FakeMediaSaver(transfers: transfers);
+
+      final results = await saver.saveContent([
+        _photo(_a),
+      ], const SaveDestination.downloads()).results;
+
+      expect(results.single, isA<SaveResult$Saved>());
+      expect(transfers.downloads, isEmpty);
+      final item = saver.writes.single.item;
+      expect(item.bytes, [1, 2, 3]);
+      expect(item.name, 'holiday.jpg');
+      expect(diagnostics.whereOp(SaveOp.leaseMissing), isEmpty);
+      expect(diagnostics.whereOp(SaveOp.downloadShared), [
+        isMpxEvent(mediaKey: _a, fields: {'index': 0, 'why': 'local'}),
+      ]);
+    });
+
+    test('a content not local is downloaded once, then saved from its '
+        'bytes', () async {
+      final saver = FakeMediaSaver(transfers: transfers);
+      final job = saver.saveContent([
+        _photo(_a),
+      ], const SaveDestination.downloads());
+
+      await pumpEventQueue();
+      transfers
+        ..setBytes(_a, Uint8List.fromList([4, 5]))
+        ..drive(_a, AssetTransfer.none);
+      final results = await job.results;
+
+      expect(results.single, isA<SaveResult$Saved>());
+      expect(transfers.downloads, hasLength(1));
+      expect(saver.writes.single.item.bytes, [4, 5]);
+      expect(diagnostics.whereOp(SaveOp.leaseMissing), isEmpty);
+    });
   });
 
   test('an item already local counts its copy as its whole share', () async {

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_core/testing.dart';
@@ -26,6 +27,7 @@ void main() {
             case AssetTransfer$Receiving():
               fake
                 ..setFile(key, '/cache/clip-1')
+                ..setBytes(key, Uint8List(400))
                 ..drive(key, AssetTransfer.none);
             case AssetTransfer$Waiting():
               fake.drive(key, const AssetTransfer.sending(0, 300));

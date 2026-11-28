@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `TrackedTransfers.readBytes(key)`: the whole content's bytes, for a
+  keeper that lends no file (the web).
 - An animation that arrives over a first frame the view already shows (its
   own still, or a sibling's it borrowed at the attach) swaps in at once
   instead of fading in from nothing: a sticker or custom emoji opened at a

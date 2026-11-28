@@ -290,6 +290,9 @@ final class _ThrowingLeases implements TrackedTransfers {
   void cancel(MediaKey key) => fake.cancel(key);
 
   @override
+  Future<Uint8List?> readBytes(MediaKey key) => fake.readBytes(key);
+
+  @override
   Future<ContentFileLease?> leaseFile(MediaKey key) async {
     if (key == throwFor && (always || !_thrown)) {
       _thrown = true;

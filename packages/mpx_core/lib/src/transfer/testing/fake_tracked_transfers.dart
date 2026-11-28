@@ -15,6 +15,7 @@ import 'package:mpx_core/src/transfer/tracked_transfers.dart';
 final class FakeTrackedTransfers implements TrackedTransfers {
   final Map<MediaKey, _Watched> _values = {};
   final Map<MediaKey, String> _files = {};
+  final Map<MediaKey, Uint8List> _bytes = {};
 
   /// Every [download] call, oldest first.
   final List<({MediaKey key, TransferOrigin origin})> downloads = [];
@@ -24,6 +25,9 @@ final class FakeTrackedTransfers implements TrackedTransfers {
 
   /// Every [leaseFile] call's key, oldest first.
   final List<MediaKey> leaseRequests = [];
+
+  /// Every [readBytes] call's key, oldest first.
+  final List<MediaKey> byteReads = [];
 
   /// Every lease handed out, oldest first.
   final List<ContentFileLease> leases = [];
@@ -51,6 +55,17 @@ final class FakeTrackedTransfers implements TrackedTransfers {
       _files.remove(key);
     } else {
       _files[key] = path;
+    }
+  }
+
+  /// Makes [key]'s content whole and local as [bytes] held without a file,
+  /// as the web's keeper holds it: [readBytes] answers them from now on,
+  /// [leaseFile] still lends only what [setFile] set. Null takes them away.
+  void setBytes(MediaKey key, Uint8List? bytes) {
+    if (bytes == null) {
+      _bytes.remove(key);
+    } else {
+      _bytes[key] = bytes;
     }
   }
 
@@ -94,6 +109,12 @@ final class FakeTrackedTransfers implements TrackedTransfers {
     final lease = ContentFileLease(path: path, onRelease: () async {});
     leases.add(lease);
     return lease;
+  }
+
+  @override
+  Future<Uint8List?> readBytes(MediaKey key) async {
+    byteReads.add(key);
+    return _bytes[key];
   }
 }
 

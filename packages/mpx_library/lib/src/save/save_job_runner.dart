@@ -536,14 +536,15 @@ final class _Job implements SaveJob {
     return _finish();
   }
 
-  /// Makes item [index]'s content local and leases its file, or ends the
-  /// item: download, await, lease; a missing lease downloads once more,
-  /// then fails the item `unavailable`.
+  /// Makes item [index]'s content local and leases its file (or reads its
+  /// bytes where the keeper lends no file), or ends the item: download,
+  /// await, lease; content still not there downloads once more, then fails
+  /// the item `unavailable`.
   Future<void> _arrive(int index, TrackedTransfers transfers) async {
     final slot = _slots[index];
     final request = slot.request!;
-    if (await _lease(index, transfers) case final lease?) {
-      slot.item = request.leased(lease);
+    if (await _local(index, transfers) case final item?) {
+      slot.item = item;
       _emit(
         MpxEventLevel.debug,
         SaveOp.downloadShared,
@@ -586,8 +587,8 @@ final class _Job implements SaveJob {
           slot.downloaded = 1;
           _report('download');
       }
-      if (await _lease(index, transfers) case final lease?) {
-        slot.item = request.leased(lease);
+      if (await _local(index, transfers) case final item?) {
+        slot.item = item;
         return;
       }
       _emit(
@@ -606,14 +607,21 @@ final class _Job implements SaveJob {
     }
   }
 
-  /// The lease of item [index]'s file, or null when its content is not
-  /// local; a throw counts as null, its error kept for the event it causes.
-  Future<ContentFileLease?> _lease(
-    int index,
-    TrackedTransfers transfers,
-  ) async {
+  /// Item [index]'s content as an item to write, or null when it is not
+  /// local: its file's lease, else, from a keeper that lends no file (the
+  /// web's browser storage), its bytes. A file is asked first, so content
+  /// that has one is copied, never read into memory. A throw counts as
+  /// null, its error kept for the item's next event.
+  Future<SaveItem?> _local(int index, TrackedTransfers transfers) async {
+    final request = _slots[index].request!;
     try {
-      return await transfers.leaseFile(_slots[index].request!.key);
+      if (await transfers.leaseFile(request.key) case final lease?) {
+        return request.leased(lease);
+      }
+      if (await transfers.readBytes(request.key) case final bytes?) {
+        return request.inMemory(bytes);
+      }
+      return null;
     } on Object catch (error, stackTrace) {
       _slots[index].failedWith(error, stackTrace);
       return null;

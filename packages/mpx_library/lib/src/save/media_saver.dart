@@ -78,9 +78,12 @@ abstract interface class MediaSaver {
   /// `user`), or joins the download another caller has under way; once it
   /// completes its file is leased (`TrackedTransfers.leaseFile`), saved as
   /// [save] saves a `SaveItem.leased`, and the lease is released when the
-  /// item is done. A completed download whose file cannot be leased is
-  /// downloaded once more, then fails `SaveFailure.unavailable`, as does a
-  /// download that fails.
+  /// item is done. Where the keeper lends no file (the web's browser
+  /// storage) the content's bytes are read instead
+  /// (`TrackedTransfers.readBytes`) and saved as a `SaveItem.bytes`. A
+  /// completed download that can be neither leased nor read is downloaded
+  /// once more, then fails `SaveFailure.unavailable`, as does a download
+  /// that fails.
   ///
   /// One progress covers both stages: an item's download is 90 % of its
   /// share and its copy 10 %; an item already local counts its copy as its
