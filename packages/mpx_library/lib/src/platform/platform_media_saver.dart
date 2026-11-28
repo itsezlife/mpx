@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:mpx_library/src/platform/save_writer_vm.dart'
     if (dart.library.js_interop) 'package:mpx_library/src/platform/save_writer_js.dart'
     as environment_specific;
@@ -5,6 +6,7 @@ import 'package:mpx_library/src/save/media_saver.dart';
 import 'package:mpx_library/src/save/save_destination.dart';
 import 'package:mpx_library/src/save/save_item.dart';
 import 'package:mpx_library/src/save/save_job_runner.dart';
+import 'package:mpx_library/src/save/save_writer.dart';
 
 /// The [MediaSaver] of the platform the app runs on.
 ///
@@ -14,13 +16,19 @@ import 'package:mpx_library/src/save/save_job_runner.dart';
 /// by MIME type, no move of a leased file, lease release, progress, cancel,
 /// diagnostics) run in Dart above the writer.
 ///
-/// A platform without a writer yet fails every item
+/// Windows and Linux write files into the user's folders or where the save
+/// dialog says. A platform without a writer yet fails every item
 /// `SaveFailure.unavailable` (code `noAdapter`).
 final class PlatformMediaSaver implements MediaSaver {
   /// The saver of this platform.
-  PlatformMediaSaver();
+  PlatformMediaSaver() : _writer = environment_specific.$createSaveWriter();
 
-  final _writer = environment_specific.$createSaveWriter();
+  /// The saver over [writer], for a test that runs an adapter with its
+  /// system lookups faked.
+  @visibleForTesting
+  PlatformMediaSaver.over(SaveWriter writer) : _writer = writer;
+
+  final SaveWriter _writer;
 
   @override
   SaveJob save(List<SaveItem> items, SaveDestination destination) =>

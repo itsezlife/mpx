@@ -83,8 +83,9 @@ final results = await job.results; // one SaveResult per item
   one `SaveJob` (progress over the batch, cancel, a result per item). A
   file sent to the gallery goes by its MIME type; a leased cache file is
   copied, never moved, and its lease released when its item ends. The
-  saver knows no rights: the caller decides before it calls. Platform
-  adapters are not in yet, so `PlatformMediaSaver` answers `unavailable`.
+  saver knows no rights: the caller decides before it calls.
+  `PlatformMediaSaver` saves on Windows and Linux; a platform whose
+  adapter has not landed answers `unavailable`.
 
 ## Platforms
 
@@ -106,6 +107,17 @@ iOS: albums are Recents (newest first), Favorites, the non-empty smart
 albums, then user albums, newest created first; albums other than Recents
 are oldest first and `startsAtEnd`. Changes come out per album from
 PhotoKit's change details. Originals download from iCloud with progress.
+
+Saving on Windows and Linux: there is no gallery, so a save is a file in a
+folder. `gallery(album:)` is the Pictures folder (photos, GIFs) or the
+Videos folder (videos, video animations), with the album as a sub-folder;
+`downloads(subfolder:)` is Downloads; `ask` opens the system save dialog
+per item, and dismissing it cancels the rest of the batch. The folders are
+the Windows known folders (a moved Downloads is found where it is) and the
+XDG user directories (`user-dirs.dirs`, the home when a folder is not
+set). A taken name gets ` (1)`, ` (2)`, … before its extension. The copy
+streams on a worker isolate with progress and cancel; `createdAt` becomes
+the file's modification time. Nothing to declare: no access is asked.
 
 On the web a pick that answers nothing within a second of the window
 getting its focus back ends empty (browsers say nothing when the dialog is
