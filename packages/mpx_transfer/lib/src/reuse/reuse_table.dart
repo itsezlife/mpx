@@ -45,7 +45,8 @@ final class ReuseKey {
   ReuseKey._of(String fingerprint, PreparationIntent? preparation)
     : _value = jsonEncode([
         fingerprint,
-        if (preparation != null) PreparationEncoding.encodeIntent(preparation),
+        if (preparation != null)
+          const PreparationIntentCodec().encode(preparation),
       ]);
 
   const ReuseKey._(this._value);

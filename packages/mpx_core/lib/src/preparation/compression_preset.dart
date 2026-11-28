@@ -13,7 +13,7 @@ import 'package:mpx_core/src/identity/media_descriptor.dart';
 /// step only the Android preparation policy offers, below [veryLow].
 ///
 /// The step's [name] is its stable identity in a stored preparation intent
-/// (`PreparationEncoding`): a step is never renamed, only added.
+/// (`PreparedMediaCodec`): a step is never renamed, only added.
 enum CompressionPreset {
   /// 432 px, at most 750 kbps video, 32 kbps mono audio.
   tiny(maxSide: 432, videoKbps: 750, audioKbps: 32, audioChannels: 1),

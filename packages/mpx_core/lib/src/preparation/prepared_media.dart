@@ -4,7 +4,7 @@ import 'package:mpx_core/src/identity/media_descriptor.dart';
 /// What a prepared item is sent as.
 ///
 /// The value's [name] is its stable identity in a stored prepared item
-/// (`PreparationEncoding`): a kind is never renamed, only added.
+/// (`PreparedMediaCodec`): a kind is never renamed, only added.
 enum PreparedKind {
   /// A photo.
   photo,
@@ -68,7 +68,7 @@ final class PreparedMedia {
   final String? thumbnailPath;
 
   /// The bytes of the JPEG thumbnail, when the preparer kept them in
-  /// memory. Not part of the stored form (`PreparationEncoding`).
+  /// memory. Not part of the stored form (`PreparedMediaCodec`).
   final Uint8List? thumbnail;
 
   /// The pixel size of the thumbnail.
@@ -83,7 +83,7 @@ final class PreparedMedia {
 
   /// The output itself where the platform writes no files (the web): an
   /// encoded JPEG to upload instead of [path]. Null for a file output and
-  /// for an original. Not part of the stored form (`PreparationEncoding`).
+  /// for an original. Not part of the stored form (`PreparedMediaCodec`).
   final Uint8List? bytes;
 
   @override

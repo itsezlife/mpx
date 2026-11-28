@@ -64,30 +64,33 @@ void main() {
   );
 
   test('the encoders write the stored lines byte for byte', () {
-    expect(jsonEncode(PreparationEncoding.encodeInput(input)), _input);
-    expect(jsonEncode(PreparationEncoding.encodeInput(bareInput)), _bareInput);
-    expect(jsonEncode(PreparationEncoding.encodeIntent(photo)), _photo);
-    expect(jsonEncode(PreparationEncoding.encodeIntent(video)), _video);
+    expect(jsonEncode(const PreparationInputCodec().encode(input)), _input);
     expect(
-      jsonEncode(PreparationEncoding.encodeIntent(videoNoPreset)),
+      jsonEncode(const PreparationInputCodec().encode(bareInput)),
+      _bareInput,
+    );
+    expect(jsonEncode(const PreparationIntentCodec().encode(photo)), _photo);
+    expect(jsonEncode(const PreparationIntentCodec().encode(video)), _video);
+    expect(
+      jsonEncode(const PreparationIntentCodec().encode(videoNoPreset)),
       _videoNoPreset,
     );
-    expect(jsonEncode(PreparationEncoding.encodeIntent(file)), _file);
-    expect(jsonEncode(PreparationEncoding.encodePrepared(prepared)), _prepared);
-    expect(jsonEncode(PreparationEncoding.encodePrepared(original)), _original);
+    expect(jsonEncode(const PreparationIntentCodec().encode(file)), _file);
+    expect(jsonEncode(const PreparedMediaCodec().encode(prepared)), _prepared);
+    expect(jsonEncode(const PreparedMediaCodec().encode(original)), _original);
   });
 
   test('the decoders read the stored lines back', () {
-    expect(PreparationEncoding.decodeInput(_read(_input)), input);
-    expect(PreparationEncoding.decodeInput(_read(_bareInput)), bareInput);
-    expect(PreparationEncoding.decodeIntent(_read(_photo)), photo);
-    expect(PreparationEncoding.decodeIntent(_read(_video)), video);
+    expect(const PreparationInputCodec().decode(_read(_input)), input);
+    expect(const PreparationInputCodec().decode(_read(_bareInput)), bareInput);
+    expect(const PreparationIntentCodec().decode(_read(_photo)), photo);
+    expect(const PreparationIntentCodec().decode(_read(_video)), video);
     expect(
-      PreparationEncoding.decodeIntent(_read(_videoNoPreset)),
+      const PreparationIntentCodec().decode(_read(_videoNoPreset)),
       videoNoPreset,
     );
-    expect(PreparationEncoding.decodeIntent(_read(_file)), file);
-    expect(PreparationEncoding.decodePrepared(_read(_prepared)), prepared);
-    expect(PreparationEncoding.decodePrepared(_read(_original)), original);
+    expect(const PreparationIntentCodec().decode(_read(_file)), file);
+    expect(const PreparedMediaCodec().decode(_read(_prepared)), prepared);
+    expect(const PreparedMediaCodec().decode(_read(_original)), original);
   });
 }
