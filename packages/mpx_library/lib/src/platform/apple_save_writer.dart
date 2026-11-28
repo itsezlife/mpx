@@ -1,9 +1,13 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:mpx_core/mpx_core.dart';
 import 'package:mpx_library/src/platform/desktop_save_writer.dart';
 import 'package:mpx_library/src/platform/platform_save_access.dart';
 import 'package:mpx_library/src/platform/save_block_codec.dart';
 import 'package:mpx_library/src/save/save_destination.dart';
+import 'package:mpx_library/src/save/save_error_summary.dart';
 import 'package:mpx_library/src/save/save_item.dart';
 import 'package:mpx_library/src/save/save_op.dart';
 import 'package:mpx_library/src/save/save_result.dart';
@@ -31,6 +35,10 @@ import 'package:mpx_library/src/save/save_writer.dart';
 /// progress and a cancel inside a copy, which a block has neither of:
 /// `~/Downloads/<subfolder>` (a taken name becomes `name (1)`, `createdAt`
 /// the modification time), and the system save panel, one per item.
+///
+/// The native side reads files, so an item held in memory
+/// (`SaveItem.bytes`) is first written to a temporary file under its name,
+/// removed once the block ends.
 ///
 /// A cancel counts only before the block begins (the runner holds that
 /// rule). The native side reports a failure as the platform error it got;
@@ -93,13 +101,7 @@ final class AppleSaveWriter extends SaveWriter$Block {
     String jobId,
     SaveDestination destination,
     List<SaveItem> items,
-  ) async {
-    // The native side reads files; content held in memory is the web's.
-    if (items.any((item) => item.path == null)) {
-      return const SaveResult$Failed(SaveFailure.unavailable, code: 'bytes');
-    }
-    return access.admit(jobId, destination);
-  }
+  ) => access.admit(jobId, destination);
 
   @override
   Future<List<SaveResult>> writeBlock(
@@ -107,16 +109,48 @@ final class AppleSaveWriter extends SaveWriter$Block {
     required void Function(double fraction) onProgress,
   }) async {
     final first = writes.first;
+    // The native side reads files: an item held in memory is written to a
+    // temporary file first, under its own name (Photos and Files name the
+    // saved item after its file), and the folder goes once the block ends.
+    Directory? spill;
+    try {
+      final paths = <String>[];
+      for (final (index, write) in writes.indexed) {
+        if (write.item.bytes case final bytes?) {
+          spill ??= await Directory.systemTemp.createTemp('mpx_library_save_');
+          final folder = await Directory(
+            '${spill.path}${Platform.pathSeparator}$index',
+          ).create();
+          final file = File(
+            '${folder.path}${Platform.pathSeparator}'
+            '${DesktopSaveNames.sanitize(write.item.name)}',
+          );
+          await file.writeAsBytes(bytes, flush: true);
+          paths.add(file.path);
+        } else {
+          paths.add(write.item.path!);
+        }
+      }
+      return await _block(first, writes, paths);
+    } finally {
+      if (spill != null) await _remove(spill);
+    }
+  }
+
+  Future<List<SaveResult>> _block(
+    SaveWrite first,
+    List<SaveWrite> writes,
+    List<String> paths,
+  ) async {
     final map = await _methods.invokeMapMethod<Object?, Object?>(
       'saveBlock',
       _requests.encode(
         SaveBlockRequest(
           destination: first.destination,
           entries: [
-            for (final write in writes)
+            for (final (index, write) in writes.indexed)
               SaveBlockEntry(
-                // Bytes items were refused in [admit].
-                path: write.item.path!,
+                path: paths[index],
                 name: write.item.name,
                 mimeType: write.item.mimeType,
                 kind: write.kind,
@@ -172,6 +206,29 @@ final class AppleSaveWriter extends SaveWriter$Block {
         ('posix', 28 || 69) => SaveFailure.noSpace,
         _ => SaveFailure.unavailable,
       };
+
+  /// Removes the temporary folder of a block's in-memory items. One that
+  /// will not go is reported (by its error's type and code, never the
+  /// path) and left to the system, which clears its temporary files.
+  static Future<void> _remove(Directory spill) async {
+    try {
+      await spill.delete(recursive: true);
+    } on FileSystemException catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: SaveErrorSummary.of(
+            error,
+            code: 'os${error.osError?.errorCode}',
+          ),
+          stack: stackTrace,
+          library: 'mpx_library',
+          context: ErrorDescription(
+            'while removing a saved item\'s temporary file',
+          ),
+        ),
+      );
+    }
+  }
 
   static void _report(String jobId, SaveBlockAnswer answer) {
     if (answer.fallback case final fallback?) {

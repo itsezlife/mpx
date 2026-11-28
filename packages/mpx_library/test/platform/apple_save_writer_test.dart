@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -31,6 +32,10 @@ final class _FakeApple {
 
   final List<SaveBlockRequest> blocks = [];
 
+  /// Each block's entries' file contents as the native side found them,
+  /// null for an entry with no file there.
+  final List<List<List<int>?>> contents = [];
+
   static const _requests = SaveBlockRequestCodec();
   static const _answers = SaveBlockAnswerCodec();
 
@@ -47,6 +52,12 @@ final class _FakeApple {
           (call.arguments as Map<Object?, Object?>).cast(),
         );
         blocks.add(request);
+        contents.add([
+          for (final entry in request.entries)
+            File(entry.path).existsSync()
+                ? File(entry.path).readAsBytesSync()
+                : null,
+        ]);
         await holdBlock?.future;
         return _answers.encode(
           answer ??
@@ -115,6 +126,21 @@ void main() {
       });
     });
   }
+
+  group('to gallery, bytes', () {
+    MediaSaverContract.run(
+      () => MediaSaverHarness(
+        saver: PlatformMediaSaver(methods: _methods),
+        file: (index) => '/cache/source-$index',
+        bytes: (index) => Uint8List.fromList([index, index]),
+        changeBlock: true,
+        failBlock: () => apple.answer = const SaveBlockAnswer$Failed(
+          domain: 'photos',
+          code: '3305',
+        ),
+      ),
+    );
+  });
 
   SaveItem item(
     int index, {
@@ -345,6 +371,47 @@ void main() {
         ),
       ]);
     });
+  });
+
+  test('a bytes item goes into the block as a file of its bytes, under its '
+      'name, removed once the block ends', () async {
+    final results = await PlatformMediaSaver(methods: _methods).save([
+      SaveItem.bytes(
+        Uint8List.fromList([1, 2, 3]),
+        name: 'memory.jpg',
+        mimeType: 'image/jpeg',
+        kind: SaveItemKind.photo,
+        createdAt: DateTime.utc(2026),
+      ),
+      item(1),
+    ], const SaveDestination.gallery()).results;
+
+    expect(results, const [
+      SaveResult.saved('ref-1-0'),
+      SaveResult.saved('ref-1-1'),
+    ]);
+    final entry = apple.blocks.single.entries.first;
+    expect(apple.contents.single.first, [1, 2, 3]);
+    expect(entry.path.split(Platform.pathSeparator).last, 'memory.jpg');
+    expect(entry.name, 'memory.jpg');
+    expect(entry.createdAt, DateTime.utc(2026));
+    expect(entry.move, isFalse);
+    expect(File(entry.path).existsSync(), isFalse, reason: 'removed after');
+    expect(apple.blocks.single.entries[1].path, '/host/item-1');
+  });
+
+  test('a bytes item\'s file is removed when the block fails', () async {
+    apple.answer = const SaveBlockAnswer$Failed(domain: 'photos', code: '3305');
+    await PlatformMediaSaver(methods: _methods).save([
+      SaveItem.bytes(
+        Uint8List.fromList([1]),
+        name: 'memory.jpg',
+        mimeType: 'image/jpeg',
+        kind: SaveItemKind.photo,
+      ),
+    ], const SaveDestination.downloads()).results;
+
+    expect(File(apple.blocks.single.entries.single.path).existsSync(), isFalse);
   });
 
   test('without the save define the gallery writes nothing', () async {

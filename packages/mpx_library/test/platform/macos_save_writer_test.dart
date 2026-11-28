@@ -355,7 +355,7 @@ void main() {
     });
   });
 
-  test('bytes go to Downloads but not to Photos', () async {
+  test('bytes go to Downloads and to Photos', () async {
     RecordingDiagnostics.install();
     final desk = _Mac();
     SaveItem bytes() => SaveItem.bytes(
@@ -373,7 +373,7 @@ void main() {
     );
     expect(
       await desk.saver.save([bytes()], const SaveDestination.gallery()).results,
-      [const SaveResult.failed(SaveFailure.unavailable, code: 'bytes')],
+      [isA<SaveResult$Saved>()],
     );
   });
 
