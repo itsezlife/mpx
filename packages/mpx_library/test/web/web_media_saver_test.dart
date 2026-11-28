@@ -135,7 +135,7 @@ void main() {
       expect(diagnostics.whereOp(SaveOp.fallbackToAsk), isEmpty);
     });
 
-    test('a picker the user dismisses is cancelled', () async {
+    test('a picker the user dismisses cancels the batch', () async {
       browser
         ..hasSavePicker = true
         ..pickErrors.add('AbortError');
@@ -146,11 +146,13 @@ void main() {
 
       expect(results, [
         const SaveResult.cancelled(),
-        const SaveResult.saved(null),
+        const SaveResult.cancelled(),
       ]);
       expect(browser.downloads, isEmpty);
+      expect(browser.picks, isEmpty, reason: 'no second picker opened');
       expect(diagnostics.whereOp(SaveOp.itemCancelled), [
         isMpxEvent(fields: containsPair('index', 0)),
+        isMpxEvent(fields: containsPair('index', 1)),
       ]);
     });
 

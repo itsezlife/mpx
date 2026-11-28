@@ -16,7 +16,9 @@ import 'package:mpx_library/src/save/save_writer.dart';
 ///
 /// - One batch is one job with one id, one progress and a result per item.
 /// - A cancel before the work begins cancels every item; between items it
-///   cancels the rest; inside an item it is the writer's to honour. A block
+///   cancels the rest; inside an item it is the writer's to honour. An item
+///   a per-item writer ends cancelled (a dismissed picker) cancels the job,
+///   as `SaveJob.cancel` does. A block
 ///   writer's batch is cancelled only before its block begins; the block's
 ///   end, or its cancel before it began, is reported (`changeBlock`).
 /// - A failed admission (denied access, no adapter) fails every item.
@@ -324,6 +326,10 @@ final class _Job implements SaveJob {
         );
       }
       _end(write.index, result);
+      // A writer that ends an item cancelled (the user dismissed its
+      // picker) said no to the batch: the job's cancel ends the items after
+      // it, and stops the downloads the job still has under way.
+      if (result is SaveResult$Cancelled) cancel();
     }
     _endRemaining(const SaveResult.cancelled());
   }

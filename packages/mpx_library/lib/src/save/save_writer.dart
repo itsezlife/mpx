@@ -80,6 +80,12 @@ abstract base class SaveWriter$PerItem extends SaveWriter {
   /// Writes [write], reporting the bytes written through [onProgress], and
   /// stops on [cancellation] with [SaveResult.cancelled]. A throw counts as
   /// [SaveFailure.unavailable].
+  ///
+  /// [SaveResult.cancelled] ends the batch, not only its item: the runner
+  /// cancels the job, so the items after it end cancelled unwritten. That is
+  /// how a writer reports a picker the user dismissed (the user said no to
+  /// the batch). A writer never cancels [cancellation] itself, which is the
+  /// job's and would skip what the job's cancel does.
   Future<SaveResult> write(
     SaveWrite write, {
     required FetchProgress onProgress,

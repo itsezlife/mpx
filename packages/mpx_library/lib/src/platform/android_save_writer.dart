@@ -61,12 +61,8 @@ final class AndroidSaveWriter extends SaveWriter$PerItem {
         'saveBegin',
         _start.encode(_startOf(write)),
       );
-      if (id == null) {
-        // The user said no to the batch, not to one item: the job's cancel
-        // ends this item and stops the ones after it unasked.
-        cancellation.cancel();
-        return const SaveResult.cancelled();
-      }
+      // The user dismissed the dialog: a cancelled item ends the batch.
+      if (id == null) return const SaveResult.cancelled();
       while (!cancellation.isCancelled) {
         final answer = await _methods.invokeMapMethod<Object?, Object?>(
           'saveStep',

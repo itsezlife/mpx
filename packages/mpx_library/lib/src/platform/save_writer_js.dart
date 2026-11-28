@@ -23,7 +23,8 @@ SaveWriter $createSaveWriter({required PlatformSaveAccess access}) =>
 ///   ask where, and an album or a sub-folder has no meaning here.
 /// - `ask` opens the save picker for each item and writes the item into the
 ///   file the user picked, in chunks of [chunkBytes] with progress and
-///   cancel between them. A dismissed picker is `cancelled`. Without a
+///   cancel between them. A dismissed picker is `cancelled`, which ends
+///   the batch. Without a
 ///   picker, or when the page has no user activation left to open one (the
 ///   browser lets a page open it only shortly after a user gesture, so a
 ///   batch's later items may find it spent), the item is a download.

@@ -85,6 +85,29 @@ void main() {
     expect(saver.writes.map((w) => w.index), [0, 1]);
   });
 
+  test('an item the writer ends cancelled (a dismissed picker) ends the '
+      'batch: the items after it are cancelled unwritten', () async {
+    final diagnostics = RecordingDiagnostics.install();
+    final saver = FakeMediaSaver(
+      resultFor: (write) => write.index == 1
+          ? const SaveResult.cancelled()
+          : const SaveResult.saved('ref'),
+    );
+    final job = saver.save([
+      _photo(0),
+      _photo(1),
+      _photo(2),
+    ], const SaveDestination.ask());
+
+    expect(await job.results, [
+      const SaveResult.saved('ref'),
+      const SaveResult.cancelled(),
+      const SaveResult.cancelled(),
+    ]);
+    expect(saver.writes.map((w) => w.index), [0, 1]);
+    expect(diagnostics.whereOp(SaveOp.itemCancelled), hasLength(2));
+  });
+
   test('a cancel right after save cancels every item', () async {
     final saver = FakeMediaSaver();
     final job = saver.save([_photo(0), _photo(1)], const SaveDestination.ask())

@@ -198,7 +198,7 @@ final class DesktopSaveWriter extends SaveWriter$PerItem {
     if (cancellation.isCancelled) return const SaveResult.cancelled();
     final _Place place;
     try {
-      place = await _placeOf(write, cancellation);
+      place = await _placeOf(write);
     } on _Ended catch (ended) {
       return ended.result;
     } on FileSystemException catch (error) {
@@ -222,10 +222,7 @@ final class DesktopSaveWriter extends SaveWriter$PerItem {
   // --- Where ---
 
   /// The file [write] goes to, claimed in its folder, or the user's pick.
-  Future<_Place> _placeOf(
-    SaveWrite write,
-    CancellationToken cancellation,
-  ) async {
+  Future<_Place> _placeOf(SaveWrite write) async {
     final name = DesktopSaveNames.sanitize(write.item.name);
     final DesktopFolder folder;
     final String? subfolder;
@@ -233,9 +230,7 @@ final class DesktopSaveWriter extends SaveWriter$PerItem {
       case SaveDestination$Ask():
         final picked = await _pickLocation(name);
         if (picked != null) return _Place(picked, renamed: false);
-        // The user said no to the batch, not to one item: the job's cancel
-        // ends this item and stops the ones after it unasked.
-        cancellation.cancel();
+        // The user dismissed the dialog: a cancelled item ends the batch.
         throw const _Ended(SaveResult.cancelled());
       case SaveDestination$Gallery(:final album):
         folder = _galleryFolderOf(write);
